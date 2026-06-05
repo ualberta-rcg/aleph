@@ -27,10 +27,21 @@ Each model directory should contain (as applicable):
 ## GPU/HAMi conventions
 
 - GPU workloads require node selector `gpu: "on"`.
-- Fractional allocations use:
-  - `nvidia.com/gpumem: "<MiB>"`
-  - `nvidia.com/gpu: "1"` (or higher if tensor parallel/full GPU)
-- For multi-GPU large models, request explicit GPU count and enough gpumem.
+- **Single-GPU / fractional models (TP=1):** use HAMi vGPU sharing:
+  - `nvidia.com/gpumem: "<MiB>"` + `nvidia.com/gpu: "1"`.
+- **Multi-GPU models (tensor-parallel ≥ 2): DO NOT request `nvidia.com/gpumem`.**
+  Requesting gpumem puts HAMi in vGPU mode; even though `libvgpu.so` may end up
+  unloaded, vLLM's **custom all-reduce** stalls busy-waiting on a P2P handshake that
+  never completes under HAMi (symptom: GPUs at 100% util but only ~95W / 350W TDP,
+  throughput ~0.25 tok/s). Required recipe for TP≥2 on this cluster:
+  - request whole devices: `nvidia.com/gpu: "<N>"` and **no** `nvidia.com/gpumem`
+  - env `CUDA_DISABLE_CONTROL: "true"` (bypass HAMi interception)
+  - vLLM arg `--disable-custom-all-reduce` (fall back to NCCL → native speed)
+  This took gpt-oss-120b from 0.25 tok/s → ~200 tok/s. The POC cluster 232 does not
+  need this because it uses the NVIDIA GPU Operator (full devices, native P2P), not HAMi.
+- **vLLM image is standardized to `vllm/vllm-openai:v0.20.2`** for all LLMs (matches 232).
+- Do NOT add `--kv-cache-dtype fp8` or `--enable-prefix-caching` to gpt-oss models:
+  attention sinks break under fp8, and TP>1 + prefix-caching can yield empty responses.
 
 ## Storage conventions
 
