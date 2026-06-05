@@ -36,7 +36,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | borzoi | predict | true | /v1/science/predict | READY | PENDING |  |
 | brainlm | embed | true | /v1/embeddings | READY | PENDING |  |
 | caduceus | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| chem-t5 | science-generate | false | /v1/science/generate | READY | PENDING | had TEST.md (pre-loop) |
+| chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
 | chemgpt-19m | generate | true | /v1/science/generate | READY | PENDING |  |
 | chemgpt | generate | true | /v1/science/generate | READY | PENDING |  |

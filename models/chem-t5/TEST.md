@@ -1,36 +1,33 @@
 # chem-t5 — Test Report
 
-Cluster 230, gateway `http://10.43.79.101:80`. Type: science-generate (T5, CPU). id `chem-t5`.
+Cluster 230, gateway ClusterIP `http://10.43.79.101:80`. Type: science-generate (CPU). id `chem-t5`.
 
-## Scale-up
-- Cold start: venv (CPU torch + transformers + sentencepiece) + HF snapshot_download
-  (GT4SD/multitask-text-and-chemistry-t5-base-standard) → `/data/model`, then load.
-  `3/3 Running`.
+## Status: FIXED + verified 2026-06-05
+GT4SD multitask-text-and-chemistry-t5. Old server used invented task prompts → wrong output
+(caption returned a SMILES). Replaced with the EXACT GT4SD training prompt templates.
 
-## Endpoint tests (PASS)
+## Verified this pass
 
-### POST /v1/science/generate (demo: forward_synthesis)
+### caption (SMILES → description) — PASS
 ```bash
-curl -s --max-time 60 -X POST $GW/v1/science/generate \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"chem-t5","demo":true}'
+curl -s -X POST $GW/v1/science/generate -H 'Content-Type: application/json' \
+  -d '{"model":"chem-t5","task":"caption","input":"CC(=O)NC(CC1=CC=C(C=C1)O)C(=O)O"}'
 ```
-→ HTTP 200:
-```json
-{"task":"forward_synthesis",
- "input":"CC(=O)Oc1ccccc1C(=O)O.CCO",
- "output":"CCOC(=O)c1ccccc1OC(C)=O","model":"chem-t5"}
+→ "The molecule is a N-acetyltyrosine ... human urinary metabolite ... monocarboxylic acid." PASS.
+
+### forward_synthesis (reactants → product) — PASS
+```bash
+curl -s -X POST $GW/v1/science/generate -H 'Content-Type: application/json' \
+  -d '{"model":"chem-t5","task":"forward_synthesis","input":"CC(=O)O.OCC"}'
 ```
-PASS — valid aspirin esterification product. Beam search (num_beams=4),
-completes in ~10 s on CPU.
+→ valid product SMILES. PASS.
 
-### Catalog
-- `GET /v1/models?all=true` → `chem-t5` discovered. PASS. Supports tasks:
-  forward_synthesis, retrosynthesis, paragraph_to_actions, mol2text, text2mol, etc.
-
-## Not applicable
-- OpenAI chat / Anthropic / reasoning: N/A (T5 seq2seq chemistry model).
+## Tasks (exact GT4SD prompts now used)
+- forward_synthesis: "Predict the product of the following reaction: "
+- retrosynthesis: "Predict the reaction that produces the following product: "
+- caption: "Caption the following SMILES: "
+- generate (desc→SMILES): "Write in SMILES the described molecule: "
+- paragraph_to_actions: "Which actions are described in the following paragraph: "
 
 ## Card parity
-id=chem-t5, k8s_name=chem-t5, type=science-generate, gpu=false,
-endpoint /v1/science/generate.
+id=chem-t5, type=science-generate, gpu=false, status=production.

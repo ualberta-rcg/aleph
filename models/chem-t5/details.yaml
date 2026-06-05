@@ -9,6 +9,8 @@ data:
   details.json: |
     {
       "id": "chem-t5",
+      "status": "production",
+      "status_note": "Verified 2026-06-05: correct GT4SD prompt templates; caption+forward_synthesis work.",
       "type": "science-generate",
       "endpoints": {
         "primary": "/v1/science/generate",

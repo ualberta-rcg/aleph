@@ -21,12 +21,14 @@ data:
     tokenizer = None
     DEVICE = "cpu"
 
+    # EXACT GT4SD training prompt templates (Christofidellis et al. 2023). Must match
+    # verbatim or the model produces wrong/garbage output.
     TASK_PREFIXES = {
-        "forward_synthesis":  "Predict the products of the following chemical reaction: ",
-        "retrosynthesis":     "Predict the reactants of the following chemical reaction: ",
-        "caption":            "Generate a description for the following SMILES: ",
-        "generate":           "Generate a molecule that satisfies the following description: ",
-        "paragraph_to_actions": "Convert the following paragraph into chemical actions: ",
+        "forward_synthesis":  "Predict the product of the following reaction: ",
+        "retrosynthesis":     "Predict the reaction that produces the following product: ",
+        "caption":            "Caption the following SMILES: ",
+        "generate":           "Write in SMILES the described molecule: ",
+        "paragraph_to_actions": "Which actions are described in the following paragraph: ",
     }
 
     @app.on_event("startup")
