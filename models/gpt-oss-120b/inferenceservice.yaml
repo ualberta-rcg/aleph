@@ -87,8 +87,8 @@ spec:
             value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
-          - name: VLLM_ATTENTION_BACKEND          # REQUIRED on L40S (SM89), matches gpt-oss-20b
-            value: TRITON_ATTN_VLLM_V1
+          # NOTE: intentionally NOT forcing VLLM_ATTENTION_BACKEND. Leaving it auto
+          # (matches the proven POC cluster 232 config which runs stable on L40S).
           - name: OMP_NUM_THREADS
             value: "1"
         ports:
