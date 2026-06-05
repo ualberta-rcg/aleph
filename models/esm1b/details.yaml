@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "esm1b",
+      "status": "production",
       "type": "embedding",
       "description_short": "ESM-1b 650M protein language model from Meta",
       "description": "ESM-1b is a 650M parameter protein language model from Meta (Facebook). Produces per-residue and mean-pooled embeddings for protein sequences. Trained on UniRef50. 1024 residue context. Uses fp16 on GPU. Predecessor to ESM-2 but still widely used.",

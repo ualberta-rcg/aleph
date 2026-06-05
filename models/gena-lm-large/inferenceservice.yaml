@@ -59,7 +59,7 @@ data:
         enc = tokenizer(seqs, return_tensors="pt", padding=True, truncation=True, max_length=512)
         enc = {k: v.to(DEVICE) for k, v in enc.items()}
         with torch.no_grad():
-            out = model(**enc)
+            out = model(**enc, output_hidden_states=True)
         # GENA-LM returns MaskedLMOutput; use sequence_output or hidden_states[-1]
         if hasattr(out, 'last_hidden_state'):
             hidden = out.last_hidden_state

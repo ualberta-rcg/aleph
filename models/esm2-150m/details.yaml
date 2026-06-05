@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "esm2-150m",
+      "status": "production",
       "type": "embedding",
       "description_short": "ESM2 150M compact protein encoder from Meta",
       "description": "ESM2 150M is a mid-size variant of the ESM-2 protein language model family from Meta. 150M parameters, 30 layers. Good balance of speed and accuracy. Trained on UniRef50. 1024 residue context.",

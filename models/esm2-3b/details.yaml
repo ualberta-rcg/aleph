@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "esm2-3b",
+      "status": "production",
       "type": "embedding",
       "description_short": "ESM-2 3B protein language model embeddings",
       "description": "ESM-2 3B (facebook/esm2_t36_3B_UR50D) is a state-of-the-art protein language model trained on masked language modelling over UniRef50. Returns 2560-dimensional mean-pooled embeddings from amino acid sequences. Max 1022 residues. Higher accuracy than smaller ESM-2 checkpoints for structure prediction, function annotation, and variant effect prediction. Runs on GPU (fp16) with CPU fallback.",

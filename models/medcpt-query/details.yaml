@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "medcpt-query",
+      "status": "production",
       "type": "embedding",
       "description_short": "MedCPT Query Encoder — medical query embeddings from NCBI (768-dim)",
       "description": "MedCPT Query Encoder by NCBI. 110M params. BERT-base model fine-tuned for medical query embeddings using contrastive pre-training on PubMed click logs. Produces CLS token embeddings for biomedical query encoding. Designed to pair with MedCPT Article Encoder for retrieval-augmented generation. Short-context model (max 64 tokens for queries). Max sequence length 64 tokens.",

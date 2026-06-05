@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "gena-lm-large",
+      "status": "production",
       "type": "embedding",
       "description_short": "Large DNA BERT for long genomic sequences (340M, AIRI)",
       "description": "GENA-LM-large is the large variant of GENA-LM from AIRI Institute. 340M parameters trained on hg38+T2T human genome, handles up to 36kb context. Upgrade from gena-lm-base for complex genomic element classification. Uses CLS token embedding instead of mean pooling.",

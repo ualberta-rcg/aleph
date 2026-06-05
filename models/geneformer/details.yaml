@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "geneformer",
+      "status": "production",
       "type": "embedding",
       "description_short": "Single-cell gene expression foundation model from NIH NCI (104M)",
       "description": "Geneformer is a context-aware gene network inference model from NIH NCI. Pretrained on 30M single-cell transcriptomes. V2-104M variant. Takes ranked gene token IDs and produces cell-level embeddings. For cell type classification, gene network analysis, and in silico perturbation. BSD-2 license.",

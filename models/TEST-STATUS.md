@@ -62,22 +62,22 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | efficientnet-b0 | classify | false | /v1/vision/classify | READY | FIXED | lite4: fixed preproc+double-softmax+labels; minibus 0.63 |
 | enformer | predict | true | /v1/science/predict | NOT-READY | FAIL | isvc never deployed (READY=False 11h); needs recreate |
 | ernierna | embedding | true | /v1/science/embed | NOT-READY | FAIL | isvc never deployed (READY=False 10h); needs recreate/fix |
-| esm1b | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| esm2-150m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
+| esm1b | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein (recreated) |
+| esm2-150m | embedding | true | /v1/embeddings | READY | PASS | 640-dim protein (recreated) |
 | esm2-35m | embedding | true | /v1/embeddings | READY | PASS | 480-dim protein |
-| esm2-3b | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
+| esm2-3b | embedding | true | /v1/embeddings | READY | PASS | 2560-dim protein (recreate cleared) |
 | esm2-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein |
-| esmc-300m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| esmfold | structure | true | /v1/structure | NOT-READY | PENDING |  |
+| esmc-300m | embedding | true | /v1/embeddings | READY | PASS | 960-dim (recreated) |
+| esmfold | structure | true | /v1/structure | READY | PASS | folds protein -> PDB |
 | fengwu | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
 | gemma-3-4b-it | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| gena-lm-large | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
-| gena-lm | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| geneformer | embedding | true | /v1/embed | NOT-READY | PENDING |  |
+| gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
+| gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
+| geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
 | geogalactica | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | gpt-oss-120b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | gpt-oss-20b | chat | ? | /v1/chat/completions | READY | PENDING |  |
@@ -99,8 +99,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING |  |
 | mattersim | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
-| medcpt-article | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| medcpt-query | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
+| medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
+| medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
 | medgemma-27b-it | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
 | megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |

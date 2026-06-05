@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "esmfold",
+      "status": "production",
       "type": "structure",
       "description_short": "ESMfold protein structure prediction from sequence",
       "description": "ESMfold end-to-end protein folding model by Meta. Predicts 3D protein structures directly from amino acid sequences without MSA lookup. Based on ESM-2 backbone (~690M params). Returns PDB-formatted structures with per-residue pLDDT confidence scores. Max 1022 residues. Single-sequence method — no external databases needed.",

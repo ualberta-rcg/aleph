@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "esmc-300m",
+      "status": "production",
       "type": "embedding",
       "description_short": "ESM Cambrian 300M next-gen protein LM from EvolutionaryScale",
       "description": "ESM-C 300M (Cambrian) is the next-generation protein language model from EvolutionaryScale (Meta spinoff). Drop-in replacement for ESM2 with improved performance. Uses the esm SDK for encoding and logits extraction. 300M parameters.",

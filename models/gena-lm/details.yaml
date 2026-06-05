@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "gena-lm",
+      "status": "production",
       "type": "embedding",
       "description_short": "BERT-style DNA language model trained on T2T human genome (AIRI)",
       "description": "GENA-LM is a BERT-style DNA language model from AIRI Institute trained on the T2T human genome. Produces embeddings for DNA sequences up to 512bp. Uses output_hidden_states for last-layer embeddings. 110M parameters. Apache 2.0 license.",
