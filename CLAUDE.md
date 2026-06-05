@@ -141,6 +141,27 @@ kubectl create secret generic hf-token -n models \
 `TYK_SECRET` / `TYK_API_SECRET` from the environment (no baked-in default). Export them
 (e.g. `set -a; source .env; set +a`) before running.
 
+## Changelog-First Commit Process
+
+Every code/config change must be reflected in `CHANGELOG.md` **before** creating a commit.
+
+### Required workflow (before `git commit`)
+
+1. Group related edits into one logical change.
+2. Add/update a dated entry in `CHANGELOG.md` (newest-first).
+3. Include:
+   - what changed,
+   - why it changed,
+   - deployment/operational impact,
+   - validation performed (tests/commands/results).
+4. If the change is partial/in-progress, mark it clearly as follow-up required.
+5. Stage `CHANGELOG.md` in the same commit as the code/manifests it describes.
+
+### Commit gate
+
+- Do **not** commit if code changed but `CHANGELOG.md` was not updated.
+- Small exceptions (typos/comments-only) are allowed, but should be explicitly noted in the commit message.
+
 ## Working Conventions
 
 - This repo is the source of truth; clone is at `/scratch/rahimk/repos/aleph` on the login node.

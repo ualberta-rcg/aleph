@@ -1,15 +1,13 @@
-<img src="./assets/ua_logo_green_rgb.png" alt="University of Alberta Logo" width="50%" />
-
-# SoftMig
+# Aleph
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
-[![CUDA 12+](https://img.shields.io/badge/CUDA-12%2B-76B900.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![CUDA 13](https://img.shields.io/badge/CUDA-13-76B900.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![NVIDIA GPU](https://img.shields.io/badge/GPU-L%20%7C%20A%20%7C%20V%20%7C%20RTX%20Series-76B900.svg)](https://www.nvidia.com/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-RKE2-blue.svg)](https://www.rke2.io/)
+[![GPU Scheduling](https://img.shields.io/badge/GPU-HAMi-76B900.svg)](https://github.com/Project-HAMi/HAMi)
+[![Serving](https://img.shields.io/badge/Serving-KServe%20%2B%20Knative-orange.svg)](https://kserve.github.io/website/latest/)
 
-> **Software MIG for any NVIDIA GPU — no hardware MIG required.**
+> **RKE2 + Warewulf + HAMi + KServe/Knative inference platform with OpenAI/Anthropic-compatible gateway.**
 
-*Deployed on the [University of Alberta](https://ualberta-rcg.github.io/ragflow-wiki-data/)/[Alberta Machine Intelligence Institute](https://www.amii.ca/) Vulcan Cluster*  
+*Deployed on the University of Alberta / AMII Vulcan environment for multi-model GPU inference.*
 
 **Maintained by:** Rahim Khoja ([khoja1@ualberta.ca](mailto:khoja1@ualberta.ca)) and Karim Ali ([kali2@ualberta.ca](mailto:kali2@ualberta.ca))
 
@@ -17,113 +15,104 @@
 
 ## 📖 Description
 
-**SoftMig** is a SLURM-integrated software GPU slicing system for shared NVIDIA GPU clusters. It lets administrators schedule ordinary NVIDIA GPUs in a MIG-like way using software-enforced memory limits, compute time-slicing, and SLURM prolog/epilog automation.
+**Aleph** is an inference platform repository for operating a Kubernetes-based model serving stack with fractional GPU scheduling.
 
-SoftMig does **not** enable, modify, or replace NVIDIA Hardware MIG. Instead, it provides a scheduler-controlled software layer for running fractional GPU jobs on GPUs that do not support hardware MIG, or on clusters where hardware MIG is too rigid for day-to-day research scheduling.
+It combines:
+- **RKE2** for cluster runtime,
+- **Warewulf** for stateless node provisioning,
+- **HAMi** for vGPU slicing and scheduling,
+- **KServe + Knative** for model services and scale-to-zero,
+- **Tyk OSS** for key management and API gateway controls,
+- **FastAPI gateway** with OpenAI and Anthropic compatible endpoints.
 
-The goal is to let SLURM treat each GPU as a flexible shared resource. A 48GB GPU, for example, can be offered as a full GPU, two half-GPU slices, four quarter-GPU slices, or other site-defined layouts. Each job receives a configured memory limit and proportional access to GPU compute through time-slicing and SM throttling.
-
-Unlike Hardware MIG, SoftMig slice layouts can be changed through SLURM policy without draining nodes, rebooting, or changing GPU MIG mode. This allows full-GPU jobs, half-GPU jobs, quarter-GPU jobs, and other fractional jobs to coexist across the same GPU nodes using normal SLURM scheduling.
-
-SoftMig is based on [HAMi-core](https://github.com/Project-HAMi/HAMi-core), adapted for SLURM-based HPC environments. The project was inspired by Tim Weiers from the University of Alberta Unix team, who suggested HAMi-core as a foundation for bringing software GPU slicing into research computing clusters.
-
-SoftMig is intended for [Digital Research Alliance of Canada](https://alliancecan.ca/) / Compute Canada-style research clusters where GPU utilization, scheduling flexibility, and broad NVIDIA GPU compatibility matter more than hardware-level isolation.
-
-<p align="center">
-<strong>SoftMig in action on the University of Alberta Vulcan cluster</strong>
-</p>
-
-<table align="center">
-<tr>
-<td align="center"><img src="./assets/softmig_pic1.png" alt="SoftMig 1/2 L40S slice on Vulcan" width="400" /></td>
-<td align="center"><img src="./assets/softmig_pic2.png" alt="SoftMig 1/4 L40S slice on Vulcan" width="400" /></td>
-</tr>
-<tr>
-<td align="center"><strong>1/2 L40S Slice</strong><br><code>nvidia-smi</code> reports ~24 GB visible</td>
-<td align="center"><strong>1/4 L40S Slice</strong><br><code>nvidia-smi</code> reports ~12 GB visible</td>
-</tr>
-</table>
+The repo includes deployment manifests, model cards, gateway logic, storage configs, install scripts, and validation harnesses used to run the stack reproducibly.
 
 ## ✨ Features
 
-- **GPU Memory Slicing** — enforce per-job GPU memory ceilings; when a job exceeds its limit, CUDA returns `CUDA_ERROR_OUT_OF_MEMORY`, just like running on a smaller physical GPU
-- **GPU Compute Slicing** — kernel launch throttling and SM time-slicing to limit GPU compute access per job
-- **Works on Any CUDA 12+ GPU** — L40S, A40, V100, RTX-class, and others; no MIG-capable hardware required
-- **SLURM-Native Lifecycle** — prolog creates root-owned config files, epilog removes them; users never set their own limits
-- **Dynamic Slice Layouts** — change from 4 slices to 8 slices per GPU through policy alone, no node drain or reboot
-- **Per-Job Isolation** — cache and lock files under `$SLURM_TMPDIR` (no shared `/tmp` conflicts)
-- **Scheduler-Enforced** — loaded via `/etc/ld.so.preload`; users cannot bypass limits
-- **Silent by Default** — logs written to `/var/log/softmig/{jobid}.log`, invisible to users
-- **Optional `nvidia-smi` Filtering** — wrapper script hides other jobs' GPU processes by cgroup
-- **Framework Agnostic** — PyTorch, TensorFlow, JAX, MXNet, and any other CUDA workload
+- **OpenAI + Anthropic API compatibility** in a single gateway
+- **Fractional GPU scheduling** with HAMi (`nvidia.com/gpumem` + `nvidia.com/gpu`)
+- **Mixed model catalog**: chat/reasoning, multimodal, embeddings, rerank, TTS, science
+- **Scale-to-zero + warmup-aware testing** for Knative-backed services
+- **Tyk key management** and model catalog API endpoints
+- **NFS-backed model persistence** with OneFS-safe mount options
+- **Per-model manifests** with cards, PVCs, and runtime-specific notes
 
 ## 🚀 Quickstart
 
-### For SLURM Users
-
-Request a GPU slice through SLURM (exact GRES names depend on site policy):
+### 1) Clone and set secrets
 
 ```bash
-# Quarter GPU (12GB / 25% SM on a 48GB GPU)
-sbatch --gres=gpu:l40s.4:1 --time=5:00:00 job.sh
-
-# Half GPU (24GB / 50% SM on a 48GB GPU)
-sbatch --gres=gpu:l40s.2:1 --time=2:00:00 job.sh
-
-# Full GPU (no limits)
-sbatch --gres=gpu:l40s:1 --time=2:00:00 job.sh
+git clone git@github.com:ualberta-rcg/aleph.git
+cd aleph
+cp .env.example .env
+# fill HF_TOKEN and TYK_SECRET/TYK_API_SECRET
+set -a; source .env; set +a
 ```
 
-### For Cluster Admins
+### 2) Create HuggingFace token Secret
 
-- **Build, install, and update**: [docs/BUILD_AND_INSTALL.md](docs/BUILD_AND_INSTALL.md)
-- **SLURM integration** (prolog/epilog/job_submit): [docs/SLURM_INTEGRATION.md](docs/SLURM_INTEGRATION.md)
+```bash
+kubectl create secret generic hf-token -n models \
+  --from-literal=token="$HF_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
 
-## 📚 Documentation
+### 3) Deploy gateway + models
 
-| Document | Description |
-|----------|-------------|
-| [docs/USAGE.md](docs/USAGE.md) | User-facing usage, configuration model, and slice layout |
-| [docs/SLURM_INTEGRATION.md](docs/SLURM_INTEGRATION.md) | Prolog, epilog, job_submit plugin, and file locations |
-| [docs/BUILD_AND_INSTALL.md](docs/BUILD_AND_INSTALL.md) | Build, install, update runbook (includes safe `unshare -m` updates) |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common symptoms, quick checks, and fixes |
-| [docs/TESTING.md](docs/TESTING.md) | Smoke tests and framework tests |
-| [CHANGES.md](CHANGES.md) | Release-level architecture and behavior changes |
+```bash
+# from a login node with sudo SSH access to control plane
+./deploy.sh
+
+# or pin a tag
+TAG=0.14 ./deploy.sh
+```
+
+### 4) Run full compatibility tests
+
+```bash
+python3 scratch/full_test.py
+```
+
+## 📚 Repository Layout
+
+| Path | Description |
+|---|---|
+| `gateway/` | FastAPI gateway app, translation logic, k8s deployment, Tyk API defs |
+| `models/` | Per-model `InferenceService`, `PVC`, and `details.yaml` cards |
+| `install-kubeflow/` | Cluster/platform install scripts and configs |
+| `storage/` | StorageClass manifests (`nfs-client` default, tuning options) |
+| `scratch/` | End-to-end tests and targeted validation scripts |
+| `RUNBOOK.md` | Operational commands and troubleshooting runbook |
+| `CHANGELOG.md` | Timeline of model/platform updates |
+| `CLAUDE.md` | Operator and agent context for this repository |
+
+## 🧭 Operations Notes
+
+- Main working cluster documented here is control-plane `172.26.92.230` with HAMi-enabled GPU workers.
+- Node image build/publish source-of-truth is [`ualberta-rcg/warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami); this repo consumes that image line.
+- Keep secrets in `.env` only (gitignored); do not inline tokens in manifests.
+- Model-specific deployment guidance belongs in `models/CLAUDE.md` and optional `models/<model>/CLAUDE.md`.
+- Gateway-specific behavior notes belong in `gateway/CLAUDE.md`.
 
 ## 🔗 References
 
 - [University of Alberta Research Computing](https://www.ualberta.ca/en/information-services-and-technology/research-computing/index.html)
 - [Alberta Machine Intelligence Institute (AMII)](https://www.amii.ca/)
 - [Digital Research Alliance of Canada](https://alliancecan.ca/)
-- [HAMi-core (upstream project)](https://github.com/Project-HAMi/HAMi-core)
-- [Vulcan Docs](https://ualberta-rcg.github.io/ragflow-wiki-data/)
+- [HAMi](https://github.com/Project-HAMi/HAMi)
+- [Warewulf RKE2 HAMi Image Repo](https://github.com/ualberta-rcg/warewulf-rke2-hami)
+- [KServe](https://kserve.github.io/website/latest/)
+- [Knative](https://knative.dev/docs/)
+- [RKE2](https://docs.rke2.io/)
 
 ---
 
 ## 🤝 Support
 
-Many Bothans died to bring us this information. This project is provided as-is, but reasonable questions may be answered based on my coffee intake or mood. ;)
-
-Feel free to open an issue or email **[khoja1@ualberta.ca](mailto:khoja1@ualberta.ca)** or **[kali2@ualberta.ca](mailto:kali2@ualberta.ca)** for U of A related deployments.
+Open an issue in this repo or contact:
+- **[khoja1@ualberta.ca](mailto:khoja1@ualberta.ca)**
+- **[kali2@ualberta.ca](mailto:kali2@ualberta.ca)**
 
 ## 📜 License
 
-This project is released under the **MIT License** - one of the most permissive open-source licenses available.
-
-**What this means:**
-- ✅ Use it for anything (personal, commercial, whatever)
-- ✅ Modify it however you want
-- ✅ Distribute it freely
-- ✅ Include it in proprietary software
-
-**The only requirement:** Keep the copyright notice somewhere in your project.
-
-That's it! No other strings attached. The MIT License is trusted by major projects worldwide and removes virtually all legal barriers to using this code.
-
-**Full license text:** [MIT License](./LICENSE)
-
-## 🧠 About University of Alberta Research Computing
-
-The [Research Computing Group](https://www.ualberta.ca/en/information-services-and-technology/research-computing/index.html) supports high-performance computing, data-intensive research, and advanced infrastructure for researchers at the University of Alberta and across Canada.
-
-We help design and operate compute environments that power innovation — from AI training clusters to national research infrastructure.
+MIT License — see [LICENSE](./LICENSE).

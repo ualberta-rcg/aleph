@@ -1,0 +1,71 @@
+name: Build & Push Gateway Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'gateway/**'
+      - '.github/workflows/deploy-gateway.yml'
+  workflow_dispatch:
+    inputs:
+      IMAGE_TAG:
+        description: 'Immutable image tag override (default: gateway-<shortsha>)'
+        required: false
+        default: ''
+      STABLE_TAG:
+        description: 'Stable moving tag (default: gateway-latest)'
+        required: false
+        default: 'gateway-latest'
+
+jobs:
+  build-and-push:
+    name: Build & Push Gateway
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve tags
+        id: tags
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event.inputs.IMAGE_TAG }}
+          INPUT_STABLE_TAG: ${{ github.event.inputs.STABLE_TAG }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          IMAGE_TAG="${INPUT_IMAGE_TAG}"
+          if [ -z "${IMAGE_TAG}" ]; then
+            IMAGE_TAG="gateway-${SHORT_SHA}"
+          fi
+
+          STABLE_TAG="${INPUT_STABLE_TAG}"
+          if [ -z "${STABLE_TAG}" ]; then
+            STABLE_TAG="gateway-latest"
+          fi
+
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "STABLE_TAG=${STABLE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Using IMAGE_TAG=${IMAGE_TAG}"
+          echo "Using STABLE_TAG=${STABLE_TAG}"
+
+      - name: Build Docker image
+        run: |
+          set -euo pipefail
+          docker build \
+            -t "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" \
+            -t "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}" \
+            gateway
+
+      - name: Login to DockerHub
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USER }}" --password-stdin
+
+      - name: Push image to DockerHub
+        run: |
+          set -euo pipefail
+          docker push "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}"
+          docker push "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}"

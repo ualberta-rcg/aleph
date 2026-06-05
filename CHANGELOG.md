@@ -2,6 +2,29 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 (latest) — docs/process + gateway image CI workflow
+
+### README/template alignment and operator notes
+- Replaced the temporary SoftMig-oriented README text with Aleph stack content while
+  preserving the same section/template shape.
+- Added explicit reference to the external node-image repo we use:
+  `ualberta-rcg/warewulf-rke2-hami`.
+
+### CLAUDE guidance expansion
+- Added `models/CLAUDE.md` with a standard model deployment process and validation
+  checklist.
+- Added `models/CLAUDE-TEMPLATE.md` for per-model operational notes.
+- Added `models/gpt-oss-20b/CLAUDE.md` as a concrete per-model example.
+- Added `gateway/CLAUDE.md` for gateway rollout/compatibility guardrails.
+- Updated root `CLAUDE.md` with a required changelog-first commit process.
+
+### GitHub Actions (DockerHub) for gateway image
+- Added `.github/workflows/deploy-gateway.yml` modeled after the publish pattern in
+  `ualberta-rcg/warewulf-rke2-hami`:
+  - build on `main` pushes touching `gateway/**`,
+  - push immutable and stable tags,
+  - DockerHub auth via `DOCKER_HUB_USER`, `DOCKER_HUB_TOKEN`, `DOCKER_HUB_REPO`.
+
 ## 2026-06-04 (later) — 3 more sub-GPU science models + cold-start fix
 
 ### Added esm2-650m, molformer, finbert (all sub-GPU, scale-to-zero)
