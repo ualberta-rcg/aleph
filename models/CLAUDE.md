@@ -33,10 +33,12 @@ Each model directory should contain (as applicable):
   Requesting gpumem puts HAMi in vGPU mode; even though `libvgpu.so` may end up
   unloaded, vLLM's **custom all-reduce** stalls busy-waiting on a P2P handshake that
   never completes under HAMi (symptom: GPUs at 100% util but only ~95W / 350W TDP,
-  throughput ~0.25 tok/s). Required recipe for TP≥2 on this cluster:
+  throughput ~0.25 tok/s).   Required recipe for TP≥2 on this cluster (only TWO things needed):
   - request whole devices: `nvidia.com/gpu: "<N>"` and **no** `nvidia.com/gpumem`
-  - env `CUDA_DISABLE_CONTROL: "true"` (bypass HAMi interception)
   - vLLM arg `--disable-custom-all-reduce` (fall back to NCCL → native speed)
+  `CUDA_DISABLE_CONTROL` is NOT required — verified oceangpt-30b TP2 hits ~73 tok/s
+  without it (no gpumem already gives whole-card memory; the perf fix is solely
+  --disable-custom-all-reduce).
   This took gpt-oss-120b from 0.25 tok/s → ~200 tok/s. The POC cluster 232 does not
   need this because it uses the NVIDIA GPU Operator (full devices, native P2P), not HAMi.
 - **vLLM image is standardized to `vllm/vllm-openai:v0.20.2`** for all LLMs (matches 232).
