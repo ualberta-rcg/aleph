@@ -85,7 +85,11 @@ spec:
       - name: setup
         image: python:3.11-slim
         env:
-          - { name: HF_TOKEN, value: "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" }
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
         command: ["bash", "-c"]
         args:
           - |
