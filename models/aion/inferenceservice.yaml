@@ -1,0 +1,228 @@
+# AION-base 300M: Astronomical multimodal foundation model (Polymathic AI, 2025)
+# HuggingFace: polymathic-ai/aion-base (MIT)
+# Trained on 39 astronomical data types: images, spectra, photometry from DESI, SDSS, Gaia, HSC
+# API: POST /v1/science/embed — astronomical data → embedding
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aion-server
+  namespace: models
+data:
+  server.py: |
+    """
+    AION-base 300M astronomical multimodal foundation model (Polymathic AI).
+    Trained on 39 data types across DESI, SDSS, Gaia, HSC surveys.
+
+    Endpoints:
+      GET  /health              → {"status":"ok","model":"aion-base"}
+      GET  /v1/models           → model card
+      GET  /v1/science/info     → model capabilities and supported modalities
+      POST /v1/science/embed    → {"modality":"spectrum","data":[...]} → 768-dim embedding
+    """
+    import os, asyncio
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = os.environ.get("MODEL_ID", "polymathic-ai/aion-base")
+    DEVICE = "cpu"
+
+    app = FastAPI()
+    model_state = {}
+
+    def load():
+        import torch
+        DEVICE_local = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading AION-base on {DEVICE_local}...", flush=True)
+        try:
+            from transformers import AutoModel, AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+            model = AutoModel.from_pretrained(MODEL_ID, trust_remote_code=True).to(DEVICE_local).eval()
+            model_state["model"] = model
+            model_state["tokenizer"] = tokenizer
+            model_state["device"] = DEVICE_local
+            print("AION-base loaded via transformers.", flush=True)
+        except Exception as e:
+            print(f"transformers load failed: {e}, trying polymathic-aion...", flush=True)
+            try:
+                import polymathic_aion as aion
+                model = aion.load_model(MODEL_ID)
+                model_state["model"] = model
+                model_state["device"] = DEVICE_local
+                model_state["backend"] = "polymathic_aion"
+                print("AION-base loaded via polymathic-aion.", flush=True)
+            except Exception as e2:
+                print(f"Both backends failed: {e2}", flush=True)
+                model_state["error"] = str(e2)
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        ready = "model" in model_state and "error" not in model_state
+        return {"status": "ok" if ready else "loading", "model": "aion-base",
+                "backend": model_state.get("backend", "transformers")}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "aion-base", "object": "model", "owned_by": "polymathic-ai",
+             "type": "astronomy-multimodal", "license": "MIT",
+             "description": "AION-base 300M astronomical multimodal FM; 39 data types from DESI/SDSS/Gaia/HSC"}
+        ]}
+
+    @app.get("/v1/science/info")
+    async def info():
+        return {
+            "model": "aion-base",
+            "params": "300M",
+            "architecture": "encoder-decoder transformer (12 blocks, 768-dim, 12 heads)",
+            "training_surveys": ["DESI Legacy Survey", "SDSS", "Gaia", "HSC Wide"],
+            "supported_modalities": [
+                "multiband_images", "optical_spectra", "photometry", "catalogs",
+                "broadband_photometry", "narrow_band_imaging"
+            ],
+            "num_modalities": 39,
+            "embedding_dim": 768,
+            "paper": "arXiv:2510.17960",
+            "license": "MIT",
+        }
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if "model" not in model_state:
+            raise HTTPException(503, "Model not loaded yet")
+        if "error" in model_state:
+            raise HTTPException(500, f"Load failed: {model_state['error']}")
+
+        modality = request.get("modality", "spectrum")
+        data = request.get("data")
+        if data is None:
+            raise HTTPException(400, "data required (list of floats)")
+
+        import torch
+        import numpy as np
+
+        model = model_state["model"]
+        device = model_state["device"]
+
+        try:
+            if model_state.get("backend") == "polymathic_aion":
+                # Use polymathic-aion API
+                import polymathic_aion as aion
+                tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    emb = model.encode({modality: tensor})
+                emb_list = emb.cpu().float().squeeze().tolist()
+            else:
+                # Use transformers API - pass as pixel_values or inputs_embeds
+                tok = model_state["tokenizer"]
+                if hasattr(tok, "__call__"):
+                    tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        out = model(inputs_embeds=tensor)
+                    emb = out.last_hidden_state.mean(dim=1)
+                    emb_list = emb.cpu().float()[0].tolist()
+                else:
+                    raise ValueError("Unsupported tokenizer type")
+        except Exception as e:
+            raise HTTPException(500, f"Embedding failed: {str(e)[:200]}")
+
+        return JSONResponse({
+            "model": "aion-base",
+            "modality": modality,
+            "embedding": emb_list[:768],
+            "dims": min(len(emb_list), 768),
+        })
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aion-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: aion
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+              /data/venv/bin/pip install -q "transformers==4.46.3" sentencepiece accelerate fastapi uvicorn huggingface_hub polymathic-aion || \
+                /data/venv/bin/pip install -q "transformers==4.46.3" sentencepiece accelerate fastapi uvicorn huggingface_hub
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download('polymathic-ai/aion-base', local_dir='/data/model', token=os.environ.get('HF_TOKEN'))
+            " || echo "snapshot_download skipped/failed (model may load via package)"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_ID, value: "/data/model" }
+          - { name: HF_HOME, value: "/data/hf-home" }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: aion-data }
+      - name: server-config
+        configMap:
+          name: aion-server

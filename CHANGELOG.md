@@ -2,6 +2,16 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — aion deferred (BLOCKED)
+
+### aion (Wave 1) — blocked
+- AION-base (Polymathic AI) astro multimodal FM: the 232 server is a non-functional stub
+  (uses `transformers`/bogus import; real model needs the `aion` package `CodecManager` +
+  modality dataclasses and structured astro inputs). Load fails both paths.
+- Converted manifests to HAMi but removed the broken deployment from the cluster.
+  Documented the correct integration path in models/aion/CLAUDE.md; marked `[s]` in
+  MIGRATION.md for a later proper rewrite.
+
 ## 2026-06-04 — migrate agront (plant DNA LM, GPU)
 
 ### agront (Wave 1, gpu→HAMi slice)
