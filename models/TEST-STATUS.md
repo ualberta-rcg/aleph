@@ -8,7 +8,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 
 | Model | Type | GPU | Primary endpoint | Cluster state | Test status | Note |
 |---|---|---|---|---|---|---|
-| ablang2 | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| ablang2 | embedding | false | /v1/embeddings | READY | FIXED | embeddings+batch PASS; /v1/restore was broken, fixed (heavy/light pairs), now PASS |
 | aeneas | structure | true | /v1/science/predict | READY | PENDING |  |
 | agront | embedding | true | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
 | aion | embed | false | /v1/science/embed | READY | PENDING | had TEST.md (pre-loop) |

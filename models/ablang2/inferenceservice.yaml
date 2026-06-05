@@ -86,15 +86,27 @@ data:
         if model is None:
             return JSONResponse({"error": "model loading"}, 503)
         
-        sequences = request.get("sequences")
-        if isinstance(sequences, str):
-            sequences = [sequences]
-        if not sequences:
-            return JSONResponse({"error": "'sequences' field required"}, 400)
+        raw = request.get("input") or request.get("sequences")
+        if isinstance(raw, str):
+            raw = [raw]
+        if not raw:
+            return JSONResponse({"error": "'input' (or 'sequences') field required"}, 400)
+
+        # AbLang2 paired model needs each sequence as a [heavy, light] pair.
+        # Accept: list pairs, "heavy|light" strings, or a single chain (light="").
+        pairs = []
+        for s in raw:
+            if isinstance(s, (list, tuple)):
+                h, l = (list(s) + ["", ""])[:2]
+            elif "|" in s:
+                h, l = s.split("|", 1)
+            else:
+                h, l = s, ""
+            pairs.append([h, l])
 
         loop = asyncio.get_event_loop()
         try:
-            restored = await loop.run_in_executor(None, lambda: model(sequences, mode="restore"))
+            restored = await loop.run_in_executor(None, lambda: model(pairs, mode="restore"))
             return {"model": "ablang2", "restored": restored.tolist() if hasattr(restored, 'tolist') else list(restored)}
         except Exception as e:
             import traceback; traceback.print_exc()

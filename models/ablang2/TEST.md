@@ -29,13 +29,25 @@ curl -s -X POST $GW/v1/embeddings -H "Content-Type: application/json" \
 - `GET /v1/models?all=true` → `ablang2` present, type=embedding, ctx=512, dim reflected. PASS.
 - (Default `/v1/models` is chat-only by design; embedding models need `?all=true`.)
 
-## Not applicable / not tested
+### POST /v1/restore (masked-residue restoration) — PASS (fixed this pass)
+```bash
+curl -s -X POST $GW/v1/restore -H "Content-Type: application/json" \
+  -d '{"model":"ablang2","input":"EVQLLESGGGLVQPGG*LRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCAKDYW"}'
+```
+→ `{"restored":["<EVQLLESGGGLVQPGGSLRLSCAAS...>|"]}` — masked `*` filled in (→`S`). PASS.
+Accepts a single chain, a `heavy|light` string, or `[heavy,light]` pairs.
 
+## Verified this pass (2026-06-05)
+- `/v1/embeddings` single + batch: 480-dim, PASS.
+- `/v1/restore`: was broken (passed raw strings; AbLang2 needs `[heavy,light]` pairs) —
+  FIXED in `inferenceservice.yaml` to normalize input. Now PASS.
+- Catalog `?all=true`: present. Cold-start cycle: PASS (gateway returns
+  `model_scaled_to_zero` then serves after pod warms).
+
+## Not applicable
 - OpenAI chat / Anthropic `/v1/messages` / reasoning: N/A (embedding model).
-- `POST /v1/restore` (CDR restoration) is exposed by the server and reachable via the
-  gateway `/v1/{path}` catch-all, but not exercised in this pass.
 
 ## Card parity
-
 `details.yaml` matches deployed config: type=embedding, context_window=512,
-embedding_dimensions=480 (verified), gpu=false, scale-to-zero.
+embedding_dimensions=480 (verified), gpu=false, scale-to-zero. Endpoints now list
+`/v1/restore` as a secondary capability.

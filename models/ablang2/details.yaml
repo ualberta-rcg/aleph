@@ -12,6 +12,7 @@ data:
       "type": "embedding",
       "endpoints": {
         "primary": "/v1/embeddings",
+        "restore": "/v1/restore",
         "health": "/health"
       },
       "routing": {

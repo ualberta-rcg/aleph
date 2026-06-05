@@ -27,3 +27,10 @@ See [TEST.md](TEST.md). Embeddings single+batch verified, dim=480, ctx=512.
 ## Notes
 - Paired model expects `VH|VL`; single chains still embed (mean-pooled).
 - Zenodo cold-start download is slow; warm restarts reuse PVC cache.
+
+## /v1/restore fix (2026-06-05 verification pass)
+- AbLang2's `__call__(..., mode="restore")` runs `heavy, light = seq` per item, so each
+  sequence MUST be a `[heavy, light]` pair — the old handler passed raw strings and always
+  500'd with `not enough values to unpack (expected 2, got 1)`.
+- Handler now normalizes input: accepts a single chain (light=""), a `"heavy|light"` string,
+  or a `[heavy, light]` list. Verified: masked `*` positions get restored. Both endpoints PASS.

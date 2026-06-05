@@ -4,8 +4,10 @@
 #   scripts/test-model.sh <model-dir-name> [action]
 #
 # actions:
-#   apply     - ship + kubectl apply the model's local manifests (reconcile drift)
-#   up        - scale predictor to 1 and wait for the ISVC to report Ready
+#   apply     - kubectl apply the model's local manifests (reconcile drift)
+#   recreate  - delete ISVC, wait until fully cleared from kube, reapply (keeps PVC).
+#               Use this whenever you change a model's config (avoids stale revisions).
+#   up        - pre-warm: scale LATEST revision to 1 and wait for ISVC Ready + live pod
 #   status    - print ISVC readiness + latest revision reason + pod state
 #   logs      - tail kserve-container (and init) logs for the live pod
 #   curl      - run a raw curl through the gateway:  ... curl <PATH> <JSON>
@@ -41,13 +43,30 @@ do_apply() {
   apply_one "$DIR/inferenceservice.yaml"
 }
 
-dep() { k get deploy -n $NS -o name 2>/dev/null | grep -m1 "${M}-predictor-[0-9]*-deployment"; }
+# Deployment backing the LATEST (currently-serving) revision, not just the first match.
+latest_dep() {
+  local rev
+  rev=$(k get isvc -n $NS "$M" -o jsonpath='{.status.components.predictor.latestReadyRevision}' 2>/dev/null)
+  [ -z "$rev" ] && rev=$(k get isvc -n $NS "$M" -o jsonpath='{.status.components.predictor.latestCreatedRevision}' 2>/dev/null)
+  [ -z "$rev" ] && { k get deploy -n $NS -o name 2>/dev/null | grep "${M}-predictor-[0-9]*-deployment" | sort | tail -1; return; }
+  echo "deployment.apps/${rev}-deployment"
+}
+dep() { latest_dep; }
 
+# Pre-warm: scale the latest revision to 1 and wait for ISVC Ready AND a live pod.
 do_up() {
   local d; d=$(dep)
-  [ -n "$d" ] && k scale -n $NS "$d" --replicas=1 >/dev/null 2>&1
+  [ -n "$d" ] && { echo ">> pre-warm $d"; k scale -n $NS "$d" --replicas=1 >/dev/null 2>&1; }
   echo ">> waiting for isvc/$M Ready (up to 12m)"
   k wait -n $NS --for=condition=Ready "isvc/$M" --timeout=720s
+  # also wait for the latest-revision pod to be Running 2/2+ (avoid cold-start race)
+  echo ">> waiting for latest-revision pod to be Ready"
+  for i in $(seq 1 60); do
+    local out; out=$("${SSH[@]}" "${KEXPORT} kubectl get pods -n $NS --no-headers | grep '^${M}-predictor' | grep -v Terminating | grep Running | grep -E '([2-9]|[0-9][0-9])/[2-9]' | head -1")
+    [ -n "$out" ] && { echo "   ready: $out"; return 0; }
+    sleep 10
+  done
+  echo "   (timeout waiting for pod; check logs)"
 }
 
 do_status() {
@@ -63,14 +82,36 @@ do_logs() {
   echo "=== $p setup (init) ==="; k logs -n $NS "$p" -c setup --tail=20 2>/dev/null
 }
 
-do_curl() {  # $3 = path, $4 = json body (optional)
-  local path="${3:?need path}" body="${4:-}"
-  if [ -n "$body" ]; then
-    "${SSH[@]}" "curl -s -m 120 -X POST http://${GW}${path} -H 'Content-Type: application/json' -d '$body'"
-  else
-    "${SSH[@]}" "curl -s -m 60 http://${GW}${path}"
-  fi
-  echo
+do_curl() {  # $3 = path, $4 = json body (optional). Retries through scale-to-zero cold start.
+  local path="${3:?need path}" body="${4:-}" resp
+  for i in $(seq 1 20); do
+    if [ -n "$body" ]; then
+      resp=$("${SSH[@]}" "curl -s -m 180 -X POST http://${GW}${path} -H 'Content-Type: application/json' -d '$body'")
+    else
+      resp=$("${SSH[@]}" "curl -s -m 60 http://${GW}${path}")
+    fi
+    if echo "$resp" | grep -q 'model_scaled_to_zero\|is starting up'; then
+      echo "   (cold start, retry $i...)" >&2; sleep 15; continue
+    fi
+    echo "$resp"; return 0
+  done
+  echo "$resp"
+}
+
+# Delete the ISVC and wait until ALL its pods/revisions are gone from kube, then
+# reapply from the local repo. Keeps the PVC (weights/venv cache survive).
+do_recreate() {
+  echo ">> deleting isvc/$M (keeping PVC)"
+  k delete isvc -n $NS "$M" --ignore-not-found --wait=true >/dev/null 2>&1
+  echo ">> waiting for all ${M}- pods/revisions to clear"
+  for i in $(seq 1 60); do
+    local pods revs
+    pods=$("${SSH[@]}" "${KEXPORT} kubectl get pods -n $NS --no-headers 2>/dev/null | grep -c '^${M}-predictor' || true")
+    revs=$("${SSH[@]}" "${KEXPORT} kubectl get revision -n $NS --no-headers 2>/dev/null | grep -c '^${M}-predictor' || true")
+    [ "$pods" = "0" ] && [ "$revs" = "0" ] && { echo "   cleared."; break; }
+    sleep 5
+  done
+  do_apply
 }
 
 do_zero() {
@@ -82,7 +123,8 @@ do_zero() {
 do_cycle() { do_zero; sleep 20; do_up; }
 
 case "$ACTION" in
-  apply)  do_apply ;;
+  apply)    do_apply ;;
+  recreate) do_recreate ;;
   up)     do_up ;;
   status) do_status ;;
   logs)   do_logs ;;
