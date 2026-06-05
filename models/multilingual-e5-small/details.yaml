@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: multilingual-e5-small-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "multilingual-e5-small",
+      "type": "embedding",
+      "description_short": "Multilingual E5 Small 100-language text embeddings",
+      "description": "Multilingual E5 Small (intfloat/multilingual-e5-small) is a 12-layer, 384-dim embedding model supporting 100 languages. Initialized from microsoft/Multilingual-MiniLM-L12-H384 and trained with contrastive learning on billions of text pairs. Requires 'query: ' or 'passage: ' prefix for best results. Deployed via HuggingFace Text Embeddings Inference (TEI) for maximum throughput. Max 512 tokens. Always-on.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/embed",
+        "health": "/health"
+      },
+      "owned_by": "intfloat",
+      "source": "intfloat/multilingual-e5-small",
+      "source_url": "https://huggingface.co/intfloat/multilingual-e5-small",
+      "license": "Apache-2.0",
+      "parameters": "117M",
+      "parameter_count": 117000000,
+      "precision": "float32",
+      "architecture": "transformer (12 layers, MiniLM, 384 hidden dim)",
+      "framework": "tei",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "gpu_type": null,
+        "min_replicas": 1,
+        "max_replicas": 1,
+        "startup_seconds": 30,
+        "container_image": "ghcr.io/huggingface/text-embeddings-inference:cpu-1.6",
+        "timeout": 600
+      },
+      "routing": {
+        "k8s_name": "multilingual-e5-small",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "nlp",
+      "subdomain": "multilingual-embeddings",
+      "tags": ["embedding", "multilingual", "fast", "cpu"],
+      "content_types": ["text"],
+      "languages": ["multilingual (100 languages)"],
+      "tier": "production",
+      "input_map": {
+        "input": {
+          "type": "string or list[string]",
+          "required": true,
+          "description": "Text input(s). Prefix with 'query: ' or 'passage: ' for best results."
+        }
+      },
+      "output_map": {
+        "embeddings": {"type": "array", "description": "384-dimensional embedding vectors"}
+      },
+      "server_config": {
+        "inference_backend": "HuggingFace Text Embeddings Inference (TEI)",
+        "model_path": "/data",
+        "cli_args": "--model-id=/data --port=8080 --dtype=float32",
+        "tei_version": "cpu-1.6",
+        "embedding_dim": 384,
+        "max_seq_length": 512,
+        "prefix_note": "Use 'query: ' prefix for queries and 'passage: ' for passages in retrieval tasks"
+      }
+    }
