@@ -1,0 +1,136 @@
+# DINO ViT-B/8: Visual embeddings (onnxmodelzoo/vit_base_patch8_224_dino_Opset17)
+# API: POST /v1/vision/embed
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dino-vit-b8-server
+  namespace: models
+data:
+  server.py: |
+    """DINO visual embedding server."""
+    import os, io, base64, asyncio
+    import numpy as np
+    from PIL import Image
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_NAME = os.environ.get("MODEL_NAME", "dino-vit-b8")
+    MODEL_FILE = os.environ.get("MODEL_FILE", "/data/model/model.onnx")
+    INPUT_SIZE = 224
+
+    app = FastAPI()
+    session = None
+
+    MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+    def load():
+        global session
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 4
+        session = ort.InferenceSession(MODEL_FILE, sess_options=opts, providers=["CPUExecutionProvider"])
+        print(f"{MODEL_NAME} loaded", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if session else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "facebook", "type": "embed"}]}
+
+    def _infer(img_bytes):
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((INPUT_SIZE, INPUT_SIZE))
+        arr = np.array(img, dtype=np.float32) / 255.0
+        arr = (arr - MEAN) / STD
+        arr = arr.transpose(2, 0, 1)[np.newaxis]
+        emb = session.run(None, {session.get_inputs()[0].name: arr})[0][0]
+        return emb.tolist()
+
+    @app.post("/v1/vision/embed")
+    async def visual_embed(request: dict):
+        if session is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        b64 = request.get("image", "")
+        if "," in b64: b64 = b64.split(",", 1)[1]
+        emb = await asyncio.get_event_loop().run_in_executor(None, _infer, base64.b64decode(b64))
+        return {"model": MODEL_NAME, "task": "embed", "embedding": emb, "dim": len(emb)}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: dino-vit-b8
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install onnxruntime pillow numpy fastapi uvicorn huggingface_hub
+            else
+              echo "venv exists"
+            fi
+            if [ ! -f /data/model/model.onnx ]; then
+              echo "Downloading DINO ViT..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download
+            import os, shutil
+            os.makedirs('/data/model', exist_ok=True)
+            hf_hub_download(repo_id='onnx-community/vit_base_patch8_224.dino-ONNX', filename='onnx/model.onnx', local_dir='/data/model')
+            shutil.move('/data/model/onnx/model.onnx', '/data/model/model.onnx')
+            "
+            else
+              echo "Model exists"
+            fi
+        resources:
+          requests: { cpu: "1", memory: 2Gi }
+          limits: { cpu: "2", memory: 4Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_NAME, value: dino-vit-b8 }
+          - { name: MODEL_FILE, value: /data/model/model.onnx }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits: { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: dino-vit-b8-data }
+      - name: app
+        configMap: { name: dino-vit-b8-server }
