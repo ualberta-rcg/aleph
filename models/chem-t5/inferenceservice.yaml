@@ -1,0 +1,171 @@
+# Chem-T5: Multitask Text and Chemistry T5 (IBM GT4SD)
+# Handles: retrosynthesis, forward reaction prediction, molecular captioning, text-to-SMILES
+# HF: GT4SD/multitask-text-and-chemistry-t5-base-standard (~250MB)
+# License: MIT
+# API: POST /v1/science/generate   {"task": "forward_synthesis|retrosynthesis|caption|generate", "input": "..."}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chem-t5-server
+  namespace: models
+data:
+  server.py: |
+    import asyncio, json, os
+    import uvicorn
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+
+    app = FastAPI(title="Chem-T5 API")
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    TASK_PREFIXES = {
+        "forward_synthesis":  "Predict the products of the following chemical reaction: ",
+        "retrosynthesis":     "Predict the reactants of the following chemical reaction: ",
+        "caption":            "Generate a description for the following SMILES: ",
+        "generate":           "Generate a molecule that satisfies the following description: ",
+        "paragraph_to_actions": "Convert the following paragraph into chemical actions: ",
+    }
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    def health():
+        return JSONResponse({"status": "ok" if model else "loading", "model": "chem-t5"})
+
+    @app.get("/v1/models")
+    def models_list():
+        return {"object": "list", "data": [{"id": "chem-t5", "object": "model",
+            "description": "Multitask Text and Chemistry T5 for retrosynthesis, forward synthesis, molecular captioning"}]}
+
+    @app.post("/v1/science/generate")
+    async def generate(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        task = request.get("task", "forward_synthesis")
+        inp = request.get("input", "")
+        demo = request.get("demo", False)
+        if demo:
+            task = "forward_synthesis"
+            inp = "CC(=O)Oc1ccccc1C(=O)O.CCO"  # aspirin + ethanol
+        if task not in TASK_PREFIXES:
+            return JSONResponse({"error": f"Unknown task. Valid tasks: {list(TASK_PREFIXES.keys())}"}, 400)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _generate, task, inp)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _generate(task, inp):
+        import torch
+        prefix = TASK_PREFIXES[task]
+        full_input = prefix + inp
+        enc = tokenizer(full_input, return_tensors="pt", max_length=512, truncation=True)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model.generate(**enc, max_new_tokens=128, num_beams=4, early_stopping=True)
+        decoded = tokenizer.decode(out[0], skip_special_tokens=True)
+        return {"task": task, "input": inp, "output": decoded, "model": "chem-t5"}
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        from transformers import T5ForConditionalGeneration, AutoTokenizer
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        MODEL_ID = os.environ.get("MODEL_DIR", "GT4SD/multitask-text-and-chemistry-t5-base-standard")
+        print(f"Loading Chem-T5 on {DEVICE} from {MODEL_ID}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        model = T5ForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE).eval()
+        print("Chem-T5 ready.", flush=True)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chem-t5-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: chem-t5
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+                "torch==2.5.1" "transformers==4.44.2" sentencepiece protobuf fastapi uvicorn huggingface_hub
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download('GT4SD/multitask-text-and-chemistry-t5-base-standard', local_dir='/data/model', token=os.environ.get('HF_TOKEN'))
+            "
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: chem-t5-data }
+      - name: server-config
+        configMap:
+          name: chem-t5-server
