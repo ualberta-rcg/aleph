@@ -9,7 +9,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
-    serving.knative.dev/progress-deadline: "2400s"
+    serving.knative.dev/progress-deadline: "3600s"
 spec:
   predictor:
     minReplicas: 0
@@ -37,7 +37,12 @@ spec:
             python3 -u <<'PY'
             import os
             from pathlib import Path
-            if Path("/data/config.json").is_file():
+            # Verify a complete snapshot (config + tokenizer + weights index), not just
+            # config.json — an interrupted download can leave config but miss the tokenizer.
+            have = (Path("/data/config.json").is_file()
+                    and (Path("/data/tokenizer.json").is_file()
+                         or Path("/data/tokenizer_config.json").is_file()))
+            if have:
                 print("OceanGPT weights already on PVC, skipping download.", flush=True)
             else:
                 from huggingface_hub import snapshot_download

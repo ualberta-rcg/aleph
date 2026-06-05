@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "oceangpt-30b",
+      "status": "production",
       "type": "chat",
       "description_short": "OceanGPT 30B MoE, ocean science (marine biology, oceanography)",
       "description": "OceanGPT 30B A3B MoE instruction-tuned. Based on Qwen3 MoE architecture. 30.5B total params (128 experts), ~3B active per token. Trained on marine biology, oceanography, climate, and fisheries data in English and Chinese. 128-expert weights (~61GB) require 2x L40S with tensor parallel. Includes VRAM guard startup script.",

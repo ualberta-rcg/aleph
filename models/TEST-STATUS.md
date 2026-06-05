@@ -78,7 +78,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
-| geogalactica | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x40GB; progress-deadline added; awaiting GPU capacity |
+| geogalactica | chat | true | /v1/chat/completions | NOT-READY | FAIL | gated HF repo geobrain-ai/geogalactica (403); needs access approval |
 | gpt-oss-120b | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x45GB MoE; progress-deadline added; awaiting GPU capacity |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | NOT-READY | PENDING |  |
@@ -113,7 +113,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | naturecode-earth | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PASS | 1024-dim DNA |
-| oceangpt-30b | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x40GB; progress-deadline added; awaiting GPU capacity |
+| oceangpt-30b | chat | true | /v1/chat/completions | READY | FIXED | 30B-A3B MoE TP2; progress-deadline 3600s + resumable download guard; OpenAI+Anthropic |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | reasoning_content + OpenAI/Anthropic (progress-deadline fix) |
