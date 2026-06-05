@@ -1,0 +1,188 @@
+# MedSAM: Medical image segmentation based on SAM (flaviagiammarino/medsam-vit-base)
+# 8877 HF downloads. CPU-capable, scale-to-zero.
+# Accepts image + bounding box, returns segmentation mask.
+# API: POST /v1/science/segment
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medsam-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MedSAM: Medical image segmentation (flaviagiammarino/medsam-vit-base).
+    Accepts medical image + bounding box prompt, returns segmentation mask.
+    API: POST /v1/science/segment
+    Input: {
+      "image": [[[R,G,B], ...], ...],   # HxW list of RGB values (0-255)
+      "boxes": [[x_min, y_min, x_max, y_max], ...]  # bounding box(es)
+    }
+    Returns: {"masks": [[...]], "scores": [...], "model": "medsam"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    processor = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, processor, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading MedSAM on {DEVICE}...", flush=True)
+        from transformers import SamModel, SamProcessor
+        processor = SamProcessor.from_pretrained(MODEL_DIR)
+        model = SamModel.from_pretrained(MODEL_DIR)
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"MedSAM ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "medsam"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "medsam", "object": "model", "owned_by": "MedSAM", "type": "medical-segmentation"}]}
+
+    @app.post("/v1/science/segment")
+    async def segment(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        image_data = request.get("image")
+        boxes = request.get("boxes")
+        if not image_data:
+            return JSONResponse({"error": "image required (HxW list of [R,G,B] values)"}, 400)
+
+        def _infer():
+            import torch
+            import numpy as np
+            from PIL import Image
+            arr = np.array(image_data, dtype=np.uint8)
+            if arr.ndim == 2:
+                arr = np.stack([arr, arr, arr], axis=-1)
+            img = Image.fromarray(arr)
+            input_boxes = boxes if boxes else [[0, 0, arr.shape[1], arr.shape[0]]]
+            inputs = processor(
+                img,
+                input_boxes=[[input_boxes]],
+                return_tensors="pt"
+            ).to(DEVICE)
+            with torch.no_grad():
+                outputs = model(**inputs)
+            masks = processor.image_processor.post_process_masks(
+                outputs.pred_masks.cpu(),
+                inputs["original_sizes"].cpu(),
+                inputs["reshaped_input_sizes"].cpu()
+            )
+            scores = outputs.iou_scores.cpu().numpy().tolist()
+            mask_arrays = masks[0].cpu().numpy().astype(bool).tolist()
+            return {
+                "masks": mask_arrays,
+                "scores": scores[0] if scores else [],
+                "model": "medsam",
+                "image_size": [arr.shape[0], arr.shape[1]]
+            }
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: medsam-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: medsam
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import transformers, fastapi' 2>/dev/null; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install --quiet \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch torchvision \
+                transformers pillow huggingface_hub \
+                fastapi uvicorn
+            else
+              echo "Venv exists"
+            fi
+
+            if [ ! -d /data/model ] || [ -z "$(ls -A /data/model 2>/dev/null)" ]; then
+              echo "Downloading MedSAM..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('flaviagiammarino/medsam-vit-base', local_dir='/data/model',
+                             ignore_patterns=['scripts/*'])
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: medsam-data }
+      - name: app
+        configMap: { name: medsam-server }

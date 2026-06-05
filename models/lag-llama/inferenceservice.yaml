@@ -1,0 +1,237 @@
+# Lag-Llama: probabilistic time-series foundation model
+# Lag-Llama (time-series-foundation-models/Lag-Llama) — 200M params, zero-shot forecasting.
+# Decoder-only Transformer with lag-based tokenization. Apache 2.0.
+# CPU-capable for inference.
+# API: POST /v1/science/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lag-llama-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Lag-Llama: probabilistic time-series forecasting (Apache 2.0).
+    Zero-shot forecasting via lag-based tokenization and decoder-only Transformer.
+    API: POST /v1/science/forecast
+    Input: {"context": [1.0, 2.1, ...], "prediction_length": 24, "num_samples": 100}
+    Returns: {"mean": [...], "quantiles": {"0.1": [...], "0.9": [...]}, "samples": [[...]]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    estimator = None
+
+    def load():
+        global estimator
+        import torch
+        from lag_llama.gluon.estimator import LagLlamaEstimator
+
+        ckpt_path = os.path.join(MODEL_DIR, "lag-llama.ckpt")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Lag-Llama from {ckpt_path} on {device}...", flush=True)
+
+        # Load checkpoint to get scalar hyperparams only (skip objects like distr_output)
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        estimator_args = {}
+        # Only pass safe scalar params, skip objects and problematic keys
+        skip_keys = {"context_length", "prediction_length", "distr_output", "freq",
+                     "num_parallel_samples"}
+        for k, v in ckpt.get("hyper_parameters", {}).get("model_kwargs", {}).items():
+            if k in skip_keys:
+                continue
+            if isinstance(v, (int, float, bool, str)) and v != 0:
+                estimator_args[k] = v
+
+        estimator = LagLlamaEstimator(
+            ckpt_path=ckpt_path,
+            prediction_length=24,
+            context_length=32,
+            device=torch.device(device),
+            nonnegative_pred_samples=True,
+            num_parallel_samples=100,
+            **estimator_args,
+        )
+        print("Lag-Llama ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if estimator else "loading", "model": "lag-llama"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "lag-llama", "object": "model",
+             "owned_by": "time-series-foundation-models", "type": "time-series-forecast"}
+        ]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if estimator is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+        from gluonts.dataset.pandas import PandasDataset
+        import pandas as pd
+
+        context = np.array(req["context"], dtype=np.float32)
+        pred_len = req.get("prediction_length", 24)
+        num_samples = req.get("num_samples", 100)
+        freq = req.get("freq", "H")
+
+        # Build a simple GluonTS dataset
+        index = pd.date_range("2020-01-01", periods=len(context), freq=freq)
+        df = pd.DataFrame({"target": context}, index=index)
+        dataset = PandasDataset(df, target="target", freq=freq)
+
+        # Reconfigure prediction length
+        estimator.prediction_length = pred_len
+        predictor = estimator.create_predictor(
+            transformation=estimator.create_transformation(),
+            trained_network=estimator.create_lightning_module(),
+        )
+
+        forecasts = list(predictor.predict(dataset, num_samples=num_samples))
+        if not forecasts:
+            raise ValueError("No forecasts produced")
+
+        fc = forecasts[0]
+        samples = fc.samples  # shape [num_samples, pred_len]
+        mean = samples.mean(axis=0).tolist()
+        quantiles = {
+            "0.1": np.quantile(samples, 0.1, axis=0).tolist(),
+            "0.5": np.quantile(samples, 0.5, axis=0).tolist(),
+            "0.9": np.quantile(samples, 0.9, axis=0).tolist(),
+        }
+
+        return {
+            "model": "lag-llama",
+            "prediction_length": pred_len,
+            "mean": mean,
+            "quantiles": quantiles,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: lag-llama
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git ca-certificates > /dev/null 2>&1
+            update-ca-certificates > /dev/null 2>&1 || true
+
+            VENV=/data/venv2
+            CERT=/etc/ssl/certs/ca-certificates.crt
+            if [ ! -f "$VENV/bin/python" ] || ! "$VENV/bin/pip" --version >/dev/null 2>&1; then
+              echo "Creating/repairing venv..."
+              python3 -m venv "$VENV"
+              "$VENV/bin/python" -m ensurepip --upgrade 2>/dev/null || true
+            fi
+            if ! "$VENV/bin/python" -c 'import torch; import huggingface_hub' 2>/dev/null; then
+              echo "Installing packages..."
+              "$VENV/bin/pip" install -q --cert "$CERT" -U pip certifi
+              "$VENV/bin/pip" install -q --cert "$CERT" --no-cache-dir \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              "$VENV/bin/pip" install -q --cert "$CERT" --no-cache-dir \
+                "git+https://github.com/time-series-foundation-models/lag-llama.git" \
+                gluonts pandas fastapi uvicorn huggingface_hub
+            fi
+            echo "Venv ready."
+
+            if [ ! -f /data/model/lag-llama.ckpt ]; then
+              echo "Downloading Lag-Llama checkpoint..."
+              mkdir -p /data/model
+                /data/venv2/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import hf_hub_download
+            token = os.environ.get('HF_TOKEN')
+            hf_hub_download(
+                repo_id='time-series-foundation-models/Lag-Llama',
+                filename='lag-llama.ckpt',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('lag-llama.ckpt downloaded.', flush=True)
+            PY
+            else
+              echo "Checkpoint already on PVC."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: lag-llama-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv2/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: lag-llama-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: lag-llama-data
+        persistentVolumeClaim:
+          claimName: lag-llama-data
+      - name: app
+        configMap:
+          name: lag-llama-server

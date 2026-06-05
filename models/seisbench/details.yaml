@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seisbench-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "seisbench",
+      "type": "classify",
+      "description_short": "SeisBench PhaseNet seismic phase detection for P/S wave arrival identification in earthquake seismology.",
+      "description": "SeisBench is a seismology model library providing earthquake detection and phase picking capabilities. The default model is PhaseNet (stead pretrained variant), a 1D U-Net architecture for P-wave and S-wave arrival detection in 3-component seismograms. Used for earthquake detection, location, and early warning systems. Models auto-download from the SeisBench repository. CPU-capable.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/detect",
+        "health": "/health"
+      },
+      "owned_by": "seisbench",
+      "source": "seisbench/PhaseNet",
+      "source_url": "https://github.com/seisbench/seisbench",
+      "license": "GPL-3.0",
+      "parameters": "~1M",
+      "precision": "float32",
+      "architecture": "PhaseNet (1D U-Net for seismic phase picking)",
+      "framework": "seisbench + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "seisbench-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "seisbench",
+        "api_name": "seisbench",
+        "gateway_type": "classify"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "ecology",
+      "subdomain": "seismology",
+      "tags": ["science", "seismology", "earthquake", "detect", "phase-picking", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "waveforms": "[[ch1_samples], [ch2_samples], [ch3_samples]] 3-component seismic data (Z, N, E)",
+        "sampling_rate": "sampling rate in Hz (default: 100, typical: 100 Hz, 3000+ samples)"
+      },
+      "output_map": {
+        "detections": [{"time_sample": "int", "phase": "P|S", "probability": "float"}],
+        "probabilities": {"P": "P-wave probability trace", "S": "S-wave probability trace"}
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "pretrained_variant": "stead",
+        "cache_env": "SEISBENCH_CACHE_ROOT"
+      }
+    }

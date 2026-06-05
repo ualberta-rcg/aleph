@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: satmae-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "satmae",
+      "type": "embed",
+      "description_short": "SatMAE ViT-Large masked autoencoder pretrained on fMoW satellite imagery. Apache 2.0.",
+      "description": "SatMAE is a Masked Autoencoder pretrained on functional Map of the World (fMoW) satellite imagery from MVRL. The ViT-Large model produces CLS token and patch embeddings from RGB satellite image patches (224x224 input, normalized with fMoW statistics). It supports zero-mask-ratio inference for full embedding extraction. Useful for satellite image classification, retrieval, and change detection. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "MVRL",
+      "source": "MVRL/satmae-vitlarge-fmow-pretrain-800",
+      "source_url": "https://huggingface.co/MVRL/satmae-vitlarge-fmow-pretrain-800",
+      "license": "Apache-2.0",
+      "parameters": "~300M (ViT-Large)",
+      "precision": "fp32",
+      "architecture": "ViT-Large Masked Autoencoder (224x224 input, patch embedding)",
+      "framework": "PyTorch + timm + safetensors",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "cpu_request": "4",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "timeout": 300,
+        "pvc": "satmae-data (5Gi, RWO, inline)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "satmae",
+        "api_name": "satmae",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "remote-sensing",
+      "tags": ["science", "earth-observation", "satellite", "embed", "mae", "fmow", "vit", "cpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "image": "[[[R,G,B], ...], ...] — HxW RGB image, values 0-255 (auto-resized to 224x224)"
+      },
+      "output_map": {
+        "cls_embedding": "CLS token embedding vector",
+        "patch_embeddings": "patch-level features",
+        "model": "satmae"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "fmow_mean": [0.4182, 0.4215, 0.3991],
+        "fmow_std": [0.2877, 0.2754, 0.2764],
+        "mask_ratio": 0,
+        "offline_mode": true
+      }
+    }

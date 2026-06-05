@@ -1,0 +1,130 @@
+apiVersion: v1
+data:
+  server.py: |
+    """Generic ONNX-backed embedding server.
+    Env vars:
+      MODEL_DIR   — path to model dir (must contain model.onnx + tokenizer files)
+      MODEL_NAME  — logical model name returned in responses
+      POOLING     — cls | mean  (default: mean)
+      MAX_LEN     — max token length (default: 512)
+      TRUST_REMOTE_CODE — true|false for tokenizer loading
+    Falls back to PyTorch if model.onnx is missing.
+    """
+    import os, asyncio, numpy as np
+    from pathlib import Path
+    from transformers import AutoTokenizer, AutoConfig
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR  = os.environ["MODEL_DIR"]
+    MODEL_NAME = os.environ.get("MODEL_NAME", Path(MODEL_DIR).name)
+    POOLING    = os.environ.get("POOLING", "mean")
+    MAX_LEN    = int(os.environ.get("MAX_LEN", "512"))
+    TRUST      = os.environ.get("TRUST_REMOTE_CODE", "false").lower() == "true"
+    OWNED_BY   = os.environ.get("OWNED_BY", "science")
+
+    app = FastAPI()
+    tokenizer = None
+    session   = None   # onnxruntime session
+    pt_model  = None   # PyTorch fallback
+
+    def load():
+        global tokenizer, session, pt_model
+        print(f"Loading tokenizer from {MODEL_DIR}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, trust_remote_code=TRUST)
+
+        onnx_path = f"{MODEL_DIR}/model.onnx"
+        if Path(onnx_path).exists():
+            import onnxruntime as ort
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = int(os.environ.get("ORT_THREADS", "4"))
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            session = ort.InferenceSession(onnx_path, sess_options=opts,
+                                           providers=["CPUExecutionProvider"])
+            print(f"[ONNX] {MODEL_NAME} loaded — inputs: "
+                  f"{[i.name for i in session.get_inputs()]}", flush=True)
+        else:
+            print(f"[PyTorch fallback] model.onnx not found, loading with transformers...", flush=True)
+            import torch
+            from transformers import AutoModel
+            cfg = AutoConfig.from_pretrained(MODEL_DIR, trust_remote_code=TRUST)
+            if not hasattr(cfg, "pad_token_id") or cfg.pad_token_id is None:
+                cfg.pad_token_id = tokenizer.pad_token_id or 0
+            if os.environ.get("DISABLE_FLASH_ATTN", "false").lower() == "true":
+                for attr in ("use_flash_attn", "use_flash_attn_triton", "attn_implementation"):
+                    if hasattr(cfg, attr):
+                        setattr(cfg, attr, False if attr != "attn_implementation" else "eager")
+            pt_model = AutoModel.from_pretrained(MODEL_DIR, config=cfg,
+                                                 trust_remote_code=TRUST,
+                                                 torch_dtype=torch.float32,
+                                                 low_cpu_mem_usage=False)
+            pt_model.eval()
+            print(f"[PyTorch] {MODEL_NAME} loaded", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        ready = session is not None or pt_model is not None
+        return {"status": "ok" if ready else "loading",
+                "backend": "onnx" if session else "pytorch",
+                "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": MODEL_NAME, "object": "model", "created": 1700000000,
+             "owned_by": OWNED_BY, "type": "embedding"}
+        ]}
+
+    def _infer(texts):
+        enc = tokenizer(texts, padding=True, truncation=True,
+                        max_length=MAX_LEN, return_tensors="np")
+        if session:
+            valid = {i.name for i in session.get_inputs()}
+            feeds = {k: enc[k].astype(np.int64) for k in enc if k in valid}
+            out = session.run(["last_hidden_state"], feeds)[0]  # [B, T, H]
+            # Some tokenizers (e.g. HyenaDNA) don't return attention_mask
+            if "attention_mask" in enc:
+                mask = enc["attention_mask"].astype(np.float32)
+            else:
+                mask = np.ones(out.shape[:2], dtype=np.float32)
+        else:
+            import torch
+            t_enc = {k: torch.tensor(v) for k, v in enc.items()}
+            with torch.no_grad():
+                out = pt_model(**t_enc).last_hidden_state.numpy()
+            if "attention_mask" in enc:
+                mask = enc["attention_mask"].astype(np.float32)
+            else:
+                mask = np.ones(out.shape[:2], dtype=np.float32)
+
+        if POOLING == "cls":
+            return out[:, 0, :]
+        m = mask[:, :, np.newaxis]
+        return (out * m).sum(1) / m.sum(1)
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if session is None and pt_model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        inputs = request.get("input", "")
+        if isinstance(inputs, str):
+            inputs = [inputs]
+        loop = asyncio.get_event_loop()
+        emb = await loop.run_in_executor(None, _infer, inputs)
+        data = [{"object": "embedding", "index": i, "embedding": e.tolist()}
+                for i, e in enumerate(emb)]
+        tok_count = sum(len(s.split()) for s in inputs)
+        return {"object": "list", "model": MODEL_NAME, "data": data,
+                "usage": {"prompt_tokens": tok_count, "total_tokens": tok_count}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+kind: ConfigMap
+metadata:
+  name: splicebert-embed-server
+  namespace: models

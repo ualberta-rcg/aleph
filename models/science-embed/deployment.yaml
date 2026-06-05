@@ -1,0 +1,159 @@
+# Science Embed: Shared embedding service for ESM2 and Nucleotide Transformer models
+# Deployment type: Standard Deployment (not InferenceService)
+# Models served: esm2-650m, nucleotide-transformer-500m, esm2-3b
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: science-embed-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch
+    from transformers import AutoTokenizer, EsmTokenizer, EsmModel, AutoModel
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    MODELS = {}
+
+    def load_models():
+        base = os.environ.get("MODELS_DIR", "/mnt/models/cpu-models")
+        specs = [
+            ("esm2-650m",                "esm2-650m",                  EsmTokenizer, EsmModel,    False),
+            ("nucleotide-transformer-500m","nucleotide-transformer-500m",AutoTokenizer, AutoModel, False),
+            ("esm2-3b",                  "esm2-3b",                    EsmTokenizer, EsmModel,    True),
+        ]
+        for name, repo_dir, tok_cls, mod_cls, use_gpu in specs:
+            path = f"{base}/{repo_dir}"
+            if not os.path.exists(path):
+                print(f"Skipping {name} — not found at {path}", flush=True)
+                continue
+            try:
+                print(f"Loading {name} from {path}...", flush=True)
+                tok = tok_cls.from_pretrained(path)
+                dtype = torch.float16 if use_gpu else torch.float32
+                mod = mod_cls.from_pretrained(path, torch_dtype=dtype)
+                if use_gpu and torch.cuda.is_available():
+                    mod = mod.cuda()
+                    print(f"  {name} on GPU", flush=True)
+                mod.eval()
+                MODELS[name] = (tok, mod, use_gpu)
+                print(f"Loaded {name}", flush=True)
+            except Exception as e:
+                print(f"Failed to load {name}: {e}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load_models)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "loaded": list(MODELS.keys())}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": n, "object": "model", "created": 1700000000,
+             "owned_by": "science", "type": "embedding"}
+            for n in MODELS
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        model_name = request.get("model")
+        if model_name not in MODELS:
+            return JSONResponse({"error": f"unknown model '{model_name}'"}, 404)
+        inputs = request.get("input", "")
+        if isinstance(inputs, str):
+            inputs = [inputs]
+        tok, mod, use_gpu = MODELS[model_name]
+        max_len = 1022 if "esm" in model_name else 2048
+        enc = tok(inputs, return_tensors="pt", padding=True,
+                  truncation=True, max_length=max_len)
+        if use_gpu and torch.cuda.is_available():
+            enc = {k: v.cuda() for k, v in enc.items()}
+        with torch.no_grad():
+            out = mod(**enc)
+        mask = enc["attention_mask"].unsqueeze(-1).float()
+        emb = (out.last_hidden_state * mask).sum(1) / mask.sum(1)
+        emb = emb.cpu()
+        data = [{"object": "embedding", "index": i, "embedding": e.tolist()}
+                for i, e in enumerate(emb)]
+        return {"object": "list", "data": data,
+                "model": model_name, "usage": {"prompt_tokens": sum(len(s) for s in inputs), "total_tokens": sum(len(s) for s in inputs)}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: science-embed
+  namespace: models
+spec:
+  selector:
+    app: science-embed
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: science-embed
+  namespace: models
+  labels:
+    app: science-embed
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: science-embed
+  template:
+    metadata:
+      labels:
+        app: science-embed
+    spec:
+      initContainers:
+        - name: install-deps
+          image: python:3.11-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              pip install -q --target=/pkgs torch --index-url https://download.pytorch.org/whl/cpu && \
+              pip install -q --target=/pkgs transformers sentencepiece fastapi uvicorn accelerate
+          resources:
+            requests: { cpu: "4", memory: 2Gi }
+            limits: { cpu: "8", memory: 4Gi }
+          volumeMounts:
+            - { name: pkgs, mountPath: /pkgs }
+      containers:
+        - name: server
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - { name: PYTHONPATH, value: "/pkgs" }
+            - { name: MODELS_DIR, value: "/mnt/models/cpu-models" }
+          ports:
+            - containerPort: 8080
+          resources:
+            requests: { cpu: "4", memory: 16Gi }
+            limits: { cpu: "8", memory: 32Gi }
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            failureThreshold: 30
+          volumeMounts:
+            - { name: pkgs, mountPath: /pkgs }
+            - { name: app, mountPath: /app }
+            - { name: models, mountPath: /mnt/models, readOnly: true }
+      volumes:
+        - name: pkgs
+          emptyDir: {}
+        - name: app
+          configMap: { name: science-embed-server }
+        - name: models
+          persistentVolumeClaim: { claimName: small-models }

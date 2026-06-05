@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: labram-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "labram",
+      "type": "embed",
+      "description_short": "LaBraM Large Brain Model for EEG signals. BSD-3-Clause, braindecode/Tsinghua.",
+      "description": "LaBraM (Large Brain Model) is a foundation model pretrained on EEG signals from braindecode/Tsinghua. It accepts multi-channel EEG windows and returns patch embeddings. The model processes EEG time-series data with segment length of 200 samples, making it suitable for brain-computer interface, sleep staging, and clinical EEG analysis. BSD-3-Clause license. CPU-capable with scale-to-zero.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "braindecode/Tsinghua",
+      "source": "braindecode/labram-pretrained",
+      "source_url": "https://huggingface.co/braindecode/labram-pretrained",
+      "license": "BSD-3-Clause",
+      "parameters": "N/A",
+      "precision": "fp32",
+      "architecture": "Patch-based transformer for EEG signals",
+      "framework": "braindecode + PyTorch",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "cpu_request": "4",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "timeout": 300,
+        "pvc": "labram-data (5Gi, RWO, inline)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "labram",
+        "api_name": "labram",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "neuroscience",
+      "subdomain": "eeg",
+      "tags": ["science", "neuroscience", "eeg", "embed", "brain", "braindecode", "cpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "eeg": "[[ch1_t0, ch1_t1, ...], [ch2_t0, ...]] — list of channels, each a list of samples",
+        "sfreq": "sampling frequency (default 200)"
+      },
+      "output_map": {
+        "embeddings": "patch embeddings from EEG window",
+        "model": "labram",
+        "n_channels": "number of input channels",
+        "n_times": "number of time samples"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "offline_mode": true
+      }
+    }

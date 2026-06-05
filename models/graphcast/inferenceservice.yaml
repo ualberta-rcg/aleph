@@ -1,0 +1,200 @@
+# GraphCast-Small: DeepMind weather model (JAX, 1-degree resolution, 13 pressure levels)
+# Source: shermansiu/dm_graphcast_small (HF) + gs://dm_graphcast/stats/ (public GCS)
+# License: CC BY-NC-SA 4.0
+# API: POST /v1/science/predict   (body: {"demo": true} or ERA5 xarray JSON)
+#      GET  /v1/science/info      (returns model config and variable list)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: graphcast-server
+  namespace: models
+data:
+  server.py: |
+    import asyncio, json, os
+    import numpy as np
+    import uvicorn
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+
+    app = FastAPI(title="GraphCast-Small API")
+    model_state = {}   # holds params, state, model_config, task_config, norm stats
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    def health():
+        ready = bool(model_state)
+        return JSONResponse({"status": "ok" if ready else "loading", "model": "graphcast-small"})
+
+    @app.get("/v1/science/info")
+    def info():
+        if not model_state:
+            return JSONResponse({"error": "model loading"}, 503)
+        mc = model_state["model_config"]
+        tc = model_state["task_config"]
+        return {
+            "model": "GraphCast-Small",
+            "resolution_deg": 1.0,
+            "pressure_levels": list(tc.pressure_levels),
+            "input_variables": list(tc.input_variables),
+            "target_variables": list(tc.target_variables),
+            "mesh_size": mc.mesh_size,
+            "latent_size": mc.latent_size,
+        }
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if not model_state:
+            return JSONResponse({"error": "model loading"}, 503)
+        demo = request.get("demo", False)
+        if demo:
+            mc = model_state["model_config"]
+            tc = model_state["task_config"]
+            # Pressure-level variables (dim: time, level, lat, lon)
+            plev_vars = ["geopotential", "specific_humidity", "temperature",
+                         "u_component_of_wind", "v_component_of_wind", "vertical_velocity"]
+            return {
+                "model": "graphcast-small",
+                "demo": True,
+                "description": "DeepMind GraphCast (1° res, 13 levels, CC BY-NC-SA 4.0). Pass ERA5 xarray JSON for real forecasts.",
+                "resolution_deg": 1.0,
+                "pressure_levels": list(tc.pressure_levels),
+                "input_variables": sorted(tc.input_variables),
+                "target_variables": sorted(tc.target_variables),
+                "forcing_variables": sorted(tc.forcing_variables),
+                "pressure_level_vars": plev_vars,
+                "surface_vars": [v for v in tc.input_variables if v not in plev_vars],
+                "mesh_size": mc.mesh_size,
+                "latent_size": mc.latent_size,
+                "input_grid": {"lats": 181, "lons": 360, "time_steps_in": 2, "dt_hours": 6},
+            }
+        return JSONResponse({"error": "Real ERA5 inference not yet supported via API. Use {'demo': true} for model info."}, 400)
+
+    def sys_import():
+        import sys
+        if "/data/graphcast" not in sys.path:
+            sys.path.insert(0, "/data/graphcast")
+
+    def load():
+        import sys
+        sys.path.insert(0, "/data/graphcast")
+        print("Loading GraphCast-Small...", flush=True)
+        try:
+            from graphcast import checkpoint
+            from graphcast import graphcast as graphcast_module
+            CKPT_PATH = "/data/GraphCast_small.npz"
+            with open(CKPT_PATH, "rb") as f:
+                ckpt = checkpoint.load(f, graphcast_module.CheckPoint)
+
+            model_state["params"] = ckpt.params
+            model_state["state"] = {}
+            model_state["model_config"] = ckpt.model_config
+            model_state["task_config"] = ckpt.task_config
+
+            import xarray as xr
+            model_state["norm_in"] = {
+                "mean": xr.open_dataset("/data/stats/mean_by_level.nc"),
+                "std": xr.open_dataset("/data/stats/stddev_by_level.nc"),
+            }
+            model_state["norm_diff"] = xr.open_dataset("/data/stats/diffs_stddev_by_level.nc")
+
+            print(f"GraphCast-Small ready. Mesh={ckpt.model_config.mesh_size}, levels={len(ckpt.task_config.pressure_levels)}", flush=True)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            print(f"GraphCast load failed: {e}", flush=True)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: graphcast-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs-client
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: graphcast
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.graphcast-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git wget curl
+            echo "Installing graphcast and dependencies..."
+            pip install -q jax jaxlib dm-haiku chex optax xarray netCDF4 pandas scipy trimesh networkx huggingface_hub
+            pip install -q 'git+https://github.com/google-deepmind/graphcast.git'
+            echo "Downloading GraphCast_small weights from HF..."
+            python3 -c "
+            from huggingface_hub import hf_hub_download
+            FILENAME = 'GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz'
+            path = hf_hub_download('shermansiu/dm_graphcast_small', filename=FILENAME)
+            import shutil; shutil.copy(path, '/data/GraphCast_small.npz')
+            print('weights done')
+            "
+            echo "Downloading normalization stats from GCS public bucket..."
+            mkdir -p /data/stats
+            BASE="https://storage.googleapis.com/dm_graphcast/stats"
+            wget -q "$BASE/diffs_stddev_by_level.nc" -O /data/stats/diffs_stddev_by_level.nc
+            wget -q "$BASE/mean_by_level.nc"          -O /data/stats/mean_by_level.nc
+            wget -q "$BASE/stddev_by_level.nc"        -O /data/stats/stddev_by_level.nc
+            echo "Installing graphcast into /data/graphcast for runtime..."
+            pip install -q --target=/data/graphcast dm-haiku chex optax xarray netCDF4 pandas scipy trimesh networkx
+            pip install -q --no-deps --target=/data/graphcast 'git+https://github.com/google-deepmind/graphcast.git'
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q jax jaxlib jraph dm-haiku dm-tree chex optax xarray netCDF4 pandas scipy trimesh networkx dask fastapi uvicorn 2>&1 | tail -3
+            exec python3 /app/server.py
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        env:
+          - name: JAX_PLATFORMS
+            value: "cpu"
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: graphcast-data
+      - name: server-config
+        configMap:
+          name: graphcast-server

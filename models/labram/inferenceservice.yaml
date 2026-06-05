@@ -1,0 +1,166 @@
+# LaBraM: Large Brain Model for EEG signals (braindecode/labram-pretrained)
+# CPU-capable, scale-to-zero. API: POST /v1/science/embed
+# BSD-3-Clause, braindecode/Tsinghua. 16k+ downloads on HF.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: labram-server
+  namespace: models
+data:
+  server.py: |
+    """
+    LaBraM: Large Brain Model pretrained on EEG signals.
+    Accepts multi-channel EEG windows, returns patch embeddings.
+    API: POST /v1/science/embed
+    Input: {"eeg": [[ch1_t0, ch1_t1, ...], [ch2_t0, ...]], "sfreq": 200}
+    Each channel is a 1D time series. Model expects segments of length 200 samples.
+    Returns: {"embeddings": [...], "model": "labram"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading LaBraM on {DEVICE}...", flush=True)
+        from braindecode.models import Labram
+        model = Labram.from_pretrained(MODEL_DIR)
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"LaBraM ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "labram"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "labram", "object": "model", "owned_by": "braindecode/Tsinghua", "type": "eeg-foundation"}]}
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        eeg = request.get("eeg")
+        if not eeg:
+            return JSONResponse({"error": "eeg field required (list of channels, each a list of samples)"}, 400)
+
+        def _infer():
+            import torch
+            import numpy as np
+            # eeg: [n_channels, n_times]
+            arr = np.array(eeg, dtype=np.float32)
+            # LaBraM expects [batch, n_channels, n_times]
+            tensor = torch.tensor(arr, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+            with torch.no_grad():
+                out = model(tensor)
+            if hasattr(out, 'last_hidden_state'):
+                emb = out.last_hidden_state[:, 0].cpu().numpy().tolist()
+            else:
+                emb = out.cpu().numpy().tolist()
+            return {"embeddings": emb, "model": "labram", "n_channels": arr.shape[0], "n_times": arr.shape[1]}
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: labram-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: labram
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import braindecode, fastapi, safetensors' 2>/dev/null; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install --quiet \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch \
+                braindecode huggingface_hub safetensors \
+                fastapi uvicorn
+            else
+              echo "Venv exists"
+            fi
+
+            if [ ! -d /data/model ] || [ -z "$(ls -A /data/model 2>/dev/null)" ]; then
+              echo "Downloading LaBraM..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('braindecode/labram-pretrained', local_dir='/data/model')
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 4Gi }
+          limits: { cpu: "8", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "4", memory: 4Gi }
+          limits: { cpu: "8", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: labram-data }
+      - name: app
+        configMap: { name: labram-server }

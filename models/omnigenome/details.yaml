@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: omnigenome-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "omnigenome-186m",
+      "type": "embedding",
+      "description_short": "RNA foundation model with sequence-structure alignment (186M)",
+      "description": "OmniGenome-186M aligns RNA sequences with secondary structures. Supports seq2str (RNA to dot-bracket structure), str2seq (structure to RNA design), and embedding extraction. 186M parameters, MIT license. No PVC — downloads on every startup.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "embeddings": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "yangheng",
+      "source": "yangheng/OmniGenome-186M",
+      "source_url": "https://huggingface.co/yangheng/OmniGenome-186M",
+      "license": "MIT",
+      "parameters": "186M",
+      "precision": "float32 (CPU)",
+      "architecture": "RNA foundation model (sequence-structure alignment)",
+      "framework": "transformers==4.44.2 + ViennaRNA + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": false, "min_replicas": 0, "max_replicas": 1, "cpu_request": "2", "memory_request": "4Gi", "pvc": null, "pvc_size": null, "node_selector": "NVIDIA-L40S-SHARED", "timeout": 300},
+      "routing": {
+        "k8s_name": "omnigenome",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequence", "task"]},
+      "domain": "genomics",
+      "subdomain": "rna-structure",
+      "tags": ["embedding", "science", "genomics", "rna", "structure", "cpu"],
+      "content_types": ["text"],
+      "languages": ["rna"],
+      "input_map": {"sequence": "RNA sequence (AUGC, max 512)", "task": "embed|seq2str", "input": "alias for sequence (embeddings endpoint)"},
+      "output_map": {"sequence": "str", "embedding": "[float]", "structure": "dot-bracket str", "model": "omnigenome-186m"},
+      "tier": 3
+    }

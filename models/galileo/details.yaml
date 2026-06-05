@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: galileo-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "galileo",
+      "type": "classify",
+      "description_short": "NASA Harvest Galileo ~90M agricultural monitoring model. Multi-spectral Sentinel-2 time-series.",
+      "description": "NASA Harvest Galileo is a ~90M parameter transformer foundation model for agricultural monitoring. It processes multi-spectral satellite time-series data from Sentinel-2 for global food security applications. State-of-the-art on crop mapping and vegetation monitoring benchmarks. The model accepts pixel time-series with temporal metadata and geolocation, producing embeddings suitable for crop type classification and land use analysis.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "nasaharvest",
+      "source": "nasaharvest/galileo",
+      "source_url": "https://huggingface.co/nasaharvest/galileo",
+      "license": "MIT",
+      "parameters": "~90M",
+      "precision": "fp32",
+      "architecture": "Transformer encoder for multi-spectral time-series",
+      "framework": "PyTorch + galileo repo",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "cpu_request": "2",
+        "memory_request": "2Gi",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "timeout": 120,
+        "pvc": "galileo-data (10Gi, NFS)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "galileo",
+        "api_name": "galileo",
+        "gateway_type": "classify"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "agriculture",
+      "tags": ["science", "earth-observation", "agriculture", "satellite", "classify", "crop", "food-security", "sentinel-2"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "pixels": "[[[b1,b2,...], ...], ...] — [batch, time, bands] multi-spectral time-series (normalized)",
+        "months": "month indices for each time step",
+        "latlons": "[[lat, lon], ...] per-pixel geolocation"
+      },
+      "output_map": {
+        "data": "list of {index, embedding, object} per input pixel",
+        "model": "galileo"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "repo_path": "/data/model/repo",
+        "encoder_path": "models/base/encoder.pt"
+      }
+    }

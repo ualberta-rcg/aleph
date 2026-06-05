@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: depth-anything-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "depth-anything-v2",
+      "type": "depth",
+      "description_short": "Depth Anything V2 Small — monocular depth estimation",
+      "description": "Depth Anything V2 Small by TikTok/ByteDance. 24.8M params. Monocular depth estimation from a single RGB image. Produces normalized depth maps (darker=closer). ONNX model from HuggingFace ONNX community. Trained on combined labeled and unlabeled datasets for robust zero-shot depth prediction. Returns raw depth array plus width/height.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/vision/depth",
+        "health": "/health"
+      },
+      "owned_by": "depth-anything-v2",
+      "source": "onnx-community/depth-anything-v2-small",
+      "source_url": "https://huggingface.co/onnx-community/depth-anything-v2-small",
+      "license": "Apache-2.0",
+      "parameters": "24.8M",
+      "parameter_count": 24800000,
+      "precision": "onnx-fp32",
+      "architecture": "transformer",
+      "framework": "onnxruntime",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "startup_seconds": 20,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": true,
+        "reasoning_model": false
+      },
+      "domain": "computer-vision",
+      "subdomain": "depth-estimation",
+      "tags": ["vision", "depth", "monocular", "onnx", "cpu"],
+      "content_types": ["image"],
+      "tier": "production",
+      "input_map": {
+        "image": {
+          "type": "string",
+          "required": true,
+          "format": "base64",
+          "media_types": ["image/jpeg", "image/png"],
+          "max_size_bytes": 10485760,
+          "description": "Base64-encoded JPEG or PNG image"
+        }
+      },
+      "output_map": {
+        "model": "string",
+        "task": "string",
+        "width": "int (original image width)",
+        "height": "int (original image height)",
+        "depth_map": "[[float]] normalized 0-1 depth array"
+      },
+      "server_config": {
+        "inference_backend": "onnxruntime",
+        "onnx_opset": 14,
+        "input_size": 518,
+        "execution_provider": "CPUExecutionProvider",
+        "intra_op_num_threads": 4,
+        "normalization": "ImageNet mean/std"
+      }
+    }

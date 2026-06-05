@@ -1,0 +1,282 @@
+# Presto: NASA Harvest crop mapping foundation model (nasaharvest/presto)
+# Lightweight transformer (400K params) for multi-spectral time-series satellite data.
+# Zero-shot crop type mapping and land use classification globally.
+# CPU-capable. API: POST /v1/embeddings and POST /v1/classify
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: presto-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Presto: NASA Harvest crop/land mapping foundation model.
+    Lightweight transformer (400K params) for satellite time-series pixel classification.
+    API:
+      POST /v1/embeddings — extract features from satellite time-series
+      POST /v1/classify   — classify crop type from time-series
+    Input: {"pixels": [[[band1, band2, ...], ...], ...], "dynamic_world": [[...]],
+            "latlons": [[lat, lon], ...], "months": [0, 1, ..., 11]}
+           pixels: [batch, time, bands] multi-spectral time-series
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+
+    def load():
+        global model
+        import torch
+        print("Loading Presto...", flush=True)
+
+        import sys, types
+        sys.path.insert(0, os.path.join(MODEL_DIR, "repo"))
+
+        # Load Presto model without triggering geospatial dependency chain
+        repo_dir = os.path.join(MODEL_DIR, "repo")
+        import importlib.util, importlib.machinery
+
+        def _make_stub(name):
+            m = types.ModuleType(name)
+            m.__path__ = []
+            m.__package__ = name
+            # Return None for any missing attribute (handles 'from stub import X' patterns)
+            m.__getattr__ = lambda attr: None
+            sys.modules[name] = m
+            return m
+
+        def _load_module(name, path):
+            """Load a Python file as a module with proper package context."""
+            spec = importlib.util.spec_from_file_location(name, path)
+            m = importlib.util.module_from_spec(spec)
+            m.__package__ = name.rsplit('.', 1)[0] if '.' in name else name
+            sys.modules[name] = m
+            spec.loader.exec_module(m)
+            return m
+
+        # Stub problematic geospatial packages
+        for stub in ['ee', 'geopandas', 'rasterio', 'pyproj', 'fiona',
+                     'shapely', 'shapely.geometry', 'rtree', 'rioxarray',
+                     'xarray', 'sklearn', 'sklearn.base', 'sklearn.preprocessing',
+                     'sklearn.metrics', 'sklearn.model_selection']:
+            _make_stub(stub)
+
+        # Create a minimal presto package that skips dataops
+        presto_pkg = _make_stub('presto')
+        presto_pkg.__path__ = [os.path.join(repo_dir, 'presto')]
+        _make_stub('presto.dataops')
+        _make_stub('presto.dataops.utils')
+        _make_stub('presto.dataops.dataset')
+        _make_stub('presto.dataops.pipelines')
+
+        # Create DynamicWorld stub with class_amount=9
+        dw_stub = _make_stub('presto.dataops.pipelines.dynamicworld')
+        class _DW:
+            class_amount = 9
+        dw_stub.DynamicWorld2020_2021 = _DW
+
+        # Create s1_s2_era5_srtm stub with real BANDS_GROUPS_IDX
+        from collections import OrderedDict
+        s1s2_stub = _make_stub('presto.dataops.pipelines.s1_s2_era5_srtm')
+        s1s2_stub.BANDS_GROUPS_IDX = OrderedDict({
+            "S1": [0, 1],
+            "S2_RGB": [2, 3, 4],
+            "S2_Red_Edge": [5, 6, 7],
+            "S2_NIR_10m": [8],
+            "S2_NIR_20m": [9],
+            "S2_SWIR": [10, 11],
+            "ERA5": [12, 13],
+            "SRTM": [14, 15],
+            "NDVI": [16],
+        })
+        s1s2_stub.NUM_TIMESTEPS = 12
+        s1s2_stub.NUM_BANDS = 17
+
+        _make_stub('presto.eval')
+        _make_stub('presto.eval.dino')
+
+        # Load presto submodules in dependency order
+        _load_module('presto.utils', os.path.join(repo_dir, 'presto', 'utils.py'))
+
+        # Override the default_model_path in presto.utils to point to our model
+        import pathlib
+        ckpt_path = os.path.join(MODEL_DIR, "default_model.pt")
+        sys.modules['presto.utils'].default_model_path = pathlib.Path(ckpt_path)
+
+        _load_module('presto.model', os.path.join(repo_dir, 'presto', 'model.py'))
+        # The main Presto class is in presto/presto.py
+        _load_module('presto.presto', os.path.join(repo_dir, 'presto', 'presto.py'))
+
+        presto_mod = sys.modules['presto.presto']
+        PrestoModel = getattr(presto_mod, 'Presto', None)
+
+        # load_pretrained() uses default_model_path from presto.utils (already overridden)
+        model = PrestoModel.load_pretrained()
+        model.eval()
+        print("Presto ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "presto"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "presto", "object": "model", "owned_by": "nasa-harvest",
+             "type": "crop-mapping"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    @app.post("/v1/science/classify")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch
+        import numpy as np
+
+        pixels = np.array(req["pixels"], dtype=np.float32)  # [batch, time, bands]
+        months = req.get("months", list(range(pixels.shape[1])))
+        latlons = req.get("latlons", [[0.0, 0.0]] * pixels.shape[0])
+
+        x = torch.tensor(pixels)
+        m = torch.tensor(months, dtype=torch.long).unsqueeze(0).expand(pixels.shape[0], -1)
+        ll = torch.tensor(latlons, dtype=torch.float32)
+
+        with torch.inference_mode():
+            embs = model(x, m, ll)
+
+        return {
+            "object": "list",
+            "model": "presto",
+            "data": [{"index": i, "embedding": e.tolist(), "object": "embedding"}
+                     for i, e in enumerate(embs.cpu())]
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: presto
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git ca-certificates > /dev/null 2>&1
+            update-ca-certificates > /dev/null 2>&1 || true
+
+            VENV=/data/venv2
+            CERT=/etc/ssl/certs/ca-certificates.crt
+            if [ ! -f "$VENV/bin/python" ] || ! "$VENV/bin/pip" --version >/dev/null 2>&1; then
+              echo "Creating/repairing venv..."
+              python3 -m venv "$VENV"
+              "$VENV/bin/python" -m ensurepip --upgrade 2>/dev/null || true
+            fi
+            if ! "$VENV/bin/python" -c 'import torch; import dateutil' 2>/dev/null; then
+              echo "Installing packages..."
+              "$VENV/bin/pip" install -q --cert "$CERT" -U pip certifi
+              "$VENV/bin/pip" install -q --cert "$CERT" --no-cache-dir \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              "$VENV/bin/pip" install -q --cert "$CERT" --no-cache-dir \
+                einops pandas python-dateutil fastapi uvicorn huggingface_hub
+            fi
+            echo "Venv ready."
+
+            if [ ! -f /data/model/default_model.pt ]; then
+              echo "Downloading Presto..."
+              mkdir -p /data/model
+                /data/venv2/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id='nasaharvest/presto',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+            )
+            print('Presto downloaded.', flush=True)
+            PY
+            else
+              echo "Presto already on PVC."
+            fi
+
+            if [ ! -d /data/model/repo ]; then
+              git clone --depth 1 https://github.com/nasaharvest/presto.git /data/model/repo
+              echo "Presto repo cloned."
+            else
+              echo "Repo exists."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: presto-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv2/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTHONPATH, value: /data/model/repo }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits:   { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: presto-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: presto-data
+        persistentVolumeClaim:
+          claimName: presto-data
+      - name: app
+        configMap:
+          name: presto-server

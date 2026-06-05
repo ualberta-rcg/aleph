@@ -1,0 +1,197 @@
+# MegaDetector: wildlife camera trap detection model (Microsoft/AI for Earth)
+# YOLOv5-based detector for animals, humans, vehicles in camera trap images.
+# Widely used in ecology, conservation biology, biodiversity monitoring.
+# pip install megadetector. CPU-capable. API: POST /v1/detect
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: megadetector-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MegaDetector: wildlife camera trap detector (Microsoft AI for Earth, v5).
+    Detects animals, humans, vehicles with bounding boxes and confidence scores.
+    API: POST /v1/detect
+    Input: {"images": ["base64_encoded_jpg...", ...], "threshold": 0.2}
+    Returns: {"detections": [[{"category": "animal"|"human"|"vehicle",
+                                "bbox": [x, y, w, h],  # normalized [0,1]
+                                "conf": 0.95}]], ...]}
+    """
+    import os, asyncio, base64
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    detector = None
+
+    CATEGORIES = {1: "animal", 2: "human", 3: "vehicle"}
+
+    def load():
+        global detector
+        print("Loading MegaDetector v5...", flush=True)
+        from megadetector.detection.run_detector import load_detector
+        ckpt = os.path.join(MODEL_DIR, "md_v5a.0.0.pt")
+        if not os.path.exists(ckpt):
+            import glob
+            ckpts = glob.glob(os.path.join(MODEL_DIR, "*.pt"))
+            ckpt = ckpts[0] if ckpts else "MDV5A"
+        detector = load_detector(ckpt)
+        print(f"MegaDetector ready (model: {ckpt}).", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if detector else "loading", "model": "megadetector"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "megadetector", "object": "model",
+             "owned_by": "microsoft-ai4earth", "type": "wildlife-detection"}
+        ]}
+
+    @app.post("/v1/detect")
+    @app.post("/v1/science/detect")
+    async def detect(request: dict):
+        if detector is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _detect, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _detect(req):
+        from PIL import Image
+        import io
+
+        images_b64 = req.get("images", [])
+        threshold = req.get("threshold", 0.2)
+
+        all_detections = []
+        for img_b64 in images_b64:
+            img_bytes = base64.b64decode(img_b64)
+            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+            result = detector.generate_detections_one_image(
+                img, "", detection_threshold=threshold
+            )
+            detections = []
+            for det in result.get("detections", []):
+                detections.append({
+                    "category": CATEGORIES.get(det.get("category", 0), "unknown"),
+                    "bbox": det.get("bbox", []),
+                    "conf": float(det.get("conf", 0)),
+                })
+            all_detections.append(detections)
+
+        return {
+            "model": "megadetector",
+            "detections": all_detections,
+            "threshold": threshold,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: megadetector
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq libgl1 libglib2.0-0 > /dev/null 2>&1
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import megadetector' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" torchvision \
+                --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                megadetector Pillow fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            # Download MegaDetector v5a weights
+            if [ ! -f /data/model/md_v5a.0.0.pt ]; then
+              echo "Downloading MegaDetector v5a weights..."
+              mkdir -p /data/model
+              /data/venv/bin/python -c "
+            from megadetector.utils.url_utils import download_url
+            import os
+            url = 'https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt'
+            download_url(url, '/data/model/md_v5a.0.0.pt')
+            print('MegaDetector v5a downloaded.', flush=True)
+            "
+            else
+              echo "Weights already on PVC."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: megadetector-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            apt-get update -qq && apt-get install -y -qq libgl1 libglib2.0-0 -y > /dev/null 2>&1
+            /data/venv/bin/python /app/server.py
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: megadetector-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: megadetector-data
+        persistentVolumeClaim:
+          claimName: megadetector-data
+      - name: app
+        configMap:
+          name: megadetector-server

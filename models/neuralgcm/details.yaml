@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neuralgcm-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "neuralgcm",
+      "type": "forecast",
+      "description_short": "Google DeepMind NeuralGCM hybrid physics/ML atmospheric model. 2.8-degree deterministic.",
+      "description": "NeuralGCM is Google DeepMind's hybrid physics-ML atmospheric General Circulation Model that combines neural networks with spectral-dynamics GCM physics. The deployed variant is the 2.8-degree deterministic model with 37 pressure levels and 6-hour time steps. It uses JAX and dm-haiku. Currently runs in demo/info mode. Input variables include temperature, u/v wind, specific humidity, geopotential, surface pressure, and precipitation. CC-BY-SA 4.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "google-deepmind",
+      "source": "google-deepmind/neuralgcm",
+      "source_url": "https://github.com/google-deepmind/neuralgcm",
+      "license": "CC-BY-SA-4.0",
+      "parameters": "N/A",
+      "precision": "fp32",
+      "architecture": "Hybrid neural network + spectral GCM (37 pressure levels)",
+      "framework": "JAX + dm-haiku + neuralgcm",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "cpu_request": "4",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "timeout": 300,
+        "pvc": "neuralgcm-data (2Gi, NFS, inline)",
+        "image": "python:3.11-slim",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "neuralgcm",
+        "api_name": "neuralgcm",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "atmospheric",
+      "tags": ["science", "weather", "forecast", "deepmind", "gcm", "hybrid-physics-ml", "jax"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "demo": "boolean — returns model config (only demo supported currently)"
+      },
+      "output_map": {
+        "model_config": {
+          "resolution_deg": 2.8,
+          "n_pressure_levels": 37,
+          "time_step_hours": 6
+        },
+        "variant": "v1/deterministic_2_8_deg"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "checkpoint": "/data/neuralgcm_2_8_deg.pkl",
+        "jax_platform": "cpu",
+        "deployment_mode": "RawDeployment"
+      }
+    }

@@ -1,0 +1,119 @@
+# MACE-MP-0: Universal ML force field for materials (ACEsuit/mace-mp-0)
+# API: POST /v1/science/energy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mace-mp-0-server
+  namespace: models
+data:
+  server.py: |
+    """MACE-MP-0 materials force field server."""
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_NAME = os.environ.get("MODEL_NAME", "mace-mp-0")
+
+    app = FastAPI()
+    calculator = None
+
+    def load():
+        global calculator
+        from mace.calculators import mace_mp
+        print(f"Loading {MODEL_NAME}...", flush=True)
+        calculator = mace_mp(model="medium", device="cpu", default_dtype="float32")
+        print(f"{MODEL_NAME} loaded", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if calculator else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "Cambridge/DeepMind", "type": "force-field"}]}
+
+    def _infer(structure):
+        from ase import Atoms
+        atoms = Atoms(symbols=structure["elements"], positions=structure["positions"],
+                     cell=structure.get("cell"), pbc=structure.get("pbc", [True, True, True]))
+        atoms.calc = calculator
+        energy = float(atoms.get_potential_energy())
+        forces = atoms.get_forces().tolist()
+        stress = atoms.get_stress().tolist() if atoms.cell.any() else None
+        return {"energy_eV": energy, "forces_eV_A": forces, "stress_eV_A3": stress}
+
+    @app.post("/v1/science/energy")
+    async def compute_energy(request: dict):
+        if calculator is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        structure = request.get("structure", {})
+        if not structure.get("elements") or not structure.get("positions"):
+            return JSONResponse({"error": "structure must have elements and positions"}, 400)
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer, structure)
+        return {"model": MODEL_NAME, **result}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: mace-mp-0
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 600
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch mace-torch ase fastapi uvicorn
+            else
+              echo "venv exists"
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_NAME, value: mace-mp-0 }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "8", memory: 8Gi }
+          limits: { cpu: "16", memory: 16Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: mace-mp-0-data }
+      - name: app
+        configMap: { name: mace-mp-0-server }

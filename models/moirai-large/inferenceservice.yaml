@@ -1,0 +1,238 @@
+# Moirai-Large: Salesforce unified time-series forecasting model (Salesforce/moirai-1.1-R-large)
+# Larger variant (311M params) of the Moirai foundation model. Any-variate, zero-shot.
+# Apache 2.0. CPU-capable.
+# API: POST /v1/science/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moirai-large-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Moirai-Large: Salesforce unified time-series forecasting model.
+    311M parameter, any-variate, zero-shot forecasting. Apache 2.0.
+    API: POST /v1/science/forecast
+    Input: {"context": [1.0, 2.1, ...], "prediction_length": 24, "freq": "H",
+            "patch_size": "auto", "num_samples": 100}
+    Returns: {"mean": [...], "quantiles": {...}, "model": "moirai-large"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model_pipe = None
+
+    def load():
+        global model_pipe
+        import torch
+        print("Loading Moirai-Large...", flush=True)
+
+        from uni2ts.model.moirai import MoiraiForecast, MoiraiModule
+
+        module = MoiraiModule.from_pretrained(
+            "Salesforce/moirai-1.1-R-large",
+            cache_dir=MODEL_DIR,
+        )
+        model_pipe = MoiraiForecast(module=module, prediction_length=24,
+                                    context_length=4096, patch_size="auto",
+                                    num_samples=100, target_dim=1,
+                                    feat_dynamic_real_dim=0,
+                                    past_feat_dynamic_real_dim=0)
+        print("Moirai-Large ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model_pipe else "loading", "model": "moirai-large"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "moirai-large", "object": "model", "owned_by": "salesforce",
+             "type": "time-series-forecast"}
+        ]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if model_pipe is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+
+        context = np.array(req["context"], dtype=np.float32)
+        pred_len = req.get("prediction_length", 24)
+        freq = req.get("freq", "h")  # pandas freq alias, 'h' or 'H'
+        num_samples = req.get("num_samples", 100)
+        patch_size = req.get("patch_size", "auto")
+
+        from uni2ts.model.moirai import MoiraiForecast, MoiraiModule
+        from gluonts.dataset.pandas import PandasDataset
+        import pandas as pd
+
+        module = model_pipe.module
+        ctx_len = min(len(context), 4096)
+        pipe = MoiraiForecast(
+            module=module,
+            prediction_length=pred_len,
+            context_length=ctx_len,
+            patch_size=patch_size,
+            num_samples=num_samples,
+            target_dim=1,
+            feat_dynamic_real_dim=0,
+            past_feat_dynamic_real_dim=0,
+        )
+
+        # Normalize freq alias for pandas compatibility
+        freq_norm = freq.upper()
+        if freq_norm in ("H", "HOUR", "HOURLY"): freq_norm = "h"
+        elif freq_norm in ("D", "DAY", "DAILY"): freq_norm = "D"
+        elif freq_norm in ("W", "WEEK", "WEEKLY"): freq_norm = "W"
+        elif freq_norm in ("M", "MONTH", "MONTHLY"): freq_norm = "ME"
+
+        index = pd.date_range("2020-01-01", periods=len(context), freq=freq_norm)
+        df = pd.DataFrame({"target": context}, index=index)
+        dataset = PandasDataset(df, target="target", freq=freq_norm)
+
+        # Use GluonTS predictor from pipe (newer uni2ts API)
+        try:
+            predictor = pipe.create_predictor(batch_size=32)
+        except TypeError:
+            # Fallback for older API
+            predictor = pipe.create_predictor(
+                transformation=pipe.create_transformation(),
+                trained_network=pipe,
+            )
+
+        forecasts = list(predictor.predict(dataset, num_samples=num_samples))
+        if not forecasts:
+            raise ValueError("No forecasts produced")
+
+        fc = forecasts[0]
+        samples = fc.samples
+        return {
+            "model": "moirai-large",
+            "prediction_length": pred_len,
+            "mean": samples.mean(axis=0).tolist(),
+            "quantiles": {
+                "0.1": np.quantile(samples, 0.1, axis=0).tolist(),
+                "0.5": np.quantile(samples, 0.5, axis=0).tolist(),
+                "0.9": np.quantile(samples, 0.9, axis=0).tolist(),
+            },
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: moirai-large
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import uni2ts' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                "uni2ts" gluonts pandas fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/model/models--Salesforce--moirai-1.1-R-large ]; then
+              echo "Downloading Moirai-Large..."
+              mkdir -p /data/model
+                HF_HOME=/data/model /data/venv/bin/python -u <<'PY'
+            import os
+            os.environ['HF_HOME'] = '/data/model'
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id='Salesforce/moirai-1.1-R-large',
+                local_dir='/data/model/moirai_weights',
+                local_dir_use_symlinks=False,
+            )
+            print('Moirai-Large downloaded.', flush=True)
+            PY
+            else
+              echo "Moirai-Large already on PVC."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: moirai-large-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model/moirai_weights }
+          - { name: HF_HOME,   value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: moirai-large-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: moirai-large-data
+        persistentVolumeClaim:
+          claimName: moirai-large-data
+      - name: app
+        configMap:
+          name: moirai-large-server

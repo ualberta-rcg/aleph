@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: leandojo-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "leandojo",
+      "type": "embed",
+      "description_short": "LeanDojo Lean 4 premise retriever (ByT5-small, 125M) for retrieval-augmented automated theorem proving.",
+      "description": "LeanDojo is a NeurIPS 2023 system for automated theorem proving in Lean 4. This deployment uses the ByT5-small (125M) premise retriever model that encodes mathematical proof goals and retrieves relevant premises from Lean's Mathlib library. Given a proof goal (tactic state), it returns ranked premises with relevance scores. Used for building AI-assisted theorem provers and mathematical reasoning tools.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/retrieve",
+        "health": "/health"
+      },
+      "owned_by": "lean-dojo",
+      "source": "kaiyuy/leandojo-lean4-retriever-byt5-small",
+      "source_url": "https://huggingface.co/kaiyuy/leandojo-lean4-retriever-byt5-small",
+      "license": "Apache-2.0",
+      "parameters": "125M",
+      "precision": "float32",
+      "architecture": "ByT5-small (byte-level T5 for theorem premise retrieval)",
+      "framework": "transformers (AutoModelForSeq2SeqLM) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "leandojo-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "leandojo",
+        "api_name": "leandojo",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "mathematics",
+      "subdomain": "theorem-proving",
+      "tags": ["science", "mathematics", "theorem-proving", "embed", "lean4", "retrieval"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "goal": "Lean 4 tactic state or theorem statement e.g. \"forall n : nat, n + 0 = n\"",
+        "num_premises": "number of premises to retrieve (default: 5)"
+      },
+      "output_map": {
+        "premises": [{"name": "premise name", "score": "relevance score 0-1"}],
+        "model": "leandojo"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model"
+      }
+    }

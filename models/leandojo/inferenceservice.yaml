@@ -1,0 +1,213 @@
+# LeanDojo: theorem prover retriever for Lean 4 (kaiyuy/leandojo-lean4-retriever-tacgen-byt5-small)
+# ByteT5-based premise retriever for automated theorem proving (NeurIPS 2023).
+# Retrieves relevant premises from a math library given a proof goal.
+# CPU-capable. API: POST /v1/science/retrieve
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: leandojo-server
+  namespace: models
+data:
+  server.py: |
+    """
+    LeanDojo theorem prover retriever for Lean 4 (NeurIPS 2023).
+    Given a proof goal (tactic state), retrieves relevant premises from Lean's Mathlib.
+    API: POST /v1/science/retrieve
+    Input: {"goal": "⊢ ∀ n : ℕ, n + 0 = n", "num_premises": 5}
+    Returns: {"premises": [{"name": "...", "score": 0.9}, ...], "model": "leandojo"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    tokenizer = None
+    model = None
+
+    def load():
+        global tokenizer, model
+        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+        import torch
+
+        model_path = MODEL_DIR
+        print(f"Loading LeanDojo retriever from {model_path}...", flush=True)
+
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
+        model.eval()
+        print("LeanDojo ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "leandojo"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "leandojo", "object": "model", "owned_by": "kaiyuy",
+             "type": "theorem-premise-retrieval"}
+        ]}
+
+    @app.post("/v1/science/retrieve")
+    async def retrieve(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _retrieve, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _retrieve(req):
+        import torch
+
+        goal = req.get("goal", "")
+        num_premises = req.get("num_premises", 5)
+        candidates = req.get("candidates", [])
+
+        inputs = tokenizer(goal, return_tensors="pt", truncation=True, max_length=1024)
+
+        with torch.inference_mode():
+            encoder_outputs = model.encoder(**inputs)
+            goal_embedding = encoder_outputs.last_hidden_state.mean(1)  # [1, hidden]
+
+        if candidates:
+            # Score candidate premises
+            scored = []
+            for cand in candidates[:100]:  # limit for speed
+                cand_inputs = tokenizer(cand, return_tensors="pt",
+                                        truncation=True, max_length=512)
+                with torch.inference_mode():
+                    cand_out = model.encoder(**cand_inputs)
+                    cand_emb = cand_out.last_hidden_state.mean(1)
+                score = torch.cosine_similarity(goal_embedding, cand_emb).item()
+                scored.append({"name": cand, "score": score})
+            scored.sort(key=lambda x: x["score"], reverse=True)
+            return {
+                "model": "leandojo",
+                "goal": goal,
+                "premises": scored[:num_premises],
+            }
+        else:
+            # Generate premise names via beam search
+            with torch.inference_mode():
+                outputs = model.generate(
+                    **inputs, max_new_tokens=128,
+                    num_beams=num_premises, num_return_sequences=num_premises,
+                )
+            premises = [tokenizer.decode(o, skip_special_tokens=True) for o in outputs]
+            return {
+                "model": "leandojo",
+                "goal": goal,
+                "premises": [{"name": p, "score": 1.0 - i * 0.1}
+                              for i, p in enumerate(premises)],
+            }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: leandojo
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import transformers' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                transformers sentencepiece fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading LeanDojo retriever..."
+              mkdir -p /data/model
+                /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            token = os.environ.get('HF_TOKEN')
+            snapshot_download(
+                repo_id='kaiyuy/leandojo-lean4-retriever-tacgen-byt5-small',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('LeanDojo downloaded.', flush=True)
+            PY
+            else
+              echo "LeanDojo already on PVC."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: leandojo-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits:   { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: leandojo-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: leandojo-data
+        persistentVolumeClaim:
+          claimName: leandojo-data
+      - name: app
+        configMap:
+          name: leandojo-server

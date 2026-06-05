@@ -1,0 +1,222 @@
+# Galileo: NASA Harvest foundation model for agricultural monitoring (nasaharvest/galileo)
+# Transformer trained on multi-spectral satellite time-series for global food security.
+# State-of-the-art on crop mapping and vegetation monitoring benchmarks.
+# CPU-capable. API: POST /v1/embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: galileo-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Galileo: NASA Harvest agricultural satellite foundation model.
+    Accepts multi-spectral satellite time-series, returns embeddings for crop/land classification.
+    API: POST /v1/embeddings
+    Input: {"pixels": [[[b1,b2,...], ...], ...], "months": [0,1,...], "latlons": [[lat,lon],...]}
+           pixels: [batch, time, bands] multi-spectral time-series (normalized)
+    Returns: {"embeddings": [[...]], "model": "galileo"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+
+    def load():
+        global model
+        import torch
+        print("Loading Galileo...", flush=True)
+
+        import sys
+        sys.path.insert(0, os.path.join(MODEL_DIR, "repo"))
+
+        # Try loading the base encoder (same API as presto-like NASA models)
+        ckpt_base = os.path.join(MODEL_DIR, "models/base/encoder.pt")
+        if not os.path.exists(ckpt_base):
+            # Fall back to other available checkpoint
+            import glob
+            pts = glob.glob(os.path.join(MODEL_DIR, "**", "encoder.pt"), recursive=True)
+            ckpt_base = pts[0] if pts else None
+
+        if ckpt_base:
+            try:
+                from galileo import Galileo as GalileoModel
+                m = GalileoModel.load_pretrained(os.path.dirname(ckpt_base))
+                m.eval()
+                model = m
+                print("Galileo loaded.", flush=True)
+                return
+            except Exception as e:
+                print(f"Warning: {e}", flush=True)
+
+        # Fallback: load as raw PyTorch
+        print("Loading Galileo as raw checkpoint...", flush=True)
+        state = torch.load(ckpt_base, map_location="cpu", weights_only=False)
+        model = state
+        print("Galileo loaded (raw).", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "galileo"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "galileo", "object": "model", "owned_by": "nasa-harvest",
+             "type": "agricultural-satellite-embedding"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    @app.post("/v1/science/classify")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch
+        import numpy as np
+
+        pixels  = np.array(req["pixels"], dtype=np.float32)
+        months  = req.get("months", list(range(pixels.shape[1])))
+        latlons = req.get("latlons", [[0.0, 0.0]] * pixels.shape[0])
+
+        x  = torch.tensor(pixels)
+        m  = torch.tensor(months, dtype=torch.long).unsqueeze(0).expand(pixels.shape[0], -1)
+        ll = torch.tensor(latlons, dtype=torch.float32)
+
+        with torch.inference_mode():
+            embs = model(x, m, ll)
+
+        if isinstance(embs, tuple):
+            embs = embs[0]
+
+        return {
+            "object": "list",
+            "model": "galileo",
+            "data": [{"index": i, "embedding": e.tolist(), "object": "embedding"}
+                     for i, e in enumerate(embs.cpu())]
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: galileo
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import torch' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                einops fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/model/models ]; then
+              echo "Downloading Galileo..."
+              mkdir -p /data/model
+                /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id='nasaharvest/galileo',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                ignore_patterns=['diagrams/*'],
+            )
+            print('Galileo downloaded.', flush=True)
+            PY
+            else
+              echo "Galileo already on PVC."
+            fi
+
+            if [ ! -d /data/model/repo ]; then
+              git clone --depth 1 https://github.com/nasaharvest/galileo.git /data/model/repo 2>/dev/null || echo "Repo clone optional."
+              echo "Galileo repo ready."
+            else
+              echo "Repo exists."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: galileo-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTHONPATH, value: /data/model/repo/src:/data/model/repo }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits:   { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: galileo-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: galileo-data
+        persistentVolumeClaim:
+          claimName: galileo-data
+      - name: app
+        configMap:
+          name: galileo-server

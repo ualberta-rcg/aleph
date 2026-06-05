@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medsam-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "medsam",
+      "type": "segment",
+      "description_short": "MedSAM medical image segmentation model (SAM-based) for segmenting structures from bounding box prompts.",
+      "description": "MedSAM is a medical image segmentation model based on Meta's Segment Anything Model (SAM), fine-tuned on medical imaging data (flaviagiammarino/medsam-vit-base). It accepts a medical image and bounding box prompt(s), returning precise segmentation masks. Suitable for CT, MRI, X-ray, and pathology image segmentation. Uses HuggingFace transformers SamModel/SamProcessor. CPU-capable with GPU acceleration.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/segment",
+        "health": "/health"
+      },
+      "owned_by": "flaviagiammarino",
+      "source": "flaviagiammarino/medsam-vit-base",
+      "source_url": "https://huggingface.co/flaviagiammarino/medsam-vit-base",
+      "license": "Apache-2.0",
+      "parameters": "~375M",
+      "precision": "float32",
+      "architecture": "SAM ViT-Base (Segment Anything Model, medical fine-tuned)",
+      "framework": "transformers (SamModel, SamProcessor) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "medsam-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "medsam",
+        "api_name": "medsam",
+        "gateway_type": "segment"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "medical-imaging",
+      "subdomain": "segmentation",
+      "tags": ["science", "medical", "imaging", "segment", "sam", "radiology", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "image": "[[[R,G,B], ...], ...] HxW array of RGB values (0-255)",
+        "boxes": "[[x_min, y_min, x_max, y_max], ...] bounding box prompt(s)"
+      },
+      "output_map": {
+        "masks": "binary segmentation masks",
+        "scores": "confidence scores per mask"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model"
+      }
+    }

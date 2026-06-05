@@ -1,0 +1,175 @@
+# SatMAE: Masked Autoencoder for Satellite Imagery (MVRL/satmae-vitlarge-fmow-pretrain-800)
+# CPU-capable, scale-to-zero. ViT-L pretrained on fMoW satellite images.
+# Apache 2.0. API: POST /v1/science/embed
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: satmae-server
+  namespace: models
+data:
+  server.py: |
+    """
+    SatMAE: Masked Autoencoder pretrained on satellite imagery.
+    Accepts RGB satellite image patches, returns patch embeddings.
+    API: POST /v1/science/embed
+    Input: {"image": [[[r,g,b], ...], ...]}  HxW RGB image, values 0-255
+    Returns: {"embeddings": [...], "model": "satmae"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch, sys
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading SatMAE on {DEVICE}...", flush=True)
+
+        sys.path.insert(0, MODEL_DIR)
+        from model import MaskedAutoencoderViT
+
+        # MaskedAutoencoderViT inherits PyTorchModelHubMixin, load from dir
+        model_obj = MaskedAutoencoderViT.from_pretrained(MODEL_DIR)
+        model = model_obj.to(DEVICE)
+        model.eval()
+        print(f"SatMAE ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "satmae"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "satmae", "object": "model", "owned_by": "MVRL", "type": "satellite-imagery"}]}
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        image = request.get("image")
+        if not image:
+            return JSONResponse({"error": "image field required (HxW list of [R,G,B] values 0-255)"}, 400)
+
+        def _infer():
+            import torch, numpy as np
+            from torchvision import transforms
+            arr = np.array(image, dtype=np.float32) / 255.0
+            # Resize to 224x224 if needed
+            t = torch.tensor(arr).permute(2, 0, 1).unsqueeze(0)
+            if t.shape[-2:] != (224, 224):
+                import torch.nn.functional as F
+                t = F.interpolate(t, size=(224, 224), mode='bilinear', align_corners=False)
+            t = t.to(DEVICE)
+            # Normalize using fMoW stats
+            mean = torch.tensor([0.4182, 0.4215, 0.3991], device=DEVICE).view(1,3,1,1)
+            std = torch.tensor([0.2877, 0.2754, 0.2764], device=DEVICE).view(1,3,1,1)
+            t = (t - mean) / std
+            with torch.no_grad():
+                latent, mask, ids_restore = model.forward_encoder(t, mask_ratio=0.0)
+            # Return CLS token embedding
+            cls_emb = latent[:, 0].cpu().numpy().tolist()
+            patch_embs = latent[:, 1:].cpu().numpy().tolist()
+            return {"cls_embedding": cls_emb[0], "patch_embeddings": patch_embs[0], "model": "satmae"}
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: satmae-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: satmae
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import torch, fastapi, safetensors' 2>/dev/null; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install --quiet \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch torchvision \
+                safetensors huggingface_hub timm \
+                fastapi uvicorn
+            else
+              echo "Venv exists"
+            fi
+
+            if [ ! -d /data/model ] || [ -z "$(ls -A /data/model 2>/dev/null)" ]; then
+              echo "Downloading SatMAE..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('MVRL/satmae-vitlarge-fmow-pretrain-800', local_dir='/data/model')
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: satmae-data }
+      - name: app
+        configMap: { name: satmae-server }

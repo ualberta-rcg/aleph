@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: geneformer-v2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "geneformer-v2",
+      "type": "embedding",
+      "description_short": "STUB — Geneformer v2 not yet deployed",
+      "description": "Placeholder directory for Geneformer v2 single-cell transcriptomics model. No deployment files exist yet.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {},
+      "owned_by": "unknown",
+      "source": "unknown",
+      "tier": "stub",
+      "domain": "genomics",
+      "subdomain": "single-cell",
+      "tags": ["embedding", "genomics", "single-cell", "stub"],
+      "note": "Empty directory — no inferenceservice.yaml or deployment code exists"
+    }

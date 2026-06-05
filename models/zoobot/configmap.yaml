@@ -1,0 +1,83 @@
+apiVersion: v1
+data:
+  server.py: |
+    """
+    Zoobot galaxy morphology encoder.
+    Input: base64 image → 512-dim timm ConvNext embedding.
+    Env: MODEL_NAME, OWNED_BY
+    """
+    import os, io, base64, asyncio
+    import numpy as np
+    from PIL import Image
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_NAME = os.environ.get("MODEL_NAME", "zoobot")
+    OWNED_BY   = os.environ.get("OWNED_BY",   "mwalmsley")
+
+    app = FastAPI()
+    model = None
+    transform = None
+
+    def load():
+        global model, transform
+        import torch, timm
+        from torchvision import transforms
+        print(f"Loading {MODEL_NAME} (zoobot-encoder-convnext_nano)...", flush=True)
+        model = timm.create_model(
+            "hf_hub:mwalmsley/zoobot-encoder-convnext_nano",
+            pretrained=True, num_classes=0)
+        model.eval()
+        cfg = timm.data.resolve_model_data_config(model)
+        transform = timm.data.create_transform(**cfg, is_training=False)
+        print(f"[ok] {MODEL_NAME} loaded", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": MODEL_NAME, "object": "model", "created": 1700000000,
+             "owned_by": OWNED_BY, "type": "classify"}
+        ]}
+
+    def _infer(img_b64: str):
+        import torch
+        if "," in img_b64:
+            img_b64 = img_b64.split(",", 1)[1]
+        img = Image.open(io.BytesIO(base64.b64decode(img_b64))).convert("RGB")
+        tensor = transform(img).unsqueeze(0)  # [1, C, H, W]
+        with torch.no_grad():
+            emb = model(tensor)[0]            # [512]
+        return emb.numpy().tolist()
+
+    @app.post("/v1/vision/classify")
+    @app.post("/v1/vision/embed")
+    async def infer(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        img = request.get("image") or request.get("data")
+        if not img:
+            return JSONResponse({"error": "'image' field required"}, 400)
+        loop = asyncio.get_event_loop()
+        try:
+            emb = await loop.run_in_executor(None, _infer, img)
+            return {"model": MODEL_NAME, "task": "embed",
+                    "embedding": emb,
+                    "note": "512-dim ConvNext embedding for galaxy morphology clustering/search"}
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, 500)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+kind: ConfigMap
+metadata:
+  name: zoobot-server
+  namespace: models

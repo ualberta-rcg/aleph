@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clay-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "clay",
+      "type": "embed",
+      "description_short": "Clay Foundation Model ~330M geospatial MAE embeddings from satellite imagery. Apache 2.0.",
+      "description": "The Clay Foundation Model is a ~330M parameter Masked Autoencoder that generates semantic embeddings from multi-band satellite imagery. It accepts any-band satellite image patches with wavelength metadata, ground sampling distance, and geolocation. The encoder (large variant) produces CLS token embeddings for downstream tasks like land classification, change detection, and environmental monitoring. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "Clay Foundation",
+      "source": "made-with-clay/Clay",
+      "source_url": "https://huggingface.co/made-with-clay/Clay",
+      "license": "Apache-2.0",
+      "parameters": "~330M",
+      "precision": "fp32",
+      "architecture": "MAE ViT-Large encoder (any-band, wavelength-encoded)",
+      "framework": "lightning + claymodel + einops",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "cpu_request": "4",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "timeout": 600,
+        "pvc": "clay-data (15Gi, RWO)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "clay",
+        "api_name": "clay",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "remote-sensing",
+      "tags": ["science", "earth-observation", "satellite", "embed", "mae", "geospatial", "any-band"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "pixels": "[[[band_values...], ...], ...] — [num_bands, H, W] reflectance array",
+        "waves": "wavelengths in micrometers e.g. [0.665, 0.56, 0.49, ...]",
+        "gsd": "ground sampling distance in meters (default 10.0)",
+        "lat": "center latitude (metadata)",
+        "lon": "center longitude (metadata)",
+        "time": "datetime string (metadata)"
+      },
+      "output_map": {
+        "cls_embedding": "CLS token embedding vector",
+        "model": "clay",
+        "n_bands": "number of input bands"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data",
+        "checkpoint": "clay-v1.5.ckpt",
+        "repo_path": "/data/repo (cloned from GitHub)",
+        "model_size": "large"
+      }
+    }

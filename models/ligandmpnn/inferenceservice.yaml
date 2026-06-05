@@ -1,0 +1,218 @@
+# LigandMPNN: ligand-aware protein sequence design (Baker Lab)
+# CPU-capable, scale-to-zero. API: POST /v1/design
+# HF: dauparas/LigandMPNN  GitHub: dauparas/LigandMPNN
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ligandmpnn-server
+  namespace: models
+data:
+  server.py: |
+    """
+    LigandMPNN: ligand-aware protein sequence design.
+    Accepts PDB backbone + optional ligand atoms, returns designed sequences.
+    API: POST /v1/design
+    """
+    import os, sys, asyncio, tempfile, json, subprocess
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data")
+    REPO_DIR = os.path.join(MODEL_DIR, "repo")
+
+    app = FastAPI()
+    ready = False
+
+    def load():
+        global ready
+        import torch
+        print("Loading LigandMPNN...", flush=True)
+        if not os.path.isdir(REPO_DIR):
+            raise RuntimeError(f"LigandMPNN repo not found at {REPO_DIR}")
+        # Verify model weights exist
+        model_weights_dir = os.path.join(MODEL_DIR, "model_params")
+        if not os.path.isdir(model_weights_dir):
+            raise RuntimeError(f"Model weights not found at {model_weights_dir}")
+        ready = True
+        print("LigandMPNN ready", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if ready else "loading", "model": "LigandMPNN"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "ligandmpnn", "object": "model", "owned_by": "Baker Lab", "type": "protein-design"}]}
+
+    @app.post("/v1/design")
+    async def design(request: dict):
+        if not ready:
+            return JSONResponse({"error": "model loading"}, 503)
+        pdb_str = request.get("pdb")
+        if not pdb_str:
+            return JSONResponse({"error": "pdb field required"}, 400)
+        num_seq = request.get("num_sequences", 1)
+        temperature = request.get("temperature", 0.1)
+        seed = request.get("seed", 37)
+        model_type = request.get("model_type", "ligand_mpnn")  # or protein_mpnn, per_residue_label_membrane_mpnn
+
+        def _run():
+            with tempfile.TemporaryDirectory() as tmp:
+                pdb_path = os.path.join(tmp, "input.pdb")
+                out_dir = os.path.join(tmp, "out")
+                os.makedirs(out_dir)
+                with open(pdb_path, "w") as f:
+                    f.write(pdb_str)
+
+                script = os.path.join(REPO_DIR, "run.py")
+                cmd = [
+                    sys.executable, script,
+                    "--pdb_path", pdb_path,
+                    "--out_folder", out_dir,
+                    "--num_seq_per_target", str(num_seq),
+                    "--sampling_temp", str(temperature),
+                    "--seed", str(seed),
+                    "--model_type", model_type,
+                    "--checkpoint_ligand_mpnn", os.path.join(MODEL_DIR, "model_params", "ligandmpnn_v_32_010_25.pt"),
+                ]
+                env = os.environ.copy()
+                env["PYTHONPATH"] = REPO_DIR + ":" + env.get("PYTHONPATH", "")
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
+
+                seqs = []
+                fa_path = os.path.join(out_dir, "seqs", "input.fa")
+                if os.path.exists(fa_path):
+                    with open(fa_path) as f:
+                        lines = f.readlines()
+                    for i in range(0, len(lines), 2):
+                        header = lines[i].strip().lstrip(">")
+                        seq = lines[i+1].strip() if i+1 < len(lines) else ""
+                        seqs.append({"header": header, "sequence": seq})
+
+                return {
+                    "sequences": seqs,
+                    "stdout": result.stdout[-2000:] if result.stdout else "",
+                    "returncode": result.returncode,
+                }
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _run)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ligandmpnn-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ligandmpnn
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 600
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git ca-certificates gcc build-essential
+
+            # Clone LigandMPNN repo if needed
+            if [ ! -d /data/repo ]; then
+              echo "Cloning LigandMPNN..."
+              git clone --depth 1 https://github.com/dauparas/LigandMPNN.git /data/repo
+            fi
+
+            # Create venv if needed
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import torch, fastapi' 2>/dev/null; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install --quiet \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch torchvision \
+                fastapi uvicorn prody
+            else
+              echo "venv exists"
+            fi
+
+            # Download model weights if not present
+            if [ ! -d /data/model_params ]; then
+              echo "Downloading LigandMPNN weights..."
+              mkdir -p /data/model_params
+              cd /data/repo
+              /data/venv/bin/python -c "
+            import subprocess, os
+            # Use the provided download script if available
+            script = 'get_model_params.sh'
+            if os.path.exists(script):
+                subprocess.run(['bash', script, '../model_params'], check=True)
+            " 2>/dev/null || true
+
+              # Fallback: download key weights directly from HF/GitHub releases
+              if [ ! -f /data/model_params/ligandmpnn_v_32_010_25.pt ]; then
+                echo "Downloading weights from HuggingFace..."
+                /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download, snapshot_download
+            import shutil, os
+            snapshot_download('dauparas/LigandMPNN', local_dir='/data/model_params')
+            " 2>/dev/null || \
+                /data/venv/bin/pip install -q huggingface_hub && \
+                /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('dauparas/LigandMPNN', local_dir='/data/model_params')
+            "
+              fi
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: ligandmpnn-data }
+      - name: app
+        configMap: { name: ligandmpnn-server }

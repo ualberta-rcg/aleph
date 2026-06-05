@@ -1,0 +1,197 @@
+# RITA-XL: Protein Language Model for generation (lightonai/RITA_xl)
+# 1.2B params, generates novel protein sequences. CPU-capable, scale-to-zero.
+# Apache 2.0, LightOn. API: POST /v1/generate
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rita-server
+  namespace: models
+data:
+  server.py: |
+    """
+    RITA-XL: Protein generative language model (lightonai/RITA_xl).
+    Generates novel protein sequences from a prompt/prefix.
+    API: POST /v1/generate
+    Input: {"prompt": "M", "max_length": 200, "num_sequences": 5, "temperature": 1.0}
+    Returns: {"sequences": ["MAST...", ...], "model": "rita-xl"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    tokenizer = None
+
+    def load():
+        global model, tokenizer
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        print("Loading RITA-XL...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(MODEL_DIR, trust_remote_code=True, torch_dtype=torch.float32)
+        model.eval()
+        # transformers ≥4.37 added can_generate() classmethod check that
+        # RITA's custom class fails. Patch at class level to bypass.
+        try:
+            type(model).can_generate = classmethod(lambda cls: True)
+        except Exception:
+            pass
+        # RITA has no generation_config.json; provide defaults so generate() works
+        if model.generation_config is None:
+            from transformers import GenerationConfig
+            model.generation_config = GenerationConfig()
+        print("RITA-XL ready", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "rita-xl"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "rita-xl", "object": "model", "owned_by": "LightOn", "type": "protein-language-model"}]}
+
+    @app.post("/v1/generate")
+    @app.post("/v1/science/generate")
+    async def generate(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        prompt = request.get("prompt", "M")
+        max_length = int(request.get("max_length", 200))
+        num_sequences = int(request.get("num_sequences", 1))
+        temperature = float(request.get("temperature", 1.0))
+        do_sample = request.get("do_sample", True)
+
+        def _infer():
+            import torch
+            inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=True)
+            input_ids = inputs["input_ids"]
+            eos = tokenizer.eos_token_id
+            with torch.no_grad():
+                all_seqs = []
+                for _ in range(num_sequences):
+                    cur = input_ids.clone()
+                    for _ in range(max_length - cur.shape[1]):
+                        out = model(cur)
+                        logits = out.logits if hasattr(out, "logits") else out[0]
+                        next_logits = logits[:, -1, :] / max(temperature, 1e-6)
+                        if do_sample:
+                            probs = torch.softmax(next_logits, dim=-1)
+                            nxt = torch.multinomial(probs, num_samples=1)
+                        else:
+                            nxt = torch.argmax(next_logits, dim=-1, keepdim=True)
+                        cur = torch.cat([cur, nxt], dim=-1)
+                        if eos is not None and nxt.item() == eos:
+                            break
+                    all_seqs.append(cur[0])
+            output_ids = all_seqs
+            sequences = []
+            for ids in output_ids:
+                seq = tokenizer.decode(ids, skip_special_tokens=True).replace(" ", "")
+                sequences.append(seq)
+            return {"sequences": sequences, "prompt": prompt, "model": "rita-xl"}
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rita-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: rita
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq ca-certificates
+            # Fresh path /data/rita-env avoids NFS-locked /data/venv2 stale files.
+            # Note: server patches can_generate() at class level so newer transformers also works.
+            VENV=/data/rita-env
+            if [ ! -d $VENV/bin ] || ! $VENV/bin/python -c 'import fastapi, transformers' 2>/dev/null; then
+              echo "Building $VENV..."
+              rm -rf $VENV || true
+              python3 -m venv --clear $VENV
+              $VENV/bin/pip install -U pip
+              $VENV/bin/pip install \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch==2.5.1 \
+                "transformers==4.36.2" accelerate huggingface_hub \
+                sentencepiece fastapi uvicorn
+              echo "venv ready: $($VENV/bin/python -c 'import transformers; print(transformers.__version__)')"
+            else
+              echo "venv already OK: $($VENV/bin/python -c 'import transformers; print(transformers.__version__)')"
+            fi
+
+            if [ ! -d /data/model ] || [ -z "$(ls -A /data/model 2>/dev/null)" ]; then
+              echo "Downloading RITA-XL..."
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('lightonai/RITA_xl', local_dir='/data/model')
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits: { cpu: "8", memory: 32Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/rita-env/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "8", memory: 16Gi }
+          limits: { cpu: "16", memory: 32Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 15
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: rita-data }
+      - name: app
+        configMap: { name: rita-server }

@@ -1,0 +1,219 @@
+# SeisBench: seismology benchmark and model library for earthquake detection
+# pip install seisbench — auto-downloads models (PhaseNet, EQTransformer, GPD, etc.)
+# Detects P/S phases, picks arrival times, classifies seismic events.
+# CPU-capable. API: POST /v1/science/detect
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seisbench-server
+  namespace: models
+data:
+  server.py: |
+    """
+    SeisBench: seismology models for earthquake detection and phase picking.
+    Uses PhaseNet (default) — a 1D U-Net for P/S phase picking.
+    API: POST /v1/science/detect
+    Input: {"waveforms": [[ch1_samples...], [ch2_samples...], [ch3_samples...]], "sampling_rate": 100}
+           3-component seismic data (Z, N, E), sampling_rate in Hz.
+           Typical: 100 Hz, 3000+ samples (~30 seconds).
+    Returns: {"detections": [{"time_sample": int, "phase": "P"|"S", "probability": float}],
+              "probabilities": {"P": [...], "S": [...]}}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    phase_model = None
+
+    def load():
+        global phase_model
+        import seisbench.models as sbm
+        print("Loading PhaseNet from SeisBench...", flush=True)
+
+        # Models auto-download to ~/.seisbench/models
+        os.environ["SEISBENCH_CACHE_ROOT"] = MODEL_DIR
+        phase_model = sbm.PhaseNet.from_pretrained("stead")
+        phase_model.eval()
+        print("SeisBench PhaseNet ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if phase_model else "loading", "model": "seisbench-phasenet"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "seisbench-phasenet", "object": "model",
+             "owned_by": "seisbench", "type": "seismic-phase-picking"},
+            {"id": "seisbench-eqtransformer", "object": "model",
+             "owned_by": "seisbench", "type": "seismic-phase-picking"},
+        ]}
+
+    @app.post("/v1/science/detect")
+    async def detect(request: dict):
+        if phase_model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _detect, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _detect(req):
+        import torch
+        import numpy as np
+        import obspy
+
+        waveforms = np.array(req["waveforms"], dtype=np.float32)
+        sampling_rate = req.get("sampling_rate", 100.0)
+        threshold_p = req.get("threshold_p", 0.3)
+        threshold_s = req.get("threshold_s", 0.3)
+
+        # Build obspy stream
+        stream = obspy.Stream()
+        channels = ["Z", "N", "E"]
+        for i, ch in enumerate(channels[:waveforms.shape[0]]):
+            tr = obspy.Trace(data=waveforms[i])
+            tr.stats.sampling_rate = sampling_rate
+            tr.stats.channel = ch
+            stream.append(tr)
+
+        # Run PhaseNet annotation
+        with torch.inference_mode():
+            annotations = phase_model.annotate(stream)
+
+        # Pick phases - newer SeisBench returns ClassifyOutput object, older returns tuple
+        classify_result = phase_model.classify(stream,
+                                               P_threshold=threshold_p,
+                                               S_threshold=threshold_s)
+        if hasattr(classify_result, 'picks'):
+            picks = classify_result.picks
+        else:
+            picks = classify_result[0] if isinstance(classify_result, (tuple, list)) else []
+
+        detections = []
+        for pick in picks:
+            detections.append({
+                "time_sample": int(pick.peak_time * sampling_rate),
+                "phase": pick.phase,
+                "probability": float(pick.peak_value),
+                "time_seconds": float(pick.peak_time),
+            })
+
+        # Return probability traces for P and S
+        probs = {}
+        for tr in annotations:
+            if "P" in tr.stats.channel:
+                probs["P"] = tr.data.tolist()
+            elif "S" in tr.stats.channel:
+                probs["S"] = tr.data.tolist()
+
+        return {
+            "model": "seisbench-phasenet",
+            "sampling_rate": sampling_rate,
+            "detections": detections,
+            "probabilities": probs,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: seisbench
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq gcc > /dev/null 2>&1
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import seisbench' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                seisbench obspy fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            # Pre-download PhaseNet weights
+            if [ ! -d /data/model/phasenet ]; then
+              echo "Pre-downloading PhaseNet weights..."
+              mkdir -p /data/model
+                SEISBENCH_CACHE_ROOT=/data/model /data/venv/bin/python -u <<'PY'
+            import os
+            os.environ['SEISBENCH_CACHE_ROOT'] = '/data/model'
+            import seisbench.models as sbm
+            print('Downloading PhaseNet...', flush=True)
+            model = sbm.PhaseNet.from_pretrained('stead')
+            print('PhaseNet ready.', flush=True)
+            PY
+            else
+              echo "PhaseNet already on PVC."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: seisbench-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: SEISBENCH_CACHE_ROOT, value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits:   { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: seisbench-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: seisbench-data
+        persistentVolumeClaim:
+          claimName: seisbench-data
+      - name: app
+        configMap:
+          name: seisbench-server

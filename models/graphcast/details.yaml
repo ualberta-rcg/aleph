@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: graphcast-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "graphcast",
+      "type": "forecast",
+      "description_short": "DeepMind GraphCast-Small weather model. 1-degree resolution, 13 pressure levels, JAX-based.",
+      "description": "GraphCast-Small is DeepMind's graph neural network weather prediction model operating at 1-degree resolution with 13 pressure levels. It uses JAX and dm-haiku for inference. The model accepts ERA5 reanalysis data and produces 6-hour forecast steps. Currently deployed in demo/info mode — the API exposes model configuration and variable lists but full ERA5 inference requires additional pipeline integration. CC BY-NC-SA 4.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "google-deepmind",
+      "source": "shermansiu/dm_graphcast_small",
+      "source_url": "https://github.com/google-deepmind/graphcast",
+      "license": "CC-BY-NC-SA-4.0",
+      "parameters": "N/A",
+      "precision": "fp32",
+      "architecture": "Graph Neural Network (mesh size 2to5, latent size 512)",
+      "framework": "JAX + dm-haiku + xarray",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "cpu_request": "4",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "timeout": 300,
+        "pvc": "graphcast-data (5Gi, NFS, inline)",
+        "image": "python:3.11-slim",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "graphcast",
+        "api_name": "graphcast",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "forecasting",
+      "tags": ["science", "weather", "forecast", "deepmind", "graph-neural-network", "jax", "era5"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "demo": "boolean — returns model config and variable list",
+        "future_era5": "xarray JSON of ERA5 initial conditions (not yet implemented in API)"
+      },
+      "output_map": {
+        "demo_mode": {
+          "resolution_deg": 1.0,
+          "pressure_levels": "13 levels (50-1000 hPa)",
+          "input_variables": "geopotential, specific_humidity, temperature, u/v wind, vertical_velocity + surface vars",
+          "mesh_size": "2to5",
+          "input_grid": "181 lats x 360 lons, 2 time steps in, 6h dt"
+        }
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/GraphCast_small.npz",
+        "stats_path": "/data/stats/",
+        "jax_platform": "cpu",
+        "deployment_mode": "RawDeployment"
+      }
+    }

@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: megadetector-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "megadetector",
+      "type": "detect",
+      "description_short": "Microsoft MegaDetector v5 wildlife camera trap detector for animals, humans, and vehicles.",
+      "description": "MegaDetector v5 is a YOLOv5-based object detection model from Microsoft AI for Earth, specifically trained for wildlife camera trap images. It detects three categories: animals, humans, and vehicles with bounding boxes and confidence scores. Widely used in ecology, conservation biology, and biodiversity monitoring. Uses the megadetector pip package. CPU-capable.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/detect",
+        "health": "/health"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/MegaDetector",
+      "source_url": "https://github.com/microsoft/CameraTraps",
+      "license": "MIT",
+      "parameters": "~87M",
+      "precision": "float32",
+      "architecture": "YOLOv5-based camera trap detector",
+      "framework": "megadetector + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "megadetector-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "megadetector",
+        "api_name": "megadetector",
+        "gateway_type": "detect"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "ecology",
+      "subdomain": "wildlife-monitoring",
+      "tags": ["science", "ecology", "wildlife", "detect", "camera-trap", "conservation", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "images": "array of base64-encoded JPEG/PNG images",
+        "threshold": "confidence threshold (default: 0.2)"
+      },
+      "output_map": {
+        "detections": "array per image of [{category: animal|human|vehicle, bbox: [x,y,w,h] normalized, conf: float}]"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "checkpoint": "md_v5a.0.0.pt"
+      }
+    }

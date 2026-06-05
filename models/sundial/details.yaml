@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sundial-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "sundial",
+      "type": "forecast",
+      "description_short": "Sundial — generative time series foundation model (128M, CPU)",
+      "description": "Sundial by THUML (Tsinghua). 128M params. Generative time series foundation model for zero-shot probabilistic forecasting. Autoregressive generation with normalization-aware inference. Supports arbitrary horizon lengths and multi-sample probabilistic outputs. CPU-capable with no GPU required. Apache 2.0 license. 1M+ HuggingFace downloads.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "thuml/Tsinghua",
+      "source": "thuml/sundial-base-128m",
+      "source_url": "https://huggingface.co/thuml/sundial-base-128m",
+      "license": "Apache-2.0",
+      "parameters": "128M",
+      "parameter_count": 128000000,
+      "precision": "fp32",
+      "architecture": "transformer (causal LM)",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "startup_seconds": 60,
+        "container_image": "python:3.11-slim",
+        "timeout": 300
+      },
+      "routing": {
+        "k8s_name": "sundial",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "scientific-nlp",
+      "subdomain": "time-series-forecasting",
+      "tags": ["forecast", "time-series", "zero-shot", "generative", "cpu", "tsinghua"],
+      "content_types": ["numeric"],
+      "tier": "production",
+      "input_map": {
+        "series": {
+          "type": "array of floats",
+          "required": true,
+          "description": "Historical time series values"
+        },
+        "horizon": {
+          "type": "int",
+          "required": false,
+          "description": "Forecast horizon (default: 96)"
+        },
+        "num_samples": {
+          "type": "int",
+          "required": false,
+          "description": "Number of probabilistic samples (default: 10)"
+        }
+      },
+      "output_map": {
+        "forecast": "[float]",
+        "forecast_std": "[float] or null",
+        "horizon": "int",
+        "input_length": "int"
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace, trust_remote_code)",
+        "normalization": "z-score per series",
+        "generation": "autoregressive causal LM"
+      }
+    }

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: presto-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "presto",
+      "type": "classify",
+      "description_short": "Presto NASA Harvest crop mapping model",
+      "description": "NASA Harvest Presto — lightweight transformer (~400K params) for multi-spectral time-series satellite data. Zero-shot crop type mapping and land use classification globally. CPU-capable. Accepts Sentinel-2 time series data.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {"primary": "/v1/embeddings", "health": "/health"},
+      "owned_by": "nasaharvest",
+      "source": "nasaharvest/presto",
+      "source_url": "https://huggingface.co/nasaharvest/presto",
+      "license": "Apache-2.0",
+      "parameters": "~400K",
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "custom",
+      "deployment": {"gpu": false, "gpu_count": 0, "min_replicas": 0, "max_replicas": 3, "container_image": "python:3.11-slim"},
+      "routing": {
+        "k8s_name": "presto",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {"supports_streaming": false, "reasoning_model": false},
+      "domain": "earth-observation",
+      "subdomain": "crop-mapping",
+      "tags": ["science", "earth-observation", "agriculture", "satellite", "classify", "cpu"],
+      "content_types": ["timeseries"],
+      "tier": "experimental"
+    }

@@ -31,48 +31,48 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [x] chemberta (embedding, CPU, dim=768; id=chemberta-125m)
 - [x] chronos-bolt (forecast, CPU; /v1/forecast OK)
 - [x] clap (audio embedding+classify, CPU, dim=512; logit_scale_a fix)
-- [ ] clay
+- [x] clay (geospatial satellite embedding, Clay ~330M MAE ViT-Large, CPU; /v1/science/embed deployed)
 - [x] climatebert (classification, DistilRoBERTa, CPU, dim=768; detect+netzero+embeddings OK)
 - [x] clinicalbert (embedding, CPU, dim=768; id=clinicalbert-110m)
-- [ ] depth-anything
+- [x] depth-anything (monocular depth estimation, ONNX CPU; /v1/vision/depth deployed)
 - [x] dino-vit-b8 (vision embedding, CPU)
 - [x] dnabert-2 (DNA embedding, CPU, dim=768; tuple-output fix)
 - [x] dnabert-s (species-aware DNA embedding, CPU, dim=768; RawDeployment->Knative)
 - [x] efficientnet-b0 (image classification, ONNX CPU)
-- [ ] galileo
-- [ ] geneformer-v2
-- [ ] graphcast
-- [ ] hyenadna
-- [ ] labram
-- [ ] lag-llama
-- [ ] leandojo
+- [x] galileo (science embedding, BERT, CPU; /v1/embeddings OK)
+- [s] geneformer-v2 (DEFERRED: stub-only on 232, no ISVC/server.py; HuggingFace source unknown)
+- [x] graphcast (weather forecast, GNN, CPU; deployed, /v1/science/predict live)
+- [x] hyenadna (DNA embedding, Hyena arch, CPU; /v1/embeddings OK hyenadna-160k)
+- [x] labram (EEG/brain signal embedding, CPU; /v1/science/embed live)
+- [x] lag-llama (time-series forecast, LLM, CPU; /v1/science/forecast live)
+- [x] leandojo (theorem prover retriever, ByteT5 125M, CPU; HF_TOKEN→secretKeyRef; /v1/science/retrieve deployed)
 - [s] led (DEFERRED: only a stub card on 232, no server.py/ISVC — needs long-doc summarization server built from scratch)
-- [ ] ligandmpnn
+- [x] ligandmpnn (ligand-aware protein design, Baker Lab, CPU; /v1/design deployed)
 - [s] longformer (DEFERRED: only a stub card on 232, no server.py/ISVC — needs long-doc classification server built from scratch)
-- [ ] mace-mp-0
-- [ ] maskrcnn
-- [ ] medsam
-- [ ] megadetector
-- [ ] moirai-large
+- [x] mace-mp-0 (atomistic ML potential, CPU; /v1/science/energy live)
+- [x] maskrcnn (instance segmentation, ONNX CPU; /v1/detect live)
+- [x] medsam (medical image segmentation, CPU; /v1/science/segment live)
+- [x] megadetector (wildlife detection, ONNX CPU; /v1/detect live)
+- [x] moirai-large (time-series forecast, Moirai-Large 311M, CPU; /v1/science/forecast live)
 - [x] multilingual-e5-small (embedding, XLM-RoBERTa, CPU, 512-dim; transformers==4.44.2 for lazy-import fix)
-- [ ] neuralgcm
-- [ ] omnigenome
-- [ ] presto
+- [x] neuralgcm (climate emulator, neural GCM, CPU; /v1/science/predict live)
+- [x] omnigenome (RNA/genome embedding+predict, CPU; /v1/science/predict OK embedding returned)
+- [x] presto (remote sensing classification, CPU; /v1/science/classify live)
 - [x] pubmedbert (embedding, CPU, dim=768; built fresh from biomedbert pattern)
-- [ ] retinanet
-- [x] rita (protein generation, CPU; /v1/science/generate OK after lm_head patch)
-- [ ] satmae
+- [x] retinanet (object detection, ONNX CPU; /v1/detect live)
+- [x] rita (protein generation, CPU; manual autoregressive loop; venv at /data/rita-env; /v1/science/generate PASS)
+- [x] satmae (satellite image embedding, ViT, CPU; /v1/science/embed live)
 - [x] scibert (embedding, CPU, dim=768; k8s_name added to card)
-- [ ] science-embed
-- [ ] seisbench
+- [s] science-embed (DEFERRED: stub only on 232, no server.py/ISVC)
+- [x] seisbench (seismic detection, CPU; /v1/science/detect live)
 - [x] specter2 (embedding, CPU, dim=768; k8s_name added to card)
-- [ ] splicebert
-- [ ] sundial
+- [x] splicebert (RNA splice-site embedding, CPU; /v1/embeddings OK)
+- [x] sundial (time-series foundation model, CPU; deployed)
 - [x] tinyllama (chat LLM, llama.cpp GGUF Q4_K_M, CPU; removed GPU nodeSelector)
-- [ ] ttm
+- [x] ttm (time-series transformer, CPU; /v1/forecast live)
 - [x] yolov8n (object detection, ONNX CPU, 80-class COCO; empty detects on 1x1 image OK)
 - [x] yolov8s (object detection, ONNX CPU, 80-class COCO)
-- [ ] zoobot
+- [x] zoobot (galaxy morphology embed, CPU; /v1/vision/embed OK dim=1024)
 
 ## Wave 2 — gpu=1 bucket, 80
 

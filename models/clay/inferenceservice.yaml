@@ -1,0 +1,213 @@
+# Clay Foundation Model: Geospatial Earth observation embeddings (made-with-clay/Clay)
+# ~330M params, Apache 2.0. Generates semantic embeddings from satellite imagery.
+# API: POST /v1/science/embed
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clay-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Clay Foundation Model: geospatial MAE embeddings from satellite imagery.
+    Accepts multi-band satellite image patches with metadata, returns embeddings.
+    API: POST /v1/science/embed
+    Input: {
+      "pixels": [[[band_values...], ...], ...],  # [num_bands, H, W]
+      "waves": [0.665, 0.56, 0.49, ...],         # wavelengths in micrometers
+      "gsd": 10.0,                                # ground sampling distance in meters
+      "lat": 45.0, "lon": -73.5,                  # center coordinates
+      "time": "2024-06-15"                         # datetime string
+    }
+    Returns: {"embeddings": [...], "model": "clay"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data")
+    CHECKPOINT = os.path.join(MODEL_DIR, "clay-v1.5.ckpt")
+    REPO_DIR = os.path.join(MODEL_DIR, "repo")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import sys, os, torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Clay on {DEVICE}...", flush=True)
+        sys.path.insert(0, REPO_DIR)
+        # Change to repo dir so relative config paths work
+        os.chdir(REPO_DIR)
+        from claymodel.module import ClayMAEModule
+        import torch as _torch
+        # Load checkpoint
+        ckpt = _torch.load(CHECKPOINT, map_location="cpu", weights_only=False)
+        state_dict = ckpt["state_dict"]
+        # Extract only encoder weights (skip teacher, decoder, projection head)
+        # Keys are like "model.encoder.X" -> remap to "X" for the encoder module
+        enc_prefix = "model.encoder."
+        encoder_sd = {k[len(enc_prefix):]: v for k, v in state_dict.items() if k.startswith(enc_prefix)}
+        print(f"Encoder keys: {len(encoder_sd)}", flush=True)
+        # Build large ClayMAE and load only encoder weights
+        clay_module = ClayMAEModule(model_size="large")
+        missing, unexpected = clay_module.model.encoder.load_state_dict(encoder_sd, strict=False)
+        print(f"Encoder loaded. Missing: {len(missing)}, Unexpected: {len(unexpected)}", flush=True)
+        model = clay_module.model.encoder
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"Clay ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "clay"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "clay", "object": "model", "owned_by": "Clay Foundation", "type": "geospatial"}]}
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        pixels = request.get("pixels")
+        waves = request.get("waves")
+        gsd = float(request.get("gsd", 10.0))
+        if not pixels or not waves:
+            return JSONResponse({"error": "pixels and waves required"}, 400)
+
+        def _infer():
+            import torch
+            import numpy as np
+            from einops import rearrange
+            arr = np.array(pixels, dtype=np.float32)  # [bands, H, W]
+            # Normalize to [0, 1]
+            arr = arr / arr.max() if arr.max() > 1.0 else arr
+            # Batch: [1, bands, H, W]
+            cube = torch.tensor(arr).unsqueeze(0).to(DEVICE)
+            waves_t = torch.tensor(waves, dtype=torch.float32).to(DEVICE)
+            gsd_t = torch.tensor([gsd], dtype=torch.float32).to(DEVICE)
+            with torch.no_grad():
+                embeddings, *_ = model(cube, waves_t, gsd_t)
+            cls_emb = embeddings[:, 0].cpu().numpy().tolist()
+            return {"cls_embedding": cls_emb[0], "model": "clay", "n_bands": len(waves)}
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clay-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: clay
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 600
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git ca-certificates
+
+            # Clone Clay repo if not present
+            if [ ! -d /data/repo ]; then
+              echo "Cloning Clay repo..."
+              git clone --depth 1 https://github.com/Clay-foundation/model.git /data/repo
+            fi
+
+            # Create venv with minimal clay deps (skip geopandas/wandb/lightning training deps)
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import torch, einops, lightning, fastapi' 2>/dev/null; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install --quiet \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                "torch>=2.4.0" torchvision \
+                "einops>=0.7.0" timm \
+                "lightning>=2.0.0" python-box huggingface_hub \
+                "vit-pytorch" jsonargparse \
+                fastapi uvicorn
+            else
+              echo "Venv exists"
+            fi
+
+            # Download Clay checkpoint from HuggingFace
+            if [ ! -f /data/clay-v1.5.ckpt ]; then
+              echo "Downloading Clay checkpoint..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download
+            path = hf_hub_download('made-with-clay/Clay', filename='v1.5/clay-v1.5.ckpt', local_dir='/data')
+            import shutil
+            shutil.move(path, '/data/clay-v1.5.ckpt')
+            print('Clay checkpoint downloaded')
+            " 2>/dev/null || \
+              /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download
+            import os
+            path = hf_hub_download('made-with-clay/Clay', filename='v1.5/clay-v1.5.ckpt')
+            import shutil
+            shutil.copy(path, '/data/clay-v1.5.ckpt')
+            print('Clay checkpoint downloaded')
+            "
+            else
+              echo "Clay checkpoint already exists"
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits: { cpu: "8", memory: 32Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: clay-data }
+      - name: app
+        configMap: { name: clay-server }

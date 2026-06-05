@@ -1,0 +1,181 @@
+# Sundial: Generative Time Series Foundation Model (thuml/sundial-base-128m)
+# 128M params, 1M+ HF downloads. CPU-capable, scale-to-zero.
+# Apache 2.0, Tsinghua THUML. API: POST /v1/science/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sundial-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Sundial: generative time series foundation model (thuml/sundial-base-128m).
+    API: POST /v1/science/forecast  { "series": [...], "horizon": 96 }
+    Returns probabilistic forecasts.
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+
+    def load():
+        global model
+        import torch
+        from transformers import AutoModelForCausalLM
+        print("Loading Sundial...", flush=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_DIR,
+            trust_remote_code=True,
+            torch_dtype=torch.float32,
+        )
+        model.eval()
+        print("Sundial ready", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "sundial"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "sundial", "object": "model", "owned_by": "THUML/Tsinghua", "type": "time-series"}]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        series = request.get("series")
+        if not series:
+            return JSONResponse({"error": "series required"}, 400)
+        horizon = int(request.get("horizon", 96))
+        num_samples = int(request.get("num_samples", 10))
+
+        def _infer():
+            import torch
+            import numpy as np
+            seq = np.array(series, dtype=np.float32)
+            mean_val = float(np.mean(seq))
+            std_val = float(np.std(seq)) + 1e-8
+            seq_norm = (seq - mean_val) / std_val
+            tensor = torch.tensor(seq_norm, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+            with torch.no_grad():
+                out = model.generate(
+                    tensor,
+                    max_new_tokens=horizon,
+                    do_sample=True,
+                    num_return_sequences=num_samples,
+                ) if num_samples > 1 else model.generate(tensor, max_new_tokens=horizon)
+            if out.dim() == 3:
+                forecasts_norm = out[:, len(series):, 0].cpu().numpy().tolist()
+                forecast_mean = [v * std_val + mean_val for v in np.mean(forecasts_norm, axis=0).tolist()]
+                forecast_std = [v * std_val for v in np.std(forecasts_norm, axis=0).tolist()]
+            else:
+                forecasts_norm = out[0, len(series):].cpu().numpy().tolist()
+                forecast_mean = [v * std_val + mean_val for v in forecasts_norm]
+                forecast_std = None
+            return {
+                "forecast": forecast_mean,
+                "forecast_std": forecast_std,
+                "horizon": horizon,
+                "input_length": len(series),
+            }
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sundial-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sundial
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import transformers, fastapi' 2>/dev/null; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install --quiet \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch \
+                transformers accelerate huggingface_hub \
+                fastapi uvicorn
+            else
+              echo "Venv exists"
+            fi
+
+            if [ ! -d /data/model ] || [ -z "$(ls -A /data/model 2>/dev/null)" ]; then
+              echo "Downloading Sundial..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('thuml/sundial-base-128m', local_dir='/data/model')
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 15
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: sundial-data }
+      - name: app
+        configMap: { name: sundial-server }

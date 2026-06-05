@@ -1,0 +1,196 @@
+# TTM: IBM TinyTimeMixer (ibm-granite/granite-timeseries-ttm-r2)
+# Lightweight multi-variate time-series forecasting model. Apache 2.0.
+# Achieves state-of-the-art zero-shot forecasting with only 1-5M parameters.
+# CPU-capable for inference.
+# API: POST /v1/science/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ttm-server
+  namespace: models
+data:
+  server.py: |
+    """
+    IBM TinyTimeMixer (TTM): efficient zero-shot time-series forecasting.
+    Multi-variate capable, extremely lightweight. Apache 2.0.
+    API: POST /v1/science/forecast
+    Input: {"context": [[ch1_t1,...], [ch2_t1,...]], "prediction_length": 96, "context_length": 512}
+           or {"context": [1.0, 2.1, ...]} for univariate
+    Returns: {"forecast": [[...]], "model": "ttm"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    pipeline = None
+
+    def load():
+        global pipeline
+        print("Loading TTM (TinyTimeMixer)...", flush=True)
+
+        from tsfm_public.models.tinytimemixer import TinyTimeMixerForPrediction
+
+        # Load 512-96 config (context=512, prediction=96)
+        pipeline = TinyTimeMixerForPrediction.from_pretrained(
+            "ibm-granite/granite-timeseries-ttm-r2",
+            cache_dir=MODEL_DIR,
+        )
+        pipeline.eval()
+        print("TTM ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if pipeline else "loading", "model": "ttm"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "ttm", "object": "model", "owned_by": "ibm-granite",
+             "type": "time-series-forecast"}
+        ]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if pipeline is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+
+        context = np.array(req["context"], dtype=np.float32)
+        if context.ndim == 1:
+            context = context.reshape(1, 1, -1)  # [batch=1, channels=1, time]
+        elif context.ndim == 2:
+            context = context[np.newaxis, :, :]  # [batch=1, channels, time]
+
+        x = torch.tensor(context)
+        with torch.inference_mode():
+            out = pipeline(past_values=x)
+            forecast = out.prediction_outputs  # [batch, pred_len, channels]
+
+        return {
+            "model": "ttm",
+            "forecast": forecast.squeeze(0).cpu().numpy().tolist(),
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ttm
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq ca-certificates > /dev/null 2>&1
+            update-ca-certificates > /dev/null 2>&1 || true
+
+            VENV=/data/venv2
+            CERT=/etc/ssl/certs/ca-certificates.crt
+            if [ ! -f "$VENV/bin/python" ]; then
+              echo "Creating venv..."
+              python3 -m venv "$VENV"
+            fi
+            if ! "$VENV/bin/python" -c 'import tsfm_public' 2>/dev/null; then
+              echo "Installing packages..."
+              "$VENV/bin/pip" install -q --cert "$CERT" -U pip certifi
+              "$VENV/bin/pip" install -q --cert "$CERT" --no-cache-dir \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              "$VENV/bin/pip" install -q --cert "$CERT" --no-cache-dir \
+                granite-tsfm fastapi uvicorn huggingface_hub
+            fi
+            echo "Venv ready."
+
+            if [ ! -d /data/model/models--ibm-granite--granite-timeseries-ttm-r2 ]; then
+              echo "Downloading TTM model..."
+              mkdir -p /data/model
+                HF_HOME=/data/model /data/venv2/bin/python -u <<'PY'
+            import os
+            os.environ['HF_HOME'] = '/data/model'
+            from huggingface_hub import snapshot_download
+            token = os.environ.get('HF_TOKEN')
+            snapshot_download(
+                repo_id='ibm-granite/granite-timeseries-ttm-r2',
+                local_dir='/data/model/ttm_weights',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('TTM downloaded.', flush=True)
+            PY
+            else
+              echo "TTM already on PVC."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: ttm-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv2/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model/ttm_weights }
+          - { name: HF_HOME,   value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits:   { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: ttm-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: ttm-data
+        persistentVolumeClaim:
+          claimName: ttm-data
+      - name: app
+        configMap:
+          name: ttm-server

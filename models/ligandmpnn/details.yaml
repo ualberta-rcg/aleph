@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ligandmpnn-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "ligandmpnn",
+      "type": "design",
+      "description_short": "Ligand-aware protein sequence design from Baker Lab (UW)",
+      "description": "LigandMPNN from the Baker Lab (UW) designs optimal amino acid sequences given a protein backbone structure (PDB) and optional ligand atoms. Extends ProteinMPNN with ligand-awareness for drug design. Uses the LigandMPNN CLI tool via subprocess. CPU-capable.",
+      "context_window": 1024,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/design",
+        "health": "/health"
+      },
+      "owned_by": "Baker Lab",
+      "source": "dauparas/LigandMPNN",
+      "source_url": "https://github.com/dauparas/LigandMPNN",
+      "license": "MIT",
+      "parameters": "~1.7M",
+      "precision": "float32",
+      "architecture": "ProteinMPNN + ligand context",
+      "framework": "LigandMPNN CLI + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": false, "min_replicas": 0, "max_replicas": 2, "cpu_request": "4", "memory_request": "8Gi", "pvc": "ligandmpnn-data", "pvc_size": "10Gi", "node_selector": null, "timeout": 600},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "ligandmpnn", "api_name": "ligandmpnn"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["pdb", "num_sequences", "temperature", "model_type"]},
+      "domain": "proteomics",
+      "subdomain": "protein-design",
+      "tags": ["design", "science", "proteomics", "protein", "drug-discovery", "baker-lab", "cpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "input_map": {"pdb": "PDB format string", "num_sequences": "int (default 1)", "temperature": "float (default 0.1)", "model_type": "ligand_mpnn|protein_mpnn|per_residue_label_membrane_mpnn"},
+      "output_map": {"sequences": "[{header: str, sequence: str}]", "returncode": "int"},
+      "tier": 2
+    }

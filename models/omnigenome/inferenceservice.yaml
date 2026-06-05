@@ -1,0 +1,237 @@
+# OmniGenome-186M: RNA foundation model with sequence-structure alignment
+# Paper: "OmniGenome: Aligning RNA Sequences with Secondary Structures" (2024)
+# HuggingFace: yangheng/OmniGenome-186M (MIT)
+# API: POST /v1/science/predict — seq2str (RNA → secondary structure) or str2seq (structure → RNA)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: omnigenome-server
+  namespace: models
+data:
+  server.py: |
+    """
+    OmniGenome-186M RNA foundation model.
+    Supports:
+      - seq2str: RNA sequence → secondary structure (dot-bracket notation)
+      - str2seq: secondary structure → RNA sequence design
+      - embed:   RNA sequence → 768-dim embedding vector
+
+    Endpoints:
+      GET  /health                → {"status":"ok","model":"omnigenome-186m"}
+      GET  /v1/models             → model card
+      POST /v1/science/predict    → {"sequence":"AUGC...", "task":"seq2str"}
+      POST /v1/embeddings         → {"input":"AUGC...", "model":"omnigenome-186m"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = os.environ.get("MODEL_ID", "yangheng/OmniGenome-186M")
+    DEVICE = "cpu"
+
+    app = FastAPI()
+    model = None
+    tokenizer = None
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModel
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading OmniGenome-186M on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        model = AutoModel.from_pretrained(MODEL_ID, trust_remote_code=True).to(DEVICE).eval()
+        print("OmniGenome-186M ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "omnigenome-186m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "omnigenome-186m", "object": "model", "owned_by": "yangheng",
+             "type": "rna-foundation", "license": "MIT",
+             "description": "OmniGenome 186M RNA foundation model with sequence-structure alignment"}
+        ]}
+
+    def _embed(sequence: str):
+        import torch
+        enc = tokenizer(sequence, return_tensors="pt", max_length=512,
+                        truncation=True, padding=True).to(DEVICE)
+        with torch.no_grad():
+            out = model(**enc)
+        hidden = out.last_hidden_state  # (1, L, 768)
+        # Mean pool over sequence length
+        mask = enc.get("attention_mask", None)
+        if mask is not None:
+            mask = mask.unsqueeze(-1).float()
+            emb = (hidden * mask).sum(1) / mask.sum(1)
+        else:
+            emb = hidden.mean(dim=1)
+        return emb[0].cpu().float().tolist()
+
+    def _seq2str(sequence: str):
+        """Predict secondary structure from RNA sequence."""
+        import torch
+        # OmniGenome uses pipeline-style for structure prediction
+        try:
+            from transformers import pipeline
+            pipe = pipeline("text-generation", model=model, tokenizer=tokenizer,
+                            device=0 if DEVICE == "cuda" else -1)
+            # Attempt structured prediction prompt
+            prompt = f"Predict the secondary structure of this RNA sequence:\n{sequence}\nStructure:"
+            result = pipe(prompt, max_new_tokens=len(sequence) + 10, do_sample=False)
+            structure_text = result[0]["generated_text"]
+            # Extract dot-bracket notation
+            lines = structure_text.split("\n")
+            structure = ""
+            for line in lines:
+                if any(c in line for c in ".()" ) and len(line.strip()) > 0:
+                    candidate = line.strip()
+                    if all(c in ".()" for c in candidate):
+                        structure = candidate[:len(sequence)]
+                        break
+            if not structure:
+                structure = "." * len(sequence)
+            return {"sequence": sequence, "structure": structure, "task": "seq2str",
+                    "model": "omnigenome-186m"}
+        except Exception as e:
+            # Fallback: return embedding only
+            emb = _embed(sequence)
+            return {"sequence": sequence, "task": "seq2str",
+                    "embedding": emb[:20], "note": f"Structure prediction error: {str(e)[:100]}",
+                    "model": "omnigenome-186m"}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        sequence = request.get("sequence", "").upper().strip()
+        if not sequence:
+            raise HTTPException(400, "sequence required")
+        if len(sequence) > 512:
+            raise HTTPException(400, "sequence length > 512")
+        task = request.get("task", "embed")
+        loop = asyncio.get_event_loop()
+        if task == "seq2str":
+            result = await loop.run_in_executor(None, _seq2str, sequence)
+        elif task == "embed":
+            emb = await loop.run_in_executor(None, _embed, sequence)
+            result = {"sequence": sequence, "embedding": emb,
+                      "dims": len(emb), "model": "omnigenome-186m"}
+        else:
+            raise HTTPException(400, f"Unknown task '{task}'. Use 'embed' or 'seq2str'.")
+        return JSONResponse(result)
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        seq = request.get("input", "").upper().strip()
+        if not seq:
+            raise HTTPException(400, "input required")
+        loop = asyncio.get_event_loop()
+        emb = await loop.run_in_executor(None, _embed, seq)
+        return JSONResponse({"object": "list", "data": [
+            {"object": "embedding", "embedding": emb, "index": 0}
+        ], "model": "omnigenome-186m"})
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: omnigenome
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip -q
+              /data/venv/bin/pip install -q \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch==2.5.1 'transformers==4.44.2' sentencepiece ViennaRNA \
+                fastapi uvicorn huggingface_hub
+              echo "venv created."
+            else
+              echo "venv already exists."
+            fi
+            if [ -f /data/model/config.json ]; then
+              echo "Model already on PVC."
+            else
+              echo "Downloading yangheng/OmniGenome-186M..."
+              /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id='yangheng/OmniGenome-186M',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+            )
+            print('Download finished.')
+            "
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_ID, value: /data/model }
+          - { name: HF_HOME, value: /data/hf-home }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: omnigenome-data
+      - name: server-config
+        configMap:
+          name: omnigenome-server

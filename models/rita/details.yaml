@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rita-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "rita-xl",
+      "type": "embedding",
+      "description_short": "Protein generative language model (1.2B) from LightOn",
+      "description": "RITA-XL from LightOn is a 1.2B parameter autoregressive protein language model for generating novel protein sequences. Given a prefix prompt, generates diverse protein sequences. Uses transformers<4.38 for compatibility. CPU-only (large model, slow generation).",
+      "context_window": 1024,
+      "max_completion_tokens": 200,
+      "endpoints": {
+        "primary": "/v1/science/generate",
+        "health": "/health"
+      },
+      "owned_by": "LightOn",
+      "source": "lightonai/RITA_xl",
+      "source_url": "https://huggingface.co/lightonai/RITA_xl",
+      "license": "Apache-2.0",
+      "parameters": "1.2B",
+      "precision": "float32",
+      "architecture": "GPT-style autoregressive transformer",
+      "framework": "transformers<4.38 + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": false, "min_replicas": 0, "max_replicas": 2, "cpu_request": "8", "memory_request": "16Gi", "pvc": "rita-data", "pvc_size": "10Gi", "node_selector": null, "timeout": 300},
+      "routing": {
+        "k8s_name": "rita",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {"openai_embeddings": false, "input_fields": ["prompt", "max_length", "num_sequences", "temperature"]},
+      "domain": "proteomics",
+      "subdomain": "protein-generation",
+      "tags": ["embedding", "science", "proteomics", "protein", "generation", "cpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "input_map": {"prompt": "amino acid prefix (default 'M')", "max_length": "int (default 200)", "num_sequences": "int (default 1)", "temperature": "float (default 1.0)"},
+      "output_map": {"sequences": "[str] generated protein sequences", "prompt": "str", "model": "rita-xl"},
+      "tier": 2
+    }
