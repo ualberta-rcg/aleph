@@ -1,0 +1,184 @@
+# AbLang-2: Antibody language model for paratope/CDR restoration
+# CPU only (48M params), scale-to-zero. pip install ablang2; weights from Zenodo.
+# Migrated from POC 232. HAMi cluster 230: nfs-client SC, no HF token needed
+# (weights come from Zenodo, not HuggingFace). API: POST /v1/embeddings, /v1/restore
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ablang2-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+
+    def load():
+        global model
+        print("Loading AbLang-2...", flush=True)
+        import ablang2
+        # ablang2 0.2.1 only accepts known model ids (e.g. 'ablang2-paired'); the old
+        # arbitrary-local-path trick was removed. Weights are pre-downloaded by the init
+        # container into the package dir on the PVC, so this read-only load needs no writes.
+        model = ablang2.pretrained(model_to_use='ablang2-paired', random_init=False, ncpu=1, device='cpu')
+        print("AbLang-2 ready", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "ablang2"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "ablang2", "object": "model", "created": 1700000000,
+             "owned_by": "oxpig", "type": "embedding"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        sequences = request.get("input") or request.get("sequences")
+        if isinstance(sequences, str):
+            sequences = [sequences]
+        if not sequences:
+            return JSONResponse({"error": "'input' field required"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, sequences)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(sequences):
+        import torch
+        import numpy as np
+        
+        # Tokenize and get embeddings
+        tokenized = model.tokenizer(sequences, pad=True, w_extra_tkns=False, device="cpu")
+        with torch.no_grad():
+            embeddings = model.AbRep(tokenized).last_hidden_states
+        
+        # Mean pool over sequence length
+        data = []
+        for i, emb in enumerate(embeddings):
+            mean_emb = emb.mean(dim=0).numpy()
+            data.append({"object": "embedding", "index": i, "embedding": mean_emb.tolist()})
+        
+        return {"object": "list", "data": data, "model": "ablang2",
+                "usage": {"prompt_tokens": sum(len(s) for s in sequences), "total_tokens": sum(len(s) for s in sequences)}}
+
+    @app.post("/v1/restore")
+    async def restore(request: dict):
+        """Restore masked positions in antibody sequences"""
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        sequences = request.get("sequences")
+        if isinstance(sequences, str):
+            sequences = [sequences]
+        if not sequences:
+            return JSONResponse({"error": "'sequences' field required"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            restored = await loop.run_in_executor(None, lambda: model(sequences, mode="restore"))
+            return {"model": "ablang2", "restored": restored.tolist() if hasattr(restored, 'tolist') else list(restored)}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ablang2-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ablang2
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 10
+    scaleMetric: concurrency
+    timeout: 60
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: ABLANG2_CACHE, value: /data/model }
+          - { name: HF_HOME, value: /data/hf-home }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install -q \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                "torch==2.5.1+cpu" fastapi uvicorn huggingface_hub requests einops rotary-embedding-torch numpy
+              /data/venv/bin/pip install -q "ablang2==0.2.1"
+            else
+              echo "venv exists"
+            fi
+            # Pre-download the 'ablang2-paired' weights into the ablang2 package dir on the
+            # PVC (idempotent — skips if present). The main container mounts /data read-only,
+            # so the weights must exist before it loads the model.
+            /data/venv/bin/python -c "import ablang2; ablang2.pretrained(model_to_use='ablang2-paired', random_init=False, ncpu=1, device='cpu'); print('ablang2-paired weights cached')"
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "1", memory: 2Gi }
+          limits: { cpu: "2", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: ablang2-data }
+      - name: app
+        configMap: { name: ablang2-server }

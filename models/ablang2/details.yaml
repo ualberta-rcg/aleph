@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ablang2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "ablang2",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "ablang2",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Antibody language model (embeddings + CDR restore)",
+        "description": "AbLang-2 from Oxford Protein Informatics Group (OxPIG): an antibody-specific protein language model. Produces mean-pooled per-sequence embeddings for antibody heavy/light chains and can restore masked positions (e.g. CDR regions) via /v1/restore. Trained on paired sequences from OAS; weights hosted on Zenodo. CPU-only (48M params).",
+        "owned_by": "OxPIG",
+        "source": "oxpig/AbLang2",
+        "source_url": "https://zenodo.org/records/10185169",
+        "license": "MIT",
+        "parameters": "48M",
+        "precision": "fp32",
+        "framework": "ablang2 + torch",
+        "domain": "proteomics",
+        "subdomain": "antibody",
+        "tags": [
+          "embedding",
+          "science",
+          "proteomics",
+          "protein",
+          "antibody",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 512,
+        "input_format": {
+          "model": "ablang2",
+          "input": "antibody amino-acid sequence str or [str]"
+        },
+        "embedding_dimensions": 480,
+        "pooling": "mean"
+      }
+    }

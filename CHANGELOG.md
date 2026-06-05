@@ -2,6 +2,19 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate ablang2 (antibody embeddings, CPU)
+
+### ablang2 (Wave 1, gpu=0)
+- Ported AbLang-2 (OxPIG) from 232: antibody PLM, `/v1/embeddings` (mean-pooled) +
+  `/v1/restore`. CPU-only (48M), scale-to-zero, `nfs-client` PVC.
+- **Fix**: ablang2 0.2.1 dropped the old arbitrary-local-path loading the 232 server
+  relied on (`AssertionError: ... does not exist`). Switched to the supported id
+  `model_to_use='ablang2-paired'`, pre-downloading weights in the init container into
+  the package dir on the PVC so the read-only runtime can load them. Pinned
+  `ablang2==0.2.1`, `torch==2.5.1+cpu`. Removed unused inline HF token.
+- Converted card to v2 schema; verified dim=480, ctx=512. Tested embeddings single +
+  batch via gateway; catalog discovery via `?all=true`. See models/ablang2/TEST.md.
+
 ## 2026-06-04 (latest) — begin 232→230 ≤2GPU model migration
 
 ### Migration scaffolding
