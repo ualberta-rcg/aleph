@@ -53,20 +53,28 @@ latest_dep() {
 }
 dep() { latest_dep; }
 
-# Pre-warm: scale the latest revision to 1 and wait for ISVC Ready AND a live pod.
+# Primary endpoint path + catalog id from the LOCAL details.yaml (for activation nudges).
+primary_path() {
+  grep -o '"primary":[[:space:]]*"[^"]*"' "$DIR/details.yaml" 2>/dev/null | head -1 | sed 's/.*"\(\/[^"]*\)"/\1/'
+}
+model_id() {
+  grep -o '"id":[[:space:]]*"[^"]*"' "$DIR/details.yaml" 2>/dev/null | head -1 | sed 's/.*"id":[[:space:]]*"\([^"]*\)".*/\1/'
+}
+
+# Pre-warm a Knative scale-to-zero service the ONLY way that works: send a model-specific
+# request so the activator scales it up. (Manually scaling the deployment is reverted by the
+# KPA.) Nudge with a throwaway POST to the primary endpoint, then poll for a live pod.
 do_up() {
-  local d; d=$(dep)
-  [ -n "$d" ] && { echo ">> pre-warm $d"; k scale -n $NS "$d" --replicas=1 >/dev/null 2>&1; }
-  echo ">> waiting for isvc/$M Ready (up to 12m)"
-  k wait -n $NS --for=condition=Ready "isvc/$M" --timeout=720s
-  # also wait for the latest-revision pod to be Running 2/2+ (avoid cold-start race)
-  echo ">> waiting for latest-revision pod to be Ready"
-  for i in $(seq 1 60); do
+  local path mid; path=$(primary_path); [ -z "$path" ] && path=/health
+  mid=$(model_id); [ -z "$mid" ] && mid="$M"
+  echo ">> activating $M (id=$mid) via gateway POST ${path} (poll pod, up to ~15m)"
+  for i in $(seq 1 90); do
     local out; out=$("${SSH[@]}" "${KEXPORT} kubectl get pods -n $NS --no-headers | grep '^${M}-predictor' | grep -v Terminating | grep Running | grep -E '([2-9]|[0-9][0-9])/[2-9]' | head -1")
     [ -n "$out" ] && { echo "   ready: $out"; return 0; }
+    "${SSH[@]}" "curl -s -m 15 -o /dev/null -X POST http://${GW}${path} -H 'Content-Type: application/json' -d '{\"model\":\"${mid}\"}'" >/dev/null 2>&1
     sleep 10
   done
-  echo "   (timeout waiting for pod; check logs)"
+  echo "   (timeout; check logs)"; return 1
 }
 
 do_status() {

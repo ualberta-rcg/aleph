@@ -21,3 +21,4 @@ venv/
 # Test/scratch output
 /tmp/
 *_report.txt
+scratch/*.txt

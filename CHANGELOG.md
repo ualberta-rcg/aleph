@@ -2,6 +2,38 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-05 — per-model verification loop (in progress)
+
+Systematic one-by-one verification of every migrated model on 230: bring up via gateway,
+test the real endpoint(s) with task-realistic payloads, deep-fix until correct, scale-cycle,
+document (`TEST.md`/`CLAUDE.md`), and mark an honest `status` on each card.
+
+### Tooling
+- `scripts/test-model.sh` — apply-from-repo, Knative-aware activation (pre-warm via gateway
+  request, not manual scale), `recreate` (delete+clear+reapply, keep PVC), curl with
+  cold-start retry, scale-cycle.
+- `models/TEST-STATUS.md` — master matrix (PASS / FIXED / FAIL) for all ~157 models.
+
+### Key finding
+- KServe "READY" was misleading: several servers returned `/health` 200 while the model
+  silently failed to load (no egress, wrong package, fake inputs). These were deployed but
+  never actually exercised. The loop now hits real endpoints with real payloads.
+
+### Verified PASS (CPU)
+- Embeddings: bge-m3 (1024-dim, multilingual), biomedbert, chemberta, clinicalbert,
+  pubmedbert, dnabert-2, dnabert-s, hyenadna (256), splicebert, scibert, specter2.
+- Rerank: bge-reranker-v2-m3 (correct ranking).
+- Chat: tinyllama (OpenAI + Anthropic). Streaming is a cross-cutting gateway/Knative SSE
+  issue (tracked, to fix once for all chat models).
+
+### Deep-fixed (were broken/garbage; now correct, status=production)
+- ablang2: `/v1/restore` (AbLang2 needs `[heavy,light]` pairs; handler normalizes input).
+- aion: rewrote to the real `polymathic-aion` API (AION + CodecManager + typed modalities);
+  init pre-downloads model+codec weights so the offline runtime can load. legacy_image +
+  photometry → 768-dim.
+- biot5: use task-specific checkpoints (mol2text/text2mol) + SELFIES + official prompts.
+- chem-t5: replace invented task prompts with the exact GT4SD training templates.
+
 ## 2026-06-04 — migrate climatebert (classification, CPU)
 
 ### climatebert (Wave 1)
