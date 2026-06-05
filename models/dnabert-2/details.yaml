@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dnabert-2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "dnabert-2-117m",
+      "type": "embedding",
+      "description_short": "DNABERT-2 — multi-species DNA foundation model (768-dim)",
+      "description": "DNABERT-2 by Zhihan Zhou et al. 117M params. Multi-species DNA foundation model using BPE tokenization instead of k-mers. Trained on genomes from multiple species. Produces 768-dimensional dense DNA sequence embeddings for variant effect prediction, genome annotation, regulatory element analysis, and epigenomic prediction. Requires torch 2.5.1 (pinned) due to custom ops compatibility. Max sequence length 512 tokens.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "zhihan1996",
+      "source": "zhihan1996/DNABERT-2-117M",
+      "source_url": "https://huggingface.co/zhihan1996/DNABERT-2-117M",
+      "license": "Apache-2.0",
+      "parameters": "117M",
+      "parameter_count": 117000000,
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "startup_seconds": 30,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "k8s_name": "dnabert-2",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "genomics",
+      "subdomain": "dna-embeddings",
+      "tags": ["embedding", "science", "genomics", "dna", "multi-species"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "DNA sequence(s) using ACGT characters"
+        }
+      },
+      "output_map": {
+        "object": "string (list)",
+        "model": "string",
+        "data": {
+          "type": "array",
+          "items": {
+            "object": "string (embedding)",
+            "index": "int",
+            "embedding": "[float x 768]"
+          }
+        },
+        "usage": {"prompt_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace, trust_remote_code=True)",
+        "max_seq_length": 512,
+        "pooling": "mean (attention-masked)",
+        "embedding_dim": 768,
+        "torch_version": "2.5.1+cpu (pinned)",
+        "transformers_version": "4.40.2 (pinned)",
+        "notes": "Custom ops break on torch>=2.6; uses TORCHDYNAMO_DISABLE=1 and TORCH_COMPILE_DISABLE=1"
+      }
+    }
