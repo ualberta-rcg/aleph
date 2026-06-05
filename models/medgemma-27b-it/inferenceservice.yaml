@@ -61,7 +61,7 @@ spec:
           - --served-model-name=medgemma-27b-it
           - --port=8080
           - --tensor-parallel-size=2
-          - --max-model-len=32768
+          - --max-model-len=8192
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.92
           - --trust-remote-code

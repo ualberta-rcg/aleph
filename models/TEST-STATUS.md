@@ -51,7 +51,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | command-r-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
 | crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
-| deepseek-v2-lite-16b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
+| deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | FIXED | gpumem 20->45GB + max-model-len 8192 (was OOM); OpenAI+Anthropic |
 | depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
 | diffdock | dock | true | /v1/dock | NOT-READY | PENDING |  |
 | dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | image embedding |
