@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "birdnet-analyzer",
+      "status": "production",
       "type": "audio-classification",
       "endpoints": {
         "primary": "/v1/science/identify",

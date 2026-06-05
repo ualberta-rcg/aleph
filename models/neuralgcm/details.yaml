@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "neuralgcm",
+      "status": "experimental",
       "type": "forecast",
       "description_short": "Google DeepMind NeuralGCM hybrid physics/ML atmospheric model. 2.8-degree deterministic.",
       "description": "NeuralGCM is Google DeepMind's hybrid physics-ML atmospheric General Circulation Model that combines neural networks with spectral-dynamics GCM physics. The deployed variant is the 2.8-degree deterministic model with 37 pressure levels and 6-hour time steps. It uses JAX and dm-haiku. Currently runs in demo/info mode. Input variables include temperature, u/v wind, specific humidity, geopotential, surface pressure, and precipitation. CC-BY-SA 4.0 license.",

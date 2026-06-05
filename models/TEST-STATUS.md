@@ -31,7 +31,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id biomedbert-110m) |
 | biomedclip | embed | true | /v1/embeddings | READY | PENDING |  |
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
-| birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PENDING | had TEST.md (pre-loop) |
+| birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz-1 | structure | true | /v1/science/predict | READY | PENDING |  |
 | borzoi | predict | true | /v1/science/predict | READY | PENDING |  |
 | brainlm | embed | true | /v1/embeddings | READY | PENDING |  |
@@ -111,7 +111,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | moment | forecast | true | /v1/forecast | READY | PENDING |  |
 | multilingual-e5-small | embedding | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | naturecode-earth | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
-| neuralgcm | forecast | false | /v1/science/predict | READY | PENDING |  |
+| neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PENDING |  |
 | oceangpt-30b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
