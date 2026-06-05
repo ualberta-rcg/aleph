@@ -37,6 +37,7 @@ data:
         "timeout": 120
       },
       "routing": {
+        "k8s_name": "depth-anything",
         "path_prefix": "/v1/",
         "serialize": false,
         "no_stream": false
@@ -66,7 +67,9 @@ data:
         "task": "string",
         "width": "int (original image width)",
         "height": "int (original image height)",
-        "depth_map": "[[float]] normalized 0-1 depth array"
+        "depth_png_base64": "base64 PNG of the normalized depth map (full resolution)",
+        "depth_grid_64": "[[float]] 64x64 downsampled normalized depth (programmatic use)",
+        "stats": "{raw_min, raw_max, raw_mean}"
       },
       "server_config": {
         "inference_backend": "onnxruntime",

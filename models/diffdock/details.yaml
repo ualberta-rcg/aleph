@@ -38,6 +38,7 @@ data:
         "timeout": 600
       },
       "routing": {
+        "k8s_name": "diffdock",
         "path_prefix": "/v1/",
         "serialize": false,
         "no_stream": true

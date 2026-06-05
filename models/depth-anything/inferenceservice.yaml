@@ -52,9 +52,24 @@ data:
         arr = np.array(img, dtype=np.float32) / 255.0
         arr = (arr - MEAN) / STD
         arr = arr.transpose(2, 0, 1)[np.newaxis]
-        depth = session.run(None, {session.get_inputs()[0].name: arr})[0][0, 0]
-        depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
-        return {"width": orig_w, "height": orig_h, "depth_map": depth.tolist()}
+        raw = session.run(None, {session.get_inputs()[0].name: arr})[0][0, 0]
+        dmin, dmax = float(raw.min()), float(raw.max())
+        norm = (raw - dmin) / (dmax - dmin + 1e-6)
+        # Return a base64 PNG depth map (visualizable, compact) + stats + a small
+        # downsampled grid for programmatic use. Avoid dumping the full HxW float array
+        # (megabytes of JSON the gateway can't proxy).
+        depth_img = Image.fromarray((norm * 255).astype(np.uint8)).resize((orig_w, orig_h))
+        buf = io.BytesIO(); depth_img.save(buf, format="PNG")
+        depth_png_b64 = base64.b64encode(buf.getvalue()).decode()
+        small = np.array(Image.fromarray((norm * 255).astype(np.uint8)).resize((64, 64)),
+                         dtype=np.float32) / 255.0
+        return {
+            "width": orig_w, "height": orig_h,
+            "depth_png_base64": depth_png_b64,
+            "depth_grid_64": small.tolist(),
+            "stats": {"raw_min": dmin, "raw_max": dmax,
+                      "raw_mean": float(raw.mean())},
+        }
 
     @app.post("/v1/vision/depth")
     async def depth_estimate(request: dict):

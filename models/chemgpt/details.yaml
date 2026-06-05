@@ -38,6 +38,7 @@ data:
         "timeout": 120
       },
       "routing": {
+        "k8s_name": "chemgpt",
         "path_prefix": "/v1/",
         "serialize": false,
         "no_stream": false

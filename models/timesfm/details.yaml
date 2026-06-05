@@ -38,6 +38,7 @@ data:
         "timeout": 300
       },
       "routing": {
+        "k8s_name": "timesfm",
         "path_prefix": "/v1/",
         "serialize": false,
         "no_stream": true

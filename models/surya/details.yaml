@@ -37,6 +37,7 @@ data:
         "timeout": 300
       },
       "routing": {
+        "k8s_name": "surya",
         "path_prefix": "/v1/",
         "serialize": false,
         "no_stream": false
