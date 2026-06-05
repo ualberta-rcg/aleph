@@ -30,17 +30,25 @@ Each model directory should contain (as applicable):
 - **Single-GPU / fractional models (TP=1):** use HAMi vGPU sharing:
   - `nvidia.com/gpumem: "<MiB>"` + `nvidia.com/gpu: "1"`.
 - **Multi-GPU models (tensor-parallel ≥ 2): DO NOT request `nvidia.com/gpumem`.**
-  Requesting gpumem puts HAMi in vGPU mode; even though `libvgpu.so` may end up
-  unloaded, vLLM's **custom all-reduce** stalls busy-waiting on a P2P handshake that
-  never completes under HAMi (symptom: GPUs at 100% util but only ~95W / 350W TDP,
-  throughput ~0.25 tok/s).   Required recipe for TP≥2 on this cluster (only TWO things needed):
+  Required recipe for TP≥2 on this cluster (exactly TWO things needed):
   - request whole devices: `nvidia.com/gpu: "<N>"` and **no** `nvidia.com/gpumem`
+    (HAMi then binds N tenant-free physical cards; each vGPU defaults to full card mem)
   - vLLM arg `--disable-custom-all-reduce` (fall back to NCCL → native speed)
-  `CUDA_DISABLE_CONTROL` is NOT required — verified oceangpt-30b TP2 hits ~73 tok/s
-  without it (no gpumem already gives whole-card memory; the perf fix is solely
-  --disable-custom-all-reduce).
-  This took gpt-oss-120b from 0.25 tok/s → ~200 tok/s. The POC cluster 232 does not
-  need this because it uses the NVIDIA GPU Operator (full devices, native P2P), not HAMi.
+- **Why `--disable-custom-all-reduce` is mandatory (hardware, not HAMi):** the L40S
+  cards here are NODE topology (PCIe via CPU, no NVLink, no working GPU P2P). vLLM's
+  custom all-reduce assumes P2P and **hangs at engine init** — verified cleanly:
+  oceangpt-30b TP2 on *whole devices, no gpumem, no CUDA_DISABLE_CONTROL* but WITHOUT
+  the flag hung >7 min at engine startup (repeating "No available shared memory
+  broadcast block / processes hanging"); WITH the flag it serves in ~2.5 min at
+  ~73 tok/s. NCCL (the fallback) works fine. This is NOT a gpumem/vGPU artifact.
+- **`CUDA_DISABLE_CONTROL` is NOT required** — verified; no-gpumem already gives
+  whole-card memory and native behavior.
+- The fix took gpt-oss-120b from 0.25 → ~200 tok/s. Validated TP2 (oceangpt ~73,
+  medgemma ~20) and TP4 (qwen35-122b ~65). The POC cluster 232 doesn't need any of
+  this because it uses the NVIDIA GPU Operator (whole devices, native P2P), not HAMi.
+- **VRAM guard (bash `nvidia-smi memory.free` retry loop) is now redundant** for
+  whole-device models: HAMi only schedules them onto tenant-free cards, so VRAM is
+  always free on first check. Harmless to keep, fine to drop.
 - **vLLM image is standardized to `vllm/vllm-openai:v0.20.2`** for all LLMs (matches 232).
 - Do NOT add `--kv-cache-dtype fp8` or `--enable-prefix-caching` to gpt-oss models:
   attention sinks break under fp8, and TP>1 + prefix-caching can yield empty responses.
