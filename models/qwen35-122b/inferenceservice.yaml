@@ -48,6 +48,9 @@ spec:
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
           - --language-model-only
+          # TP=4 on HAMi: custom all-reduce busy-waits on a P2P path that stalls
+          # (100% util / low watt / ~0.25 tok/s). Disable -> NCCL native speed.
+          - --disable-custom-all-reduce
           - --port=8080
         env:
           - name: HF_HUB_OFFLINE
@@ -58,6 +61,8 @@ spec:
             value: TRITON_ATTN_VLLM_V1
           - name: OMP_NUM_THREADS
             value: "1"
+          - name: CUDA_DISABLE_CONTROL          # whole devices: bypass HAMi vGPU interception
+            value: "true"
         ports:
           - containerPort: 8080
             protocol: TCP
@@ -69,7 +74,6 @@ spec:
             cpu: "16"
             memory: 128Gi
             nvidia.com/gpu: "4"
-            nvidia.com/gpumem: "46000"
         readinessProbe:
           httpGet:
             path: /v1/models

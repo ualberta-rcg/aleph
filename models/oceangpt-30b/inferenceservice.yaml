@@ -67,7 +67,7 @@ spec:
             mountPath: /data
     containers:
       - name: kserve-container
-        image: vllm/vllm-openai:v0.8.4
+        image: vllm/vllm-openai:v0.20.2
         command:
           - bash
           - -c
@@ -87,7 +87,8 @@ spec:
                   --max-model-len 8192 \
                   --dtype bfloat16 \
                   --gpu-memory-utilization 0.90 \
-                  --trust-remote-code
+                  --trust-remote-code \
+                  --disable-custom-all-reduce
               fi
               echo "[VRAM-GUARD] not enough VRAM, retrying in 10s..."
               sleep 10
@@ -99,6 +100,8 @@ spec:
             value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
+          - name: CUDA_DISABLE_CONTROL          # whole devices: bypass HAMi vGPU interception
+            value: "true"
         ports:
           - containerPort: 8080
             protocol: TCP
@@ -107,12 +110,10 @@ spec:
             cpu: "8"
             memory: 32Gi
             nvidia.com/gpu: "2"
-            nvidia.com/gpumem: "40960"
           limits:
             cpu: "16"
             memory: 48Gi
             nvidia.com/gpu: "2"
-            nvidia.com/gpumem: "40960"
         readinessProbe:
           httpGet:
             path: /v1/models

@@ -52,7 +52,7 @@ spec:
             mountPath: /data
     containers:
       - name: kserve-container
-        image: vllm/vllm-openai:v0.7.2
+        image: vllm/vllm-openai:v0.20.2
         args:
           - --model=/data
           - --served-model-name=deepseek-v2-lite-16b
