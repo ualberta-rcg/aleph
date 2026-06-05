@@ -30,7 +30,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomedbert-large | embedding | true | /v1/science/embed | READY | PENDING |  |
 | biomedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id biomedbert-110m) |
 | biomedclip | embed | true | /v1/embeddings | READY | PENDING |  |
-| biot5 | science-generate | false | /v1/science/generate | READY | PENDING | had TEST.md (pre-loop) |
+| biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PENDING | had TEST.md (pre-loop) |
 | boltz-1 | structure | true | /v1/science/predict | READY | PENDING |  |
 | borzoi | predict | true | /v1/science/predict | READY | PENDING |  |

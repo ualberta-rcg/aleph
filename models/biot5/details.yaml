@@ -10,6 +10,8 @@ data:
     {
       "id": "biot5",
       "type": "science-generate",
+      "status": "production",
+      "status_note": "Verified 2026-06-05: mol2text + text2mol both correct (task-specific checkpoints + SELFIES).",
       "endpoints": {
         "primary": "/v1/science/generate",
         "health": "/health"

@@ -1,8 +1,10 @@
-# BioT5: Cross-modal Biology+Chemistry T5 (QizhiPei/biot5-base, 0.3B)
-# Tasks: molecule captioning (mol→text), text-conditioned molecule generation (text→SELFIES),
-#        drug-target interaction, protein-protein interaction
-# Uses SELFIES molecular representation for 100% valid molecule generation
-# API: POST /v1/science/generate   {"task": "mol2text|text2mol|caption", "input": "..."}
+# BioT5: Cross-modal Biology+Chemistry T5 (QizhiPei, 0.25B per task head)
+# Uses the TASK-SPECIFIC fine-tuned checkpoints (base model alone produces garbage):
+#   mol2text  -> QizhiPei/biot5-base-mol2text  (molecule SELFIES -> English description)
+#   text2mol  -> QizhiPei/biot5-base-text2mol  (English description -> molecule SELFIES->SMILES)
+# Molecules use SELFIES wrapped in <bom>...<eom>; SMILES is auto-converted via `selfies`.
+# API: POST /v1/science/generate  {"task":"mol2text","input":"<SMILES or SELFIES>"}
+#                                 {"task":"text2mol","input":"<english description>"}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -11,78 +13,102 @@ metadata:
   namespace: models
 data:
   server.py: |
-    import asyncio, json, os
+    import asyncio, os
     import uvicorn
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
 
     app = FastAPI(title="BioT5 API")
-    model = None
-    tokenizer = None
     DEVICE = "cpu"
+    S = {}  # task -> (tokenizer, model)
 
-    TASK_PREFIXES = {
-        "mol2text": "Translate the following molecule SELFIES to text description: ",
-        "text2mol": "Generate SELFIES for the molecule with description: ",
-        "caption":  "Provide a scientific caption for: ",
+    MODELS = {
+        "mol2text": os.environ.get("MOL2TEXT_DIR", "/data/mol2text"),
+        "text2mol": os.environ.get("TEXT2MOL_DIR", "/data/text2mol"),
     }
+    DEF_MOL2TEXT = ("Definition: You are given a molecule SELFIES. Your job is to generate the "
+                    "molecule description in English that fits the molecule SELFIES.\n\n")
+    DEF_TEXT2MOL = ("Definition: You are given a molecule description in English. Your job is to "
+                    "generate the molecule SELFIES that fits the description.\n\n")
+
+    def load():
+        import torch
+        from transformers import T5Tokenizer, T5ForConditionalGeneration
+        for task, path in MODELS.items():
+            print(f"Loading BioT5 {task} from {path}...", flush=True)
+            tok = T5Tokenizer.from_pretrained(path, model_max_length=512)
+            mdl = T5ForConditionalGeneration.from_pretrained(path).to(DEVICE).eval()
+            S[task] = (tok, mdl)
+        S["torch"] = torch
+        print("BioT5 ready (mol2text + text2mol).", flush=True)
 
     @app.on_event("startup")
     async def startup():
         loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, load)
+        try:
+            await loop.run_in_executor(None, load)
+        except Exception as e:
+            import traceback; traceback.print_exc(); S["error"] = str(e)
 
     @app.get("/health")
     def health():
-        return {"status": "ok" if model else "loading", "model": "biot5"}
+        ready = "mol2text" in S and "text2mol" in S and "error" not in S
+        return {"status": "ok" if ready else "loading", "model": "biot5"}
 
     @app.get("/v1/models")
     def models_list():
         return {"object": "list", "data": [{"id": "biot5", "object": "model",
-            "description": "BioT5-base cross-modal biology+chemistry T5 (SELFIES, drug discovery, 0.3B)",
-            "tasks": list(TASK_PREFIXES.keys())}]}
+            "description": "BioT5 cross-modal chemistry/biology T5 (SELFIES)",
+            "tasks": ["mol2text", "text2mol"]}]}
+
+    def _to_selfies(s):
+        import selfies as sf
+        s = s.strip()
+        if s.startswith("[") and "]" in s:   # already SELFIES
+            return s
+        return sf.encoder(s)                 # SMILES -> SELFIES
+
+    def _gen(task, inp):
+        torch = S["torch"]
+        tok, mdl = S[task]
+        if task == "mol2text":
+            selfies = _to_selfies(inp)
+            prompt = DEF_MOL2TEXT + f"Now complete the following example -\nInput: <bom>{selfies}<eom>\nOutput: "
+        else:
+            prompt = DEF_TEXT2MOL + f"Now complete the following example -\nInput: {inp}\nOutput: "
+        ids = tok(prompt, return_tensors="pt", truncation=True, max_length=512).input_ids.to(DEVICE)
+        gc = mdl.generation_config; gc.max_length = 512; gc.num_beams = 1
+        with torch.no_grad():
+            out = mdl.generate(ids, generation_config=gc)
+        text = tok.decode(out[0], skip_special_tokens=True)
+        if task == "text2mol":
+            import selfies as sf
+            selfies = text.replace(" ", "")
+            try:
+                smiles = sf.decoder(selfies)
+            except Exception:
+                smiles = None
+            return {"task": task, "input": inp, "selfies": selfies, "smiles": smiles, "model": "biot5"}
+        return {"task": task, "input": inp, "output": text, "model": "biot5"}
 
     @app.post("/v1/science/generate")
     async def generate(request: dict):
-        if model is None:
+        if "mol2text" not in S:
             return JSONResponse({"error": "model loading"}, 503)
+        if "error" in S:
+            return JSONResponse({"error": S["error"]}, 500)
         task = request.get("task", "mol2text")
         inp = request.get("input", "")
-        demo = request.get("demo", False)
-        if demo:
-            task = "mol2text"
-            inp = "[C][Branch1][Branch1][=N][Branch1][C][=O][NH1][C][Branch1][Branch1][C][Branch1][C][=O][OH1]"  # alanine SELFIES
-        if task not in TASK_PREFIXES:
-            return JSONResponse({"error": f"Unknown task. Valid: {list(TASK_PREFIXES.keys())}"}, 400)
+        if request.get("demo"):
+            task, inp = "mol2text", "CC(=O)OC1=CC=CC=C1C(=O)O"  # aspirin SMILES
+        if task not in ("mol2text", "text2mol"):
+            return JSONResponse({"error": "task must be mol2text or text2mol"}, 400)
         loop = asyncio.get_event_loop()
         try:
-            result = await loop.run_in_executor(None, _generate, task, inp)
-            return result
+            return await loop.run_in_executor(None, _gen, task, inp)
         except Exception as e:
             import traceback; traceback.print_exc()
             return JSONResponse({"error": str(e)}, 500)
-
-    def _generate(task, inp):
-        import torch
-        prefix = TASK_PREFIXES[task]
-        full_input = prefix + inp
-        enc = tokenizer(full_input, return_tensors="pt", max_length=512, truncation=True)
-        enc = {k: v.to(DEVICE) for k, v in enc.items()}
-        with torch.no_grad():
-            out = model.generate(**enc, max_new_tokens=100, do_sample=False)
-        decoded = tokenizer.decode(out[0], skip_special_tokens=True)
-        return {"task": task, "input": inp, "output": decoded, "model": "biot5"}
-
-    def load():
-        global model, tokenizer, DEVICE
-        import torch
-        from transformers import T5ForConditionalGeneration, T5Tokenizer
-        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-        MODEL_ID = os.environ.get("MODEL_DIR", "QizhiPei/biot5-base")
-        print(f"Loading BioT5 on {DEVICE} from {MODEL_ID}...", flush=True)
-        tokenizer = T5Tokenizer.from_pretrained(MODEL_ID, model_max_length=512)
-        model = T5ForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE).eval()
-        print("BioT5 ready.", flush=True)
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
@@ -125,18 +151,22 @@ spec:
         args:
           - |
             set -e
-            if [ ! -d /data/venv/bin ]; then
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import selfies, transformers' 2>/dev/null; then
               python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
               /data/venv/bin/pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-                "torch==2.5.1" "transformers==4.44.2" sentencepiece protobuf fastapi uvicorn huggingface_hub
+                "torch==2.5.1" "transformers==4.44.2" sentencepiece protobuf fastapi uvicorn huggingface_hub selfies
             fi
-            if [ ! -f /data/model/config.json ]; then
-              /data/venv/bin/python -c "
+            /data/venv/bin/python -c "
             import os
             from huggingface_hub import snapshot_download
-            snapshot_download('QizhiPei/biot5-base', local_dir='/data/model', token=os.environ.get('HF_TOKEN'))
+            tok=os.environ.get('HF_TOKEN')
+            for repo,dst in [('QizhiPei/biot5-base-mol2text','/data/mol2text'),
+                             ('QizhiPei/biot5-base-text2mol','/data/text2mol')]:
+                if not os.path.exists(dst+'/config.json'):
+                    print('downloading',repo,flush=True)
+                    snapshot_download(repo, local_dir=dst, token=tok)
+            print('models ready',flush=True)
             "
-            fi
         resources:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
@@ -147,18 +177,19 @@ spec:
         image: python:3.11-slim
         command: ["/data/venv/bin/python", "/app/server.py"]
         env:
-          - { name: MODEL_DIR, value: /data/model }
+          - { name: MOL2TEXT_DIR, value: /data/mol2text }
+          - { name: TEXT2MOL_DIR, value: /data/text2mol }
         ports:
           - containerPort: 8080
             protocol: TCP
         resources:
           requests: { cpu: "2", memory: 4Gi }
-          limits: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "4", memory: 10Gi }
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
           initialDelaySeconds: 30
           periodSeconds: 10
-          failureThreshold: 30
+          failureThreshold: 40
         volumeMounts:
           - { name: model-data, mountPath: /data, readOnly: true }
           - { name: server-config, mountPath: /app }
