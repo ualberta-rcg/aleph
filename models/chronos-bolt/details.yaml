@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chronos-bolt-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "chronos-bolt",
+      "type": "forecast",
+      "endpoints": {
+        "primary": "/v1/forecast",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "chronos-bolt",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {
+        "horizon": 12,
+        "num_samples": 20,
+        "quantile_levels": [0.1, 0.5, 0.9]
+      },
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Chronos-Bolt zero-shot time-series forecasting (CPU)",
+        "description": "Chronos-Bolt (amazon/chronos-bolt-base): a T5 encoder-decoder time-series forecaster trained on ~100B observations. Direct multi-step quantile forecasts via patch-based context chunking; far faster than the original Chronos. POST values + horizon to /v1/forecast for mean/median/quantile forecasts. CPU.",
+        "owned_by": "Amazon",
+        "source": "amazon/chronos-bolt-base",
+        "source_url": "https://huggingface.co/amazon/chronos-bolt-base",
+        "license": "Apache-2.0",
+        "parameters": "205M",
+        "precision": "fp32",
+        "framework": "chronos-forecasting",
+        "domain": "time-series",
+        "subdomain": "forecasting",
+        "tags": [
+          "forecast",
+          "time-series",
+          "zero-shot",
+          "science",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 512,
+        "input_format": {
+          "model": "chronos-bolt",
+          "values": "[number] observations",
+          "horizon": "int future steps (default 12)",
+          "quantile_levels": "[float] (default [0.1,0.5,0.9])"
+        },
+        "output_format": {
+          "mean": "[float]",
+          "median": "[float]",
+          "quantiles": "object keyed by level"
+        }
+      }
+    }

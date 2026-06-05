@@ -29,7 +29,7 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [ ] birdnet-analyzer
 - [ ] chem-t5
 - [x] chemberta (embedding, CPU, dim=768; id=chemberta-125m)
-- [ ] chronos-bolt
+- [x] chronos-bolt (forecast, CPU; /v1/forecast OK)
 - [ ] clap
 - [ ] clay
 - [ ] climatebert

@@ -1,0 +1,120 @@
+# Chronos-Bolt: zero-shot time series forecasting (amazon/chronos-bolt-base)
+# Apache 2.0. CPU-only. Weights + venv cached on PVC.
+# API: POST /v1/forecast (JSON in/out)
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: chronos-bolt
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Step 1: Download model weights (skips if present)
+            if [ -f /data/config.json ]; then
+                echo "Chronos-Bolt weights already on PVC, skipping download."
+            else
+                pip install -q huggingface_hub
+                python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            print("Downloading amazon/chronos-bolt-base ...", flush=True)
+            snapshot_download(
+                repo_id="amazon/chronos-bolt-base",
+                local_dir="/data",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+
+            # Step 2: Create venv (skips if present)
+            if [ -d /data/venv/bin ]; then
+                echo "venv already exists, skipping install."
+            else
+                echo "Creating venv and installing chronos-forecasting..."
+                python3 -m venv /data/venv
+                . /data/venv/bin/activate
+                pip install -U pip
+                pip install chronos-forecasting fastapi uvicorn
+                echo "Install done."
+            fi
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: chronos-bolt-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            . /data/venv/bin/activate
+            exec python3 /app/server.py
+        env:
+          - name: MODEL_DIR
+            value: /data
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 20
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - name: chronos-bolt-data
+            mountPath: /data
+          - name: app
+            mountPath: /app
+    volumes:
+      - name: chronos-bolt-data
+        persistentVolumeClaim:
+          claimName: chronos-bolt-data
+      - name: app
+        configMap:
+          name: chronos-bolt-server

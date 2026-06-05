@@ -2,6 +2,13 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate chronos-bolt (time-series forecast, CPU)
+
+### chronos-bolt (Wave 1)
+- Ported Chronos-Bolt (amazon/chronos-bolt-base) from 232: `/v1/forecast`, CPU,
+  scale-to-zero (kustomize configMapGenerator for server.py). Inline token → secretKeyRef;
+  v2 card (param count corrected to ~205M). Verified horizon=6 forecast.
+
 ## 2026-06-04 — migrate alphafold2 (structure prediction, GPU)
 
 ### alphafold2 (Wave 1, GPU/HAMi)
