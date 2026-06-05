@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "alphafold2",
+      "status": "production",
       "type": "structure-prediction",
       "endpoints": {
         "primary": "/v1/science/predict",

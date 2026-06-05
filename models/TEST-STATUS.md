@@ -9,10 +9,10 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | Model | Type | GPU | Primary endpoint | Cluster state | Test status | Note |
 |---|---|---|---|---|---|---|
 | ablang2 | embedding | false | /v1/embeddings | READY | FIXED | embeddings+batch PASS; /v1/restore was broken, fixed (heavy/light pairs), now PASS |
-| aeneas | structure | true | /v1/science/predict | READY | PENDING |  |
+| aeneas | structure | true | /v1/science/predict | READY | FAIL | input alphabet lacks [/# gap chars + JAX activator timeout; needs research |
 | agront | embedding | true | /v1/embeddings | READY | PASS | 1500-dim DNA |
 | aion | embed | false | /v1/science/embed | READY | FIXED | rewrote to real AION CodecManager API; legacy_image + photometry -> 768-dim; was non-functional |
-| alphafold2 | structure-prediction | true | /v1/science/predict | READY | PENDING | had TEST.md (pre-loop) |
+| alphafold2 | structure-prediction | true | /v1/science/predict | READY | PASS | demo folds seq -> PDB |
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
@@ -32,7 +32,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomedclip | embed | true | /v1/embeddings | READY | PASS | text_embeddings (texts/images) |
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
-| boltz-1 | structure | true | /v1/science/predict | READY | PENDING |  |
+| boltz-1 | structure | true | /v1/science/predict | READY | FAIL | torch runtime error during folding; needs deep-fix |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
 | brainlm | embed | true | /v1/embeddings | READY | PENDING |  |
 | caduceus | embedding | true | /v1/embeddings | NOT-READY | FAIL | mamba_ssm/selective_scan_cuda torch-CUDA ABI mismatch |

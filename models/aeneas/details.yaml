@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "aeneas",
+      "status": "broken",
       "type": "structure",
       "description_short": "Generative neural network for contextualising Latin inscriptions (DeepMind Nature 2025)",
       "description": "Aeneas is a generative neural network from DeepMind (Nature 2025) for contextualising Latin inscriptions. It restores missing text, dates inscriptions, and predicts geographic origin. Built on JAX/Flax with the predictingthepast framework. Weights from GCS ithaca-resources bucket (~500MB). Uses JAX GPU runtime.",

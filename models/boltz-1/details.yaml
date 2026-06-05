@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "boltz-1",
+      "status": "broken",
       "type": "structure",
       "description_short": "Open-source biomolecular structure prediction (protein/RNA/DNA/ligand, MIT)",
       "description": "Boltz-1 from boltz-community is an open-source biomolecular structure prediction model (MIT). Predicts 3D structures of proteins, RNA, DNA, small molecules, and glycans. AlphaFold3-class capability. Weights ~10.5GB (boltz1.ckpt + boltz1_conf.ckpt). Uses MSA server by default. Supports recycling and sampling steps configuration.",
