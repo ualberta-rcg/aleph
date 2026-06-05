@@ -20,7 +20,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | astropt | embed | true | /v1/science/embed | READY | PENDING |  |
 | astrosage | chat | true | /v1/chat/completions | READY | PENDING |  |
 | aurora | forecast | true | /v1/science/forecast | READY | PENDING |  |
-| bge-m3 | embedding | false | /v1/embeddings | READY | PENDING |  |
+| bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PENDING |  |
 | bge-small |  |  | - | READY | PENDING |  |
 | biobert | embedding | true | /v1/embeddings | READY | PENDING |  |
