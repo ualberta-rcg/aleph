@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clinicalbert-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "clinicalbert-110m",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "clinicalbert",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Bio_ClinicalBERT — clinical text embeddings (768-dim)",
+        "description": "Bio_ClinicalBERT (emilyalsentzer), BERT initialized from BioBERT and trained on MIMIC-III clinical notes. Produces 768-dim mean-pooled embeddings for clinical NLP: de-identification context, clinical NER, similarity and retrieval. Max 512 tokens. CPU.",
+        "owned_by": "emilyalsentzer",
+        "source": "emilyalsentzer/Bio_ClinicalBERT",
+        "source_url": "https://huggingface.co/emilyalsentzer/Bio_ClinicalBERT",
+        "license": "MIT",
+        "parameters": "110M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "biomedical",
+        "subdomain": "clinical-nlp",
+        "tags": [
+          "embedding",
+          "science",
+          "clinical",
+          "biomedical",
+          "bert",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 512,
+        "input_format": {
+          "model": "clinicalbert-110m",
+          "input": "clinical text str or [str]"
+        },
+        "embedding_dimensions": 768,
+        "pooling": "mean"
+      }
+    }
