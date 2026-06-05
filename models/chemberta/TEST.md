@@ -1,24 +1,21 @@
 # chemberta — Test Report
 
-Cluster 230, gateway `http://10.43.79.101:80`. Type: embedding (CPU). id `chemberta-125m`.
+Cluster 230, gateway ClusterIP `http://10.43.79.101:80`. Type: embedding (CPU). id `chemberta-125m`.
 
-## Scale-up
-- Cold start: venv + HF snapshot_download, then load. `3/3 Running`. Cold-start guard
-  returns friendly 503 (`model_scaled_to_zero`) until warm. ~3-4 min.
+## Verified this pass (2026-06-05)
 
-## Endpoint tests (PASS)
-### POST /v1/embeddings (batch of 2 SMILES)
+### POST /v1/embeddings — PASS
 ```bash
-curl -s -X POST $GW/v1/embeddings -H "Content-Type: application/json" \
-  -d '{"model":"chemberta-125m","input":["CCO","aspirin"]}'
+curl -s -X POST $GW/v1/embeddings -H 'Content-Type: application/json' \
+  -d '{"model":"chemberta-125m","input":"CCO"}'
 ```
-→ `count=2, dim=768`. PASS.
+→ `object=list`, **dim=768**. Input domain: SMILES molecular strings. PASS.
 
 ### Catalog
-- `GET /v1/models?all=true` → `chemberta-125m` discovered (embedding). PASS.
+- `GET /v1/models?all=true` → `chemberta-125m` present (type=embedding). PASS.
 
 ## Not applicable
-- OpenAI chat / Anthropic / reasoning: N/A (embedding model).
+- OpenAI chat / Anthropic `/v1/messages` / reasoning: N/A (embedding model).
 
 ## Card parity
-id=chemberta-125m, k8s_name=chemberta, type=embedding, dim=768 (verified), gpu=false.
+id=chemberta-125m, type=embedding, dim=768 (verified), gpu=false, scale-to-zero.

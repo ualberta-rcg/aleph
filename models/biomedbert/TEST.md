@@ -1,26 +1,21 @@
 # biomedbert — Test Report
 
-Cluster 230, gateway `http://10.43.79.101:80`. Type: embedding (CPU). Model id `biomedbert-110m`.
+Cluster 230, gateway ClusterIP `http://10.43.79.101:80`. Type: embedding (CPU). id `biomedbert-110m`.
 
-## Scale-up
-- Cold start from zero: venv build + HF snapshot_download (~440MB) on first run, then
-  server loads. Pod reached `3/3 Running`, `/health` 200. Cold start ~3-4 min.
+## Verified this pass (2026-06-05)
 
-## Endpoint tests (PASS)
-
-### POST /v1/embeddings (batch)
+### POST /v1/embeddings — PASS
 ```bash
-curl -s -X POST $GW/v1/embeddings -H "Content-Type: application/json" \
-  -d '{"model":"biomedbert-110m","input":["BRCA1 is associated with breast cancer.","aspirin"]}'
+curl -s -X POST $GW/v1/embeddings -H 'Content-Type: application/json' \
+  -d '{"model":"biomedbert-110m","input":"protein folding and gene expression"}'
 ```
-→ `count=2, dim=768`. PASS.
+→ `object=list`, **dim=768**. Input domain: biomedical text (PubMed). PASS.
 
 ### Catalog
-- `GET /v1/models?all=true` → `biomedbert-110m` discovered (type=embedding, ctx=512). PASS.
+- `GET /v1/models?all=true` → `biomedbert-110m` present (type=embedding). PASS.
 
 ## Not applicable
-- OpenAI chat / Anthropic / reasoning: N/A (embedding model).
+- OpenAI chat / Anthropic `/v1/messages` / reasoning: N/A (embedding model).
 
 ## Card parity
-`details.yaml` matches deployed config: id=biomedbert-110m, k8s_name=biomedbert,
-type=embedding, context_window=512, embedding_dimensions=768 (verified), gpu=false.
+id=biomedbert-110m, type=embedding, dim=768 (verified), gpu=false, scale-to-zero.

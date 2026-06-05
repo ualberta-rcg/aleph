@@ -28,7 +28,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biolinkbert | embedding | true | /v1/embeddings | READY | PENDING |  |
 | biomed-roberta | embedding | true | /v1/embeddings | READY | PENDING |  |
 | biomedbert-large | embedding | true | /v1/science/embed | READY | PENDING |  |
-| biomedbert | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| biomedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id biomedbert-110m) |
 | biomedclip | embed | true | /v1/embeddings | READY | PENDING |  |
 | biot5 | science-generate | false | /v1/science/generate | READY | PENDING | had TEST.md (pre-loop) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PENDING | had TEST.md (pre-loop) |
@@ -37,7 +37,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | brainlm | embed | true | /v1/embeddings | READY | PENDING |  |
 | caduceus | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | PENDING | had TEST.md (pre-loop) |
-| chemberta | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
 | chemgpt-19m | generate | true | /v1/science/generate | READY | PENDING |  |
 | chemgpt | generate | true | /v1/science/generate | READY | PENDING |  |
 | chgnet | force-field | true | /v1/science/energy | NOT-READY | PENDING |  |
@@ -47,7 +47,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | climatebert | classification | false | /v1/science/classify | READY | PENDING | had TEST.md (pre-loop) |
 | climax | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | clinical-longformer | embedding | true | /v1/science/embed | READY | PENDING |  |
-| clinicalbert | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
 | command-r-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | croma | segment | true | /v1/embeddings | READY | PENDING |  |
 | crysta-llm | chat | true | /v1/science/generate | NOT-READY | PENDING |  |
@@ -55,8 +55,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | depth-anything | depth | false | /v1/vision/depth | READY | PENDING |  |
 | diffdock | dock | true | /v1/dock | NOT-READY | PENDING |  |
 | dino-vit-b8 | embed | false | /v1/vision/embed | READY | PENDING | had TEST.md (pre-loop) |
-| dnabert-2 | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
-| dnabert-s | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| dnabert-2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-2-117m) |
+| dnabert-s | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-s) |
 | dust3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
 | earthpt | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | efficientnet-b0 | classify | false | /v1/vision/classify | READY | PENDING | had TEST.md (pre-loop) |
@@ -85,7 +85,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | granite-geospatial-biomass | classify | true | /v1/science/predict | NOT-READY | PENDING |  |
 | granite-geospatial-ocean | classify | true | /v1/science/embed | NOT-READY | PENDING |  |
 | graphcast | forecast | false | /v1/science/predict | READY | PENDING |  |
-| hyenadna | embedding | false | /v1/embeddings | READY | PENDING |  |
+| hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
 | kandinsky-3 | image | true | /v1/images/generations | NO-ISVC | PENDING |  |
 | labram | embed | false | /v1/science/embed | READY | PENDING |  |
@@ -128,7 +128,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | prostt5 | embedding | true | /v1/translate | NOT-READY | PENDING |  |
 | proteinmpnn | design | true | /v1/design | READY | PENDING |  |
 | protgpt2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
-| pubmedbert | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | qwen25-vl-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | qwen35-122b | chat | ? | /v1/chat/completions | READY | PENDING |  |
@@ -141,13 +141,13 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | saprot-650m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | satmae | embed | false | /v1/science/embed | READY | PENDING |  |
 | scgpt | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| scibert | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | PENDING |  |
 | scincl | embedding | true | /v1/embeddings | READY | PENDING |  |
 | seisbench | classify | true | /v1/science/detect | READY | PENDING |  |
 | speaches | standalone | true | - | NO-ISVC | PENDING |  |
-| specter2 | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
-| splicebert | embedding | false | /v1/embeddings | READY | PENDING |  |
+| specter2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id specter2-110m) |
+| splicebert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id splicebert-86m) |
 | stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PENDING |  |
 | sundial | forecast | false | /v1/science/forecast | READY | PENDING |  |
 | surya | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
