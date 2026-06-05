@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "saprot-650m",
+      "status": "production",
       "type": "embedding",
       "description_short": "Structure-aware protein LM combining amino acids and 3Di tokens (Westlake)",
       "description": "SaProt 650M from Westlake University combines amino acid and 3Di structure tokens in a single vocabulary, making it structure-aware. Uses AF2-predicted structures for training. ESM-2 backbone architecture. Embeddings encode both sequence and structural information. 650M parameters.",

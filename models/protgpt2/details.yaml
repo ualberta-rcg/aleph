@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "protgpt2",
+      "status": "production",
       "type": "chat",
       "description_short": "ProtGPT2 protein sequence generation model — generates novel protein sequences from scratch.",
       "description": "ProtGPT2 is a protein language model (nferruz/ProtGPT2) based on the GPT-2 architecture, trained on natural protein sequences to generate novel, stable protein sequences. It can generate proteins from scratch or continue partial sequences. Uses HuggingFace GPT2LMHeadModel. MIT license. GPU-accelerated with float16, ~2GB VRAM.",

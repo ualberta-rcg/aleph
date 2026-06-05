@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "prostt5",
+      "status": "production",
       "type": "embedding",
       "description_short": "Protein sequence to 3Di structure token translation (Rostlab)",
       "description": "ProstT5 from Rostlab translates between protein amino acid sequences and 3Di (3-state discrete) structure tokens. Enables fast structure prediction without MSA. Based on T5ForConditionalGeneration. Supports seq2struct and struct2seq directions. ~800M parameters. Requires transformers==4.40.2 and sentencepiece.",

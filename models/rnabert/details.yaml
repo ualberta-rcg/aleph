@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "rnabert",
+      "status": "production",
       "type": "embedding",
       "description_short": "RNA BERT pre-trained on structured alignments from Rfam (~86M)",
       "description": "RNA-BERT from multimolecule is pre-trained on the Rfam database of structured RNA alignments. ~86M parameters. Produces embeddings useful for RNA secondary structure prediction and functional element analysis. Uses multimolecule RnaTokenizer. Max 440 residue context. AGPL-3.0 license.",

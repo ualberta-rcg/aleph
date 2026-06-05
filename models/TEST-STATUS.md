@@ -120,24 +120,24 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | presto | classify | false | /v1/embeddings | READY | FAIL | band-layout mismatch - needs correct presto format |
 | prithvi-eo | embed | true | /v1/embed | NOT-READY | PENDING |  |
 | prithvi-wxc | embed | true | /v1/science/forecast | NOT-READY | PENDING |  |
-| progen2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
+| progen2 | generate | true | /v1/completions | NOT-READY | FAIL | ProgressDeadlineExceeded; init download too slow, needs progress-deadline bump |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
-| prostt5 | embedding | true | /v1/translate | NOT-READY | PENDING |  |
+| prostt5 | translate | true | /v1/translate | READY | PASS | AA->3Di structural alphabet (recreated) |
 | proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores |
-| protgpt2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
+| protgpt2 | generate | true | /v1/completions | READY | PASS | de novo protein generation (recreated) |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | qwen25-vl-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | qwen35-122b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
-| rnabert | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
-| rnafm | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
+| rnabert | embedding | true | /v1/science/embed | READY | PASS | 120-dim RNA (recreated) |
+| rnafm | embedding | true | /v1/science/embed | READY | PASS | 640-dim RNA (recreated) |
 | rnamsm | embedding | true | /v1/science/embed | READY | PASS | 768-dim RNA (field: sequence) |
 | sapbert | embedding | true | /v1/science/embed | READY | PASS | 768-dim biomedical |
-| saprot-650m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
+| saprot-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim (AA+3Di tokens; recreated) |
 | satmae | embed | false | /v1/science/embed | READY | PASS | HxW RGB -> cls embedding |
-| scgpt | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
+| scgpt | embedding | true | /v1/embeddings | READY | FIXED | _encode needs src_key_padding_mask; 512-dim |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
 | scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper |
@@ -149,7 +149,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | sundial | forecast | false | /v1/science/forecast | READY | FIXED | fixed input shape + pinned transformers 4.40.2; forecast+quantiles PASS |
 | surya | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | terramind-flood | classify | true | /v1/science/classify | NOT-READY | PENDING |  |
-| thor | forecast | true | /v1/science/embed | NOT-READY | PENDING |  |
+| thor | embed | true | /v1/science/embed | NOT-READY | FAIL | ProgressDeadlineExceeded; init too slow (+terratorch lib check) |
 | time-moe | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | timer-xl-1b | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | timer | forecast | true | /v1/forecast | NOT-READY | PENDING |  |

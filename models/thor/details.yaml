@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "thor",
+      "status": "broken",
       "type": "forecast",
       "description_short": "Norwegian Computing Center THOR 1.0-base multi-sensor geospatial foundation model. FlexiViT-Base.",
       "description": "THOR 1.0-base is a compute-adaptive multi-sensor geospatial foundation model from the Norwegian Computing Center (NR) and ESA. Built on FlexiViT-Base backbone (~400MB), it supports Sentinel-1 SAR, Sentinel-2 MSI, and Sentinel-3 OLCI/SLSTR sensors at resolutions from 10m to 1000m. The model features flexible patch sizes and ground cover ranges (1000m to 100,000m+). It generates 768-dim patch embeddings for satellite image analysis. Apache 2.0 license.",

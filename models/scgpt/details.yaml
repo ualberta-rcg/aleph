@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "scgpt",
+      "status": "production",
       "type": "embedding",
       "description_short": "scGPT single-cell gene expression embeddings",
       "description": "scGPT (bowang-lab/scGPT) is a foundation model for single-cell gene expression data, trained on 33 million cells. Returns 512-dimensional cell embeddings from gene name + expression value pairs. Uses a TransformerModel architecture with gene tokenization via GeneVocab. Supports batch embedding of multiple cells. GPU accelerated with CPU fallback. Weights from tdc/scGPT on HuggingFace.",

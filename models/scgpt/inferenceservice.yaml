@@ -160,8 +160,11 @@ data:
             gene_ids = torch.tensor([gene_ids], dtype=torch.long, device=DEVICE)
             values_t = torch.tensor([values], dtype=torch.float32, device=DEVICE)
 
+            # single, unpadded cell -> all-False padding mask
+            pad_mask = torch.zeros_like(gene_ids, dtype=torch.bool, device=DEVICE)
             with torch.no_grad():
-                embeddings = model._encode(gene_ids, values_t)
+                embeddings = model._encode(gene_ids, values_t,
+                                           src_key_padding_mask=pad_mask)
                 emb = embeddings.mean(dim=1).cpu().float().numpy().flatten().tolist()
 
             results.append(emb)

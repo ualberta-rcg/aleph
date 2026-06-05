@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "progen2",
+      "status": "broken",
       "type": "chat",
       "description_short": "ProGen2-XLarge (6.4B) protein sequence generation model from Salesforce Research.",
       "description": "ProGen2-XLarge is a 6.4B parameter protein language model from Salesforce Research (hugohrban/progen2-xlarge). It generates novel protein sequences via autoregressive language modeling. Given a partial amino acid sequence or prompt, it produces plausible protein sequence completions. Uses HuggingFace AutoModelForCausalLM with trust_remote_code. BSD-3 license. GPU-accelerated with float16.",

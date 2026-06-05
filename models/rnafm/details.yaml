@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "rnafm",
+      "status": "production",
       "type": "embedding",
       "description_short": "RNA foundation model for non-coding RNA (100M, RNAcentral)",
       "description": "RNA-FM from multimolecule is a 100M parameter foundation model trained on 23.7M ncRNA sequences from RNAcentral. Produces embeddings for non-coding RNA functional prediction and structure analysis. Uses multimolecule RnaTokenizer and RnaFmModel. RNA-FM license (non-commercial).",
