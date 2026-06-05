@@ -1,0 +1,13 @@
+# Holds the on-PVC venv (TTS + torch), the XTTS-v2 model cache, and saved voices.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: xtts-v2-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 25Gi

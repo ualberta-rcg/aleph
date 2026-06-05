@@ -1,0 +1,131 @@
+# command-r-7b adapted from POC (232) for cluster 230 / HAMi vGPU.
+# Key changes vs POC:
+#   - nodeSelector: nvidia.com/gpu.product=NVIDIA-L40S  ->  gpu: "on" (HAMi node label)
+#   - resources.limits: add nvidia.com/gpumem (request a VRAM slice, NOT a whole GPU)
+#     7B bf16 weights ~15GB; 24576 MiB (24GB) of a 48GB L40S = "less than a GPU".
+# NOTE: HF_TOKEN below is carried over from the POC for the gated Cohere repo.
+#       Move it to a K8s Secret before any non-test use.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: command-r-7b
+  namespace: models
+spec:
+  predictor:
+    minReplicas: 1
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if Path("/data/config.json").is_file():
+                print("Model already on PVC, skipping download.", flush=True)
+            else:
+                from huggingface_hub import snapshot_download
+                print("Downloading CohereForAI/c4ai-command-r7b-12-2024 ...", flush=True)
+                snapshot_download(
+                    repo_id="CohereForAI/c4ai-command-r7b-12-2024",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: command-r-7b-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        args:
+          - --model=/data
+          - --served-model-name=command-r-7b
+          - --port=8080
+          - --tensor-parallel-size=1
+          - --max-model-len=65536
+          - --dtype=bfloat16
+          - --gpu-memory-utilization=0.90
+          - --trust-remote-code
+          # NOTE: tools stay OFF. command-r7b emits Cohere's
+          # <|START_THINKING|>/<|START_ACTION|> format. The only Cohere parser in
+          # vLLM (cohere_command3) targets command-a-reasoning and needs the extra
+          # `cohere_melody` pip package (absent from the stock image), so enabling it
+          # here would fail startup / leak control tokens. Card keeps supports_tools=false
+          # until we ship a custom image with cohere_melody. Engine upgraded v0.8.4 -> v0.20.2.
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "32768"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 40
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: command-r-7b-data
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      # Persistent NFS weights (nfs-models SC = OneFS-safe 128Ki wsize). Downloaded
+      # once, reused across pod restarts. See models/command-r-7b/pvc.yaml.
+      - name: command-r-7b-data
+        persistentVolumeClaim:
+          claimName: command-r-7b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 4Gi

@@ -1,0 +1,44 @@
+## Tyk API Definition: Reverse proxy to Istio IngressGateway
+## This configures Tyk to forward all requests under /serving/ to
+## the Istio IngressGateway, which routes to KServe InferenceServices.
+##
+## Apply via: kubectl apply -n tyk -f tyk-api-proxy-istio.yaml
+## Or use the Tyk Gateway REST API.
+##
+## In OSS mode, API definitions are loaded from ConfigMaps/Secrets
+## mounted into the gateway pod at /opt/tyk-gateway/apps/
+##
+## For dynamic API management, consider installing Tyk Operator.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tyk-api-istio-proxy
+  namespace: tyk
+data:
+  istio-proxy.json: |
+    {
+      "name": "istio-inferenceservice-proxy",
+      "slug": "istio-inferenceservice-proxy",
+      "api_id": "istio-kserve-proxy",
+      "org_id": "orgid",
+      "use_keyless": true,
+      "version_data": {
+        "not_versioned": true,
+        "versions": {
+          "Default": {
+            "name": "Default",
+            "use_extended_paths": true
+          }
+        }
+      },
+      "proxy": {
+        "listen_path": "/serving/",
+        "target_url": "http://istio-ingressgateway.istio-system.svc.cluster.local:80",
+        "strip_listen_path": false,
+        "enable_load_balancing": false
+      },
+      "active": true,
+      "domain": "",
+      "do_not_track": true
+    }

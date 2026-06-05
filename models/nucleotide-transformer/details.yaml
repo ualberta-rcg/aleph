@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nucleotide-transformer-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "nucleotide-transformer",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "nucleotide-transformer",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 2048,
+        "max_input_tokens": 2048
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "InstaDeep Nucleotide Transformer v2 (500M), a DNA foundation model trained on 3,200+ genomes across multiple species.",
+        "description": "InstaDeep Nucleotide Transformer v2 (500M), a DNA foundation model trained on 3,200+ genomes across multiple species. Embeds nucleotide (ACGT) sequences (6-mer tokens) into 1024-dim vectors for genomics tasks. Served on a HAMi sub-GPU slice.",
+        "owned_by": "InstaDeepAI",
+        "source": "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species",
+        "source_url": "https://huggingface.co/InstaDeepAI/nucleotide-transformer-v2-500m-multi-species",
+        "license": "Apache-2.0",
+        "parameters": "500M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "genomics",
+        "subdomain": "dna-language-model",
+        "tags": [
+          "embedding",
+          "science",
+          "genomics",
+          "dna",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 2048,
+        "input_format": {
+          "model": "nucleotide-transformer",
+          "input": "DNA sequence str or [str] (ACGT)"
+        },
+        "embedding_dimensions": 1024,
+        "pooling": "mean"
+      }
+    }

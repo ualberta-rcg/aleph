@@ -1,0 +1,162 @@
+# ProkBERT-mini: Prokaryotic DNA language model (Neural Bioinformatics Research Group, 2024)
+# HuggingFace: neuralbioinfo/prokbert-mini (MIT)
+# Trained on 206B nucleotides from bacterial genomic data; 6-mer Local Context-Aware tokenizer
+# API: POST /v1/embeddings — bacterial DNA sequence → 768-dim embedding
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prokbert-server
+  namespace: models
+data:
+  server.py: |
+    """
+    ProkBERT-mini: Prokaryotic (bacterial) DNA language model.
+    20.6M parameters, 6-mer LCA tokenizer, MegatronBERT architecture.
+    Trained on 206 billion nucleotides from bacterial genomes.
+
+    Endpoints:
+      GET  /health            → {"status":"ok","model":"prokbert-mini"}
+      GET  /v1/models         → model card
+      POST /v1/embeddings     → {"input":"ATCG...", "model":"prokbert-mini"}
+      POST /v1/science/predict → {"sequence":"ATCG...", "task":"embed"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = "neuralbioinfo/prokbert-mini"
+    DEVICE = "cpu"
+
+    app = FastAPI()
+    model = None
+    tokenizer = None
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModel
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ProkBERT-mini on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+        model = AutoModel.from_pretrained(MODEL_ID, trust_remote_code=True).to(DEVICE).eval()
+        print("ProkBERT-mini ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "prokbert-mini"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "prokbert-mini", "object": "model", "owned_by": "neuralbioinfo",
+             "type": "dna-lm", "license": "MIT",
+             "description": "ProkBERT-mini 20.6M prokaryotic DNA BERT; MCC=0.74 for E.coli promoter, 0.85 for phage detection"}
+        ]}
+
+    def _embed(sequence: str):
+        import torch
+        enc = tokenizer(sequence, return_tensors="pt", max_length=1024,
+                        truncation=True, padding=True).to(DEVICE)
+        with torch.no_grad():
+            out = model(**enc)
+        hidden = out.last_hidden_state
+        mask = enc.get("attention_mask", None)
+        if mask is not None:
+            mask = mask.unsqueeze(-1).float()
+            emb = (hidden * mask).sum(1) / mask.sum(1)
+        else:
+            emb = hidden.mean(dim=1)
+        return emb[0].cpu().float().tolist()
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        raw = request.get("input", "")
+        seqs = raw if isinstance(raw, list) else [raw]
+        seqs = [str(s).upper().strip() for s in seqs]
+        seqs = [s for s in seqs if s]
+        if not seqs:
+            raise HTTPException(400, "input required")
+        loop = asyncio.get_event_loop()
+        data = []
+        for i, s in enumerate(seqs):
+            emb = await loop.run_in_executor(None, _embed, s)
+            data.append({"object": "embedding", "embedding": emb, "index": i})
+        return JSONResponse({"object": "list", "data": data, "model": "prokbert-mini"})
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        seq = request.get("sequence", "").upper().strip()
+        if not seq:
+            raise HTTPException(400, "sequence required")
+        if len(seq) > 512:
+            raise HTTPException(400, "sequence length > 512")
+        loop = asyncio.get_event_loop()
+        emb = await loop.run_in_executor(None, _embed, seq)
+        return JSONResponse({
+            "sequence": seq,
+            "embedding": emb,
+            "dims": len(emb),
+            "model": "prokbert-mini",
+        })
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: prokbert
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu121 2>&1 | tail -2
+            pip install -q transformers==4.46.3 sentencepiece fastapi uvicorn 2>&1 | tail -2
+            exec python3 /app/server.py
+        env:
+          - { name: HF_HOME, value: "/tmp/hf_cache" }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "1", memory: 2Gi }
+          limits:   { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "3072" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 30
+        volumeMounts:
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: server-config
+        configMap:
+          name: prokbert-server

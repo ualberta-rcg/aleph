@@ -1,0 +1,14 @@
+# Weights persist on NFS (nfs-client default SC = OneFS-safe 128Ki wsize) so scale-from-zero
+# cold starts skip the ~14GB re-download. See storage/nfs-client-storageclass.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gpt-oss-20b
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 40Gi

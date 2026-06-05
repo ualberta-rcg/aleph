@@ -1,0 +1,297 @@
+# ProteinMPNN: fixed-backbone protein sequence design
+# GPU, scale-to-zero. API: POST /v1/design
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proteinmpnn-server
+  namespace: models
+data:
+  server.py: |
+    """
+    ProteinMPNN: fixed-backbone protein sequence design (dauparas/ProteinMPNN).
+    Accepts PDB backbone, returns designed sequences with scores.
+    API: POST /v1/design
+    """
+    import os, asyncio, re
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        import sys
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ProteinMPNN on {DEVICE}...", flush=True)
+
+        repo_path = os.path.join(MODEL_DIR, "repo")
+        if repo_path not in sys.path:
+            sys.path.insert(0, repo_path)
+
+        from protein_mpnn_utils import ProteinMPNN
+
+        weight_path = os.path.join(MODEL_DIR, "weights", "v_48_020.pt")
+        if not os.path.exists(weight_path):
+            weight_path = os.path.join(MODEL_DIR, "v_48_020.pt")
+
+        checkpoint = torch.load(weight_path, map_location=DEVICE, weights_only=False)
+        # Architecture per dauparas/ProteinMPNN run script: hidden_dim 128, 3+3 layers,
+        # k_neighbors = checkpoint['num_edges'] (48 for the v_48_* vanilla weights).
+        model = ProteinMPNN(
+            num_letters=21,
+            node_features=128,
+            edge_features=128,
+            hidden_dim=128,
+            num_encoder_layers=3,
+            num_decoder_layers=3,
+            k_neighbors=checkpoint.get("num_edges", 48),
+            augment_eps=0.0,
+            ca_only=False
+        )
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"ProteinMPNN ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "proteinmpnn", "device": DEVICE}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "proteinmpnn", "object": "model", "created": 1700000000,
+             "owned_by": "dauparas", "type": "design"}
+        ]}
+
+    @app.post("/v1/design")
+    async def design(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+
+        pdb = request.get("pdb")
+        if not pdb:
+            return JSONResponse({"error": "'pdb' field required"}, 400)
+
+        num_seq = request.get("num_sequences", 8)
+        temperature = request.get("temperature", 0.1)
+        chains_to_design = request.get("chains_to_design")
+        omit_AAs = request.get("omit_AAs", "")
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(
+                None, _design, pdb, num_seq, temperature, chains_to_design, omit_AAs
+            )
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _design(pdb_str, num_seq, temperature, chains_to_design, omit_AAs):
+        # Use ProteinMPNN's own helpers (parse_PDB + tied_featurize + model.sample),
+        # exactly like protein_mpnn_run.py, so we stay compatible with the upstream
+        # model.sample() API (S_true, chain_encoding_all, mask, ... + dict return).
+        import torch, numpy as np, tempfile, os, copy
+        from protein_mpnn_utils import (
+            tied_featurize, parse_PDB, StructureDatasetPDB, _scores, _S_to_seq,
+        )
+
+        ALPHABET = "ACDEFGHIKLMNPQRSTVWYX"
+
+        with tempfile.NamedTemporaryFile("w", suffix=".pdb", delete=False) as tf:
+            tf.write(pdb_str)
+            pdb_path = tf.name
+        try:
+            pdb_dict_list = parse_PDB(pdb_path)
+        finally:
+            os.unlink(pdb_path)
+        if not pdb_dict_list:
+            return JSONResponse({"error": "No chains/backbone parsed from PDB"}, 400)
+
+        dataset = StructureDatasetPDB(pdb_dict_list, truncate=None, max_length=200000)
+        if len(dataset) == 0:
+            return JSONResponse({"error": "Structure failed to featurize"}, 400)
+        protein = dataset[0]
+        name = pdb_dict_list[0]["name"]
+
+        all_chains = [k[-1] for k in pdb_dict_list[0] if k.startswith("seq_chain_")]
+        if chains_to_design:
+            designed = [c for c in chains_to_design if c in all_chains] or all_chains
+        else:
+            designed = all_chains
+        fixed = [c for c in all_chains if c not in designed]
+        chain_id_dict = {name: (designed, fixed)}
+
+        omit_list = list(omit_AAs) if omit_AAs else []
+        omit_AAs_np = np.array([aa in omit_list for aa in ALPHABET]).astype(np.float32)
+        bias_AAs_np = np.zeros(len(ALPHABET), dtype=np.float32)
+
+        batch_clones = [copy.deepcopy(protein)]
+        (X, S, mask, lengths, chain_M, chain_encoding_all, chain_list_list,
+         visible_list_list, masked_list_list, masked_chain_length_list_list,
+         chain_M_pos, omit_AA_mask, residue_idx, dihedral_mask,
+         tied_pos_list_of_lists_list, pssm_coef, pssm_bias, pssm_log_odds_all,
+         bias_by_res_all, tied_beta) = tied_featurize(
+            batch_clones, DEVICE, chain_id_dict, None, None, None, None, None,
+            ca_only=False,
+        )
+
+        temp = float(temperature)
+        sequences, results = [], []
+        with torch.no_grad():
+            for _ in range(int(num_seq)):
+                randn = torch.randn(chain_M.shape, device=X.device)
+                sample_dict = model.sample(
+                    X, randn, S, chain_M, chain_encoding_all, residue_idx,
+                    mask=mask, temperature=temp,
+                    omit_AAs_np=omit_AAs_np, bias_AAs_np=bias_AAs_np,
+                    chain_M_pos=chain_M_pos, omit_AA_mask=omit_AA_mask,
+                    pssm_coef=pssm_coef, pssm_bias=pssm_bias, pssm_multi=0.0,
+                    pssm_log_odds_flag=False, pssm_log_odds_mask=None,
+                    pssm_bias_flag=False, bias_by_res=bias_by_res_all,
+                )
+                S_sample = sample_dict["S"]
+                log_probs = model(
+                    X, S_sample, mask, chain_M * chain_M_pos, residue_idx,
+                    chain_encoding_all, randn, use_input_decoding_order=True,
+                    decoding_order=sample_dict["decoding_order"],
+                )
+                mask_for_loss = mask * chain_M * chain_M_pos
+                score = float(_scores(S_sample, log_probs, mask_for_loss).cpu().numpy()[0])
+                gscore = float(_scores(S_sample, log_probs, mask).cpu().numpy()[0])
+                rec = float((torch.sum(torch.sum(
+                    torch.nn.functional.one_hot(S[0], 21)
+                    * torch.nn.functional.one_hot(S_sample[0], 21), axis=-1)
+                    * mask_for_loss[0]) / torch.sum(mask_for_loss[0])).cpu())
+                seq = _S_to_seq(S_sample[0], chain_M[0])
+                sequences.append(seq)
+                results.append({
+                    "sequence": seq,
+                    "score": round(score, 4),
+                    "global_score": round(gscore, 4),
+                    "seq_recovery": round(rec, 4),
+                })
+
+        native_seq = _S_to_seq(S[0], chain_M[0])
+        return {
+            "model": "proteinmpnn",
+            "sequences": sequences,
+            "results": results,
+            "num_sequences": len(sequences),
+            "temperature": temp,
+            "chains_designed": designed,
+            "native_sequence": native_seq,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: proteinmpnn
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git curl > /dev/null 2>&1
+            
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cu121
+              /data/venv/bin/pip install numpy fastapi uvicorn huggingface_hub
+            else
+              echo "venv exists"
+            fi
+            
+            if [ ! -f /data/weights/v_48_020.pt ]; then
+              echo "Downloading ProteinMPNN weights from GitHub..."
+              mkdir -p /data/weights
+              curl -sL -o /data/weights/v_48_020.pt \
+                "https://raw.githubusercontent.com/dauparas/ProteinMPNN/main/vanilla_model_weights/v_48_020.pt"
+            else
+              echo "Weights exist"
+            fi
+            
+            if [ ! -f /data/repo/protein_mpnn_utils.py ]; then
+              echo "Cloning ProteinMPNN repo..."
+              git clone --depth 1 https://github.com/dauparas/ProteinMPNN.git /tmp/mpnn
+              mkdir -p /data/repo
+              cp /tmp/mpnn/protein_mpnn_utils.py /data/repo/
+            else
+              echo "Repo exists"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data }
+          - { name: PYTHONPATH, value: /data/repo }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        # HAMi sub-GPU slice: 1 vGPU capped at 4 GiB VRAM. ProteinMPNN is ~1.7M
+        # params (fp32, tiny) — measured ~0.55 GiB live on crambin, almost all
+        # CUDA/cuDNN context; 4 GiB leaves headroom for large multi-chain inputs
+        # yet is <1/11 of an L40S (48 GiB). nodeSelector gpu:on + gpumem = HAMi.
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "4096" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: proteinmpnn-data
+      - name: app
+        configMap:
+          name: proteinmpnn-server

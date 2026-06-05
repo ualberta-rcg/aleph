@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: xtts-v2-server
+  namespace: models
+data:
+  server.py: |
+    """XTTS-v2 text-to-speech server."""
+    import os, io, base64, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse, Response
+    import uvicorn
+
+    MODEL_NAME = "xtts-v2"
+    CACHE_DIR = os.environ.get("HF_HOME", "/data/xtts-cache")
+
+    app = FastAPI()
+    tts = None
+    SPEAKERS = []          # built-in speaker names
+    DEFAULT_SPEAKER = None
+
+    def load():
+        global tts, SPEAKERS, DEFAULT_SPEAKER
+        import os
+        os.environ["COQUI_TOS_AGREED"] = "1"
+        # PyTorch 2.6 changed torch.load default to weights_only=True which
+        # breaks TTS checkpoint loading. Patch it before importing TTS.
+        import torch
+        _orig_load = torch.load
+        def _patched_load(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            return _orig_load(*args, **kwargs)
+        torch.load = _patched_load
+        from TTS.api import TTS
+        print(f"Loading {MODEL_NAME}...", flush=True)
+        tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=True, progress_bar=False)
+        # XTTS-v2 is multi-speaker: a speaker (built-in name or cloned wav) is
+        # mandatory. Discover the built-in speakers and pick a default.
+        try:
+            SPEAKERS = list(tts.synthesizer.tts_model.speaker_manager.speakers.keys())
+        except Exception:
+            try:
+                SPEAKERS = list(getattr(tts, "speakers", []) or [])
+            except Exception:
+                SPEAKERS = []
+        DEFAULT_SPEAKER = SPEAKERS[0] if SPEAKERS else "Claribel Dervla"
+        print(f"{MODEL_NAME} loaded; {len(SPEAKERS)} speakers, default={DEFAULT_SPEAKER!r}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if tts else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "coqui", "type": "tts"}]}
+
+    @app.get("/v1/audio/voices")
+    async def voices():
+        return {"voices": SPEAKERS, "default": DEFAULT_SPEAKER}
+
+    def _synthesize(text, language="en", speaker=None):
+        import tempfile
+        spk = speaker if (speaker and speaker in SPEAKERS) else DEFAULT_SPEAKER
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            tts.tts_to_file(text=text, speaker=spk, language=language, file_path=f.name)
+            with open(f.name, "rb") as audio_file:
+                return audio_file.read()
+
+    @app.post("/v1/audio/speech")
+    async def speech(request: dict):
+        if tts is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        text = request.get("input", "")
+        if not text:
+            return JSONResponse({"error": "input text required"}, 400)
+        language = request.get("language", "en")
+        # OpenAI sends `voice`; map it to an XTTS built-in speaker name.
+        speaker = request.get("voice") or request.get("speaker")
+        audio = await asyncio.get_event_loop().run_in_executor(None, _synthesize, text, language, speaker)
+        return Response(content=audio, media_type="audio/wav")
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)

@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: command-r-7b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "command-r-7b",
+      "type": "chat",
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
+      "routing": {
+        "k8s_name": "command-r-7b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 8192, "context_window": 65536 },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "idle_retention": "always-on",
+        "cold_start_estimate": "30-60 seconds"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 0.3, "max_tokens": 4096 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
+      },
+      "custom_params": {
+        "schema": {
+          "top_p": { "type": "float", "default": 0.9, "min": 0.0, "max": 1.0 },
+          "top_k": { "type": "integer", "default": 0, "min": 0, "max": 100 },
+          "repetition_penalty": { "type": "float", "default": 1.0, "min": 0.9, "max": 2.0 }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Cohere Command R 7B, RAG-optimized chat (multilingual)",
+        "owned_by": "CohereForAI",
+        "source": "CohereForAI/c4ai-command-r7b-12-2024",
+        "license": "CC-BY-NC",
+        "parameters": "7B",
+        "precision": "bfloat16",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "rag",
+        "tags": ["chat", "llm", "rag", "code", "multilingual"]
+      }
+    }

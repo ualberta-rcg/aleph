@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prokbert-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "prokbert",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "prokbert",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 1024,
+        "max_input_tokens": 1024
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "ProkBERT-mini, a compact prokaryotic DNA language model for bacterial/phage genomics.",
+        "description": "ProkBERT-mini, a compact prokaryotic DNA language model for bacterial/phage genomics. Embeds nucleotide sequences into 384-dim vectors. Tiny (~20M params). Served on a HAMi sub-GPU slice.",
+        "owned_by": "neuralbioinfo",
+        "source": "neuralbioinfo/prokbert-mini",
+        "source_url": "https://huggingface.co/neuralbioinfo/prokbert-mini",
+        "license": "MIT",
+        "parameters": "20.6M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "genomics",
+        "subdomain": "dna-language-model",
+        "tags": [
+          "embedding",
+          "science",
+          "genomics",
+          "dna",
+          "bacteria",
+          "tiny",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 1024,
+        "input_format": {
+          "model": "prokbert",
+          "input": "bacterial DNA sequence str (ACGT)"
+        },
+        "embedding_dimensions": 384,
+        "pooling": "mean"
+      }
+    }

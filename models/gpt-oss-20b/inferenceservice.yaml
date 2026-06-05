@@ -1,0 +1,154 @@
+# gpt-oss-20b adapted from POC (232) for cluster 230 / HAMi vGPU.
+# Reasoning model (harmony format, reasoning_effort low/med/high, native tools).
+#
+# Changes vs POC:
+#   - nodeSelector nvidia.com/gpu.product -> gpu: "on" (HAMi)
+#   - resources.limits: add nvidia.com/gpumem (sub-GPU slice). mxfp4 weights ~14GB.
+#   - ADD env VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1  <-- the "TLC" the POC
+#     20b was missing; REQUIRED on L40S/SM89 (FlashAttention-3 unavailable). This is
+#     why the POC 20b never became Ready.
+#   - max-model-len 65536 -> 32768; KV math (497k tok / 15x @ 1 slice) showed the
+#     32GB slice was ~2x oversized for max-num-seqs=8, so tightened to a 24GB slice
+#     (gpumem 24576) at util 0.90 -> ~6.5GB KV (~8x @ 32k), freeing ~8GB per GPU.
+#   - weights on NFS PVC (nfs-models SC, OneFS-safe) so scale-from-zero skips the
+#     ~14GB re-download.
+#   - minReplicas 0 (scale-to-zero); 15m idle retention before scaling down.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gpt-oss-20b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.12-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            if [ -f /data/config.json ]; then
+                echo "Model already present, skipping download."
+            else
+                echo "Downloading openai/gpt-oss-20b ..."
+                python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="openai/gpt-oss-20b",
+                local_dir="/data",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: gpt-oss-20b
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
+        args:
+          - serve
+          - /data
+          - --served-model-name
+          - gpt-oss-20b
+          - --port
+          - "8080"
+          - --tensor-parallel-size
+          - "1"
+          - --max-model-len
+          - "131072"
+          - --gpu-memory-utilization
+          - "0.90"
+          - --max-num-seqs
+          - "8"
+          - --reasoning-parser
+          - openai_gptoss
+          - --tool-call-parser
+          - openai
+          - --enable-auto-tool-choice
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: VLLM_ATTENTION_BACKEND          # REQUIRED on L40S (SM89)
+            value: TRITON_ATTN_VLLM_V1
+          - name: OMP_NUM_THREADS
+            value: "1"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "24576"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 40
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: gpt-oss-20b
+            mountPath: /data
+            readOnly: false
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      # Persistent NFS weights (OneFS-safe SC): downloaded once, reused across
+      # scale-from-zero cold starts. See models/gpt-oss-20b/pvc.yaml.
+      - name: gpt-oss-20b
+        persistentVolumeClaim:
+          claimName: gpt-oss-20b
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi

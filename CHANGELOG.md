@@ -1,0 +1,174 @@
+# Changelog — cluster 230 gateway + models
+
+Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
+
+## 2026-06-04 (later) — 3 more sub-GPU science models + cold-start fix
+
+### Added esm2-650m, molformer, finbert (all sub-GPU, scale-to-zero)
+- **esm2-650m** — Meta ESM-2 protein language model (650M), `POST /v1/embeddings`,
+  1280-dim embeddings, fp16, 4 GiB HAMi slice. domain: proteomics.
+- **molformer** — IBM MoLFormer-XL molecular embeddings from SMILES (110M),
+  `POST /v1/science/embed`, 768-dim, 3 GiB slice. domain: chemistry.
+- **finbert** — ProsusAI FinBERT financial sentiment **classification** (110M),
+  `POST /v1/science/classify` → positive/negative/neutral, 3 GiB slice. domain: finance.
+- All ported like proteinmpnn (HF transformers server in a ConfigMap): `nodeSelector
+  gpu:on` + `nvidia.com/gpumem`, `nfs-models` PVC (venv on NFS), `minReplicas 0`, 15m idle.
+  Cards rewritten to our schema (type embedding/classify, catalog, input/output_format).
+- **Switched molformer + finbert torch from CPU → cu121** so they actually use the GPU
+  slice they request (POC installed CPU torch, wasting the allocation).
+- **transformers version pin (`==4.46.3`)**: the unpinned latest transformers imports
+  `torch.float8_e8m0fnu`, which the cu121 torch wheel lacks → `EsmModel`/`BertForSeq...`
+  failed to import. Pinned esm2 + finbert; molformer already pins `<4.36` (onnx).
+- Verified: esm2 1280-dim, molformer 768-dim (aspirin), finbert sentiment
+  (surged→positive .92, bankruptcy→negative .68).
+
+### Gateway 0.8 — cold-start guard now handles never-started models
+- Bug: a brand-new scale-to-zero ISVC has no `latestReadyRevision`, so
+  `_ready_replicas` returned -1 (fail-open) and the request hit Knative → **empty 404**.
+- Fix: `_ready_replicas_sync` now also falls back to `latestCreatedRevision` (whose
+  Deployment exists at 0 replicas), so the guard sees "0", returns the friendly 503, and
+  the wake-up primes the very first scale-up. Verified: fresh models now 503 (not 404) and
+  self-prime on first request. (gateway image 0.7 → 0.8)
+
+### HAMi multi-tenancy confirmed
+- With these up, packing across the 4 L40S (binpack):
+  GPU A = command-r-7b (24G) + finbert (3G); GPU B = esm2-650m (4G) + molformer (3G);
+  2 GPUs free for qwen/gpt-oss/gemma/proteinmpnn cold starts. Multiple models per
+  physical GPU, as intended.
+
+## 2026-06-04 (later) — proteinmpnn (science model), public catalogue, gemma, qwen
+
+### proteinmpnn — first "science" model on 230 (sub-GPU)
+- Moved ProteinMPNN (Dauparas et al., Science 2022, Baker Lab) from POC 232:
+  `models/proteinmpnn/` (custom PyTorch FastAPI server in a ConfigMap, `POST /v1/design`).
+  Routes through the gateway's existing `/v1/{path}` catch-all (no gateway change).
+- 230 adaptations: `nodeSelector gpu:on` + **HAMi sub-GPU slice `nvidia.com/gpumem: 6144`**
+  (6 GiB of an L40S — ~1.7M-param model, mostly CUDA/cuDNN context), `nfs-models` PVC,
+  scale-to-zero (15m). First cold start builds the ~5 GB torch venv **onto NFS** — verified
+  the `nfs-models` SC handles it (no EIO). Later starts reuse the cached venv/weights.
+- **Fixed broken server.py**: the POC's `model.sample(..., chain_idx=...)` call no longer
+  matches upstream ProteinMPNN `main` (sig is now `sample(X, randn, S_true, chain_mask,
+  chain_encoding_all, residue_idx, mask=, ...)` returning a dict). Rewrote `_design` to use
+  the repo's own helpers (`parse_PDB`, `StructureDatasetPDB`, `tied_featurize`, `_scores`,
+  `_S_to_seq`) exactly like `protein_mpnn_run.py`. Now returns sequences + score +
+  global_score + seq_recovery + native sequence.
+- **Card corrected from the source** (`models/proteinmpnn/details.yaml`): `context_window`
+  1022 → **200000** (upstream `--max_length` default), added architecture (k=48 GNN, 3+3
+  layers), weights `v_48_020` (48 nbrs / 0.20A noise), Science 2022 citation + paper URL,
+  available weights, accurate input/output schema.
+- Verified end-to-end on crambin (1CRN, 46 aa): native parsed correctly, 3 designs at T=0.2
+  with ~52–57% sequence recovery (expected for ProteinMPNN), disulfide cysteines preserved.
+
+## 2026-06-04 (later) — public catalogue endpoint, gemma cleanup, qwen images=20
+
+### Public catalogue endpoint (keyless), like POC 232's `/serving/api/v1/models`
+- New **keyless** Tyk API `model-catalogue` (`gateway/tyk/model-catalogue-api.json`),
+  `listen_path: /serving/api/v1/models` → proxies to the gateway's `/v1/models`.
+  Scoped to the catalogue path only, so chat/embeddings still require a key
+  (verified `/v1/chat/completions` with no key → 401; `/serving/api/v1/models?all=true`
+  with no key → 200). Added as a 2nd key in the `tyk-api-definitions` ConfigMap.
+- Gotcha: `kubectl rollout restart deploy -l <wrong-label>` returns success (no-op) when
+  the selector matches nothing — restart by deploy name (`deploy/gateway-tyk-oss-tyk-gateway`).
+- Output is the same rich card-driven schema as `/v1/models?all=true` (richer than 232:
+  adds `capabilities`, `scaling`, live `resources`, `ready`, `embedding_dimensions`).
+
+### gemma cleanup + move to 230
+- POC called it `gemma-4b` but the repo is **`google/gemma-3-4b-it`** (Gemma *3*). Renamed
+  the model id + served name to **`gemma-3-4b-it`** to match the repo.
+- `models/gemma-3-4b-it/` (isvc + card + pvc): vLLM `v0.20.2` (vs POC's 0.8.4), bf16 (dropped
+  POC's fp8 + nvidia-smi VRAM-guard — HAMi enforces VRAM), HAMi 16 GiB slice, `nodeSelector
+  gpu: on`, NFS PVC, scale-to-zero (15 m), no `--enforce-eager`, `--max-model-len 8192`.
+  Verified chat incl. a system prompt (vLLM merges it into the Gemma chat template).
+
+### qwen25-vl-7b — images per prompt 5 → 20
+- `--limit-mm-per-prompt '{"image":20,"video":1}'`. **No KV penalty** in vLLM 0.20.x: still
+  8.56 GiB KV / 160,272 tokens / 4.89x concurrency on the 32 GiB slice (it doesn't reserve
+  worst-case multimodal memory from the limit).
+
+## 2026-06-04 — NFS persistence, scaling/cold-start, model catalog, multimodal
+
+### Storage — NFS large-write EIO fixed
+- **Root cause:** the OneFS/Isilon backend (`manage.storage.data.vulcan.local:/kubeflow`)
+  returns `Errno 5 (EIO)` on COMMIT for write RPCs > 128 KiB over **NFSv4.1/4.2**. The
+  default `nfs-client` SC mounts v4.2 @ `wsize/rsize=1Mi`, so multi-GB safetensors failed
+  at `close()` (small files were fine). NFSv3 and v4.0 work even at 1 MiB.
+- **Fix:** new StorageClass **`nfs-models`** (`storage/nfs-models-storageclass.yaml`) with
+  `mountOptions: nfsvers=4.2,wsize=131072,rsize=131072,hard`. Verified ~700 MB/s, 2 GB write OK.
+- **Impact:** model weights now persist on NFS PVCs (`models/*/pvc.yaml`, SC `nfs-models`).
+  Scale-from-zero cold starts **skip the re-download** (~90 s vs ~3 min before). Replaces the
+  earlier `emptyDir` workaround.
+
+### Scaling — scale-to-zero, scale-up-on-use, friendly cold-start
+- Cards gained a **`scaling`** block: `scale_to_zero`, `min_replicas`, `idle_retention`,
+  `cold_start_estimate`.
+- Convention: most models `minReplicas: 0` (scale-to-zero, **15 m** idle retention via
+  `autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"`); a few stay
+  `minReplicas: 1` (always-warm). Examples: gpt-oss-20b & qwen25-vl-7b = 0; command-r-7b = 1.
+- **Gateway cold-start handling** (mirrors POC 232, but card-driven): on each request the
+  gateway checks the active predictor revision's `readyReplicas`. At **0** it fires an async
+  Knative wake-up (`GET /v1/models` with the model's `Host` header) and returns a fast
+  `503 {code: model_scaled_to_zero}` "starting up… retry in <cold_start_estimate>" instead of
+  hanging into Tyk's 30 s `504`. Verified: 503 in ~0.06 s, wake triggers a 0→1 scale-up.
+  (Replica count is read live with a 3 s TTL cache; RBAC already grants `apps/deployments`.)
+
+### gpt-oss-20b — HAMi slice tightened
+- KV math showed the 32 GB slice was ~2× oversized for `max_num_seqs=8`. Reduced to a **24 GB
+  slice** (`nvidia.com/gpumem: 24576`) at `--gpu-memory-utilization 0.90`:
+  KV 12.15 GiB → **6.55 GiB** (268k tokens, 8.18× @ 32k, matches `max_num_seqs=8`). Frees ~8 GB/GPU.
+
+### Gateway — card param-translation fix (reasoning models)
+- `thinking.mode: effort` previously **overwrote** a client-supplied `reasoning_effort`. Now it
+  uses `setdefault` when thinking is enabled (respects the caller; only fills the card default
+  when absent) and still forces "off" for meta-tasks. Verified: low=171 vs high=445 tokens.
+
+### Gateway — `/v1/models` is now fully card-driven (richer than 232)
+- The endpoint emits the **232-compatible schema** (`id, object, owned_by, type,
+  context_window, max_completion_tokens, description, endpoint, input_format, source,
+  source_url, tags, parameters, gpu`) **plus extras**: `ready`, `license`, `precision`,
+  `framework`, `domain`, `subdomain`, `capabilities{vision,video,tools,reasoning,system_prompt}`,
+  `scaling{...}`, and live `resources{gpus,vram_mib,cpu_cores,system_ram_mib}`.
+- All of it comes from the **details ConfigMap (card)** + live ISVC state — 232 hardcodes this
+  metadata in the gateway; here it is auto-detected. `source_url` auto-derives from a HF `source`.
+- Cards gained `limits.context_window`; `catalog.input_format` / `catalog.gpu` optional.
+- `?all=true` returns every model; default returns chat-class only.
+
+### Token budgets (researched, were too tight)
+- gpt-oss natively supports 131k context **and** 131k output; reasoning burns many tokens.
+  Bumped gpt-oss-20b `defaults.chat.max_tokens` 4096→**8192** and `limits.max_completion_tokens`
+  16000→**24000** so reasoning + answer don't truncate (verified: bat-and-ball at effort=high
+  used 473 tokens, full `reasoning` + correct $0.05 answer).
+- qwen25-vl-7b default `max_tokens` 2048→**4096** (vision/OCR outputs).
+
+### bge-small embedding — values verified + actually deployed
+- Researched specs: **384 dims, 512 max tokens, cls pooling** (so `context_window: 512` was
+  correct). Card now carries `embedding_dimensions: 384`, `max_input_tokens`, `pooling`; the
+  endpoint surfaces `embedding_dimensions`.
+- The card existed without a backing ISVC (404 on `/v1/embeddings`). Deployed the real TEI
+  service (`models/bge-small/inferenceservice.yaml`, CPU, always-warm). Verified 384-dim vectors.
+
+### Models
+- **Added qwen2.5-vl-7b** (`models/qwen25-vl-7b/`) — multimodal: text + images + video, OCR,
+  charts, document parsing. Card declares `supports_vision`/`supports_video`; NFS PVC; scale-to-zero.
+  - vLLM **v0.20.2** (was 0.8.4) — newer, consistent with gpt-oss, cached on node. NB:
+    `--limit-mm-per-prompt` format differs by version: **JSON** `{"image":5,"video":1}` on 0.20.x,
+    `image=5,video=1` on 0.8.x.
+  - **No `--enforce-eager`** (CUDA graphs kept on). With graphs+ViT resident a 28 GB slice left
+    only ~5 GB KV (2.8×), so bumped to a **32 GB slice** → 8.56 GB KV (4.89× @ 32k).
+  - Verified vision end-to-end via gateway+Tyk (correctly described a red/blue test image).
+- command-r-7b, gpt-oss-20b: moved to NFS PVCs; cards gained `scaling` + `context_window`.
+
+### Scale-up-on-use — confirmed working (matches 232 mechanism)
+- Verified the full cycle: idle model scales to 0 → request returns fast 503 → async wake-up
+  (Knative activator) spins a pod 0→1 → retry serves 200. Same approach as POC 232's
+  `_wake_up_model`, but the retry estimate is card-driven.
+
+### Demo
+- `demo/demo.sh` — 10 copy-pasteable curls (catalogue, OpenAI chat, reasoning, streaming,
+  Anthropic, vision, embeddings, telemetry, cold-start) runnable from a login node with a key.
+
+### Gateway image
+- `model-gateway` `0.3 → 0.6`. Built with podman on the head node, imported into RKE2
+  containerd (`ctr -n k8s.io`), retagged `docker.io/library/model-gateway:<v>`.
+  - 0.4: effort param-translation fix
+  - 0.5: scale-to-zero cold-start guard + wake-up
+  - 0.6: card-driven `/v1/models` enrichment

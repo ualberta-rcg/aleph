@@ -1,0 +1,23 @@
+# Secrets — never commit real values
+.env
+.env.*
+!.env.example
+
+# Local agent/editor state
+.claude/
+.cursor/
+*.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS
+*.swp
+.DS_Store
+
+# Test/scratch output
+/tmp/
+*_report.txt

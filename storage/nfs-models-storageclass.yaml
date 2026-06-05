@@ -1,0 +1,28 @@
+# Dedicated StorageClass for model weights on the OneFS/Isilon NFS backend.
+#
+# WHY: the default `nfs-client` SC mounts NFSv4.2 with wsize/rsize=1Mi. OneFS
+# (manage.storage.data.vulcan.local) returns EIO on COMMIT for >128Ki write RPCs
+# over NFSv4.1/4.2, so multi-GB safetensors writes fail at close() with 0 bytes.
+# Capping wsize/rsize to 128Ki makes large writes succeed (verified ~700 MB/s).
+# (NFSv3 and v4.0 also work, but v4.2@128Ki keeps modern semantics.)
+#
+# Use this SC for any PVC that stores model weights / large files.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-models
+  labels:
+    app: nfs-subdir-external-provisioner
+provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+parameters:
+  archiveOnDelete: "false"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+mountOptions:
+  - nfsvers=4.2
+  - rsize=131072
+  - wsize=131072
+  - hard
+  - timeo=600
+  - retrans=2

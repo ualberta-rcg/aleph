@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway
+  namespace: models
+  labels:
+    app: model-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model-gateway
+  template:
+    metadata:
+      labels:
+        app: model-gateway
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: model-gateway
+      # Run only on control-plane (non-GPU) VMs. This selector auto-covers all
+      # future control-plane nodes (going to 3 VMs) and keeps the gateway off the
+      # GPU workers so it never competes with model pods for GPU-node resources.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: gpu
+                    operator: NotIn
+                    values: ["on"]
+      # NOTE (no registry yet): imagePullPolicy: Never means model-gateway:<tag>
+      # must be imported into RKE2 containerd on EVERY control-plane VM the pod can
+      # land on. With 3 CP VMs, either import on all 3 or stand up a registry.
+      containers:
+        - name: gateway
+          image: model-gateway:0.13
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MODELS_NAMESPACE
+              value: models
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15

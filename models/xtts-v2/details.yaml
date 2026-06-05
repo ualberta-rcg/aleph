@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: xtts-v2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "xtts-v2",
+      "type": "tts",
+      "endpoints": { "primary": "/v1/audio/speech", "health": "/health" },
+      "routing": {
+        "k8s_name": "xtts-v2",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 0, "context_window": 0 },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "idle_retention": "always-on",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "custom_params": {
+        "schema": {
+          "input": { "type": "string", "required": true },
+          "language": { "type": "string", "default": "en" },
+          "voice": { "type": "string", "default": "en" }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Coqui XTTS-v2 multilingual TTS + voice cloning (17 langs, GPU)",
+        "description": "XTTS-v2 (coqui/XTTS-v2) multilingual text-to-speech with voice cloning from a ~6s sample. 17 languages, 24kHz WAV output. OpenAI-style POST /v1/audio/speech {model,input,language} -> audio/wav. ~1.8B params, GPU (HAMi vGPU slice).",
+        "owned_by": "coqui",
+        "source": "coqui/XTTS-v2",
+        "source_url": "https://huggingface.co/coqui/XTTS-v2",
+        "license": "CPML",
+        "parameters": "~1.8B",
+        "precision": "fp32",
+        "framework": "coqui-tts",
+        "domain": "audio",
+        "subdomain": "text-to-speech",
+        "gpu": true,
+        "output_format": "audio/wav",
+        "languages": ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn", "ja", "hu", "ko", "hi"],
+        "tags": ["tts", "voice-cloning", "speech-synthesis", "multilingual", "gpu"]
+      }
+    }

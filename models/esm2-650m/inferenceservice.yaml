@@ -1,0 +1,183 @@
+# ESM-2 650M: Most popular protein language model for embeddings
+# GPU (~2GB VRAM), scale-to-zero. HF: facebook/esm2_t33_650M_UR50D
+# API: POST /v1/embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esm2-650m-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, tokenizer, DEVICE
+        from transformers import EsmTokenizer, EsmModel
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ESM-2 650M on {DEVICE}...", flush=True)
+        tokenizer = EsmTokenizer.from_pretrained(MODEL_DIR)
+        model = EsmModel.from_pretrained(MODEL_DIR, torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
+        model = model.to(DEVICE).eval()
+        print(f"ESM-2 650M ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "esm2-650m", "device": DEVICE}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "esm2-650m", "object": "model", "created": 1700000000,
+             "owned_by": "meta", "type": "embedding"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        sequences = request.get("input") or request.get("sequences")
+        if isinstance(sequences, str):
+            sequences = [sequences]
+        if not sequences:
+            return JSONResponse({"error": "'input' field required"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, sequences)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(sequences):
+        enc = tokenizer(sequences, return_tensors="pt", padding=True, truncation=True, max_length=1022)
+        if DEVICE == "cuda":
+            enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        
+        with torch.no_grad():
+            out = model(**enc)
+        
+        mask = enc["attention_mask"].unsqueeze(-1).float()
+        emb = (out.last_hidden_state * mask).sum(1) / mask.sum(1)
+        emb = emb.cpu().float().numpy()
+        
+        data = [{"object": "embedding", "index": i, "embedding": e.tolist()}
+                for i, e in enumerate(emb)]
+        return {"object": "list", "data": data, "model": "esm2-650m",
+                "usage": {"prompt_tokens": sum(len(s) for s in sequences), "total_tokens": sum(len(s) for s in sequences)}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: esm2-650m-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: esm2-650m
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import torch" 2>/dev/null; then
+              echo "Creating venv (cu121 torch)..."
+              python3 -m venv $VENV --clear
+              $VENV/bin/pip install -q --upgrade pip
+              $VENV/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu121
+            fi
+            # Pin transformers to a version compatible with the cu121 torch wheel:
+            # transformers>=4.48 imports torch.float8_e8m0fnu, absent in cu121 torch.
+            # Idempotent: pip is a no-op once the right version is present.
+            $VENV/bin/pip install -q "transformers==4.46.3" fastapi uvicorn huggingface_hub
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading ESM-2 650M..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            snapshot_download(
+                repo_id='facebook/esm2_t33_650M_UR50D',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+            )
+            "
+            else
+              echo "Model exists"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: "/data/model" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        # HAMi sub-GPU slice: 4 GiB (esm2-650m fp16 ~1.3 GiB + CUDA context). <1/11 L40S.
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "4096" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: esm2-650m-data }
+      - name: app
+        configMap: { name: esm2-650m-server }

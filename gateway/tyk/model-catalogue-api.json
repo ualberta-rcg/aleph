@@ -1,0 +1,21 @@
+{
+  "name": "model-catalogue",
+  "slug": "model-catalogue",
+  "api_id": "model-catalogue",
+  "org_id": "orgid",
+  "use_keyless": true,
+  "version_data": {
+    "not_versioned": true,
+    "versions": {
+      "Default": { "name": "Default", "use_extended_paths": true }
+    }
+  },
+  "proxy": {
+    "listen_path": "/serving/api/v1/models",
+    "target_url": "http://model-gateway.models.svc.cluster.local:80/v1/models",
+    "strip_listen_path": true
+  },
+  "active": true,
+  "enable_context_vars": true,
+  "do_not_track": false
+}

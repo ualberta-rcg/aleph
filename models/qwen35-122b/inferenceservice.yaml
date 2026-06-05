@@ -1,0 +1,108 @@
+# Qwen3.5-122B-A10B-FP8 — MoE reasoning model, 122B total / 10B active, FP8 ~122 GB.
+# Ported from POC (232) to cluster 230 / HAMi vGPU.
+#
+# Changes vs POC:
+#   - nodeSelector hostname rack01-15 -> rack05-16 (our fresh, empty 4×L40S node) +
+#     gpu: "on". This model takes the whole node.
+#   - HAMi resources: instead of GPU-Operator whole-GPU `nvidia.com/gpu: 4`, request
+#     nvidia.com/gpu: "4" AND nvidia.com/gpumem: "46000" (per-GPU). 46 GB/slice forces
+#     HAMi to place each of the 4 vGPUs on a distinct physical L40S (≈whole-card each),
+#     which is what tensor-parallel-size=4 needs.
+#   - ADD env VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 (REQUIRED on L40S/SM89 —
+#     FlashAttention-3 unavailable; same fix gpt-oss needed).
+#   - RawDeployment -> Knative serverless (scale-to-zero) so the 4-GPU node is freed
+#     when idle. 30m idle retention (cold start ~5 min loading 122 GB).
+#   - weights pre-staged on nfs-models PVC by download-job.yaml (mounted RO at /mnt/models).
+#   - --gpu-memory-utilization 0.90 -> 0.93 and add --max-num-seqs 4 to bound KV under
+#     the 46 GB/slice cap.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen35-122b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "30m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 4
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+      kubernetes.io/hostname: rack05-16
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+          - --model=/mnt/models
+          - --served-model-name=qwen35-122b
+          - --tensor-parallel-size=4
+          - --max-model-len=131072
+          - --dtype=auto
+          - --gpu-memory-utilization=0.93
+          - --max-num-seqs=4
+          - --reasoning-parser=qwen3
+          - --enable-auto-tool-choice
+          - --tool-call-parser=qwen3_coder
+          - --language-model-only
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: VLLM_ATTENTION_BACKEND          # REQUIRED on L40S (SM89)
+            value: TRITON_ATTN_VLLM_V1
+          - name: OMP_NUM_THREADS
+            value: "1"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "8"
+            memory: 64Gi
+          limits:
+            cpu: "16"
+            memory: 128Gi
+            nvidia.com/gpu: "4"
+            nvidia.com/gpumem: "46000"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 60
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 3
+        volumeMounts:
+          - name: qwen35-data
+            mountPath: /mnt/models
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: qwen35-data
+        persistentVolumeClaim:
+          claimName: qwen35-122b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

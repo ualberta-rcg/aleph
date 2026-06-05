@@ -1,0 +1,151 @@
+# qwen2.5-vl-7b adapted from POC (232) for cluster 230 / HAMi vGPU.
+# Multimodal: text + images + video (OCR, charts, document parsing, localization).
+#
+# Changes vs POC:
+#   - nodeSelector nvidia.com/gpu.product -> gpu: "on" (HAMi)
+#   - whole-GPU request -> nvidia.com/gpumem slice (28GB). 7B bf16 ~15GB + ViT +
+#     multimodal buffers + KV. Dropped the POC's nvidia-smi VRAM-guard wrapper:
+#     HAMi already enforces per-pod VRAM isolation, so a plain `vllm serve` is fine.
+#   - image pinned to vllm/vllm-openai:v0.20.2 (same recent build as gpt-oss-20b,
+#     already cached on the node; better multimodal support than 0.8.4) instead of
+#     the POC's floating :latest. Qwen2.5-VL needs vLLM > 0.7.2.
+#   - NO --enforce-eager: CUDA graphs kept on (faster). Measured at a 28GB slice
+#     KV was only ~5GB (2.8x @ 32k) once graphs+ViT are resident, so bumped the
+#     slice to 32GB for healthier KV headroom (vision prompts spend many KV tokens).
+#   - weights on NFS PVC (nfs-models SC) so scale-from-zero skips the re-download.
+#   - minReplicas 0 (scale-to-zero) + 15m idle retention (scale-up on use).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen25-vl-7b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if Path("/data/config.json").is_file():
+                print("Qwen2.5-VL-7B weights already on PVC, skipping.", flush=True)
+            else:
+                from huggingface_hub import snapshot_download
+                print("Downloading Qwen/Qwen2.5-VL-7B-Instruct ...", flush=True)
+                snapshot_download(
+                    repo_id="Qwen/Qwen2.5-VL-7B-Instruct",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: qwen25-vl-7b-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
+        args:
+          - serve
+          - /data
+          - --served-model-name
+          - qwen25-vl-7b
+          - --port
+          - "8080"
+          - --tensor-parallel-size
+          - "1"
+          - --max-model-len
+          - "65536"
+          - --dtype
+          - bfloat16
+          - --gpu-memory-utilization
+          - "0.90"
+          - --trust-remote-code
+          # NB: vLLM 0.20.x wants JSON here (0.8.x wanted image=5,video=1).
+          - --limit-mm-per-prompt
+          - '{"image":20,"video":1}'
+          - --enable-auto-tool-choice
+          - --tool-call-parser
+          - hermes
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 24Gi
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "32768"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 60
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: qwen25-vl-7b-data
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: qwen25-vl-7b-data
+        persistentVolumeClaim:
+          claimName: qwen25-vl-7b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi

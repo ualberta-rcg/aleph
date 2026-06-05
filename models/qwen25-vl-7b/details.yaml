@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen25-vl-7b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "qwen25-vl-7b",
+      "type": "chat",
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
+      "routing": {
+        "k8s_name": "qwen25-vl-7b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 16384, "context_window": 65536 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-3 minutes"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_video": true,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 0.2, "top_p": 0.9, "max_tokens": 4096 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
+      },
+      "custom_params": {
+        "schema": {
+          "temperature": { "type": "float", "default": 0.2, "min": 0.0, "max": 2.0 },
+          "top_p": { "type": "float", "default": 0.9, "min": 0.0, "max": 1.0 }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Qwen2.5-VL 7B vision-language: images, video, OCR, charts, docs (multimodal)",
+        "description": "Qwen2.5-VL 7B Instruct vision-language model. Accepts text + images + video in OpenAI chat format (image_url / video_url with base64 or URL). Strong at OCR, chart/document parsing, visual localization and structured extraction. Runs on a HAMi vGPU slice. Tool calling is supported (hermes parser); the model is conservative on tool_choice='auto', so pass an explicit tool_choice (force the function) for reliable tool use.",
+        "owned_by": "Qwen",
+        "source": "Qwen/Qwen2.5-VL-7B-Instruct",
+        "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+        "license": "Apache-2.0",
+        "parameters": "7B (+ ViT)",
+        "precision": "bfloat16",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "vision-language",
+        "tags": ["chat", "llm", "vision", "video", "multimodal", "ocr", "agentic"],
+        "input_format": {
+          "messages": "[{role, content:[{type:'text',text:'...'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,...'}}]}]",
+          "max_tokens": "int",
+          "stream": "bool"
+        }
+      }
+    }

@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen35-122b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "qwen35-122b",
+      "type": "chat",
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
+      "routing": {
+        "k8s_name": "qwen35-122b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 32768, "context_window": 131072 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "30m",
+        "cold_start_estimate": "~5 minutes (122 GB FP8, 4x L40S)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": true,
+        "strips_thinking": true
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "toggle",
+          "on":  { "chat_template_kwargs": { "enable_thinking": true } },
+          "off": { "chat_template_kwargs": { "enable_thinking": false } }
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 1.0, "top_p": 0.95, "max_tokens": 16384 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80,  "thinking": { "enabled": false } },
+          "tags":      { "max_tokens": 60,  "thinking": { "enabled": false } },
+          "followups": { "max_tokens": 220, "thinking": { "enabled": false } }
+        }
+      },
+      "custom_params": {
+        "schema": {
+          "enable_thinking": { "type": "boolean", "default": true },
+          "top_k": { "type": "integer", "default": 20 }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Qwen3.5 122B MoE FP8, toggleable thinking + native tools (4x L40S)",
+        "description": "Qwen3.5 122B MoE FP8 - configurable thinking mode via <think/> tags, sparse MoE (256 experts, 8 routed + 1 shared per token), 122B total / 10B active params. 262K native context, served at 131K on 4x L40S. Tool calling + streaming. Deployed language-model-only (vision encoder disabled to save VRAM).",
+        "owned_by": "Qwen",
+        "source": "Qwen/Qwen3.5-122B-A10B-FP8",
+        "source_url": "https://huggingface.co/Qwen/Qwen3.5-122B-A10B-FP8",
+        "license": "Apache-2.0",
+        "parameters": "122B total / 10B active",
+        "precision": "fp8",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "reasoning",
+        "tags": ["chat", "llm", "reasoning", "moe", "fp8", "tool-calling", "large"]
+      }
+    }

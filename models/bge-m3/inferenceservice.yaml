@@ -1,0 +1,87 @@
+# bge-m3: multilingual text embeddings (BAAI/bge-m3) — ported from POC (232).
+# CPU-only via HuggingFace TEI; no GPU, so no HAMi slice and no gpu nodeSelector.
+# Always-on (minReplicas 1). API: POST /v1/embeddings (OpenAI-style, TEI-native).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: bge-m3
+  namespace: models
+spec:
+  predictor:
+    minReplicas: 1
+    timeout: 600
+    initContainers:
+      - name: hf-fetch-model
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if Path("/data/config.json").is_file():
+                print("BGE-M3 weights already on PVC, skipping.", flush=True)
+            else:
+                from huggingface_hub import snapshot_download
+                Path("/data").mkdir(parents=True, exist_ok=True)
+                print("Downloading BAAI/bge-m3 ...", flush=True)
+                snapshot_download(
+                    repo_id="BAAI/bge-m3",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: bge-m3-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.6
+        args:
+          - --model-id=/data
+          - --port=8080
+          - --dtype=float32
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 6Gi
+          limits:
+            cpu: "8"
+            memory: 8Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        volumeMounts:
+          - name: bge-m3-data
+            mountPath: /data
+            readOnly: true
+    volumes:
+      - name: bge-m3-data
+        persistentVolumeClaim:
+          claimName: bge-m3-data

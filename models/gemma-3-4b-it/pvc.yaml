@@ -1,0 +1,14 @@
+# Weights persist on NFS (nfs-client default SC = OneFS-safe 128Ki wsize) so scale-from-zero
+# cold starts skip the ~8.5GB re-download. See storage/nfs-client-storageclass.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gemma-3-4b-it-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 20Gi

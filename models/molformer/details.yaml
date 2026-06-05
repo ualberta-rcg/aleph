@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: molformer-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "molformer",
+      "type": "embedding",
+      "endpoints": { "primary": "/v1/science/embed", "health": "/health" },
+      "routing": { "k8s_name": "molformer", "no_stream": true, "upstream_model_id": null },
+      "limits": { "context_window": 202, "max_input_tokens": 202 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false, "supports_tools": false,
+        "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "MoLFormer-XL molecular embeddings from SMILES (chemistry)",
+        "description": "IBM Research MoLFormer-XL (110M), a linear-attention transformer pre-trained on 1.1B molecules (PubChem + ZINC). Turns a SMILES string into a 768-dim molecular embedding for property prediction / similarity; outperforms GROVER and ChemBERTa on MoleculeNet. Custom modeling (trust_remote_code). Served on a HAMi sub-GPU slice.",
+        "owned_by": "IBM Research",
+        "source": "ibm-research/MoLFormer-XL-both-10pct",
+        "source_url": "https://huggingface.co/ibm-research/MoLFormer-XL-both-10pct",
+        "license": "Apache-2.0",
+        "parameters": "110M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "chemistry",
+        "subdomain": "molecular-embedding",
+        "embedding_dimensions": 768,
+        "max_input_tokens": 202,
+        "pooling": "pooler/mean",
+        "tags": ["embedding", "science", "chemistry", "molecules", "smiles", "gpu"],
+        "gpu": true,
+        "input_format": {
+          "model": "molformer",
+          "smiles": "single SMILES string, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin)",
+          "smiles_list": "or a list of SMILES strings"
+        },
+        "output_format": { "embeddings": "[[768 floats]]", "dim": 768 }
+      }
+    }

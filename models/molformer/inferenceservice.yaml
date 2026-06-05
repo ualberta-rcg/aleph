@@ -1,0 +1,197 @@
+# MoLFormer-XL: Large molecular language model trained on 1.1B SMILES (ibm-research/MoLFormer-XL-both-10pct)
+# 110M params, Apache 2.0. Linear attention transformer for molecular property embeddings.
+# Trained on 1.1B molecules (PubChem + ZINC). Outperforms GROVER, ChemBERTa on MoleculeNet.
+# API: POST /v1/science/embed  (SMILES → embedding)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: molformer-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MoLFormer-XL: Molecular SMILES embeddings for property prediction.
+    API: POST /v1/science/embed -> {"smiles": "CC(=O)Oc1ccccc1C(=O)O"} -> {"embedding": [...]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    tokenizer = None
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global tokenizer, model, DEVICE
+        import torch
+        # MoLFormer uses custom modeling and tokenization - trust_remote_code
+        from transformers import AutoTokenizer, AutoModel
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading MoLFormer-XL on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, trust_remote_code=True)
+        model = AutoModel.from_pretrained(MODEL_DIR, trust_remote_code=True, deterministic_eval=True)
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"MoLFormer-XL ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "molformer-xl"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"models": [{"id": "molformer-xl", "description": "Molecular SMILES embeddings (1.1B training molecules)"}]}
+
+    @app.post("/v1/science/embed")
+    async def embed(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        smiles_list = payload.get("smiles_list") or ([payload.get("smiles")] if payload.get("smiles") else None)
+        if not smiles_list:
+            return JSONResponse({"error": "provide smiles or smiles_list"}, 400)
+        enc = tokenizer(smiles_list, return_tensors="pt", padding=True, truncation=True, max_length=202)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc)
+        # Pool over sequence length for molecular embedding
+        embeddings = out.pooler_output.cpu().tolist() if hasattr(out, "pooler_output") and out.pooler_output is not None else out.last_hidden_state.mean(1).cpu().tolist()
+        return {"embeddings": embeddings, "model": "molformer-xl", "dim": len(embeddings[0])}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: molformer-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: molformer
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: molformer-data
+      - name: server-code
+        configMap:
+          name: molformer-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi; from transformers.onnx import OnnxConfig" 2>/dev/null; then
+              echo "Creating venv..."
+              python -m venv $VENV --clear
+              $VENV/bin/pip install --quiet --upgrade pip
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cu121
+              # MoLFormer config uses transformers.onnx which was removed in transformers>=4.36
+              $VENV/bin/pip install --quiet "transformers>=4.28,<4.36" accelerate huggingface_hub fastapi uvicorn
+              echo "Venv ready"
+            else
+              echo "Venv OK"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading MoLFormer-XL..."
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            snapshot_download(
+              repo_id='ibm-research/MoLFormer-XL-both-10pct',
+              local_dir='/data/model',
+              token=os.environ['HF_TOKEN'],
+              ignore_patterns=['*.msgpack','flax_model*','tf_model*','*.h5'],
+            )
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        # HAMi sub-GPU slice: 3 GiB (MoLFormer 110M is tiny; mostly CUDA context).
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "3072"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+          - name: server-code
+            mountPath: /app
+        env:
+          - name: MODEL_DIR
+            value: /data/model
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: HF_HUB_OFFLINE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            /data/venv/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10

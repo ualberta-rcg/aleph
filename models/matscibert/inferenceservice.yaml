@@ -1,0 +1,213 @@
+# MatSciBERT: BERT fine-tuned on materials science literature (m3rg-iitd/matscibert)
+# 110M params, MIT license. Embeddings and masked token prediction for materials text.
+# Trained on ~1.2M materials science abstracts. Outperforms SciBERT/BERT on MatSci NLP tasks.
+# API: POST /v1/science/embed  (text → embedding)
+#      POST /v1/science/predict (masked text → predictions)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matscibert-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MatSciBERT: Materials science BERT embeddings and masked token prediction.
+    API: POST /v1/science/embed   -> {"text": "..."} -> {"embedding": [...]}
+         POST /v1/science/predict -> {"text": "The [MASK] has high conductivity"} -> predictions
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    tokenizer = None
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global tokenizer, model, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModel
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading MatSciBERT on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        model = AutoModel.from_pretrained(MODEL_DIR).to(DEVICE)
+        model.eval()
+        print(f"MatSciBERT ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "matscibert"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"models": [{"id": "matscibert", "description": "Materials science BERT embeddings"}]}
+
+    @app.post("/v1/science/embed")
+    async def embed(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        texts = payload.get("texts") or [payload.get("text", "")]
+        if not texts or not texts[0]:
+            return JSONResponse({"error": "provide text or texts"}, 400)
+        enc = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc)
+        # Use [CLS] token embedding as sentence embedding
+        embeddings = out.last_hidden_state[:, 0, :].cpu().tolist()
+        return {"embeddings": embeddings, "model": "matscibert", "dim": len(embeddings[0])}
+
+    @app.post("/v1/science/predict")
+    async def predict_masked(payload: dict):
+        import torch
+        from transformers import pipeline
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        text = payload.get("text", "")
+        if not text:
+            return JSONResponse({"error": "provide text with [MASK] token"}, 400)
+        # Use fill-mask pipeline
+        fill_mask = pipeline("fill-mask", model=model, tokenizer=tokenizer, device=0 if DEVICE=="cuda" else -1)
+        preds = fill_mask(text, top_k=payload.get("top_k", 5))
+        return {"predictions": [{"token": p["token_str"], "score": p["score"], "sequence": p["sequence"]} for p in preds], "model": "matscibert"}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matscibert-data
+  namespace: models
+spec:
+  storageClassName: nfs-client
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: matscibert
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/scaleToZeroPodRetentionPeriod: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: matscibert-data
+      - name: server-code
+        configMap:
+          name: matscibert-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            # Setup venv if needed
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi" 2>/dev/null; then
+              echo "Creating venv..."
+              python -m venv $VENV --clear
+              $VENV/bin/pip install --quiet --upgrade pip
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cu121
+              $VENV/bin/pip install --quiet transformers==4.46.3 accelerate huggingface_hub fastapi uvicorn
+              echo "Venv ready"
+            else
+              echo "Venv OK"
+            fi
+            # Download model if needed
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading MatSciBERT..."
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            snapshot_download(
+              repo_id='m3rg-iitd/matscibert',
+              local_dir='/data/model',
+              token=os.environ['HF_TOKEN'],
+              ignore_patterns=['*.msgpack','flax_model*','tf_model*','*.h5'],
+            )
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "3072"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+          - name: server-code
+            mountPath: /app
+        env:
+          - name: MODEL_DIR
+            value: /data/model
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: HF_HUB_OFFLINE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            /data/venv/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10

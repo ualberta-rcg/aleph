@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bge-reranker-v2-m3-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "bge-reranker-v2-m3",
+      "type": "reranker",
+      "endpoints": { "primary": "/v1/rerank", "health": "/health" },
+      "routing": {
+        "k8s_name": "bge-reranker-v2-m3",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 0, "context_window": 8192 },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "idle_retention": "always-on",
+        "cold_start_estimate": "30-60 seconds"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "custom_params": {
+        "schema": {
+          "top_n": { "type": "integer" },
+          "return_documents": { "type": "boolean", "default": false }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "BAAI bge-reranker-v2-m3 multilingual cross-encoder (TEI, CPU)",
+        "description": "BGE Reranker v2-M3 cross-encoder for re-ranking retrieval results. 568M params, 100+ languages. Cohere/Jina-style /v1/rerank API (gateway-translated to TEI /rerank). ONNX/ORT backend for fast large-batch reranking. Always-on CPU.",
+        "owned_by": "BAAI",
+        "source": "BAAI/bge-reranker-v2-m3",
+        "source_url": "https://huggingface.co/BAAI/bge-reranker-v2-m3",
+        "license": "MIT",
+        "parameters": "568M",
+        "precision": "onnx-fp32",
+        "framework": "text-embeddings-inference",
+        "domain": "nlp",
+        "subdomain": "reranking",
+        "gpu": false,
+        "max_input_tokens": 8192,
+        "tags": ["reranker", "multilingual", "rag", "cross-encoder", "cohere-compatible", "cpu"]
+      }
+    }

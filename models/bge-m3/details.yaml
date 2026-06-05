@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bge-m3-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "bge-m3",
+      "type": "embedding",
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": {
+        "k8s_name": "bge-m3",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 0, "context_window": 8192 },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "idle_retention": "always-on",
+        "cold_start_estimate": "30-60 seconds"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "custom_params": {
+        "schema": {
+          "encoding_format": { "type": "string", "default": "float" }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "BAAI bge-m3 multilingual embeddings, 8K ctx (TEI, CPU)",
+        "description": "BGE-M3 versatile embedding model: multi-functionality (dense + sparse + ColBERT), multi-linguality (100+ languages), multi-granularity (up to 8192 tokens). 568M params, XLM-RoBERTa backbone. Always-on CPU inference via HuggingFace TEI.",
+        "owned_by": "BAAI",
+        "source": "BAAI/bge-m3",
+        "source_url": "https://huggingface.co/BAAI/bge-m3",
+        "license": "MIT",
+        "parameters": "568M",
+        "precision": "fp32",
+        "framework": "text-embeddings-inference",
+        "domain": "nlp",
+        "subdomain": "embedding",
+        "gpu": false,
+        "embedding_dimensions": 1024,
+        "max_input_tokens": 8192,
+        "tags": ["embedding", "multilingual", "dense", "sparse", "colbert", "retrieval", "cpu"]
+      }
+    }

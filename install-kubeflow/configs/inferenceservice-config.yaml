@@ -1,0 +1,34 @@
+# KServe inferenceservice-config patch
+# Applied after bootstrap to set ingress and storage defaults
+# This patches only the keys that matter — defaults from kubeflow/manifests are fine for the rest.
+#
+# Key changes from defaults:
+#   - ingress.localGatewayService points to istio-system (standard Istio setup)
+#   - storageInitializer enables direct PVC mount (models use PVCs for weights)
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inferenceservice-config
+  namespace: kubeflow
+data:
+  ingress: |-
+    {
+       "ingressGateway" : "knative-serving/knative-ingress-gateway",
+       "localGateway" : "knative-serving/knative-local-gateway",
+       "localGatewayService" : "knative-local-gateway.istio-system.svc.cluster.local",
+       "ingressClassName" : "istio",
+       "urlScheme": "http",
+       "disableIstioVirtualHost": false,
+       "disableIngressCreation": false
+    }
+  storageInitializer: |-
+    {
+       "image" : "kserve/storage-initializer:v0.15.2",
+       "memoryRequest": "100Mi",
+       "memoryLimit": "1Gi",
+       "cpuRequest": "100m",
+       "cpuLimit": "1",
+       "enableDirectPvcVolumeMount": true,
+       "enableModelcar": false
+    }

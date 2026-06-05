@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proteinmpnn-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "proteinmpnn",
+      "type": "design",
+      "endpoints": { "primary": "/v1/design", "health": "/health" },
+      "routing": {
+        "k8s_name": "proteinmpnn",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 0, "context_window": 200000, "max_sequence_length": 200000 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "ProteinMPNN fixed-backbone protein sequence design (Baker Lab, Science 2022)",
+        "description": "ProteinMPNN (Dauparas et al., Science 2022, Baker Lab / UW) is a message-passing graph neural network for fixed-backbone protein sequence design. Given a protein backbone (PDB with N/CA/C/O coordinates) it autoregressively samples amino-acid sequences predicted to fold into that backbone, encoding structure as a k=48 nearest-neighbour graph (3 encoder + 3 decoder layers, hidden_dim 128). Handles monomers and multi-chain complexes up to ~200k residues, per-chain redesign, amino-acid exclusion, and temperature-controlled sampling diversity. This deployment uses the vanilla v_48_020 weights (48 neighbours, 0.20 Angstrom backbone noise). Custom PyTorch FastAPI server (not OpenAI-shaped); runs on a HAMi sub-GPU slice.",
+        "owned_by": "dauparas",
+        "source": "dauparas/ProteinMPNN",
+        "source_url": "https://github.com/dauparas/ProteinMPNN",
+        "paper_url": "https://www.science.org/doi/10.1126/science.add2187",
+        "citation": "Dauparas et al., Robust deep learning-based protein sequence design using ProteinMPNN, Science 378(6615):49-56, 2022",
+        "license": "MIT",
+        "parameters": "1.7M",
+        "precision": "fp32",
+        "architecture": "message-passing graph neural network (k=48 neighbours, 3 enc + 3 dec layers, hidden_dim 128)",
+        "model_weights": "v_48_020 (vanilla, 48 neighbours, 0.20A backbone noise)",
+        "available_weights": ["v_48_002", "v_48_010", "v_48_020", "v_48_030", "soluble", "ca_only"],
+        "framework": "pytorch",
+        "domain": "proteomics",
+        "subdomain": "protein-design",
+        "tags": ["design", "science", "proteomics", "protein", "structural-biology", "graph-neural-network", "drug-discovery", "gpu"],
+        "gpu": true,
+        "max_sequence_length": 200000,
+        "input_format": {
+          "model": "proteinmpnn",
+          "pdb": "<PDB string with backbone atoms N, CA, C, O> (required)",
+          "num_sequences": "int (default 8) sequences to sample",
+          "temperature": "float (default 0.1; suggested 0.1-0.3, higher = more diverse)",
+          "chains_to_design": "[str] chain IDs to redesign (optional, default all chains)",
+          "omit_AAs": "str amino acids to exclude, e.g. 'CW' to omit Cys+Trp (optional)"
+        },
+        "output_format": {
+          "sequences": "[str] designed amino-acid sequences (chains joined by '/')",
+          "num_sequences": "int",
+          "chains_designed": "[str]",
+          "original_sequences": "object (per-chain native sequence)"
+        },
+        "notes": "Full ProteinMPNN also supports fixed/tied positions (symmetry), per-residue & PSSM bias, score-only mode, soluble and CA-only weights; this server exposes the common subset (pdb + sampling)."
+      }
+    }

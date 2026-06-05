@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esm2-650m-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "esm2-650m",
+      "type": "embedding",
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": { "k8s_name": "esm2-650m", "no_stream": true, "upstream_model_id": null },
+      "limits": { "context_window": 1022, "max_input_tokens": 1022 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false, "supports_tools": false,
+        "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "ESM-2 650M protein language model (per-protein embeddings)",
+        "description": "Meta AI ESM-2 (650M, esm2_t33_650M_UR50D): the most widely used protein language model. Produces 1280-dim mean-pooled embeddings of amino-acid sequences for downstream tasks (structure/function prediction, variant effect, search). Mask-language-model transformer (33 layers). Served fp16 on a HAMi sub-GPU slice.",
+        "owned_by": "Meta AI (FAIR)",
+        "source": "facebook/esm2_t33_650M_UR50D",
+        "source_url": "https://huggingface.co/facebook/esm2_t33_650M_UR50D",
+        "paper_url": "https://www.science.org/doi/10.1126/science.ade2574",
+        "license": "MIT",
+        "parameters": "650M",
+        "precision": "fp16",
+        "framework": "transformers",
+        "domain": "proteomics",
+        "subdomain": "protein-language-model",
+        "embedding_dimensions": 1280,
+        "max_input_tokens": 1022,
+        "pooling": "mean",
+        "tags": ["embedding", "science", "proteomics", "protein", "gpu"],
+        "gpu": true,
+        "input_format": {
+          "model": "esm2-650m",
+          "input": "protein sequence string or list of sequences (1-letter AA codes, <=1022 residues)"
+        },
+        "output_format": { "data": "[{embedding: [1280 floats]}]" }
+      }
+    }

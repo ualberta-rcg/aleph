@@ -1,0 +1,31 @@
+# bge-small-en-v1.5 text embeddings via HuggingFace TEI (CPU, no GPU).
+# 384-dim vectors, 512 max input tokens. TEI serves an OpenAI-compatible
+# /v1/embeddings route. Always-warm (minReplicas 1); the model is ~130MB so TEI
+# fetches it itself on start (no init container / PVC needed).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: bge-small
+  namespace: models
+spec:
+  predictor:
+    minReplicas: 1
+    timeout: 600
+    containers:
+      - name: kserve-container
+        image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+        args:
+          - --model-id=BAAI/bge-small-en-v1.5
+          - --port=8080
+          - --dtype=float32
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 30

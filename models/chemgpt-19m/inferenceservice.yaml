@@ -1,0 +1,188 @@
+# ChemGPT-19M: Small chemistry GPT for fast SMILES generation (ncfrey/ChemGPT-19M)
+# 19M params, MIT. 15,663 downloads. Lightweight version for rapid molecule generation.
+# Autoregressive GPT-Neo on SMILES strings. Useful for high-throughput screening.
+# API: POST /v1/science/generate  (prompt SMILES → generated molecules)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chemgpt-19m-server
+  namespace: models
+data:
+  server.py: |
+    """
+    ChemGPT-19M: Fast SMILES molecule generation (19M params, CPU-friendly).
+    API: POST /v1/science/generate -> {"smiles": "CC", "num_return_sequences": 5} -> {"generated": [...]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    app = FastAPI()
+    tokenizer = None
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global tokenizer, model, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ChemGPT-19M on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        model = AutoModelForCausalLM.from_pretrained(MODEL_DIR).to(DEVICE)
+        model.eval()
+        print(f"ChemGPT-19M ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "chemgpt-19m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"models": [{"id": "chemgpt-19m", "description": "ChemGPT-19M fast SMILES molecule generation"}]}
+
+    @app.post("/v1/science/generate")
+    async def generate(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        prompt = payload.get("smiles", "")
+        max_new_tokens = min(payload.get("max_new_tokens", 100), 300)
+        num_return = min(payload.get("num_return_sequences", 5), 20)
+        temperature = payload.get("temperature", 1.0)
+        enc = tokenizer(prompt, return_tensors="pt").to(DEVICE)
+        with torch.no_grad():
+            out = model.generate(
+                **enc,
+                max_new_tokens=max_new_tokens,
+                num_return_sequences=num_return,
+                temperature=temperature,
+                do_sample=True,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        generated = [tokenizer.decode(o, skip_special_tokens=True) for o in out]
+        return {"generated": generated, "model": "chemgpt-19m", "prompt": prompt}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chemgpt-19m-data
+  namespace: models
+spec:
+  storageClassName: nfs-client
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: chemgpt-19m
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: chemgpt-19m-data
+      - name: server-code
+        configMap:
+          name: chemgpt-19m-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi" 2>/dev/null; then
+              python -m venv $VENV --clear
+              $VENV/bin/pip install --quiet --upgrade pip
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cu121
+              $VENV/bin/pip install --quiet transformers==4.46.3 huggingface_hub fastapi uvicorn
+              echo "Venv ready"
+            else
+              echo "Venv OK"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download; import os
+            snapshot_download(repo_id='ncfrey/ChemGPT-19M', local_dir='/data/model', token=os.environ['HF_TOKEN'], ignore_patterns=['*.msgpack','flax_model*','tf_model*'])
+            print('Done')
+            "
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "3072"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+          - name: server-code
+            mountPath: /app
+        env:
+          - name: MODEL_DIR
+            value: /data/model
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: HF_HUB_OFFLINE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            /data/venv/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10

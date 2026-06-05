@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matscibert-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "matscibert",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "matscibert",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "MatSciBERT, BERT pre-trained on materials-science literature.",
+        "description": "MatSciBERT, BERT pre-trained on materials-science literature. Produces 768-dim embeddings of materials text and supports masked-token prediction. Served on a HAMi sub-GPU slice.",
+        "owned_by": "m3rg-iitd",
+        "source": "m3rg-iitd/matscibert",
+        "source_url": "https://huggingface.co/m3rg-iitd/matscibert",
+        "license": "MIT",
+        "parameters": "110M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "materials-science",
+        "subdomain": "scientific-nlp",
+        "tags": [
+          "embedding",
+          "science",
+          "materials-science",
+          "nlp",
+          "bert",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 512,
+        "input_format": {
+          "model": "matscibert",
+          "text": "materials-science text (str or [str])"
+        },
+        "embedding_dimensions": 768,
+        "pooling": "mean"
+      }
+    }

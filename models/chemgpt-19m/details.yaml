@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chemgpt-19m-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "chemgpt-19m",
+      "type": "generate",
+      "endpoints": {
+        "primary": "/v1/science/generate",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "chemgpt-19m",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 2048,
+        "max_input_tokens": 2048
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "ChemGPT-19M, a lightweight GPT-Neo style model trained on SMILES for de-novo molecule generation.",
+        "description": "ChemGPT-19M, a lightweight GPT-Neo style model trained on SMILES for de-novo molecule generation. Given a SMILES prefix it samples novel molecules. Tiny (~19M params). Served on a HAMi sub-GPU slice.",
+        "owned_by": "ncfrey",
+        "source": "ncfrey/ChemGPT-19M",
+        "source_url": "https://huggingface.co/ncfrey/ChemGPT-19M",
+        "license": "MIT",
+        "parameters": "19M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "chemistry",
+        "subdomain": "molecule-generation",
+        "tags": [
+          "generate",
+          "science",
+          "chemistry",
+          "molecules",
+          "smiles",
+          "tiny",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 2048,
+        "input_format": {
+          "model": "chemgpt-19m",
+          "smiles": "SMILES prefix, e.g. 'CC'",
+          "num_return_sequences": "int (default 5)"
+        }
+      }
+    }

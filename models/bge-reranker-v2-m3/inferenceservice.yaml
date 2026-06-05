@@ -1,0 +1,107 @@
+# bge-reranker-v2-m3: multilingual cross-encoder reranker — ported from POC (232).
+# CPU-only via HuggingFace TEI (ORT/ONNX backend); no GPU / no HAMi slice.
+# Init container downloads HF weights + exports to ONNX (idempotent via sentinel).
+# Always-on (minReplicas 1). TEI serves native /rerank; the gateway exposes a
+# Cohere-style /v1/rerank and translates {documents}->{texts} + response shape.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: bge-reranker-v2-m3
+  namespace: models
+spec:
+  predictor:
+    minReplicas: 1
+    timeout: 600
+    initContainers:
+      - name: hf-fetch-and-export
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.onnx-ready
+            if [ -f "$SENTINEL" ]; then
+              echo "ONNX model already exported, skipping."
+              exit 0
+            fi
+            pip install -q huggingface_hub transformers torch "optimum[onnxruntime]"
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if not Path("/data/config.json").is_file():
+                from huggingface_hub import snapshot_download
+                Path("/data").mkdir(parents=True, exist_ok=True)
+                print("Downloading BAAI/bge-reranker-v2-m3 ...", flush=True)
+                snapshot_download(
+                    repo_id="BAAI/bge-reranker-v2-m3",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            else:
+                print("HF weights already on PVC.", flush=True)
+            onnx_path = Path("/data/onnx/model.onnx")
+            if not onnx_path.is_file():
+                print("Exporting to ONNX for ORT backend...", flush=True)
+                from optimum.onnxruntime import ORTModelForSequenceClassification
+                model = ORTModelForSequenceClassification.from_pretrained("/data", export=True)
+                onnx_path.parent.mkdir(parents=True, exist_ok=True)
+                model.save_pretrained("/data/onnx")
+                print("ONNX export done.", flush=True)
+            else:
+                print("ONNX model already exists.", flush=True)
+            Path("/data/.onnx-ready").touch()
+            print("Init complete.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: "8"
+            memory: 16Gi
+        volumeMounts:
+          - name: bge-reranker-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.6
+        args:
+          - --model-id=/data
+          - --port=8080
+          - --dtype=float32
+          - --max-client-batch-size=128
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 4Gi
+          limits:
+            cpu: "8"
+            memory: 8Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        volumeMounts:
+          - name: bge-reranker-data
+            mountPath: /data
+            readOnly: true
+    volumes:
+      - name: bge-reranker-data
+        persistentVolumeClaim:
+          claimName: bge-reranker-v2-m3-data

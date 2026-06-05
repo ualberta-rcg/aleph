@@ -1,0 +1,69 @@
+# xtts-v2: Coqui XTTS-v2 multilingual TTS + voice cloning — ported from POC (232).
+# Changes vs POC:
+#   - nodeSelector nvidia.com/gpu.product=NVIDIA-L40S -> gpu: "on" (HAMi node label)
+#   - add nvidia.com/gpumem (HAMi vGPU slice). ~1.8B fp32 + Coqui TTS ~ 8 GB slice.
+#   - always-on (minReplicas 1), matching its always-on role on 232.
+# Init container builds a venv (TTS + torch) on the PVC once; main container runs it.
+# API: POST /v1/audio/speech (OpenAI-style TTS) -> audio/wav.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: xtts-v2
+  namespace: models
+spec:
+  predictor:
+    minReplicas: 1
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            # Rebuild venv only if TTS or torch are missing.
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import TTS, torch, fastapi' 2>/dev/null; then
+              echo "Creating/rebuilding venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch fastapi uvicorn python-multipart
+              /data/venv/bin/pip install -q "TTS" "transformers==4.40.2"
+            else
+              echo "venv exists and is compatible"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: COQUI_TOS_AGREED, value: "1" }
+          - { name: HF_HOME, value: /data/xtts-cache }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: 500m, memory: 8Gi }
+          limits:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 20
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: xtts-v2-data }
+      - name: app
+        configMap: { name: xtts-v2-server }

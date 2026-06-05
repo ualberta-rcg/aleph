@@ -1,0 +1,14 @@
+# Weights persist on NFS (nfs-client default SC = OneFS-safe 128Ki wsize) so pod restarts
+# skip the ~15GB re-download. See storage/nfs-client-storageclass.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: command-r-7b-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 30Gi

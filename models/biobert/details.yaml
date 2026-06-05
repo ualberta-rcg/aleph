@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biobert-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "biobert",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "biobert",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "BioBERT base (v1.",
+        "description": "BioBERT base (v1.1), BERT pre-trained on PubMed abstracts + PMC full text. Produces 768-dim biomedical text embeddings for NER, relation extraction and search. Served on a HAMi sub-GPU slice.",
+        "owned_by": "DMIS Lab",
+        "source": "dmis-lab/biobert-base-cased-v1.1",
+        "source_url": "https://huggingface.co/dmis-lab/biobert-base-cased-v1.1",
+        "license": "Apache-2.0",
+        "parameters": "110M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "biomedical",
+        "subdomain": "biomedical-nlp",
+        "tags": [
+          "embedding",
+          "science",
+          "biomedical",
+          "nlp",
+          "bert",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 512,
+        "input_format": {
+          "model": "biobert",
+          "input": "biomedical text str or [str]"
+        },
+        "embedding_dimensions": 768,
+        "pooling": "mean"
+      }
+    }

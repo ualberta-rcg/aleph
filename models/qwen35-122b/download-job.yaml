@@ -1,0 +1,68 @@
+# One-shot Job: pre-stage Qwen3.5-122B-A10B-FP8 weights (~122 GB) onto the PVC.
+# Done as a separate Job (not an initContainer) because the download is multi-hour;
+# pre-staging keeps the InferenceService cold start to weight-load time (~5 min).
+# Idempotent: a sentinel file short-circuits re-runs.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qwen35-122b-download
+  namespace: models
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 21600  # 6-hour ceiling for ~122 GB
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: downloader
+          image: python:3.11-slim
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+            - name: HF_HUB_ENABLE_HF_TRANSFER
+              value: "1"
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+              SENTINEL=/data/.qwen35-122b-fp8-ready
+              if [ -f "$SENTINEL" ]; then
+                echo "Weights already present, nothing to do."
+                exit 0
+              fi
+              pip install -q huggingface_hub hf_transfer
+              python3 -u - <<'PY'
+              import os
+              from pathlib import Path
+              from huggingface_hub import snapshot_download
+              dest = Path("/data")
+              dest.mkdir(parents=True, exist_ok=True)
+              print("Downloading Qwen/Qwen3.5-122B-A10B-FP8 (~122 GB) ...", flush=True)
+              snapshot_download(
+                  repo_id="Qwen/Qwen3.5-122B-A10B-FP8",
+                  local_dir=str(dest),
+                  local_dir_use_symlinks=False,
+                  token=os.environ["HF_TOKEN"],
+              )
+              print("Download complete.", flush=True)
+              PY
+              touch "$SENTINEL"
+              echo "Done. Files:"
+              ls -lh /data | head -20
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+            limits:
+              cpu: "8"
+              memory: 32Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: qwen35-122b-data

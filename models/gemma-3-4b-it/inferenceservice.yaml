@@ -1,0 +1,144 @@
+# gemma-3-4b-it — Google Gemma 3 4B Instruct, adapted from POC (232) for 230 / HAMi.
+#
+# Cleanup vs POC: the POC called this "gemma-4b" but the repo is google/gemma-3-4b-it
+# (Gemma *3*). Renamed the model id + served name to gemma-3-4b-it to match the repo.
+#
+# Other changes vs POC:
+#   - nodeSelector nvidia.com/gpu.product -> gpu: "on" (HAMi)
+#   - dropped the fp8 quantization + nvidia-smi VRAM-guard; HAMi enforces VRAM
+#     isolation, so a plain bf16 `vllm serve` on a 16GB slice is simpler/reliable.
+#   - image vllm/vllm-openai:v0.20.2 (newer, cached on node) instead of 0.8.4.
+#   - weights on NFS PVC (nfs-models SC); minReplicas 0 (scale-to-zero), 15m idle.
+#   - NO --enforce-eager (CUDA graphs on).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gemma-3-4b-it
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if Path("/data/config.json").is_file():
+                print("gemma-3-4b-it weights already on PVC, skipping.", flush=True)
+            else:
+                from huggingface_hub import snapshot_download
+                print("Downloading google/gemma-3-4b-it ...", flush=True)
+                snapshot_download(
+                    repo_id="google/gemma-3-4b-it",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: gemma-3-4b-it-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
+        args:
+          - serve
+          - /data
+          - --served-model-name
+          - gemma-3-4b-it
+          - --port
+          - "8080"
+          - --tensor-parallel-size
+          - "1"
+          - --max-model-len
+          - "65536"
+          - --dtype
+          - bfloat16
+          - --gpu-memory-utilization
+          - "0.90"
+          - --trust-remote-code
+          # Gemma 3 4B is multimodal (SigLIP vision tower): allow image inputs.
+          - --limit-mm-per-prompt
+          - '{"image":8}'
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+          limits:
+            cpu: "8"
+            memory: 24Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 40
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: gemma-3-4b-it-data
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: gemma-3-4b-it-data
+        persistentVolumeClaim:
+          claimName: gemma-3-4b-it-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 4Gi

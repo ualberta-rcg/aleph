@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-gateway
+  namespace: models
+  labels:
+    app: model-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: model-gateway
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
