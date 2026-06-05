@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "crysta-llm",
+      "status": "production",
       "type": "chat",
       "description_short": "CrystaLLM GPT-2-based crystal structure generation model that outputs CIF-format structures from formula prompts.",
       "description": "CrystaLLM is a GPT-2-based language model (c-bone/CrystaLLM-pi_base) fine-tuned to generate crystal structures in CIF format. It uses a custom character-level CIF tokenizer (vocab=377) to tokenize crystallographic data. Given a chemical formula prompt, it generates valid CIF-format crystal structure representations. ~25M parameters. MIT license. Custom tokenizer from lantunes/CrystaLLM.",

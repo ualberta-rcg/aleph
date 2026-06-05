@@ -50,7 +50,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
 | command-r-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
-| crysta-llm | chat | true | /v1/science/generate | NOT-READY | PENDING |  |
+| crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
 | diffdock | dock | true | /v1/dock | NOT-READY | PENDING |  |
@@ -116,7 +116,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | oceangpt-30b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
-| phi-4-reasoning | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
+| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | reasoning_content + OpenAI/Anthropic (progress-deadline fix) |
 | presto | classify | false | /v1/embeddings | READY | FAIL | band-layout mismatch - needs correct presto format |
 | prithvi-eo | embed | true | /v1/embed | NOT-READY | PENDING |  |
 | prithvi-wxc | embed | true | /v1/science/forecast | NOT-READY | PENDING |  |

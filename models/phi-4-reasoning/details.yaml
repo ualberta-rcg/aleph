@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "phi-4-reasoning",
+      "status": "production",
       "type": "chat",
       "description_short": "Microsoft Phi-4 Reasoning 14B, chain-of-thought math/science/code",
       "description": "Microsoft Phi-4-reasoning 14B dense decoder-only Transformer. Fine-tuned from Phi-4 using SFT on chain-of-thought traces and RL. Excels at math, science, and coding reasoning. Outputs two sections: a reasoning chain-of-thought block followed by a summarization block. 32K context window. 1x L40S GPU. Uses --enable-reasoning and --reasoning-parser=deepseek_r1 for proper thought parsing.",

@@ -8,6 +8,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
     minReplicas: 0
@@ -78,12 +79,12 @@ spec:
             cpu: "2"
             memory: 12Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "12288"
+            nvidia.com/gpumem: "24576"
           limits:
             cpu: "4"
             memory: 16Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "12288"
+            nvidia.com/gpumem: "24576"
         readinessProbe:
           httpGet:
             path: /v1/models

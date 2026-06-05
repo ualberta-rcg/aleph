@@ -3,6 +3,8 @@ kind: InferenceService
 metadata:
   name: deepseek-v2-lite-16b
   namespace: models
+  annotations:
+    serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
     minReplicas: 1
@@ -56,7 +58,7 @@ spec:
           - --served-model-name=deepseek-v2-lite-16b
           - --port=8080
           - --tensor-parallel-size=1
-          - --max-model-len=32768
+          - --max-model-len=8192
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.90
           - --trust-remote-code
@@ -74,12 +76,12 @@ spec:
             cpu: "2"
             memory: 16Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "20480"
+            nvidia.com/gpumem: "45056"
           limits:
             cpu: "8"
             memory: 24Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "20480"
+            nvidia.com/gpumem: "45056"
         readinessProbe:
           httpGet:
             path: /v1/models

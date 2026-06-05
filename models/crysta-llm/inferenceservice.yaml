@@ -213,6 +213,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     minReplicas: 0
