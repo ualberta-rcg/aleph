@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "molformer",
+      "status": "production",
       "type": "embedding",
       "endpoints": { "primary": "/v1/science/embed", "health": "/health" },
       "routing": { "k8s_name": "molformer", "no_stream": true, "upstream_model_id": null },

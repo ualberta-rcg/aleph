@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "nucleotide-transformer",
+      "status": "production",
       "type": "embedding",
       "endpoints": {
         "primary": "/v1/embeddings",

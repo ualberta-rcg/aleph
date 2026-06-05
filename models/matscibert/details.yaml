@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "matscibert",
+      "status": "production",
       "type": "embedding",
       "endpoints": {
         "primary": "/v1/science/embed",

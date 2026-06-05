@@ -64,13 +64,13 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ernierna | embedding | true | /v1/science/embed | NOT-READY | FAIL | isvc never deployed (READY=False 10h); needs recreate/fix |
 | esm1b | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | esm2-150m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| esm2-35m | embedding | true | /v1/embeddings | READY | PENDING |  |
+| esm2-35m | embedding | true | /v1/embeddings | READY | PASS | 480-dim protein |
 | esm2-3b | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| esm2-650m | embedding | true | /v1/embeddings | READY | PENDING |  |
+| esm2-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein |
 | esmc-300m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | esmfold | structure | true | /v1/structure | NOT-READY | PENDING |  |
 | fengwu | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
-| finbert | classify | true | /v1/science/classify | READY | PENDING |  |
+| finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
 | gemma-3-4b-it | chat | ? | /v1/chat/completions | READY | PENDING |  |
@@ -96,7 +96,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mace-mp | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
 | mast3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
-| matscibert | embedding | true | /v1/science/embed | READY | PENDING |  |
+| matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING |  |
 | mattersim | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | medcpt-article | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
@@ -107,12 +107,12 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | moirai-large | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | moirai-moe | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | moirai | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
-| molformer | embedding | true | /v1/science/embed | READY | PENDING |  |
+| molformer | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: smiles) |
 | moment | forecast | true | /v1/forecast | READY | PENDING |  |
 | multilingual-e5-small | embedding | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | naturecode-earth | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
-| nucleotide-transformer | embedding | true | /v1/embeddings | READY | PENDING |  |
+| nucleotide-transformer | embedding | true | /v1/embeddings | READY | PASS | 1024-dim DNA |
 | oceangpt-30b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
@@ -121,7 +121,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | prithvi-eo | embed | true | /v1/embed | NOT-READY | PENDING |  |
 | prithvi-wxc | embed | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | progen2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
-| prokbert | embedding | true | /v1/embeddings | READY | PENDING |  |
+| prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
 | prostt5 | embedding | true | /v1/translate | NOT-READY | PENDING |  |
 | proteinmpnn | design | true | /v1/design | READY | PENDING |  |
 | protgpt2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
@@ -133,7 +133,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | rnafm | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
-| rnamsm | embedding | true | /v1/science/embed | READY | PENDING |  |
+| rnamsm | embedding | true | /v1/science/embed | READY | PASS | 768-dim RNA (field: sequence) |
 | sapbert | embedding | true | /v1/science/embed | READY | PENDING |  |
 | saprot-650m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | satmae | embed | false | /v1/science/embed | READY | PASS | HxW RGB -> cls embedding |

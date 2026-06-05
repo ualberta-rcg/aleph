@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "esm2-650m",
+      "status": "production",
       "type": "embedding",
       "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
       "routing": { "k8s_name": "esm2-650m", "no_stream": true, "upstream_model_id": null },

@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "esm2-35m",
+      "status": "production",
       "type": "embedding",
       "endpoints": {
         "primary": "/v1/embeddings",

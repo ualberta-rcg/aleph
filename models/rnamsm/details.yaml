@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "rnamsm",
+      "status": "production",
       "type": "embedding",
       "description_short": "RNA MSA transformer for secondary structure prediction (~96M)",
       "description": "RNA-MSM from multimolecule is an MSA transformer-based RNA model. ~96M parameters, trained on Rfam. Uses multiple sequence alignment context for improved RNA secondary structure prediction. Uses multimolecule RnaTokenizer and RnaMsmModel. AGPL-3.0 license.",
