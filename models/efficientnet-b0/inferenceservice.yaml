@@ -1,0 +1,136 @@
+# EfficientNet-B0: Image classification (onnxmodelzoo/efficientnet-lite4)
+# API: POST /v1/vision/classify
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: efficientnet-b0-server
+  namespace: models
+data:
+  server.py: |
+    """EfficientNet image classification server."""
+    import os, io, base64, asyncio
+    import numpy as np
+    from PIL import Image
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_NAME = os.environ.get("MODEL_NAME", "efficientnet-b0")
+    MODEL_FILE = os.environ.get("MODEL_FILE", "/data/model/efficientnet-lite4-11.onnx")
+    INPUT_SIZE = 224
+
+    app = FastAPI()
+    session = None
+    labels = []
+
+    def load():
+        global session, labels
+        import onnxruntime as ort
+        from pathlib import Path
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 4
+        session = ort.InferenceSession(MODEL_FILE, sess_options=opts, providers=["CPUExecutionProvider"])
+        labels_file = Path("/data/model/labels.txt")
+        if labels_file.exists():
+            labels = labels_file.read_text().splitlines()
+        print(f"{MODEL_NAME} loaded with {len(labels)} labels", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if session else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "google", "type": "classify"}]}
+
+    def _infer(img_bytes, top_k=5):
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((INPUT_SIZE, INPUT_SIZE))
+        arr = np.array(img, dtype=np.float32) / 255.0
+        arr = arr[np.newaxis]
+        logits = session.run(None, {session.get_inputs()[0].name: arr})[0][0]
+        probs = np.exp(logits - logits.max()); probs /= probs.sum()
+        idx = probs.argsort()[::-1][:top_k]
+        return [{"rank": i+1, "class_id": int(j), "label": labels[j] if j < len(labels) else str(j), "score": float(probs[j])} for i, j in enumerate(idx)]
+
+    @app.post("/v1/vision/classify")
+    async def classify(request: dict):
+        if session is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        b64 = request.get("image", "")
+        if "," in b64: b64 = b64.split(",", 1)[1]
+        results = await asyncio.get_event_loop().run_in_executor(None, _infer, base64.b64decode(b64), request.get("top_k", 5))
+        return {"model": MODEL_NAME, "task": "classify", "predictions": results}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: efficientnet-b0
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install onnxruntime pillow numpy fastapi uvicorn huggingface_hub
+            else
+              echo "venv exists"
+            fi
+            if [ ! -f /data/model/efficientnet-lite4-11.onnx ]; then
+              echo "Downloading EfficientNet..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download(repo_id='onnx/EfficientNet-Lite4', local_dir='/data/model', local_dir_use_symlinks=False)
+            "
+            else
+              echo "Model exists"
+            fi
+        resources:
+          requests: { cpu: "1", memory: 2Gi }
+          limits: { cpu: "2", memory: 4Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_NAME, value: efficientnet-b0 }
+          - { name: MODEL_FILE, value: /data/model/efficientnet-lite4-11.onnx }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "1", memory: 1Gi }
+          limits: { cpu: "2", memory: 2Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: efficientnet-b0-data }
+      - name: app
+        configMap: { name: efficientnet-b0-server }

@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: efficientnet-b0-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "efficientnet-b0",
+      "type": "classify",
+      "description_short": "EfficientNet-B0 ImageNet classifier (1000 classes)",
+      "description": "EfficientNet-Lite4 ImageNet classifier from ONNX Model Zoo. 13M params. 1000 ImageNet classes with softmax probabilities. ONNX runtime for fast CPU inference. Downloads pre-converted ONNX model from HuggingFace on first boot. Returns ranked class predictions with confidence scores.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/vision/classify",
+        "health": "/health"
+      },
+      "owned_by": "google",
+      "source": "onnx/EfficientNet-Lite4",
+      "source_url": "https://huggingface.co/onnx/EfficientNet-Lite4",
+      "license": "Apache-2.0",
+      "parameters": "13M",
+      "parameter_count": 13000000,
+      "precision": "onnx-fp32",
+      "architecture": "cnn",
+      "framework": "onnxruntime",
+      "deployment": {
+        "gpu": false,
+        "gpu_count": 0,
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "startup_seconds": 20,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "k8s_name": "efficientnet-b0",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": true,
+        "reasoning_model": false
+      },
+      "domain": "computer-vision",
+      "subdomain": "image-classification",
+      "tags": ["vision", "classify", "imagenet", "onnx", "cpu"],
+      "content_types": ["image"],
+      "tier": "production",
+      "input_map": {
+        "image": {
+          "type": "string",
+          "required": true,
+          "format": "base64",
+          "media_types": ["image/jpeg", "image/png"],
+          "max_size_bytes": 10485760,
+          "description": "Base64-encoded JPEG or PNG image"
+        },
+        "top_k": {
+          "type": "integer",
+          "required": false,
+          "default": 5,
+          "description": "Number of top predictions to return"
+        }
+      },
+      "output_map": {
+        "model": "string",
+        "task": "string",
+        "predictions": {
+          "type": "array",
+          "items": {
+            "rank": "int",
+            "class_id": "int",
+            "label": "string (ImageNet class name)",
+            "score": "float (0-1 probability)"
+          }
+        }
+      },
+      "server_config": {
+        "inference_backend": "onnxruntime",
+        "onnx_opset": 11,
+        "input_size": 224,
+        "execution_provider": "CPUExecutionProvider",
+        "intra_op_num_threads": 4
+      }
+    }
