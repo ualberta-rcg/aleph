@@ -77,7 +77,6 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | gena-lm-large | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | gena-lm | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| geneformer-v2 | embedding | ? | - | NO-ISVC | PENDING |  |
 | geneformer | embedding | true | /v1/embed | NOT-READY | PENDING |  |
 | geogalactica | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | gpt-oss-120b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
@@ -91,9 +90,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | labram | embed | false | /v1/science/embed | READY | FAIL | needs 128 canonical channels or ch_names - needs deep fix |
 | lag-llama | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | leandojo | embed | true | /v1/science/retrieve | READY | PENDING |  |
-| led | stub | false | - | NO-ISVC | PENDING |  |
 | ligandmpnn | design | false | /v1/design | READY | FIXED | checkpoints+args+optional-openfold; 1CRN design near-native PASS |
-| longformer | stub | false | - | NO-ISVC | PENDING |  |
 | mace-mh-1 | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
 | mace-mp | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
@@ -142,7 +139,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | satmae | embed | false | /v1/science/embed | READY | PASS | HxW RGB -> cls embedding |
 | scgpt | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
-| science-embed | embedding | ? | - | NO-ISVC | PENDING |  |
+| science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
 | scincl | embedding | true | /v1/embeddings | READY | PENDING |  |
 | seisbench | classify | true | /v1/science/detect | READY | PENDING |  |
 | speaches | standalone | true | - | NO-ISVC | PENDING |  |
