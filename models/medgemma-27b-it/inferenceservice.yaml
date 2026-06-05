@@ -65,7 +65,7 @@ spec:
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.92
           - --trust-remote-code
-          - --limit-mm-per-prompt=image=5
+          - '--limit-mm-per-prompt={"image": 5}'
           # TP=2 on HAMi: disable custom all-reduce (P2P busy-wait stall) -> NCCL.
           - --disable-custom-all-reduce
         env:
@@ -73,8 +73,6 @@ spec:
             value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
-          - name: CUDA_DISABLE_CONTROL          # whole devices: bypass HAMi vGPU interception
-            value: "true"
         ports:
           - containerPort: 8080
             protocol: TCP

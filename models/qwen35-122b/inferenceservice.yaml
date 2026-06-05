@@ -2,12 +2,11 @@
 # Ported from POC (232) to cluster 230 / HAMi vGPU.
 #
 # Changes vs POC:
-#   - nodeSelector hostname rack01-15 -> rack05-16 (our fresh, empty 4×L40S node) +
-#     gpu: "on". This model takes the whole node.
-#   - HAMi resources: instead of GPU-Operator whole-GPU `nvidia.com/gpu: 4`, request
-#     nvidia.com/gpu: "4" AND nvidia.com/gpumem: "46000" (per-GPU). 46 GB/slice forces
-#     HAMi to place each of the 4 vGPUs on a distinct physical L40S (≈whole-card each),
-#     which is what tensor-parallel-size=4 needs.
+#   - nodeSelector: gpu: "on" only (unpinned from a specific host; scheduler picks a
+#     node with 4 free L40S). This model takes 4 whole cards.
+#   - HAMi resources for TP>=2: request whole devices via `nvidia.com/gpu: "4"` and
+#     DO NOT set nvidia.com/gpumem (vGPU mode triggers a custom all-reduce P2P stall).
+#     Combined with --disable-custom-all-reduce this gives native NCCL speed.
 #   - ADD env VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 (REQUIRED on L40S/SM89 —
 #     FlashAttention-3 unavailable; same fix gpt-oss needed).
 #   - RawDeployment -> Knative serverless (scale-to-zero) so the 4-GPU node is freed
@@ -31,7 +30,6 @@ spec:
     timeout: 600
     nodeSelector:
       gpu: "on"
-      kubernetes.io/hostname: rack05-16
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
@@ -61,8 +59,6 @@ spec:
             value: TRITON_ATTN_VLLM_V1
           - name: OMP_NUM_THREADS
             value: "1"
-          - name: CUDA_DISABLE_CONTROL          # whole devices: bypass HAMi vGPU interception
-            value: "true"
         ports:
           - containerPort: 8080
             protocol: TCP

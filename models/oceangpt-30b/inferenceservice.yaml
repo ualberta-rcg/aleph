@@ -100,8 +100,6 @@ spec:
             value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
-          - name: CUDA_DISABLE_CONTROL          # whole devices: bypass HAMi vGPU interception
-            value: "true"
         ports:
           - containerPort: 8080
             protocol: TCP
