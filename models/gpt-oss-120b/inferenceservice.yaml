@@ -68,13 +68,13 @@ spec:
           - --tensor-parallel-size
           - "2"
           - --max-model-len
-          - "65536"
+          - "131072"
           - --gpu-memory-utilization
-          - "0.92"
-          # Proven-stable recipe (matches POC cluster 232, L40S, vLLM v0.20.2).
+          - "0.90"
+          # Mirror the proven gpt-oss-20b recipe (only TP size + gpumem differ).
           # Do NOT add fp8 kv-cache or --enable-prefix-caching: gpt-oss has attention
-          # sinks; on L40S the backend auto-resolves to TRITON_ATTN, and TP>1 +
-          # prefix-caching returns empty responses (vllm#31422); fp8 breaks sinks.
+          # sinks; on L40S the backend is TRITON_ATTN, and TP>1 + prefix-caching
+          # returns empty responses (vllm#31422); fp8 breaks sinks.
           - --max-num-seqs
           - "8"
           - --reasoning-parser
@@ -87,6 +87,8 @@ spec:
             value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
+          - name: VLLM_ATTENTION_BACKEND          # REQUIRED on L40S (SM89), matches gpt-oss-20b
+            value: TRITON_ATTN_VLLM_V1
           - name: OMP_NUM_THREADS
             value: "1"
         ports:
