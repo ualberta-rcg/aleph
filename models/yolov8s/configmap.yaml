@@ -1,0 +1,374 @@
+apiVersion: v1
+data:
+  server.py: |
+    """
+    Generic ONNX vision inference server.
+    Env vars:
+      MODEL_NAME  — logical name returned in responses
+      MODEL_FILE  — absolute path to .onnx file
+      TASK        — classify | embed | detect | pose | face
+      INPUT_SIZE  — square input side length (default 224)
+      INPUT_W / INPUT_H — non-square override (e.g. HRNet 192x256)
+      OWNED_BY    — shown in /v1/models
+    All endpoints accept:  POST {"model":"<name>", "image":"<base64>", ...}
+    """
+    import os, io, base64, asyncio, json
+    from pathlib import Path
+    import numpy as np
+    from PIL import Image
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import onnxruntime as ort
+    import uvicorn
+
+    MODEL_NAME = os.environ["MODEL_NAME"]
+    MODEL_FILE = os.environ["MODEL_FILE"]
+    TASK       = os.environ.get("TASK", "classify")
+    INPUT_W    = int(os.environ.get("INPUT_W", os.environ.get("INPUT_SIZE", "224")))
+    INPUT_H    = int(os.environ.get("INPUT_H", os.environ.get("INPUT_SIZE", "224")))
+    OWNED_BY   = os.environ.get("OWNED_BY", "onnxmodelzoo")
+    LABELS_FILE= os.environ.get("LABELS_FILE", "/mnt/models/onnx-vision/imagenet_classes.txt")
+
+    COCO_CLASSES = [
+        'person','bicycle','car','motorcycle','airplane','bus','train','truck','boat',
+        'traffic light','fire hydrant','stop sign','parking meter','bench','bird','cat',
+        'dog','horse','sheep','cow','elephant','bear','zebra','giraffe','backpack',
+        'umbrella','handbag','tie','suitcase','frisbee','skis','snowboard','sports ball',
+        'kite','baseball bat','baseball glove','skateboard','surfboard','tennis racket',
+        'bottle','wine glass','cup','fork','knife','spoon','bowl','banana','apple',
+        'sandwich','orange','broccoli','carrot','hot dog','pizza','donut','cake','chair',
+        'couch','potted plant','bed','dining table','toilet','tv','laptop','mouse',
+        'remote','keyboard','cell phone','microwave','oven','toaster','sink',
+        'refrigerator','book','clock','vase','scissors','teddy bear','hair drier',
+        'toothbrush'
+    ]
+    COCO_KEYPOINTS = [
+        'nose','left_eye','right_eye','left_ear','right_ear',
+        'left_shoulder','right_shoulder','left_elbow','right_elbow',
+        'left_wrist','right_wrist','left_hip','right_hip',
+        'left_knee','right_knee','left_ankle','right_ankle'
+    ]
+
+    app = FastAPI()
+    session = None
+    imagenet_labels = []
+
+    def load():
+        global session, imagenet_labels
+        print(f"Loading {MODEL_NAME} ({TASK}) from {MODEL_FILE}...", flush=True)
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = int(os.environ.get("ORT_THREADS", "4"))
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        session = ort.InferenceSession(MODEL_FILE, sess_options=opts,
+                                       providers=["CPUExecutionProvider"])
+        ins  = [(i.name, i.shape) for i in session.get_inputs()]
+        outs = [o.name for o in session.get_outputs()]
+        print(f"  inputs:  {ins}", flush=True)
+        print(f"  outputs: {outs}", flush=True)
+        if TASK in ("classify", "embed") and Path(LABELS_FILE).exists():
+            imagenet_labels = Path(LABELS_FILE).read_text().splitlines()
+        print(f"[OK] {MODEL_NAME}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if session else "loading",
+                "model": MODEL_NAME, "task": TASK}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": MODEL_NAME, "object": "model", "created": 1700000000,
+             "owned_by": OWNED_BY, "type": TASK}
+        ]}
+
+    # ── Image preprocessing ────────────────────────────────────────────────
+    IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    IMAGENET_STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+    def decode_image(b64: str) -> bytes:
+        # strip data URI prefix if present
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        return base64.b64decode(b64)
+
+    def preprocess_imagenet(img_bytes, w, h):
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((w, h), Image.BILINEAR)
+        arr = np.array(img, dtype=np.float32) / 255.0
+        arr = (arr - IMAGENET_MEAN) / IMAGENET_STD
+        return arr.transpose(2, 0, 1)[np.newaxis]  # [1,3,H,W]
+
+    def preprocess_norm01(img_bytes, w, h):
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((w, h), Image.BILINEAR)
+        arr = np.array(img, dtype=np.float32) / 255.0
+        return arr.transpose(2, 0, 1)[np.newaxis]
+
+    # ── Task handlers ──────────────────────────────────────────────────────
+    def _run_classify(img_bytes, top_k=5):
+        inp = preprocess_imagenet(img_bytes, INPUT_W, INPUT_H)
+        in_name = session.get_inputs()[0].name
+        logits = session.run(None, {in_name: inp})[0][0]  # [1000]
+        probs = np.exp(logits - logits.max())
+        probs /= probs.sum()
+        idx = probs.argsort()[::-1][:top_k]
+        return [{"rank": i+1, "class_id": int(j),
+                 "label": imagenet_labels[j] if j < len(imagenet_labels) else str(j),
+                 "score": float(probs[j])} for i, j in enumerate(idx)]
+
+    def _run_embed(img_bytes):
+        inp = preprocess_imagenet(img_bytes, INPUT_W, INPUT_H)
+        in_name = session.get_inputs()[0].name
+        # Some models have a separate embedding output; use last output
+        out = session.run(None, {in_name: inp})
+        vec = out[-1][0]  # last output, first batch item
+        if vec.ndim > 1:
+            vec = vec.mean(axis=tuple(range(1, vec.ndim)))  # global avg pool
+        return vec.tolist()
+
+    def _nms(boxes, scores, iou_thresh=0.45):
+        if len(boxes) == 0:
+            return []
+        x1, y1, x2, y2 = boxes[:,0], boxes[:,1], boxes[:,2], boxes[:,3]
+        areas = (x2-x1) * (y2-y1)
+        order = scores.argsort()[::-1]
+        keep = []
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
+            xx1 = np.maximum(x1[i], x1[order[1:]])
+            yy1 = np.maximum(y1[i], y1[order[1:]])
+            xx2 = np.minimum(x2[i], x2[order[1:]])
+            yy2 = np.minimum(y2[i], y2[order[1:]])
+            inter = np.maximum(0, xx2-xx1) * np.maximum(0, yy2-yy1)
+            iou = inter / (areas[i] + areas[order[1:]] - inter + 1e-6)
+            order = order[1:][iou < iou_thresh]
+        return keep
+
+    def _run_detect_yolo(img_bytes, conf_thresh=0.25, iou_thresh=0.45):
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        W0, H0 = img.size
+        inp = preprocess_norm01(img_bytes, INPUT_W, INPUT_H)
+        in_name = session.get_inputs()[0].name
+        raw = session.run(None, {in_name: inp})[0][0]  # [84, 8400]
+        # YOLOv8: rows = [cx,cy,w,h, cls0..cls79]
+        boxes_xywh = raw[:4].T      # [8400, 4]
+        cls_scores  = raw[4:].T     # [8400, 80]
+        class_ids  = cls_scores.argmax(1)
+        scores     = cls_scores[np.arange(len(cls_scores)), class_ids]
+        mask = scores > conf_thresh
+        if not mask.any():
+            return []
+        boxes_xywh = boxes_xywh[mask]
+        scores     = scores[mask]
+        class_ids  = class_ids[mask]
+        # cx,cy,w,h → x1,y1,x2,y2 (normalised 0-1 relative to input size)
+        cx, cy, bw, bh = boxes_xywh[:,0], boxes_xywh[:,1], boxes_xywh[:,2], boxes_xywh[:,3]
+        x1 = (cx - bw/2) / INPUT_W * W0
+        y1 = (cy - bh/2) / INPUT_H * H0
+        x2 = (cx + bw/2) / INPUT_W * W0
+        y2 = (cy + bh/2) / INPUT_H * H0
+        xyxy = np.stack([x1,y1,x2,y2], 1)
+        keep = _nms(xyxy, scores, iou_thresh)
+        result = []
+        for k in keep:
+            result.append({
+                "label": COCO_CLASSES[class_ids[k]] if class_ids[k] < len(COCO_CLASSES) else str(class_ids[k]),
+                "class_id": int(class_ids[k]),
+                "score": float(scores[k]),
+                "bbox": [float(x1[k]), float(y1[k]), float(x2[k]), float(y2[k])],
+            })
+        return sorted(result, key=lambda x: -x["score"])
+
+    def _run_detect_rcnn(img_bytes, conf_thresh=0.5):
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        W0, H0 = img.size
+        # Use INPUT_W/INPUT_H if model is static (retinanet-9, etc.); else keep original
+        in_shapes = session.get_inputs()[0].shape
+        static_h = isinstance(in_shapes[-2], int) and in_shapes[-2] > 0
+        static_w = isinstance(in_shapes[-1], int) and in_shapes[-1] > 0
+        w = in_shapes[-1] if static_w else INPUT_W if INPUT_W != INPUT_H else W0
+        h = in_shapes[-2] if static_h else INPUT_H if INPUT_W != INPUT_H else H0
+        # For fully dynamic models keep original size; for retinanet with INPUT_W!=INPUT_H use those
+        if INPUT_W != INPUT_H:
+            w, h = INPUT_W, INPUT_H
+        elif not (static_h or static_w):
+            w, h = W0, H0
+        inp = preprocess_norm01(img_bytes, w, h)   # [1,3,h,w]
+        in_name = session.get_inputs()[0].name
+        expected_rank = len(in_shapes)
+        in_tensor = inp.squeeze(0) if expected_rank == 3 else inp
+        outs = session.run(None, {in_name: in_tensor})
+        # scale boxes back to original image dimensions
+        scale_x, scale_y = W0 / w, H0 / h
+        # Standard torchvision ONNX: boxes[N,4] labels[N] scores[N]
+        boxes  = outs[0]  # [N,4] x1y1x2y2
+        labels = outs[1].astype(int)
+        scores = outs[2]
+        result = []
+        for box, lbl, sc in zip(boxes, labels, scores):
+            if sc < conf_thresh:
+                continue
+            # torchvision COCO labels are 1-indexed
+            idx = lbl - 1
+            result.append({
+                "label": COCO_CLASSES[idx] if 0 <= idx < len(COCO_CLASSES) else str(lbl),
+                "class_id": int(lbl),
+                "score": float(sc),
+                "bbox": [float(box[0]*scale_x), float(box[1]*scale_y),
+                         float(box[2]*scale_x), float(box[3]*scale_y)],
+            })
+        return sorted(result, key=lambda x: -x["score"])
+
+    def _run_pose(img_bytes):
+        inp = preprocess_imagenet(img_bytes, INPUT_W, INPUT_H)
+        in_name = session.get_inputs()[0].name
+        heatmaps = session.run(None, {in_name: inp})[0][0]  # [17, H/4, W/4]
+        H, W = heatmaps.shape[1], heatmaps.shape[2]
+        keypoints = []
+        for k_idx, hm in enumerate(heatmaps):
+            flat = hm.reshape(-1)
+            pos = int(flat.argmax())
+            y, x = divmod(pos, W)
+            conf = float(flat[pos])
+            # scale back to input image coords
+            keypoints.append({
+                "name": COCO_KEYPOINTS[k_idx] if k_idx < len(COCO_KEYPOINTS) else str(k_idx),
+                "x": float(x * INPUT_W / W),
+                "y": float(y * INPUT_H / H),
+                "confidence": conf,
+            })
+        return keypoints
+
+    def _run_face(img_bytes):
+        # ArcFace: 112x112 BGR, normalise to [-1,1]
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((112, 112), Image.BILINEAR)
+        arr = np.array(img, dtype=np.float32)
+        arr = (arr / 127.5) - 1.0
+        inp = arr.transpose(2, 0, 1)[np.newaxis]
+        in_name = session.get_inputs()[0].name
+        emb = session.run(None, {in_name: inp})[0][0]  # [512]
+        # L2 normalize
+        emb = emb / (np.linalg.norm(emb) + 1e-6)
+        return emb.tolist()
+
+
+    def _run_segment(img_bytes, conf_thresh=0.5):
+        """MaskRCNN-style: returns detections + per-detection mask PNGs."""
+        import io as _io
+        img = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        W0, H0 = img.size
+        inp = preprocess_norm01(img_bytes, W0, H0)
+        in_name = session.get_inputs()[0].name
+        outs = session.run(None, {in_name: inp.squeeze(0)})
+        # torchvision MaskRCNN ONNX: boxes[N,4] labels[N] scores[N] masks[N,1,H,W]
+        boxes  = outs[0]
+        labels = outs[1].astype(int)
+        scores = outs[2]
+        masks  = outs[3] if len(outs) > 3 else None
+        result = []
+        for idx, (box, lbl, sc) in enumerate(zip(boxes, labels, scores)):
+            if sc < conf_thresh:
+                continue
+            cls_idx = lbl - 1  # 1-indexed in torchvision
+            det = {
+                "label": COCO_CLASSES[cls_idx] if 0 <= cls_idx < len(COCO_CLASSES) else str(lbl),
+                "class_id": int(lbl), "score": float(sc),
+                "bbox": [float(x) for x in box],
+            }
+            if masks is not None:
+                msk = (masks[idx, 0] > 0.5).astype(np.uint8) * 255
+                msk_img = Image.fromarray(msk, mode="L")
+                buf = _io.BytesIO()
+                msk_img.save(buf, format="PNG")
+                det["mask_png"] = base64.b64encode(buf.getvalue()).decode()
+            result.append(det)
+        return sorted(result, key=lambda x: -x["score"])
+
+
+    def _run_depth(img_bytes):
+        """Depth Anything: returns normalised depth map as base64 PNG + raw stats."""
+        import io as _io
+        img_orig = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        W0, H0 = img_orig.size
+        # Depth Anything uses 518x518 with imagenet normalisation
+        inp = preprocess_imagenet(img_bytes, INPUT_W, INPUT_H)
+        in_name = session.get_inputs()[0].name
+        depth = session.run(None, {in_name: inp})[0]  # [1, H, W] or [1, 1, H, W]
+        depth = depth.squeeze()                         # [H, W]
+        d_min, d_max = float(depth.min()), float(depth.max())
+        # Normalise to 0-255 and resize back to original
+        norm = ((depth - d_min) / (d_max - d_min + 1e-8) * 255).astype(np.uint8)
+        depth_img = Image.fromarray(norm, mode="L").resize((W0, H0), Image.BILINEAR)
+        buf = _io.BytesIO()
+        depth_img.save(buf, format="PNG")
+        return {
+            "depth_png": base64.b64encode(buf.getvalue()).decode(),
+            "min_depth": d_min, "max_depth": d_max,
+            "width": W0, "height": H0,
+            "note": "Grayscale PNG: darker=closer, lighter=farther (relative scale)"
+        }
+
+    # ── Unified endpoint ───────────────────────────────────────────────────
+    def _dispatch(body: dict):
+        img_b64 = body.get("image") or body.get("data")
+        if not img_b64:
+            raise ValueError("'image' field (base64) required")
+        img_bytes = decode_image(img_b64)
+        top_k = int(body.get("top_k", 5))
+        conf  = float(body.get("confidence_threshold", 0.25 if TASK == "detect" else 0.5))
+        if TASK == "classify":
+            return {"model": MODEL_NAME, "task": TASK,
+                    "predictions": _run_classify(img_bytes, top_k)}
+        elif TASK == "embed":
+            return {"model": MODEL_NAME, "task": TASK,
+                    "embedding": _run_embed(img_bytes)}
+        elif TASK == "detect":
+            fn = _run_detect_yolo if "yolo" in MODEL_NAME else _run_detect_rcnn
+            return {"model": MODEL_NAME, "task": TASK,
+                    "detections": fn(img_bytes, conf)}
+        elif TASK == "segment":
+            return {"model": MODEL_NAME, "task": TASK,
+                    "detections": _run_segment(img_bytes, conf)}
+        elif TASK == "depth":
+            result = _run_depth(img_bytes)
+            result["model"] = MODEL_NAME
+            result["task"] = TASK
+            return result
+        elif TASK == "pose":
+            return {"model": MODEL_NAME, "task": TASK,
+                    "keypoints": _run_pose(img_bytes)}
+        elif TASK == "face":
+            return {"model": MODEL_NAME, "task": TASK,
+                    "embedding": _run_face(img_bytes),
+                    "note": "L2-normalised 512-dim ArcFace embedding. Compare with cosine similarity."}
+        else:
+            raise ValueError(f"unknown task {TASK}")
+
+    @app.post("/v1/vision/classify")
+    @app.post("/v1/vision/embed")
+    @app.post("/v1/vision/detect")
+    @app.post("/v1/vision/segment")
+    @app.post("/v1/vision/depth")
+    @app.post("/v1/vision/pose")
+    @app.post("/v1/vision/face")
+    async def infer(request: dict):
+        if not session:
+            return JSONResponse({"error": "model loading"}, 503)
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _dispatch, request)
+            return result
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, 400)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, 500)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+kind: ConfigMap
+metadata:
+  name: yolov8s-vision-server
+  namespace: models
