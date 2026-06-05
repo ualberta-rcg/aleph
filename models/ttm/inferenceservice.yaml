@@ -75,10 +75,12 @@ data:
         import numpy as np
 
         context = np.array(req["context"], dtype=np.float32)
+        # TTM expects past_values as [batch, context_length, num_channels].
         if context.ndim == 1:
-            context = context.reshape(1, 1, -1)  # [batch=1, channels=1, time]
+            context = context.reshape(1, -1, 1)  # [batch=1, time, channels=1]
         elif context.ndim == 2:
-            context = context[np.newaxis, :, :]  # [batch=1, channels, time]
+            # incoming [channels, time] -> [batch=1, time, channels]
+            context = context.T[np.newaxis, :, :]
 
         x = torch.tensor(context)
         with torch.inference_mode():

@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "ttm",
+      "status": "production",
       "type": "forecast",
       "description_short": "IBM TinyTimeMixer (TTM-R2) lightweight multi-variate time-series forecasting model (1-5M params).",
       "description": "IBM TinyTimeMixer (TTM-R2) from IBM Granite is an extremely lightweight time-series forecasting model achieving state-of-the-art zero-shot performance with only 1-5M parameters. Supports multi-variate forecasting with configurable context lengths (512-1024) and channel mixing. Uses the granite-tsfm/tsfm_public library. Apache 2.0 license. GPU-capable.",

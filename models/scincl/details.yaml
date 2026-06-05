@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "scincl",
+      "status": "production",
       "type": "embedding",
       "description_short": "ScINCL — scientific citation embeddings via incl-training (768-dim)",
       "description": "ScINCL by malteos. 110M params. BERT-base model trained with incl-Training (inconsistent citation training) for scientific document embeddings. Produces CLS token embeddings that capture citation context for academic paper similarity and recommendation. Outperforms SPECTER2 on some citation-based benchmarks. Max sequence length 512 tokens.",

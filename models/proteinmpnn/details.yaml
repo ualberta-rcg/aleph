@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "proteinmpnn",
+      "status": "production",
       "type": "design",
       "endpoints": { "primary": "/v1/design", "health": "/health" },
       "routing": {

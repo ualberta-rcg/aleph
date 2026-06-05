@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "stanford-deidentifier",
+      "status": "production",
       "type": "deidentify",
       "description_short": "Stanford Deidentifier — clinical PHI removal via NER",
       "description": "Stanford Deidentifier by Stanford AIMI. 110M params. BERT-base token classification model for removing Protected Health Information (PHI) from clinical notes. Detects names, dates, IDs, locations, and other HIPAA identifiers. Critical for HIPAA-compliant clinical NLP pipelines. 1.46M HuggingFace downloads. Also provides text embeddings via underlying BERT model. Max sequence length 512 tokens.",

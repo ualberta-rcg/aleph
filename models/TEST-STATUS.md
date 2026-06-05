@@ -123,7 +123,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | progen2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
 | prostt5 | embedding | true | /v1/translate | NOT-READY | PENDING |  |
-| proteinmpnn | design | true | /v1/design | READY | PENDING |  |
+| proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores |
 | protgpt2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
@@ -134,18 +134,18 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | rnabert | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | rnafm | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | rnamsm | embedding | true | /v1/science/embed | READY | PASS | 768-dim RNA (field: sequence) |
-| sapbert | embedding | true | /v1/science/embed | READY | PENDING |  |
+| sapbert | embedding | true | /v1/science/embed | READY | PASS | 768-dim biomedical |
 | saprot-650m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | satmae | embed | false | /v1/science/embed | READY | PASS | HxW RGB -> cls embedding |
 | scgpt | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
-| scincl | embedding | true | /v1/embeddings | READY | PENDING |  |
+| scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper |
 | seisbench | classify | true | /v1/science/detect | READY | PENDING |  |
 | speaches | standalone | true | - | NO-ISVC | PENDING |  |
 | specter2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id specter2-110m) |
 | splicebert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id splicebert-86m) |
-| stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PENDING |  |
+| stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PASS | PHI entities (PATIENT/DATE/HOSPITAL) |
 | sundial | forecast | false | /v1/science/forecast | READY | FIXED | fixed input shape + pinned transformers 4.40.2; forecast+quantiles PASS |
 | surya | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | terramind-flood | classify | true | /v1/science/classify | NOT-READY | PENDING |  |
@@ -156,7 +156,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | timesfm | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
 | totalsegmentator | segment | true | /v1/science/segment | NOT-READY | PENDING |  |
-| ttm | forecast | true | /v1/science/forecast | READY | PENDING |  |
+| ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
 | uma-m | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | xtts-v2 | tts | true | /v1/audio/speech | READY | PENDING |  |
 | yolov8n | detect | false | /v1/vision/detect | READY | PASS | person 0.89 on bus.jpg |

@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "sapbert",
+      "status": "production",
       "type": "embedding",
       "description_short": "SapBERT — biomedical entity linking embeddings (768-dim)",
       "description": "SapBERT by Cambridge LTL. 110M params. Self-alignment pre-trained BERT for biomedical entity linking. Maps biomedical entity mentions (drug names, disease names, gene symbols) to UMLS concept embeddings. Trained on UMLS knowledge graph for named entity normalization, medical concept retrieval, and clinical NLP. Uses CLS token with short context (max 25 tokens). Max sequence length 25 tokens (entity-focused).",
