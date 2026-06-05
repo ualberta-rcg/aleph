@@ -2,6 +2,16 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate chemberta + clinicalbert (embeddings, CPU)
+
+### chemberta (Wave 1)
+- ChemBERTa (seyonec/ChemBERTa-zinc-base-v1) SMILES embeddings, /v1/embeddings 768-dim,
+  CPU. Inline token → secretKeyRef; pinned torch/transformers; v2 card. Verified dim=768.
+
+### clinicalbert (Wave 1)
+- Bio_ClinicalBERT clinical-text embeddings, /v1/embeddings 768-dim, CPU. Inline token →
+  secretKeyRef; pinned torch/transformers; v2 card. Verified dim=768.
+
 ## 2026-06-04 — aion deferred (BLOCKED)
 
 ### aion (Wave 1) — blocked

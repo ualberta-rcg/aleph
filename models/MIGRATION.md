@@ -28,12 +28,12 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [ ] biot5
 - [ ] birdnet-analyzer
 - [ ] chem-t5
-- [ ] chemberta
+- [x] chemberta (embedding, CPU, dim=768; id=chemberta-125m)
 - [ ] chronos-bolt
 - [ ] clap
 - [ ] clay
 - [ ] climatebert
-- [ ] clinicalbert
+- [x] clinicalbert (embedding, CPU, dim=768; id=clinicalbert-110m)
 - [ ] depth-anything
 - [ ] dino-vit-b8
 - [ ] dnabert-2
