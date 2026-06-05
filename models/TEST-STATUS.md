@@ -88,8 +88,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ithaca | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
 | kandinsky-3 | image | true | /v1/images/generations | NO-ISVC | PENDING |  |
 | labram | embed | false | /v1/science/embed | READY | FAIL | needs 128 canonical channels or ch_names - needs deep fix |
-| lag-llama | forecast | true | /v1/science/forecast | READY | PENDING |  |
-| leandojo | embed | true | /v1/science/retrieve | READY | PENDING |  |
+| lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
+| leandojo | embed | true | /v1/science/retrieve | READY | PASS | premise retrieval w/ scores |
 | ligandmpnn | design | false | /v1/design | READY | FIXED | checkpoints+args+optional-openfold; 1CRN design near-native PASS |
 | mace-mh-1 | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
@@ -103,12 +103,12 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | medcpt-query | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | medgemma-27b-it | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | medsam | segment | true | /v1/science/segment | READY | PENDING |  |
-| megadetector | detect | true | /v1/detect | READY | PENDING |  |
-| moirai-large | forecast | true | /v1/science/forecast | READY | PENDING |  |
+| megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |
+| moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
 | moirai-moe | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | moirai | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | molformer | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: smiles) |
-| moment | forecast | true | /v1/forecast | READY | PENDING |  |
+| moment | forecast | true | /v1/forecast | READY | FIXED | output indexing (chan vs horizon); needs 512-len input; 96-step horizon |
 | multilingual-e5-small | embedding | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | naturecode-earth | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |

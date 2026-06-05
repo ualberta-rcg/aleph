@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "moment",
+      "status": "production",
       "type": "forecast",
       "description_short": "MOMENT-1-large (385M) open time-series foundation model from CMU for forecasting, classification, and anomaly detection.",
       "description": "MOMENT-1-large is an open time-series foundation model from AutonLab at CMU (2024). Built on a T5-based architecture with 385M parameters, it supports multiple downstream tasks: forecasting, classification, anomaly detection, and imputation. The model is loaded via the momentfm library with MOMENTPipeline. Apache 2.0 license. GPU-accelerated.",

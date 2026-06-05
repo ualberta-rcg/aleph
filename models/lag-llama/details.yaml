@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "lag-llama",
+      "status": "production",
       "type": "forecast",
       "description_short": "Lag-Llama probabilistic time-series foundation model (~30M params) for zero-shot forecasting with lag features.",
       "description": "Lag-Llama is a probabilistic time-series foundation model based on the LLaMA decoder-only Transformer architecture with lag-based tokenization. It provides zero-shot probabilistic forecasting with configurable prediction horizons and sample counts. Trained on diverse time-series datasets for general-purpose forecasting. Apache 2.0 license. GPU-capable with CPU fallback.",

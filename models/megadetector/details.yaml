@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "megadetector",
+      "status": "production",
       "type": "detect",
       "description_short": "Microsoft MegaDetector v5 wildlife camera trap detector for animals, humans, and vehicles.",
       "description": "MegaDetector v5 is a YOLOv5-based object detection model from Microsoft AI for Earth, specifically trained for wildlife camera trap images. It detects three categories: animals, humans, and vehicles with bounding boxes and confidence scores. Widely used in ecology, conservation biology, and biodiversity monitoring. Uses the megadetector pip package. CPU-capable.",

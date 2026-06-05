@@ -30,6 +30,9 @@ data:
 
     def load():
         global estimator
+        # lag-llama's estimator does its own torch.load; torch>=2.6 defaults to
+        # weights_only=True which rejects the checkpoint. Force the legacy behavior.
+        os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
         import torch
         from lag_llama.gluon.estimator import LagLlamaEstimator
 
@@ -107,7 +110,7 @@ data:
         estimator.prediction_length = pred_len
         predictor = estimator.create_predictor(
             transformation=estimator.create_transformation(),
-            trained_network=estimator.create_lightning_module(),
+            module=estimator.create_lightning_module(),
         )
 
         forecasts = list(predictor.predict(dataset, num_samples=num_samples))

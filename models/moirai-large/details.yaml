@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "moirai-large",
+      "status": "production",
       "type": "forecast",
       "description_short": "Salesforce Moirai 1.1-R-Large (311M) universal zero-shot time-series forecasting model.",
       "description": "Moirai-Large is the larger variant (311M params) of Salesforce's Moirai foundation model for universal time-series forecasting. It supports any-variate, zero-shot forecasting with configurable prediction length, context length (up to 4096), and automatic patch size selection. Provides probabilistic forecasts with quantile outputs. Apache 2.0 license.",

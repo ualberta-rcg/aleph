@@ -93,15 +93,17 @@ data:
             output = model(x_enc=tensor)
 
         forecast_vals = output.forecast.cpu().numpy()
-        # forecast shape: (batch, pred_len, n_channels) or (batch, n_channels, pred_len)
+        # MOMENT forecast shape is (batch, n_channels, horizon); take batch0, channel0,
+        # all horizon steps (the head horizon is fixed by the pretrained model).
         if forecast_vals.ndim == 3:
-            # Get first batch, first channel
-            vals = forecast_vals[0, :pred_len, 0].tolist() if forecast_vals.shape[-1] > 1 else forecast_vals[0, :pred_len, 0].tolist()
+            vals = forecast_vals[0, 0, :].tolist()
+        else:
+            vals = np.ravel(forecast_vals).tolist()
 
         return {
             "model": "moment",
-            "prediction_length": pred_len,
-            "forecast": vals[:pred_len],
+            "prediction_length": len(vals),
+            "forecast": vals,
         }
 
     @app.post("/v1/embed")

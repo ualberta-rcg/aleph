@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "leandojo",
+      "status": "production",
       "type": "embed",
       "description_short": "LeanDojo Lean 4 premise retriever (ByT5-small, 125M) for retrieval-augmented automated theorem proving.",
       "description": "LeanDojo is a NeurIPS 2023 system for automated theorem proving in Lean 4. This deployment uses the ByT5-small (125M) premise retriever model that encodes mathematical proof goals and retrieves relevant premises from Lean's Mathlib library. Given a proof goal (tactic state), it returns ranked premises with relevance scores. Used for building AI-assisted theorem provers and mathematical reasoning tools.",
