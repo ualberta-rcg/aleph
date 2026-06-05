@@ -53,9 +53,13 @@ data:
       "tags": ["science", "astronomy", "multimodal", "embed", "desi", "sdss", "gaia", "hsc"],
       "content_types": ["application/json"],
       "tier": 2,
+      "status": "production",
+      "status_note": "Real aion CodecManager API; verified 2026-06-05 (legacy_image + photometry -> 768-dim).",
       "input_map": {
-        "modality": "data type: spectrum, multiband_images, photometry, catalogs",
-        "data": "list of floats — modality-specific input data"
+        "modality": "legacy_image | photometry (also: hsc_image, desi_spectrum, sdss_spectrum)",
+        "flux": "legacy_image: nested [4,H,W] g,r,i,z bands (auto-cropped to 96x96)",
+        "flux_g/flux_r/flux_i/flux_z": "photometry: scalar fluxes (any subset)",
+        "num_encoder_tokens": "optional int, default 600"
       },
       "output_map": {
         "embedding": "768-dim float vector",

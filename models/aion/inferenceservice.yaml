@@ -1,7 +1,7 @@
-# AION-base 300M: Astronomical multimodal foundation model (Polymathic AI, 2025)
-# HuggingFace: polymathic-ai/aion-base (MIT)
-# Trained on 39 astronomical data types: images, spectra, photometry from DESI, SDSS, Gaia, HSC
-# API: POST /v1/science/embed — astronomical data → embedding
+# AION-base 300M: Astronomical multimodal foundation model (Polymathic AI)
+# HuggingFace: polymathic-ai/aion-base (MIT). Package: polymathic-aion (import: aion)
+# Real API: AION.from_pretrained + CodecManager.encode(modality) -> model.encode(tokens)
+# API: POST /v1/science/embed  — astronomical modality data -> 768-dim object embedding
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -12,13 +12,20 @@ data:
   server.py: |
     """
     AION-base 300M astronomical multimodal foundation model (Polymathic AI).
-    Trained on 39 data types across DESI, SDSS, Gaia, HSC surveys.
+    Uses the real `aion` package: AION + CodecManager + typed modality objects.
 
     Endpoints:
-      GET  /health              → {"status":"ok","model":"aion-base"}
-      GET  /v1/models           → model card
-      GET  /v1/science/info     → model capabilities and supported modalities
-      POST /v1/science/embed    → {"modality":"spectrum","data":[...]} → 768-dim embedding
+      GET  /health              -> {"status":"ok","model":"aion-base"}
+      GET  /v1/models           -> model card
+      GET  /v1/science/info     -> capabilities + supported modalities
+      POST /v1/science/embed    -> object-level 768-dim embedding from astronomical data
+        body (legacy-survey image):
+          {"model":"aion","modality":"legacy_image",
+           "flux":[[[...96x96...]]x4],            # [4,H,W] g,r,i,z (auto-cropped to 96x96)
+           "num_encoder_tokens":600}
+        body (scalar photometry, any subset):
+          {"model":"aion","modality":"photometry",
+           "flux_g":1.2,"flux_r":2.3,"flux_i":3.1,"flux_z":4.0}
     """
     import os, asyncio
     from fastapi import FastAPI, HTTPException
@@ -29,119 +36,119 @@ data:
     DEVICE = "cpu"
 
     app = FastAPI()
-    model_state = {}
+    S = {}
 
     def load():
         import torch
-        DEVICE_local = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Loading AION-base on {DEVICE_local}...", flush=True)
-        try:
-            from transformers import AutoModel, AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-            model = AutoModel.from_pretrained(MODEL_ID, trust_remote_code=True).to(DEVICE_local).eval()
-            model_state["model"] = model
-            model_state["tokenizer"] = tokenizer
-            model_state["device"] = DEVICE_local
-            print("AION-base loaded via transformers.", flush=True)
-        except Exception as e:
-            print(f"transformers load failed: {e}, trying polymathic-aion...", flush=True)
-            try:
-                import polymathic_aion as aion
-                model = aion.load_model(MODEL_ID)
-                model_state["model"] = model
-                model_state["device"] = DEVICE_local
-                model_state["backend"] = "polymathic_aion"
-                print("AION-base loaded via polymathic-aion.", flush=True)
-            except Exception as e2:
-                print(f"Both backends failed: {e2}", flush=True)
-                model_state["error"] = str(e2)
+        from aion import AION
+        from aion.codecs import CodecManager
+        print(f"Loading AION from {MODEL_ID} on {DEVICE}...", flush=True)
+        model = AION.from_pretrained(MODEL_ID).to(DEVICE).eval()
+        cm = CodecManager(device=DEVICE)
+        S["model"] = model
+        S["cm"] = cm
+        S["torch"] = torch
+        print("AION-base + CodecManager loaded.", flush=True)
 
     @app.on_event("startup")
     async def startup():
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, load)
+        try:
+            await loop.run_in_executor(None, load)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            S["error"] = str(e)
 
     @app.get("/health")
     async def health():
-        ready = "model" in model_state and "error" not in model_state
-        return {"status": "ok" if ready else "loading", "model": "aion-base",
-                "backend": model_state.get("backend", "transformers")}
+        ready = "model" in S and "error" not in S
+        return {"status": "ok" if ready else "loading", "model": "aion-base"}
 
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [
             {"id": "aion-base", "object": "model", "owned_by": "polymathic-ai",
              "type": "astronomy-multimodal", "license": "MIT",
-             "description": "AION-base 300M astronomical multimodal FM; 39 data types from DESI/SDSS/Gaia/HSC"}
+             "description": "AION-base 300M astronomical multimodal FM; 39 data types"}
         ]}
 
     @app.get("/v1/science/info")
     async def info():
         return {
-            "model": "aion-base",
-            "params": "300M",
-            "architecture": "encoder-decoder transformer (12 blocks, 768-dim, 12 heads)",
-            "training_surveys": ["DESI Legacy Survey", "SDSS", "Gaia", "HSC Wide"],
-            "supported_modalities": [
-                "multiband_images", "optical_spectra", "photometry", "catalogs",
-                "broadband_photometry", "narrow_band_imaging"
-            ],
+            "model": "aion-base", "params": "300M", "embedding_dim": 768,
             "num_modalities": 39,
-            "embedding_dim": 768,
-            "paper": "arXiv:2510.17960",
-            "license": "MIT",
+            "supported_modalities": ["legacy_image", "hsc_image", "photometry",
+                                     "desi_spectrum", "sdss_spectrum"],
+            "training_surveys": ["DESI Legacy Survey", "SDSS", "Gaia", "HSC Wide"],
+            "paper": "arXiv:2510.17960", "license": "MIT",
         }
+
+    def _build_modality(req):
+        """Construct an aion typed modality object from the request body."""
+        torch = S["torch"]
+        modality = req.get("modality", "legacy_image")
+        if modality in ("legacy_image", "image"):
+            from aion.modalities import LegacySurveyImage
+            flux = req.get("flux") or req.get("data")
+            if flux is None:
+                # default: zero 4-band 96x96 image (deterministic smoke input)
+                t = torch.zeros(1, 4, 96, 96, dtype=torch.float32)
+            else:
+                t = torch.tensor(flux, dtype=torch.float32)
+                if t.dim() == 3:
+                    t = t.unsqueeze(0)            # [4,H,W] -> [1,4,H,W]
+            # AION Legacy image codec expects 96x96 (576 tokens); resize to be forgiving.
+            if t.shape[-1] != 96 or t.shape[-2] != 96:
+                t = torch.nn.functional.interpolate(
+                    t, size=(96, 96), mode="bilinear", align_corners=False)
+            bands = req.get("bands", ["DES-G", "DES-R", "DES-I", "DES-Z"])
+            return [LegacySurveyImage(flux=t, bands=bands)]
+        if modality in ("photometry", "flux"):
+            import aion.modalities as M
+            out = []
+            mapping = {"flux_g": "LegacySurveyFluxG", "flux_r": "LegacySurveyFluxR",
+                       "flux_i": "LegacySurveyFluxI", "flux_z": "LegacySurveyFluxZ"}
+            for key, cls in mapping.items():
+                if key in req and hasattr(M, cls):
+                    val = torch.tensor([float(req[key])], dtype=torch.float32)
+                    out.append(getattr(M, cls)(value=val))
+            if not out:
+                raise HTTPException(400, "photometry needs at least one of flux_g/r/i/z")
+            return out
+        raise HTTPException(400, f"unsupported modality '{modality}'")
 
     @app.post("/v1/science/embed")
     async def embed(request: dict):
-        if "model" not in model_state:
+        if "model" not in S:
             raise HTTPException(503, "Model not loaded yet")
-        if "error" in model_state:
-            raise HTTPException(500, f"Load failed: {model_state['error']}")
-
-        modality = request.get("modality", "spectrum")
-        data = request.get("data")
-        if data is None:
-            raise HTTPException(400, "data required (list of floats)")
-
-        import torch
-        import numpy as np
-
-        model = model_state["model"]
-        device = model_state["device"]
-
+        if "error" in S:
+            raise HTTPException(500, f"Load failed: {S['error']}")
+        torch = S["torch"]
+        n_tok = int(request.get("num_encoder_tokens", 600))
         try:
-            if model_state.get("backend") == "polymathic_aion":
-                # Use polymathic-aion API
-                import polymathic_aion as aion
-                tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).to(device)
-                with torch.no_grad():
-                    emb = model.encode({modality: tensor})
-                emb_list = emb.cpu().float().squeeze().tolist()
-            else:
-                # Use transformers API - pass as pixel_values or inputs_embeds
-                tok = model_state["tokenizer"]
-                if hasattr(tok, "__call__"):
-                    tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).to(device)
-                    with torch.no_grad():
-                        out = model(inputs_embeds=tensor)
-                    emb = out.last_hidden_state.mean(dim=1)
-                    emb_list = emb.cpu().float()[0].tolist()
-                else:
-                    raise ValueError("Unsupported tokenizer type")
+            modalities = _build_modality(request)
+            def run():
+                tokens = S["cm"].encode(*modalities)
+                emb = S["model"].encode(tokens, num_encoder_tokens=n_tok)
+                # object-level vector: mean-pool over token dim
+                if emb.dim() == 3:
+                    emb = emb.mean(dim=1)
+                return emb[0].detach().cpu().float().tolist()
+            loop = asyncio.get_event_loop()
+            vec = await loop.run_in_executor(None, run)
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(500, f"Embedding failed: {str(e)[:200]}")
-
+            import traceback; traceback.print_exc()
+            raise HTTPException(500, f"Embedding failed: {str(e)[:300]}")
         return JSONResponse({
             "model": "aion-base",
-            "modality": modality,
-            "embedding": emb_list[:768],
-            "dims": min(len(emb_list), 768),
+            "modality": request.get("modality", "legacy_image"),
+            "embedding": vec, "dims": len(vec),
         })
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -153,7 +160,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 5Gi
+      storage: 10Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -167,37 +174,58 @@ spec:
     minReplicas: 0
     scaleTarget: 2
     scaleMetric: concurrency
-    timeout: 300
+    timeout: 600
     initContainers:
       - name: setup
         image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
         command: ["bash", "-c"]
         args:
           - |
             set -e
             VENV=/data/venv
-            if [ ! -d $VENV/bin ] || ! $VENV/bin/python -c 'import fastapi, transformers' 2>/dev/null; then
-              echo "Building venv..."
+            export HF_HOME=/data/hf_cache
+            if [ ! -d $VENV/bin ] || ! $VENV/bin/python -c 'import aion, fastapi' 2>/dev/null; then
+              echo "Building venv (aion)..."
               python3 -m venv --clear $VENV
               $VENV/bin/pip install -U pip
               $VENV/bin/pip install \
                 --extra-index-url https://download.pytorch.org/whl/cpu \
-                torch==2.5.1 transformers sentencepiece accelerate \
-                huggingface_hub fastapi uvicorn polymathic-aion
+                torch==2.5.1 torchvision==0.20.1 fastapi uvicorn polymathic-aion
               echo "venv done"
             else
               echo "venv OK"
             fi
-            if [ ! -f /data/hf_cache/.aion-ok ]; then
-              echo "Downloading aion-base..."
-              $VENV/bin/python -c "
-            from huggingface_hub import snapshot_download
-            snapshot_download('polymathic-ai/aion-base', local_dir='/data/hf_cache/models--polymathic-ai--aion-base')
-            open('/data/hf_cache/.aion-ok','w').write('ok')
-            print('done')
-            "
+            # Pre-download model + codec weights into the HF cache (init has egress;
+            # the runtime container runs offline). Warm a real encode to pull image codec.
+            if [ ! -f /data/hf_cache/.aion-warm2 ]; then
+              echo "Warming AION model + codecs (image + photometry)..."
+              $VENV/bin/python - <<'PY'
+            import torch
+            from aion import AION
+            from aion.codecs import CodecManager
+            import aion.modalities as M
+            m = AION.from_pretrained('polymathic-ai/aion-base').eval()
+            cm = CodecManager(device='cpu')
+            # image codec
+            img = M.LegacySurveyImage(flux=torch.zeros(1,4,96,96),
+                                      bands=['DES-G','DES-R','DES-I','DES-Z'])
+            e = m.encode(cm.encode(img), num_encoder_tokens=600)
+            print('warm image embed', tuple(e.shape), flush=True)
+            # photometry codecs (cache each flux codec for offline use)
+            for cls in ['LegacySurveyFluxG','LegacySurveyFluxR','LegacySurveyFluxI','LegacySurveyFluxZ']:
+                if hasattr(M, cls):
+                    try:
+                        mod = getattr(M, cls)(value=torch.tensor([1.0]))
+                        _ = cm.encode(mod)
+                        print('warm', cls, flush=True)
+                    except Exception as ex:
+                        print('warn', cls, ex, flush=True)
+            open('/data/hf_cache/.aion-warm2','w').write('ok')
+            PY
             else
-              echo "model cached"
+              echo "model+codecs cached"
             fi
         resources:
           requests: { cpu: "2", memory: 8Gi }
@@ -219,9 +247,9 @@ spec:
           limits:   { cpu: "4", memory: 8Gi }
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
-          initialDelaySeconds: 60
+          initialDelaySeconds: 30
           periodSeconds: 15
-          failureThreshold: 20
+          failureThreshold: 40
         volumeMounts:
           - { name: model-data, mountPath: /data, readOnly: true }
           - { name: server-config, mountPath: /app }

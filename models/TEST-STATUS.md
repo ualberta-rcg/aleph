@@ -11,7 +11,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ablang2 | embedding | false | /v1/embeddings | READY | FIXED | embeddings+batch PASS; /v1/restore was broken, fixed (heavy/light pairs), now PASS |
 | aeneas | structure | true | /v1/science/predict | READY | PENDING |  |
 | agront | embedding | true | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
-| aion | embed | false | /v1/science/embed | READY | PENDING | had TEST.md (pre-loop) |
+| aion | embed | false | /v1/science/embed | READY | FIXED | rewrote to real AION CodecManager API; legacy_image + photometry -> 768-dim; was non-functional |
 | alphafold2 | structure-prediction | true | /v1/science/predict | READY | PENDING | had TEST.md (pre-loop) |
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PENDING |  |
 | ankh | embedding | true | /v1/embeddings | READY | PENDING |  |

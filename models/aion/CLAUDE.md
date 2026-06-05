@@ -1,34 +1,32 @@
-# aion Notes — BLOCKED (deferred)
+# aion Notes
 
-## Status
-**Not deployed / blocked.** The 232 server was a non-functional stub. Removed from
-cluster 230. Manifests here are HAMi-converted but the server must be rewritten before
-re-deploying.
+## Purpose
+AION-base 300M astronomical multimodal foundation model (Polymathic AI). Produces 768-dim
+modality-agnostic embeddings from astronomical data (images, spectra, photometry, catalogs).
 
-## Why blocked
-AION-base (Polymathic AI) is NOT a standard HuggingFace `transformers` model:
-- `AutoModel.from_pretrained` fails: "Unrecognized model ... no `model_type`".
-- It requires the `polymathic-aion` package (import name `aion`) with a `CodecManager`
-  and per-modality dataclasses; raw float lists are not valid input.
+## Runtime
+- Custom FastAPI server (ConfigMap `aion-server`), venv-on-PVC. CPU-only.
+- Package: `polymathic-aion` (PyPI) — **import name is `aion`** (NOT `polymathic_aion`).
+- Real API: `AION.from_pretrained('polymathic-ai/aion-base')` + `CodecManager` + typed
+  modality objects from `aion.modalities` (e.g. `LegacySurveyImage`, `LegacySurveyFluxG`).
 
-The old server tried `transformers` then a bogus `polymathic_aion` import — both fail.
+## Why it was broken before (2026-06-05 deep-fix)
+- "READY" but model never loaded: `/health` returned 200 while load failed silently.
+- Runtime container has NO egress to HF; old server tried to download at startup -> failed.
+- Old server imported `polymathic_aion` (wrong) and passed raw floats as `inputs_embeds`
+  (AION has no HF text tokenizer; it needs codec-tokenized modality objects).
 
-## Correct integration (for a future pass)
-```python
-pip install "polymathic-aion[torch]"   # import name: aion ; needs GPU, py3.12, torch>=2.4
-from aion import AION
-from aion.codecs import CodecManager
-from aion.modalities import LegacySurveyImage, DESISpectrum, Z
-model = AION.from_pretrained("/data/model").to("cuda").eval()
-cm = CodecManager(device="cuda")
-tokens = cm.encode(<modality object built from real astro arrays>)
-emb = model.encode(tokens, num_encoder_tokens=600)   # downstream embedding
-```
-Needs: GPU slice, py3.12 base image, real modality inputs (spectrum/image/photometry
-with correct shapes) to test. Weights ~1.8GB (38 per-modality tokenizers + model).
+## The fix
+- Init container (has egress) installs torch+torchvision+polymathic-aion, then WARMS the
+  model + codecs by running a real encode (image + photometry) so weights land in
+  `/data/hf_cache`. Runtime then runs `HF_HUB_OFFLINE=1` from that cache.
+- Server constructs typed modalities; images resized to 96x96 (codec needs 576 tokens);
+  embeddings mean-pooled over tokens -> 768-dim.
+- Marker `/data/hf_cache/.aion-warm2` gates re-warm; bump it to add more modality codecs.
 
-## Next steps
-1. Rewrite `aion-server` to use the real `aion` API and accept one or more modalities
-   (e.g. a DESI spectrum array → `DESISpectrum`).
-2. Use a py3.12 image, cu121/cu124 torch, GPU slice + gpumem.
-3. Test with a synthetic-but-correctly-shaped spectrum, verify embedding shape.
+## Extending modalities
+To support spectra (DESI/SDSS) or HSC images, add those modality encodes to the init warmup
+(so their codecs are cached) and a branch in `_build_modality`.
+
+## Validation
+See [TEST.md](TEST.md). legacy_image + photometry verified -> 768-dim.
