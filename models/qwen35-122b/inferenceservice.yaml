@@ -42,7 +42,7 @@ spec:
           - --tensor-parallel-size=4
           - --max-model-len=131072
           - --dtype=auto
-          - --gpu-memory-utilization=0.93
+          - --gpu-memory-utilization=0.95
           - --max-num-seqs=4
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice

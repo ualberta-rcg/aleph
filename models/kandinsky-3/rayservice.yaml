@@ -33,11 +33,13 @@ spec:
         num-cpus: "0"
       template:
         spec:
+          # Head is CPU-only (num-cpus: 0 for scheduling actors); keep it OFF the GPU
+          # nodes so it never consumes scarce L40S capacity. Pin to the non-GPU node.
           nodeSelector:
-              gpu: "on"
+              kubernetes.io/hostname: kubeflow-head-node2
           containers:
             - name: ray-head
-              image: rayproject/ray:2.44.1-py311-gpu
+              image: rayproject/ray:2.44.1-py311
               env:
                 - name: PYTHONPATH
                   value: /home/ray
