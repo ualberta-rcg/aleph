@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: climatebert-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "climatebert",
+      "type": "classification",
+      "endpoints": {
+        "primary": "/v1/science/classify",
+        "embeddings": "/v1/embeddings",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "climatebert",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {
+        "task": "detect"
+      },
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "ClimateBERT — climate text detection / net-zero classification",
+        "description": "ClimateBERT (DistilRoBERTa domain-adapted on climate text). /v1/science/classify supports task=detect (climate-relevance) and task=netzero (net-zero/reduction commitment). /v1/embeddings returns 768-dim climate-domain embeddings. Loads 3 climatebert models (base, detector, netzero). CPU.",
+        "owned_by": "ClimateBERT",
+        "source": "climatebert/distilroberta-base-climate-f",
+        "source_url": "https://huggingface.co/climatebert",
+        "license": "MIT",
+        "parameters": "82M (x3 heads)",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "climate",
+        "subdomain": "climate-nlp",
+        "tags": [
+          "classification",
+          "embedding",
+          "climate",
+          "nlp",
+          "science",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 512,
+        "input_format": {
+          "model": "climatebert",
+          "text": "text (for /v1/science/classify)",
+          "task": "detect|netzero",
+          "input": "text (for /v1/embeddings)"
+        },
+        "embedding_dimensions": 768,
+        "pooling": "mean"
+      }
+    }
