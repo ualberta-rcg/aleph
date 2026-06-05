@@ -87,6 +87,9 @@ spec:
             value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
+          # Bypass HAMi libvgpu interception for native multi-GPU P2P / NCCL speed.
+          - name: CUDA_DISABLE_CONTROL
+            value: "true"
           # NOTE: intentionally NOT forcing VLLM_ATTENTION_BACKEND. Leaving it auto
           # (matches the proven POC cluster 232 config which runs stable on L40S).
           - name: OMP_NUM_THREADS
@@ -94,17 +97,19 @@ spec:
         ports:
           - containerPort: 8080
             protocol: TCP
+        # Big multi-GPU model: request WHOLE GPUs (no nvidia.com/gpumem) so HAMi does
+        # NOT enter vGPU mode. Requesting gpumem triggers libvgpu.so CUDA interception
+        # which breaks GPU P2P and cripples NCCL all-reduce (~0.25 tok/s). Full devices
+        # + CUDA_DISABLE_CONTROL give native P2P (matches fast POC cluster 232).
         resources:
           requests:
             cpu: "8"
             memory: 32Gi
             nvidia.com/gpu: "2"
-            nvidia.com/gpumem: "45056"
           limits:
             cpu: "16"
             memory: 64Gi
             nvidia.com/gpu: "2"
-            nvidia.com/gpumem: "45056"
         readinessProbe:
           httpGet:
             path: /v1/models
