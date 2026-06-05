@@ -41,10 +41,10 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | chemgpt-19m | generate | true | /v1/science/generate | READY | PENDING |  |
 | chemgpt | generate | true | /v1/science/generate | READY | PENDING |  |
 | chgnet | force-field | true | /v1/science/energy | NOT-READY | PENDING |  |
-| chronos-bolt | forecast | false | /v1/forecast | READY | PENDING | had TEST.md (pre-loop) |
-| clap | embedding | false | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| chronos-bolt | forecast | false | /v1/forecast | READY | PASS | quantile forecast on 16-pt series |
+| clap | embedding | false | /v1/embeddings | READY | PASS | text emb 512-dim + zero-shot audio classify (dog 0.73) |
 | clay | embed | false | /v1/science/embed | READY | PENDING |  |
-| climatebert | classification | false | /v1/science/classify | READY | PENDING | had TEST.md (pre-loop) |
+| climatebert | classification | false | /v1/science/classify | READY | PASS | net-zero 0.9988 |
 | climax | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | clinical-longformer | embedding | true | /v1/science/embed | READY | PENDING |  |
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
@@ -112,7 +112,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | moirai | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | molformer | embedding | true | /v1/science/embed | READY | PENDING |  |
 | moment | forecast | true | /v1/forecast | READY | PENDING |  |
-| multilingual-e5-small | embedding | false | /embed | READY | PENDING |  |
+| multilingual-e5-small | embedding | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | naturecode-earth | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PENDING |  |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PENDING |  |
