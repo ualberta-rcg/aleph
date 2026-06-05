@@ -142,17 +142,18 @@ data:
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
 ---
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: aion-data
   namespace: models
 spec:
-  accessModes: ["ReadWriteMany"]
   storageClassName: nfs-client
+  accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 10Gi
+      storage: 5Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -160,44 +161,47 @@ metadata:
   name: aion
   namespace: models
   annotations:
-    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "600s"
 spec:
   predictor:
     minReplicas: 0
     scaleTarget: 2
     scaleMetric: concurrency
     timeout: 300
-    nodeSelector:
-      gpu: "on"
     initContainers:
       - name: setup
         image: python:3.11-slim
-        env:
-          - name: HF_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: hf-token
-                key: token
         command: ["bash", "-c"]
         args:
           - |
             set -e
-            if [ ! -d /data/venv/bin ]; then
-              python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
-              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-              /data/venv/bin/pip install -q "transformers==4.46.3" sentencepiece accelerate fastapi uvicorn huggingface_hub polymathic-aion || \
-                /data/venv/bin/pip install -q "transformers==4.46.3" sentencepiece accelerate fastapi uvicorn huggingface_hub
+            VENV=/data/venv
+            if [ ! -d $VENV/bin ] || ! $VENV/bin/python -c 'import fastapi, transformers' 2>/dev/null; then
+              echo "Building venv..."
+              python3 -m venv --clear $VENV
+              $VENV/bin/pip install -U pip
+              $VENV/bin/pip install \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch==2.5.1 transformers sentencepiece accelerate \
+                huggingface_hub fastapi uvicorn polymathic-aion
+              echo "venv done"
+            else
+              echo "venv OK"
             fi
-            if [ ! -f /data/model/config.json ]; then
-              /data/venv/bin/python -c "
-            import os
+            if [ ! -f /data/hf_cache/.aion-ok ]; then
+              echo "Downloading aion-base..."
+              $VENV/bin/python -c "
             from huggingface_hub import snapshot_download
-            snapshot_download('polymathic-ai/aion-base', local_dir='/data/model', token=os.environ.get('HF_TOKEN'))
-            " || echo "snapshot_download skipped/failed (model may load via package)"
+            snapshot_download('polymathic-ai/aion-base', local_dir='/data/hf_cache/models--polymathic-ai--aion-base')
+            open('/data/hf_cache/.aion-ok','w').write('ok')
+            print('done')
+            "
+            else
+              echo "model cached"
             fi
         resources:
-          requests: { cpu: "2", memory: 4Gi }
-          limits: { cpu: "4", memory: 8Gi }
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
         volumeMounts:
           - { name: model-data, mountPath: /data }
     containers:
@@ -205,8 +209,9 @@ spec:
         image: python:3.11-slim
         command: ["/data/venv/bin/python", "/app/server.py"]
         env:
-          - { name: MODEL_ID, value: "/data/model" }
-          - { name: HF_HOME, value: "/data/hf-home" }
+          - { name: MODEL_ID, value: "polymathic-ai/aion-base" }
+          - { name: HF_HOME, value: "/data/hf_cache" }
+          - { name: HF_HUB_OFFLINE, value: "1" }
         ports:
           - { containerPort: 8080, protocol: TCP }
         resources:
@@ -214,9 +219,9 @@ spec:
           limits:   { cpu: "4", memory: 8Gi }
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
           periodSeconds: 15
-          failureThreshold: 40
+          failureThreshold: 20
         volumeMounts:
           - { name: model-data, mountPath: /data, readOnly: true }
           - { name: server-config, mountPath: /app }

@@ -1,0 +1,115 @@
+# Kandinsky-3: Text-to-image generation via Ray Serve (kandinsky-community/kandinsky-3)
+# Dedicated PVC; requires download-job.yaml to be run first if PVC is empty.
+# API: POST /v1/images/generations (OpenAI-style)
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: kandinsky
+  namespace: models
+spec:
+  serveConfigV2: |
+    applications:
+    - name: kandinsky
+      route_prefix: /
+      import_path: serve:entrypoint
+      runtime_env:
+        pip:
+          - diffusers==0.29.2
+          - transformers>=4.35.0,<4.50.0
+          - accelerate>=0.26.0
+          - huggingface_hub>=0.23.0
+          - pillow>=9.0.0
+          - sentencepiece
+          - safetensors
+          - protobuf
+          - torch>=2.0.0
+        env_vars:
+          MODEL_DIR: /mnt/models/kandinsky-3
+          PYTHONPATH: /home/ray
+  rayClusterConfig:
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+        num-cpus: "0"
+      template:
+        spec:
+          nodeSelector:
+              gpu: "on"
+          containers:
+            - name: ray-head
+              image: rayproject/ray:2.44.1-py311-gpu
+              env:
+                - name: PYTHONPATH
+                  value: /home/ray
+              ports:
+                - containerPort: 6379
+                  name: gcs
+                  protocol: TCP
+                - containerPort: 8265
+                  name: dashboard
+                  protocol: TCP
+                - containerPort: 8000
+                  name: serve
+                  protocol: TCP
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 8Gi
+                limits:
+                  cpu: "4"
+                  memory: 16Gi
+              volumeMounts:
+                - name: serve-code
+                  mountPath: /home/ray/serve.py
+                  subPath: serve.py
+          volumes:
+            - name: serve-code
+              configMap:
+                name: kandinsky-3-server
+    workerGroupSpecs:
+      - groupName: gpu-worker
+        replicas: 1
+        minReplicas: 1   # always-on — 1× L40S permanently held
+        maxReplicas: 1
+        rayStartParams: {}
+        template:
+          spec:
+            nodeSelector:
+              gpu: "on"
+            containers:
+              - name: ray-worker
+                image: rayproject/ray:2.44.1-py311-gpu
+                env:
+                  - name: PYTHONPATH
+                    value: /mnt/models/kandinsky-venv/lib/python3.11/site-packages:/home/ray
+                resources:
+                  requests:
+                    cpu: "4"
+                    memory: 48Gi
+                    nvidia.com/gpu: "1"
+                    nvidia.com/gpumem: "40960"
+                  limits:
+                    cpu: "8"
+                    memory: 64Gi
+                    nvidia.com/gpu: "1"
+                    nvidia.com/gpumem: "40960"
+                volumeMounts:
+                  - name: models
+                    mountPath: /mnt/models
+                    readOnly: true
+                  - name: serve-code
+                    mountPath: /home/ray/serve.py
+                    subPath: serve.py
+                  - name: shm
+                    mountPath: /dev/shm
+            volumes:
+              - name: models
+                persistentVolumeClaim:
+                  claimName: kandinsky-3-data
+              - name: serve-code
+                configMap:
+                  name: kandinsky-3-server
+              - name: shm
+                emptyDir:
+                  medium: Memory
+                  sizeLimit: 8Gi

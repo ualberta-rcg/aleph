@@ -8,72 +8,65 @@ metadata:
 data:
   details.json: |
     {
-      "id": "aion-base",
-      "type": "embedding",
+      "id": "aion",
+      "type": "embed",
+      "description_short": "AION-base 300M astronomical multimodal foundation model. 39 data types from DESI, SDSS, Gaia, HSC.",
+      "description": "AION-base is a 300M parameter astronomical multimodal foundation model from Polymathic AI. Trained on 39 astronomical data types across surveys including DESI Legacy Survey, SDSS, Gaia, and HSC Wide. The encoder-decoder transformer (12 blocks, 768-dim, 12 heads) produces 768-dim embeddings from diverse astronomical inputs: multiband images, optical spectra, photometry, and catalogs. MIT license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/embed",
-        "info": "/v1/science/info",
         "health": "/health"
       },
-      "routing": {
-        "k8s_name": "aion",
-        "no_stream": true,
-        "upstream_model_id": null
-      },
-      "limits": {
-        "context_window": 0,
-        "max_input_tokens": 0
-      },
-      "scaling": {
-        "scale_to_zero": true,
-        "min_replicas": 0,
-        "idle_retention": "15m",
-        "cold_start_estimate": "2-4 minutes"
-      },
-      "behavior": {
-        "supports_vision": false,
-        "supports_tools": false,
-        "supports_system_prompt": false,
-        "reasoning_model": false,
-        "strips_thinking": false
-      },
-      "param_translation": {
-        "thinking": {
-          "mode": "none"
-        }
-      },
-      "defaults": {},
-      "custom_params": {
-        "passthrough": true
-      },
-      "schema_version": 2,
-      "catalog": {
-        "description_short": "AION-base 300M astronomical multimodal foundation model",
-        "description": "AION-base (Polymathic AI, 2025): 300M-parameter astronomical multimodal foundation model trained on 39 data types (images, spectra, photometry, catalogs) from DESI, SDSS, Gaia and HSC. Encoder-decoder transformer (768-dim). Exposes /v1/science/embed and /v1/science/info. CPU. NOTE: /v1/science/embed expects modality-specific AION-tokenized inputs; the generic path is best-effort.",
-        "owned_by": "Polymathic AI",
-        "source": "polymathic-ai/aion-base",
-        "source_url": "https://huggingface.co/polymathic-ai/aion-base",
-        "license": "MIT",
-        "parameters": "300M",
-        "precision": "fp32",
-        "framework": "transformers",
-        "domain": "astronomy",
-        "subdomain": "multimodal-foundation",
-        "tags": [
-          "embedding",
-          "science",
-          "astronomy",
-          "multimodal",
-          "cpu"
-        ],
+      "owned_by": "polymathic-ai",
+      "source": "polymathic-ai/aion-base",
+      "source_url": "https://huggingface.co/polymathic-ai/aion-base",
+      "license": "MIT",
+      "parameters": "300M",
+      "precision": "fp32",
+      "architecture": "encoder-decoder transformer (12 blocks, 768-dim, 12 heads)",
+      "framework": "transformers + polymathic-aion",
+      "deployment": {
         "gpu": false,
-        "max_input_tokens": 0,
-        "input_format": {
-          "model": "aion-base",
-          "modality": "spectrum|image|photometry|...",
-          "data": "list of floats (modality-specific)"
-        },
-        "embedding_dimensions": 768,
-        "pooling": "mean"
+        "gpu_count": 0,
+        "cpu_request": "2",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "timeout": 300,
+        "pvc": "none (downloads every start)",
+        "image": "python:3.11-slim",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "aion",
+        "api_name": "aion",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "astronomy",
+      "subdomain": "multimodal",
+      "tags": ["science", "astronomy", "multimodal", "embed", "desi", "sdss", "gaia", "hsc"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "modality": "data type: spectrum, multiband_images, photometry, catalogs",
+        "data": "list of floats — modality-specific input data"
+      },
+      "output_map": {
+        "embedding": "768-dim float vector",
+        "dims": 768,
+        "modality": "input modality used"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_id": "polymathic-ai/aion-base",
+        "info_path": "/v1/science/info",
+        "deployment_mode": "RawDeployment"
       }
     }
