@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arcface-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "arcface-resnet100",
+      "type": "face",
+      "endpoints": {
+        "primary": "/v1/vision/face",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "arcface",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "ArcFace ResNet-100 — face recognition embeddings (512-dim)",
+        "description": "ArcFace ResNet-100 (DeepInsight) face recognition model. Produces 512-dim L2-normalized embeddings for face verification/identification (cosine similarity). Input images resized to 112x112, RGB->BGR normalized. ONNX/onnxruntime, CPU. Trained on MS1MV3 (99.83% LFW).",
+        "owned_by": "DeepInsight",
+        "source": "onnx-community/arcface-onnx",
+        "source_url": "https://huggingface.co/onnx-community/arcface-onnx",
+        "license": "MIT",
+        "parameters": "65M",
+        "precision": "onnx-fp32",
+        "framework": "onnxruntime",
+        "domain": "computer-vision",
+        "subdomain": "face-recognition",
+        "tags": [
+          "vision",
+          "face",
+          "recognition",
+          "embedding",
+          "onnx",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "arcface-resnet100",
+          "image": "base64-encoded JPEG/PNG (face centred, 112x112 ideal)"
+        },
+        "embedding_dimensions": 512,
+        "pooling": "none"
+      }
+    }

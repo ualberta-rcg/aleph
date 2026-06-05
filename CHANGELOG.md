@@ -2,6 +2,13 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate arcface (face recognition, CPU/ONNX)
+
+### arcface (Wave 1, gpu=0)
+- Ported ArcFace ResNet-100 from 232: `/v1/vision/face`, 512-dim L2-normalized, CPU
+  onnxruntime, scale-to-zero. Pinned `onnxruntime==1.19.2`; v2 card
+  (`routing.k8s_name: arcface`). Verified dim=512, normalized. See models/arcface/TEST.md.
+
 ## 2026-06-04 — migrate biomedbert (biomedical embeddings, CPU)
 
 ### biomedbert (Wave 1, gpu=0)
