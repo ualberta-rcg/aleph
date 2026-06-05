@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "seisbench",
+      "status": "production",
       "type": "classify",
       "description_short": "SeisBench PhaseNet seismic phase detection for P/S wave arrival identification in earthquake seismology.",
       "description": "SeisBench is a seismology model library providing earthquake detection and phase picking capabilities. The default model is PhaseNet (stead pretrained variant), a 1D U-Net architecture for P-wave and S-wave arrival detection in 3-component seismograms. Used for earthquake detection, location, and early warning systems. Models auto-download from the SeisBench repository. CPU-capable.",

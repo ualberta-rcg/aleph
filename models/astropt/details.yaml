@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "astropt",
+      "status": "broken",
       "type": "embed",
       "description_short": "AstroPT v2.0 95M autoregressive galaxy image transformer. 8.6M galaxies from SDSS/DESI.",
       "description": "AstroPT v2.0 is a 95M parameter autoregressive GPT model from UniverseTBD/Smith42 trained on 8.6M galaxy images from SDSS/DESI. It tokenizes 64x64 galaxy images into patch sequences and generates latent embeddings via causal attention. The model produces (num_patches, 512) embeddings suitable for galaxy morphology analysis, redshift estimation, and similarity search. MIT license.",

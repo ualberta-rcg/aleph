@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "xtts-v2",
+      "status": "production",
       "type": "tts",
       "endpoints": { "primary": "/v1/audio/speech", "health": "/health" },
       "routing": {

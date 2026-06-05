@@ -16,10 +16,10 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
-| astroclip | embed | true | /v1/science/embed | READY | PENDING |  |
-| astropt | embed | true | /v1/science/embed | READY | PENDING |  |
+| astroclip | embed | true | /v1/science/embed | READY | FAIL | AstroCLIP lib not installed; demo-only stub |
+| astropt | embed | true | /v1/science/embed | READY | FAIL | patchify preprocessing wrong (needs 32x32x3 tokens) |
 | astrosage | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic endpoints both work |
-| aurora | forecast | true | /v1/science/forecast | READY | PENDING |  |
+| aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
 | bge-small |  |  | - | READY | PENDING |  |
@@ -34,7 +34,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz-1 | structure | true | /v1/science/predict | READY | FAIL | torch runtime error during folding; needs deep-fix |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
-| brainlm | embed | true | /v1/embeddings | READY | PENDING |  |
+| brainlm | embed | true | /v1/embeddings | READY | FAIL | ViT-MAE API unpack error; needs fMRI patch fix |
 | caduceus | embedding | true | /v1/embeddings | NOT-READY | FAIL | mamba_ssm/selective_scan_cuda torch-CUDA ABI mismatch |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
@@ -45,11 +45,11 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | clap | embedding | false | /v1/embeddings | READY | PASS | text emb 512-dim + zero-shot audio classify (dog 0.73) |
 | clay | embed | false | /v1/science/embed | READY | FIXED | rewrote to Clay v1.5 datacube dict API; cls embedding PASS |
 | climatebert | classification | false | /v1/science/classify | READY | PASS | net-zero 0.9988 |
-| climax | forecast | true | /v1/science/forecast | READY | PENDING |  |
+| climax | forecast | true | /v1/science/forecast | READY | PASS | needs valid ERA5 var names (e.g. 2m_temperature) |
 | clinical-longformer | embedding | true | /v1/science/embed | NOT-READY | FAIL | hangs on CPU (gpu=true but no CUDA use); needs GPU/attention fix |
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
 | command-r-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
-| croma | segment | true | /v1/embeddings | READY | PENDING |  |
+| croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
 | crysta-llm | chat | true | /v1/science/generate | NOT-READY | PENDING |  |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
@@ -102,7 +102,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | medcpt-article | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | medcpt-query | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | medgemma-27b-it | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| medsam | segment | true | /v1/science/segment | READY | PENDING |  |
+| medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
 | megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
 | moirai-moe | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
@@ -141,7 +141,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
 | scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper |
-| seisbench | classify | true | /v1/science/detect | READY | PENDING |  |
+| seisbench | classify | true | /v1/science/detect | READY | PASS | phasenet runs (P/S detection) |
 | speaches | standalone | true | - | NO-ISVC | PENDING |  |
 | specter2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id specter2-110m) |
 | splicebert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id splicebert-86m) |
@@ -158,7 +158,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | totalsegmentator | segment | true | /v1/science/segment | NOT-READY | PENDING |  |
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
 | uma-m | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
-| xtts-v2 | tts | true | /v1/audio/speech | READY | PENDING |  |
+| xtts-v2 | tts | true | /v1/audio/speech | READY | PASS | text->WAV 155KB audio |
 | yolov8n | detect | false | /v1/vision/detect | READY | PASS | person 0.89 on bus.jpg |
 | yolov8s | detect | false | /v1/vision/detect | READY | PASS | person 0.91 on bus.jpg |
 | zoobot | embedding | false | /v1/vision/embed | READY | PASS | id=zoobot-15m; galaxy embedding |

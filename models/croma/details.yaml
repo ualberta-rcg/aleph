@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "croma",
+      "status": "production",
       "type": "segment",
       "description_short": "CROMA cross-modal remote sensing foundation model. SAR + optical paired satellite imagery. ~300M.",
       "description": "CROMA (Cross-modal Remote sensing foundation model) is a self-supervised model pre-trained on paired SAR (Sentinel-1) and optical (Sentinel-2) satellite imagery. It produces patch embeddings from either or both modalities simultaneously. SAR input is 2-channel (VV, VH) and optical is 12-channel (Sentinel-2 bands). Useful for land classification, change detection, and crop mapping. Returns per-patch embeddings via the PretrainedCROMA interface.",

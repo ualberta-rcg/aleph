@@ -98,7 +98,18 @@ data:
             if optical: kwargs["optical_images"] = to_tensor(optical)
             out = model(**kwargs)
 
-        emb = out if isinstance(out, torch.Tensor) else out[0]
+        # PretrainedCROMA returns a dict of GAP embeddings; prefer joint, then
+        # optical, then SAR. Fall back to first tensor value or raw tensor.
+        if isinstance(out, dict):
+            emb = None
+            for key in ("joint_GAP_embeddings", "optical_GAP_embeddings",
+                        "SAR_GAP_embeddings"):
+                if key in out and isinstance(out[key], torch.Tensor):
+                    emb = out[key]; break
+            if emb is None:
+                emb = next(v for v in out.values() if isinstance(v, torch.Tensor))
+        else:
+            emb = out
         return {
             "object": "list",
             "model": "croma",

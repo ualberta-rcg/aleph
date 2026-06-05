@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "astroclip",
+      "status": "broken",
       "type": "embed",
       "description_short": "AstroCLIP cross-modal CLIP for galaxy images and optical spectra. 512-dim joint embedding space.",
       "description": "AstroCLIP is a cross-modal contrastive learning model from Polymathic AI that embeds galaxy images and optical spectra into a shared 512-dim space. Built on DINOv2 (image encoder) + spectrum transformer, it was trained on 90K galaxies from DESI using contrastive pre-training. The model enables cross-modal retrieval (find spectra matching an image and vice versa). MIT license.",

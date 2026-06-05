@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "aurora",
+      "status": "production",
       "type": "forecast",
       "description_short": "Microsoft Aurora 1.3B atmospheric foundation model for global weather forecasting at 0.25-degree resolution.",
       "description": "Microsoft Aurora is a 1.3B parameter atmospheric foundation model published in Nature 2025. It predicts global weather variables (wind, temperature, humidity, pressure) at 0.25-degree resolution in 6-hour steps. The model accepts surface variables (2m temperature, 10m u/v wind, mean sea-level pressure) and atmospheric variables (temperature, u/v wind, specific humidity, geopotential) at 13 pressure levels (50-1000 hPa). It uses a transformer architecture with spherical harmonics.",

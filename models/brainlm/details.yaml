@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "brainlm",
+      "status": "broken",
       "type": "embed",
       "description_short": "BrainLM 650M fMRI foundation model (ViT-MAE) for brain activity embeddings from 424 ROI time-series.",
       "description": "BrainLM is a 650M parameter fMRI foundation model from vandijklab (ICLR 2024) based on ViT-MAE (Masked Autoencoder) architecture. Trained on 6,700 hours of fMRI recordings from UK Biobank and Human Connectome Project data. It accepts fMRI ROI time-series (424 brain regions) and returns 768-dimensional latent embeddings for downstream neuroscience tasks like disease classification, brain state prediction, and connectivity analysis.",

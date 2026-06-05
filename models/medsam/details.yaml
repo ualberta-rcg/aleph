@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "medsam",
+      "status": "production",
       "type": "segment",
       "description_short": "MedSAM medical image segmentation model (SAM-based) for segmenting structures from bounding box prompts.",
       "description": "MedSAM is a medical image segmentation model based on Meta's Segment Anything Model (SAM), fine-tuned on medical imaging data (flaviagiammarino/medsam-vit-base). It accepts a medical image and bounding box prompt(s), returning precise segmentation masks. Suitable for CT, MRI, X-ray, and pathology image segmentation. Uses HuggingFace transformers SamModel/SamProcessor. CPU-capable with GPU acceleration.",

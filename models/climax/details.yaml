@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "climax",
+      "status": "production",
       "type": "forecast",
       "description_short": "Microsoft ClimaX 108M climate/weather foundation model pre-trained on CMIP6, fine-tuned on ERA5.",
       "description": "Microsoft ClimaX is a 108M parameter ViT-based climate foundation model pre-trained on CMIP6 climate simulations and fine-tuned on ERA5 reanalysis data. It supports diverse weather forecasting and climate projection tasks at 5.625-degree resolution. The model accepts variable names and corresponding gridded data with configurable lead times. It uses a ViT architecture with patch embedding and variable-aware tokenization.",
