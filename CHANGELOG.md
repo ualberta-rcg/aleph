@@ -2,6 +2,14 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 (latest) — begin 232→230 ≤2GPU model migration
+
+### Migration scaffolding
+- Created `hf-token` Secret in `models` namespace (manifests now use `secretKeyRef`).
+- Added `models/MIGRATION.md` tracker: 138 models to migrate (54 gpu=0, 80 gpu=1,
+  4 gpu=2), smallest-first, skipping the 18 already on 230 + the 4-GPU models.
+- Confirmed capacity: 2 GPU workers (`rack05-16`, `rack15-03`), 8× L40S, gpu=on.
+
 ## 2026-06-04 (latest) — docs/process + gateway image CI workflow
 
 ### README/template alignment and operator notes
