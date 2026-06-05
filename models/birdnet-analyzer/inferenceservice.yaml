@@ -1,0 +1,204 @@
+# BirdNET-Analyzer: Cornell Lab neural network for bird species identification from audio
+# TFLite/TF model trained on 6000+ bird species. Used in global biodiversity monitoring.
+# pip install birdnetlib. CPU-capable. API: POST /v1/science/identify
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: birdnet-analyzer-server
+  namespace: models
+data:
+  server.py: |
+    """
+    BirdNET-Analyzer: Cornell Lab bird species identification from audio (6000+ species).
+    Widely used in ecology, ornithology, and automated biodiversity monitoring.
+    API: POST /v1/science/identify
+    Input: {"audio": [samples...], "sample_rate": 48000, "lat": 42.5, "lon": -76.5,
+            "week": 26, "min_confidence": 0.1}
+           audio: float32 samples at 48kHz (minimum 3 seconds recommended)
+    Returns: {"detections": [{"species": "Turdus migratorius", "common_name": "American Robin",
+                               "confidence": 0.95, "start_s": 0.0, "end_s": 3.0}]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    _ready = False
+
+    def load():
+        global _ready
+        print("Loading BirdNET-Analyzer...", flush=True)
+        # birdnetlib handles model loading internally
+        from birdnetlib import Recording
+        from birdnetlib.analyzer import Analyzer
+        # Pre-load to trigger download/caching
+        analyzer = Analyzer()
+        _ready = True
+        print("BirdNET-Analyzer ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if _ready else "loading", "model": "birdnet-analyzer"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "birdnet-analyzer", "object": "model",
+             "owned_by": "cornell-lab", "type": "bird-species-id"}
+        ]}
+
+    @app.post("/v1/science/identify")
+    async def identify(request: dict):
+        if not _ready:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _identify, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _identify(req):
+        import numpy as np
+        import tempfile, soundfile as sf
+        from birdnetlib import Recording
+        from birdnetlib.analyzer import Analyzer
+
+        audio = np.array(req["audio"], dtype=np.float32)
+        sample_rate = req.get("sample_rate", 48000)
+        lat = req.get("lat", None)
+        lon = req.get("lon", None)
+        week = req.get("week", -1)
+        min_conf = req.get("min_confidence", 0.1)
+
+        # Write audio to temp file
+        tmpf = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        sf.write(tmpf.name, audio, sample_rate)
+        tmpf.close()
+
+        try:
+            analyzer = Analyzer()
+            rec = Recording(
+                analyzer,
+                tmpf.name,
+                lat=lat, lon=lon,
+                week_48=week,
+                min_conf=min_conf,
+            )
+            rec.analyze()
+            detections = [
+                {
+                    "species":      d.get("scientific_name", ""),
+                    "common_name":  d.get("common_name", ""),
+                    "confidence":   float(d.get("confidence", 0)),
+                    "start_s":      float(d.get("start_time", 0)),
+                    "end_s":        float(d.get("end_time", 3)),
+                }
+                for d in rec.detections
+            ]
+        finally:
+            os.unlink(tmpf.name)
+
+        return {"model": "birdnet-analyzer", "detections": detections}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: birdnet-analyzer
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq ffmpeg libsndfile1 > /dev/null 2>&1
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import birdnetlib; import tensorflow' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                tensorflow-cpu birdnetlib librosa soundfile fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            # Pre-cache BirdNET model
+            if [ ! -d /data/model/birdnet_models ]; then
+              echo "Pre-caching BirdNET model..."
+              mkdir -p /data/model/birdnet_models
+                BIRDNET_HOME=/data/model/birdnet_models /data/venv/bin/python -u <<'PY'
+            import os
+            os.environ['HOME'] = '/data/model'
+            from birdnetlib.analyzer import Analyzer
+            analyzer = Analyzer()
+            print('BirdNET model cached.', flush=True)
+            PY
+            else
+              echo "BirdNET model already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: birdnet-analyzer-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            apt-get update -qq && apt-get install -y -qq ffmpeg libsndfile1 > /dev/null 2>&1
+            /data/venv/bin/python /app/server.py
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HOME,      value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits:   { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: birdnet-analyzer-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: birdnet-analyzer-data
+        persistentVolumeClaim:
+          claimName: birdnet-analyzer-data
+      - name: app
+        configMap:
+          name: birdnet-analyzer-server

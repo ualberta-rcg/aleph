@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: birdnet-analyzer-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "birdnet-analyzer",
+      "type": "audio-classification",
+      "endpoints": {
+        "primary": "/v1/science/identify",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "birdnet-analyzer",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {
+        "sample_rate": 48000,
+        "min_confidence": 0.1
+      },
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "BirdNET-Analyzer — bird species ID from audio (6000+ species)",
+        "description": "BirdNET-Analyzer (Cornell Lab of Ornithology) via birdnetlib: identifies 6000+ bird species from audio recordings. POST 48kHz float samples (>=3s) plus optional lat/lon/week to /v1/science/identify; returns species detections with confidence and time spans. CPU (tensorflow-cpu).",
+        "owned_by": "Cornell Lab of Ornithology",
+        "source": "birdnetlib (BirdNET-Analyzer)",
+        "source_url": "https://github.com/joeweiss/birdnetlib",
+        "license": "CC-BY-NC-SA-4.0",
+        "parameters": "BirdNET v2.4",
+        "precision": "fp32",
+        "framework": "tensorflow",
+        "domain": "bioacoustics",
+        "subdomain": "bird-species-id",
+        "tags": [
+          "audio",
+          "classification",
+          "bioacoustics",
+          "ecology",
+          "science",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "birdnet-analyzer",
+          "audio": "[float] 48kHz samples (>=3s)",
+          "sample_rate": "int (default 48000)",
+          "lat": "float (optional)",
+          "lon": "float (optional)",
+          "week": "int 1-48 (optional)",
+          "min_confidence": "float (default 0.1)"
+        },
+        "output_format": {
+          "detections": "[{species, common_name, confidence, start_s, end_s}]"
+        }
+      }
+    }
