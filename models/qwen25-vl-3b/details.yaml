@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen25-vl-3b",
+      "status": "production",
       "type": "chat",
       "description_short": "Qwen2.5-VL 3B, vision-language (images + video)",
       "description": "Qwen2.5-VL 3B Instruct — compact vision-language model. Processes images (dynamic resolution, OCR, charts, document parsing) and video (1hr+). Supports visual localization (bounding boxes, points), structured output, and agentic computer/phone use. Dynamic resolution with mRoPE. 1x shared L40S GPU.",

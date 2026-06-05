@@ -126,7 +126,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores |
 | protgpt2 | generate | true | /v1/completions | READY | PASS | de novo protein generation (recreated) |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
-| qwen25-vl-3b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
+| qwen25-vl-3b | chat | true | /v1/chat/completions | READY | FIXED | gpumem 12->24GB (vision profiling OOM); chat + vision OK |
 | qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic + vision (image_url) |
 | qwen35-122b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
