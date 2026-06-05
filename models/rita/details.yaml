@@ -9,6 +9,8 @@ data:
   details.json: |
     {
       "id": "rita-xl",
+      "status": "production",
+      "status_note": "Verified 2026-06-05: /v1/science/generate produces protein sequences (greedy + sampling).",
       "type": "embedding",
       "description_short": "Protein generative language model (1.2B) from LightOn",
       "description": "RITA-XL from LightOn is a 1.2B parameter autoregressive protein language model for generating novel protein sequences. Given a prefix prompt, generates diverse protein sequences. Uses transformers<4.38 for compatibility. CPU-only (large model, slow generation).",

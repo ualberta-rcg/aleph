@@ -133,7 +133,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwen25-vl-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | qwen35-122b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | retinanet | detect | false | /v1/vision/detect | READY | PENDING |  |
-| rita | embedding | false | /v1/science/generate | READY | PENDING | had TEST.md (pre-loop) |
+| rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | rnafm | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | rnamsm | embedding | true | /v1/science/embed | READY | PENDING |  |

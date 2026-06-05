@@ -37,3 +37,8 @@ curl -s -X POST http://10.43.79.101:80/v1/science/generate \
 - Cold start: ~5min (1.2B model loads on CPU from NFS)
 - Generation: ~0.4 tokens/sec on CPU (expected for 1.2B LM)
 - `minReplicas: 0` (scale-to-zero after idle)
+
+## Re-verified 2026-06-05 (verification loop)
+- `/v1/science/generate` greedy (`do_sample:false`): `MKT` → `MKTMSSSS...` (repetitive, expected greedy). PASS.
+- sampling (`do_sample:true, temperature:0.8, num_sequences:2`): `MKTAYIAKQR` → 2 diverse
+  realistic protein extensions. PASS. status=production.
