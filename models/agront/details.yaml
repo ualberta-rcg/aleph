@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agront-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "agront",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "agront",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 1024,
+        "max_input_tokens": 1024
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "AgroNT 1B plant-genome DNA language model (embeddings)",
+        "description": "AgroNT (InstaDeepAI, Comm. Biology 2024): 1B-parameter plant-genome DNA language model trained on 48 edible plant species with a 6-mer tokenizer (~6 kbp / 1024-token context). Produces 1500-dim mean-pooled embeddings from plant DNA. Endpoints: /v1/embeddings and /v1/science/predict. Runs on a HAMi sub-GPU slice.",
+        "owned_by": "InstaDeepAI",
+        "source": "InstaDeepAI/agro-nucleotide-transformer-1b",
+        "source_url": "https://huggingface.co/InstaDeepAI/agro-nucleotide-transformer-1b",
+        "license": "Apache-2.0",
+        "parameters": "1B",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "genomics",
+        "subdomain": "plant-dna",
+        "tags": [
+          "embedding",
+          "science",
+          "genomics",
+          "dna",
+          "plant",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 1024,
+        "input_format": {
+          "model": "agront",
+          "input": "plant DNA sequence (ACGT...), up to ~6000 bp"
+        },
+        "embedding_dimensions": 1500,
+        "pooling": "mean"
+      }
+    }

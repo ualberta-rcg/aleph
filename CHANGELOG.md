@@ -2,6 +2,15 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate agront (plant DNA LM, GPU)
+
+### agront (Wave 1, gpu→HAMi slice)
+- Ported AgroNT 1B (InstaDeepAI) from 232. Converted from `RawDeployment` + GPU-Operator
+  nodeSelector + ephemeral `/tmp` download to standard 230 pattern: Knative scale-to-zero,
+  PVC venv+weights, HAMi `gpu: "on"` + `nvidia.com/gpumem: 8192`, HF token via secretKeyRef.
+- Corrected embedding dim **1280 → 1500** (verified live). `/v1/embeddings` +
+  `/v1/science/predict` both return 1500-dim. See models/agront/TEST.md.
+
 ## 2026-06-04 — migrate arcface (face recognition, CPU/ONNX)
 
 ### arcface (Wave 1, gpu=0)

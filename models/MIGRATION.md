@@ -20,7 +20,7 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 ## Wave 1 — gpu=0 bucket (CPU/tiny → sub-GPU HAMi), 54
 
 - [x] ablang2 (embedding, CPU, dim=480; ablang2==0.2.1 fix)
-- [ ] agront
+- [x] agront (DNA embedding, GPU 1/gpumem8192, dim=1500; RawDeployment->Knative)
 - [ ] aion
 - [ ] alphafold2
 - [x] arcface (face/vision, CPU, ONNX, dim=512)

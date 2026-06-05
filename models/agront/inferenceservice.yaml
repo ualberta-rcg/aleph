@@ -1,0 +1,202 @@
+# AgroNT: 1B plant genome DNA language model (InstaDeepAI, Comm. Biology 2024)
+# HuggingFace: InstaDeepAI/agro-nucleotide-transformer-1b (Apache-2.0)
+# Trained on 48 edible plant species, 6-mer tokenizer, 472.5B tokens
+# API: POST /v1/embeddings — plant DNA → 1500-dim embedding
+# Migrated to 230: Knative scale-to-zero, PVC venv+weights, HAMi GPU slice (gpumem 8192).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agront-server
+  namespace: models
+data:
+  server.py: |
+    """
+    AgroNT: 1B plant genome DNA language model (InstaDeepAI, 2024).
+    6-mer tokenizer, 1024 token context (~6 kbp). Trained on 48 plant species.
+
+    Endpoints:
+      GET  /health             → {"status":"ok","model":"agront"}
+      GET  /v1/models          → model card
+      POST /v1/embeddings      → {"input":"ATCG...", "model":"agront"}
+      POST /v1/science/predict → {"sequence":"ATCG...", "task":"embed"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = os.environ.get("MODEL_DIR", "InstaDeepAI/agro-nucleotide-transformer-1b")
+    DEVICE = "cpu"
+
+    app = FastAPI()
+    model = None
+    tokenizer = None
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModelForMaskedLM
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading AgroNT-1B on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        model = AutoModelForMaskedLM.from_pretrained(
+            MODEL_ID, output_hidden_states=True
+        ).to(DEVICE).eval()
+        print("AgroNT-1B ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "agront"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "agront", "object": "model", "owned_by": "instadeepai",
+             "type": "dna-lm", "license": "Apache-2.0",
+             "description": "AgroNT 1B plant genome DNA LM; 48 plant species, 6-mer tokenizer, ~6kbp context"}
+        ]}
+
+    def _embed(sequence: str):
+        import torch
+        enc = tokenizer(sequence, return_tensors="pt", max_length=1024,
+                        truncation=True, padding=True).to(DEVICE)
+        with torch.no_grad():
+            out = model(**enc)
+        # Use last hidden state (not logits)
+        if hasattr(out, "hidden_states") and out.hidden_states:
+            hidden = out.hidden_states[-1]
+        else:
+            hidden = out.logits
+        mask = enc.get("attention_mask", None)
+        if mask is not None:
+            mask = mask.unsqueeze(-1).float()
+            emb = (hidden * mask).sum(1) / mask.sum(1)
+        else:
+            emb = hidden.mean(dim=1)
+        return emb[0].cpu().float().tolist()
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        seq = request.get("input", "").upper().strip()
+        if not seq:
+            raise HTTPException(400, "input required")
+        if len(seq) > 6000:
+            raise HTTPException(400, "sequence length > 6000 bp")
+        loop = asyncio.get_event_loop()
+        emb = await loop.run_in_executor(None, _embed, seq)
+        return JSONResponse({"object": "list", "data": [
+            {"object": "embedding", "embedding": emb, "index": 0}
+        ], "model": "agront"})
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        seq = request.get("sequence", "").upper().strip()
+        if not seq:
+            raise HTTPException(400, "sequence required")
+        if len(seq) > 6000:
+            raise HTTPException(400, "sequence length > 6000 bp")
+        loop = asyncio.get_event_loop()
+        emb = await loop.run_in_executor(None, _embed, seq)
+        return JSONResponse({
+            "sequence": seq[:100] + ("..." if len(seq) > 100 else ""),
+            "sequence_length": len(seq),
+            "embedding": emb,
+            "dims": len(emb),
+            "model": "agront",
+        })
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agront-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: agront
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu121
+              /data/venv/bin/pip install -q "transformers==4.46.3" sentencepiece fastapi uvicorn huggingface_hub
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download('InstaDeepAI/agro-nucleotide-transformer-1b', local_dir='/data/model', token=os.environ.get('HF_TOKEN'))
+            "
+            fi
+        resources:
+          requests: { cpu: "2", memory: 6Gi }
+          limits: { cpu: "4", memory: 12Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 6Gi, nvidia.com/gpu: "1" }
+          limits:   { cpu: "4", memory: 12Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: agront-data }
+      - name: server-config
+        configMap:
+          name: agront-server
