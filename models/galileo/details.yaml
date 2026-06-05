@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "galileo",
+      "status": "broken",
       "type": "classify",
       "description_short": "NASA Harvest Galileo ~90M agricultural monitoring model. Multi-spectral Sentinel-2 time-series.",
       "description": "NASA Harvest Galileo is a ~90M parameter transformer foundation model for agricultural monitoring. It processes multi-spectral satellite time-series data from Sentinel-2 for global food security applications. State-of-the-art on crop mapping and vegetation monitoring benchmarks. The model accepts pixel time-series with temporal metadata and geolocation, producing embeddings suitable for crop type classification and land use analysis.",

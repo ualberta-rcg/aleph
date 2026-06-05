@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "ligandmpnn",
+      "status": "production",
       "type": "design",
       "description_short": "Ligand-aware protein sequence design from Baker Lab (UW)",
       "description": "LigandMPNN from the Baker Lab (UW) designs optimal amino acid sequences given a protein backbone structure (PDB) and optional ligand atoms. Extends ProteinMPNN with ligand-awareness for drug design. Uses the LigandMPNN CLI tool via subprocess. CPU-capable.",

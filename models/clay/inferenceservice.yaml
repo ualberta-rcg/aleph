@@ -85,20 +85,45 @@ data:
             return JSONResponse({"error": "pixels and waves required"}, 400)
 
         def _infer():
+            import math
             import torch
             import numpy as np
-            from einops import rearrange
             arr = np.array(pixels, dtype=np.float32)  # [bands, H, W]
-            # Normalize to [0, 1]
             arr = arr / arr.max() if arr.max() > 1.0 else arr
-            # Batch: [1, bands, H, W]
-            cube = torch.tensor(arr).unsqueeze(0).to(DEVICE)
-            waves_t = torch.tensor(waves, dtype=torch.float32).to(DEVICE)
-            gsd_t = torch.tensor([gsd], dtype=torch.float32).to(DEVICE)
+            cube = torch.tensor(arr).unsqueeze(0).to(DEVICE)  # [1, C, H, W]
+
+            # Clay v1.5 encoder expects a datacube dict. time/latlon are sin/cos
+            # normalizations ([B,4] each); pass real values if provided, else zeros.
+            lat = request.get("lat"); lon = request.get("lon"); tstr = request.get("time")
+            if lat is not None and lon is not None:
+                la = float(lat) * math.pi / 180.0; lo = float(lon) * math.pi / 180.0
+                latlon = [math.sin(la), math.cos(la), math.sin(lo), math.cos(lo)]
+            else:
+                latlon = [0.0, 0.0, 0.0, 0.0]
+            if tstr:
+                from datetime import datetime
+                try:
+                    d = datetime.fromisoformat(str(tstr).replace("Z", "+00:00"))
+                    wk = d.isocalendar().week * 2 * math.pi / 52
+                    hr = d.hour * 2 * math.pi / 24
+                    tvec = [math.sin(wk), math.cos(wk), math.sin(hr), math.cos(hr)]
+                except Exception:
+                    tvec = [0.0, 0.0, 0.0, 0.0]
+            else:
+                tvec = [0.0, 0.0, 0.0, 0.0]
+
+            datacube = {
+                "pixels": cube,
+                "time": torch.tensor([tvec], dtype=torch.float32).to(DEVICE),
+                "latlon": torch.tensor([latlon], dtype=torch.float32).to(DEVICE),
+                "waves": torch.tensor(waves, dtype=torch.float32).to(DEVICE),
+                "gsd": torch.tensor(gsd, dtype=torch.float32).to(DEVICE),
+            }
             with torch.no_grad():
-                embeddings, *_ = model(cube, waves_t, gsd_t)
-            cls_emb = embeddings[:, 0].cpu().numpy().tolist()
-            return {"cls_embedding": cls_emb[0], "model": "clay", "n_bands": len(waves)}
+                unmsk_patch, *_ = model(datacube)
+            cls_emb = unmsk_patch[:, 0, :].cpu().numpy().tolist()
+            return {"cls_embedding": cls_emb[0], "model": "clay",
+                    "n_bands": len(waves), "embedding_dim": len(cls_emb[0])}
 
         result = await asyncio.get_event_loop().run_in_executor(None, _infer)
         return result

@@ -43,7 +43,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | chgnet | force-field | true | /v1/science/energy | NOT-READY | PENDING |  |
 | chronos-bolt | forecast | false | /v1/forecast | READY | PASS | quantile forecast on 16-pt series |
 | clap | embedding | false | /v1/embeddings | READY | PASS | text emb 512-dim + zero-shot audio classify (dog 0.73) |
-| clay | embed | false | /v1/science/embed | READY | PENDING |  |
+| clay | embed | false | /v1/science/embed | READY | FIXED | rewrote to Clay v1.5 datacube dict API; cls embedding PASS |
 | climatebert | classification | false | /v1/science/classify | READY | PASS | net-zero 0.9988 |
 | climax | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | clinical-longformer | embedding | true | /v1/science/embed | READY | PENDING |  |
@@ -72,7 +72,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | fengwu | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | finbert | classify | true | /v1/science/classify | READY | PENDING |  |
 | fourcastnet3 | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
-| galileo | classify | false | /v1/embeddings | READY | PENDING |  |
+| galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
 | gemma-3-4b-it | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | gena-lm-large | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
@@ -88,11 +88,11 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
 | kandinsky-3 | image | true | /v1/images/generations | NO-ISVC | PENDING |  |
-| labram | embed | false | /v1/science/embed | READY | PENDING |  |
+| labram | embed | false | /v1/science/embed | READY | FAIL | needs 128 canonical channels or ch_names - needs deep fix |
 | lag-llama | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | leandojo | embed | true | /v1/science/retrieve | READY | PENDING |  |
 | led | stub | false | - | NO-ISVC | PENDING |  |
-| ligandmpnn | design | false | /v1/design | READY | PENDING |  |
+| ligandmpnn | design | false | /v1/design | READY | FIXED | checkpoints+args+optional-openfold; 1CRN design near-native PASS |
 | longformer | stub | false | - | NO-ISVC | PENDING |  |
 | mace-mh-1 | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
@@ -120,7 +120,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | phi-4-reasoning | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| presto | classify | false | /v1/embeddings | READY | PENDING |  |
+| presto | classify | false | /v1/embeddings | READY | FAIL | band-layout mismatch - needs correct presto format |
 | prithvi-eo | embed | true | /v1/embed | NOT-READY | PENDING |  |
 | prithvi-wxc | embed | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | progen2 | chat | true | /v1/completions | NOT-READY | PENDING |  |
@@ -139,7 +139,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | rnamsm | embedding | true | /v1/science/embed | READY | PENDING |  |
 | sapbert | embedding | true | /v1/science/embed | READY | PENDING |  |
 | saprot-650m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
-| satmae | embed | false | /v1/science/embed | READY | PENDING |  |
+| satmae | embed | false | /v1/science/embed | READY | PASS | HxW RGB -> cls embedding |
 | scgpt | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | PENDING |  |

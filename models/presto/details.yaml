@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "presto",
+      "status": "broken",
       "type": "classify",
       "description_short": "Presto NASA Harvest crop mapping model",
       "description": "NASA Harvest Presto — lightweight transformer (~400K params) for multi-spectral time-series satellite data. Zero-shot crop type mapping and land use classification globally. CPU-capable. Accepts Sentinel-2 time series data.",

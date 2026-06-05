@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "satmae",
+      "status": "production",
       "type": "embed",
       "description_short": "SatMAE ViT-Large masked autoencoder pretrained on fMoW satellite imagery. Apache 2.0.",
       "description": "SatMAE is a Masked Autoencoder pretrained on functional Map of the World (fMoW) satellite imagery from MVRL. The ViT-Large model produces CLS token and patch embeddings from RGB satellite image patches (224x224 input, normalized with fMoW statistics). It supports zero-mask-ratio inference for full embedding extraction. Useful for satellite image classification, retrieval, and change detection. Apache 2.0 license.",

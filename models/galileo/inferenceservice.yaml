@@ -153,11 +153,13 @@ spec:
               /data/venv/bin/pip install -q \
                 "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
               /data/venv/bin/pip install -q \
-                einops fastapi uvicorn huggingface_hub
+                numpy einops fastapi uvicorn huggingface_hub
               echo "Venv ready."
             else
               echo "Venv exists."
             fi
+            # numpy was missing from earlier builds; ensure it on cached venvs too.
+            /data/venv/bin/python -c 'import numpy' 2>/dev/null || /data/venv/bin/pip install -q numpy
 
             if [ ! -d /data/model/models ]; then
               echo "Downloading Galileo..."

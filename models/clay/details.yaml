@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "clay",
+      "status": "production",
       "type": "embed",
       "description_short": "Clay Foundation Model ~330M geospatial MAE embeddings from satellite imagery. Apache 2.0.",
       "description": "The Clay Foundation Model is a ~330M parameter Masked Autoencoder that generates semantic embeddings from multi-band satellite imagery. It accepts any-band satellite image patches with wavelength metadata, ground sampling distance, and geolocation. The encoder (large variant) produces CLS token embeddings for downstream tasks like land classification, change detection, and environmental monitoring. Apache 2.0 license.",

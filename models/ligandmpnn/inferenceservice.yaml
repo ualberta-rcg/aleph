@@ -71,15 +71,28 @@ data:
                     f.write(pdb_str)
 
                 script = os.path.join(REPO_DIR, "run.py")
+                # Map model_type -> (run.py checkpoint flag, weights file).
+                ckpt_map = {
+                    "ligand_mpnn": ("--checkpoint_ligand_mpnn", "ligandmpnn_v_32_010_25.pt"),
+                    "protein_mpnn": ("--checkpoint_protein_mpnn", "proteinmpnn_v_48_020.pt"),
+                    "soluble_mpnn": ("--checkpoint_soluble_mpnn", "solublempnn_v_48_020.pt"),
+                    "per_residue_label_membrane_mpnn": (
+                        "--checkpoint_per_residue_label_membrane_mpnn",
+                        "ligandmpnn_per_residue_label_membrane_mpnn_v_32_005_25.pt"),
+                }
+                flag, weights = ckpt_map.get(model_type, ckpt_map["ligand_mpnn"])
+                # dauparas/LigandMPNN run.py arg names: --batch_size / --number_of_batches
+                # for sequence count, --temperature (not --sampling_temp).
                 cmd = [
                     sys.executable, script,
                     "--pdb_path", pdb_path,
                     "--out_folder", out_dir,
-                    "--num_seq_per_target", str(num_seq),
-                    "--sampling_temp", str(temperature),
+                    "--batch_size", str(num_seq),
+                    "--number_of_batches", "1",
+                    "--temperature", str(temperature),
                     "--seed", str(seed),
                     "--model_type", model_type,
-                    "--checkpoint_ligand_mpnn", os.path.join(MODEL_DIR, "model_params", "ligandmpnn_v_32_010_25.pt"),
+                    flag, os.path.join(MODEL_DIR, "model_params", weights),
                 ]
                 env = os.environ.copy()
                 env["PYTHONPATH"] = REPO_DIR + ":" + env.get("PYTHONPATH", "")
@@ -97,7 +110,9 @@ data:
 
                 return {
                     "sequences": seqs,
-                    "stdout": result.stdout[-2000:] if result.stdout else "",
+                    "model_type": model_type,
+                    "stdout": result.stdout[-1000:] if result.stdout else "",
+                    "stderr": result.stderr[-1500:] if result.returncode != 0 and result.stderr else "",
                     "returncode": result.returncode,
                 }
 
@@ -145,6 +160,12 @@ spec:
               echo "Cloning LigandMPNN..."
               git clone --depth 1 https://github.com/dauparas/LigandMPNN.git /data/repo
             fi
+            # Side-chain packing (sc_utils -> openfold) pulls a fragile dep chain we don't
+            # use. Make the import optional so plain sequence design works without openfold.
+            if grep -q '^from sc_utils import' /data/repo/run.py; then
+              sed -i 's/^from sc_utils import Packer, pack_side_chains/try:\n    from sc_utils import Packer, pack_side_chains\nexcept Exception:\n    Packer, pack_side_chains = None, None/' /data/repo/run.py
+              echo "Patched run.py sc_utils import to be optional."
+            fi
 
             # Create venv if needed
             if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import torch, fastapi' 2>/dev/null; then
@@ -154,39 +175,25 @@ spec:
               /data/venv/bin/pip install --quiet \
                 --extra-index-url https://download.pytorch.org/whl/cpu \
                 torch torchvision \
-                fastapi uvicorn prody
+                fastapi uvicorn prody ml_collections dm-tree scipy
             else
               echo "venv exists"
             fi
+            # run.py imports sc_utils -> openfold -> {ml_collections, tree(dm-tree), scipy};
+            # ensure these on cached venvs too.
+            /data/venv/bin/python -c 'import ml_collections, tree, scipy' 2>/dev/null || /data/venv/bin/pip install --quiet ml_collections dm-tree scipy
 
-            # Download model weights if not present
-            if [ ! -d /data/model_params ]; then
-              echo "Downloading LigandMPNN weights..."
-              mkdir -p /data/model_params
-              cd /data/repo
-              /data/venv/bin/python -c "
-            import subprocess, os
-            # Use the provided download script if available
-            script = 'get_model_params.sh'
-            if os.path.exists(script):
-                subprocess.run(['bash', script, '../model_params'], check=True)
-            " 2>/dev/null || true
-
-              # Fallback: download key weights directly from HF/GitHub releases
-              if [ ! -f /data/model_params/ligandmpnn_v_32_010_25.pt ]; then
-                echo "Downloading weights from HuggingFace..."
-                /data/venv/bin/python -c "
-            from huggingface_hub import hf_hub_download, snapshot_download
-            import shutil, os
-            snapshot_download('dauparas/LigandMPNN', local_dir='/data/model_params')
-            " 2>/dev/null || \
-                /data/venv/bin/pip install -q huggingface_hub && \
-                /data/venv/bin/python -c "
-            from huggingface_hub import snapshot_download
-            snapshot_download('dauparas/LigandMPNN', local_dir='/data/model_params')
-            "
+            # Download model weights from the official IPD server. Guard on the actual
+            # checkpoint files (an empty model_params dir must NOT short-circuit this).
+            mkdir -p /data/model_params
+            for f in ligandmpnn_v_32_010_25.pt proteinmpnn_v_48_020.pt solublempnn_v_48_020.pt ligandmpnn_per_residue_label_membrane_mpnn_v_32_005_25.pt; do
+              if [ ! -s /data/model_params/$f ]; then
+                echo "Downloading $f ..."
+                /data/venv/bin/python -c "import urllib.request; urllib.request.urlretrieve('https://files.ipd.uw.edu/pub/ligandmpnn/$f', '/data/model_params/$f')" \
+                  || echo "WARN: failed to download $f"
               fi
-            fi
+            done
+            echo "Checkpoints:"; ls -la /data/model_params/*.pt 2>/dev/null
             echo "Setup complete"
         resources:
           requests: { cpu: "4", memory: 8Gi }

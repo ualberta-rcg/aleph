@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "labram",
+      "status": "broken",
       "type": "embed",
       "description_short": "LaBraM Large Brain Model for EEG signals. BSD-3-Clause, braindecode/Tsinghua.",
       "description": "LaBraM (Large Brain Model) is a foundation model pretrained on EEG signals from braindecode/Tsinghua. It accepts multi-channel EEG windows and returns patch embeddings. The model processes EEG time-series data with segment length of 200 samples, making it suitable for brain-computer interface, sleep staging, and clinical EEG analysis. BSD-3-Clause license. CPU-capable with scale-to-zero.",
