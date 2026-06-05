@@ -1,0 +1,148 @@
+# ESM-2 3B: protein language model embeddings (facebook/esm2_t36_3B_UR50D)
+# GPU accelerated on time-sliced L40S.
+# API: POST /v1/embeddings (OpenAI-style) — returns protein sequence embeddings.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esm2-3b-server
+  namespace: models
+data:
+  server.py: |
+    """ESM-2 3B protein embedding server."""
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    MODEL_NAME = "esm2-3b"
+    MAX_LEN = 1022
+
+    app = FastAPI()
+    tokenizer = None
+    model = None
+
+    def load():
+        global tokenizer, model
+        import torch
+        from transformers import AutoTokenizer, EsmModel
+        print(f"Loading {MODEL_NAME} from {MODEL_DIR}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = EsmModel.from_pretrained(MODEL_DIR, torch_dtype=torch.float16).to(device)
+        model.eval()
+        print(f"{MODEL_NAME} loaded on {device}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "facebook", "type": "embedding"}]}
+
+    def _infer(seqs):
+        import torch
+        device = next(model.parameters()).device
+        enc = tokenizer(seqs, padding=True, truncation=True, max_length=MAX_LEN, return_tensors="pt").to(device)
+        with torch.no_grad():
+            out = model(**enc).last_hidden_state
+        mask = enc["attention_mask"].unsqueeze(-1).float()
+        return ((out * mask).sum(1) / mask.sum(1)).cpu().numpy()
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        inputs = request.get("input", "")
+        if isinstance(inputs, str):
+            inputs = [inputs]
+        emb = await asyncio.get_event_loop().run_in_executor(None, _infer, inputs)
+        data = [{"object": "embedding", "index": i, "embedding": e.tolist()} for i, e in enumerate(emb)]
+        return {"object": "list", "model": MODEL_NAME, "data": data,
+                "usage": {"prompt_tokens": sum(len(s) for s in inputs), "total_tokens": 0}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: esm2-3b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 150
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_TOKEN, value: "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" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install torch transformers fastapi uvicorn huggingface_hub
+            else
+              echo "venv exists"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading ESM-2 3B..."
+              mkdir -p /data/model
+              /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(repo_id='facebook/esm2_t36_3B_UR50D', local_dir='/data/model', local_dir_use_symlinks=False, token=os.environ.get('HF_TOKEN'))
+            "
+            else
+              echo "Model exists"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTORCH_CUDA_ALLOC_CONF, value: "expandable_segments:True" }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "2", memory: 12Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "20480" }
+          limits: { cpu: "4", memory: 24Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "20480" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 180
+          periodSeconds: 20
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          failureThreshold: 40
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: esm2-3b-data }
+      - name: app
+        configMap: { name: esm2-3b-server }

@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aurora-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "aurora",
+      "type": "forecast",
+      "description_short": "Microsoft Aurora 1.3B atmospheric foundation model for global weather forecasting at 0.25-degree resolution.",
+      "description": "Microsoft Aurora is a 1.3B parameter atmospheric foundation model published in Nature 2025. It predicts global weather variables (wind, temperature, humidity, pressure) at 0.25-degree resolution in 6-hour steps. The model accepts surface variables (2m temperature, 10m u/v wind, mean sea-level pressure) and atmospheric variables (temperature, u/v wind, specific humidity, geopotential) at 13 pressure levels (50-1000 hPa). It uses a transformer architecture with spherical harmonics.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/aurora",
+      "source_url": "https://huggingface.co/microsoft/aurora",
+      "license": "MIT",
+      "parameters": "1.3B",
+      "precision": "fp32",
+      "architecture": "AuroraSmall (transformer with spherical harmonics, 13 pressure levels)",
+      "framework": "microsoft-aurora + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "4",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "timeout": 300,
+        "pvc": "aurora-data (15Gi, NFS)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "aurora",
+        "api_name": "aurora",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "forecasting",
+      "tags": ["science", "weather", "forecast", "atmospheric", "gpu", "era5", "medium-range"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "surf_vars": {
+          "2t": "2m temperature (K), shape [lat, lon]",
+          "10u": "10m u-wind (m/s), shape [lat, lon]",
+          "10v": "10m v-wind (m/s), shape [lat, lon]",
+          "msl": "mean sea-level pressure (Pa), shape [lat, lon]"
+        },
+        "atmos_vars": {
+          "t": "temperature at pressure levels, shape [level, lat, lon]",
+          "u": "u-wind at pressure levels, shape [level, lat, lon]",
+          "v": "v-wind at pressure levels, shape [level, lat, lon]",
+          "q": "specific humidity at pressure levels, shape [level, lat, lon]",
+          "z": "geopotential at pressure levels, shape [level, lat, lon]"
+        },
+        "lat": "[90, ..., -90] float array",
+        "lon": "[0, ..., 359.75] float array",
+        "time": "ISO datetime string e.g. 2024-01-01T00:00:00",
+        "atmos_levels": "[50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]"
+      },
+      "output_map": {
+        "surf_vars": "same structure as input, 6h ahead",
+        "atmos_vars": "same structure as input, 6h ahead",
+        "lat": "latitude array",
+        "lon": "longitude array",
+        "step": "6h"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "checkpoint": "aurora-0.25-small-pretrained.ckpt",
+        "static_file": "aurora-0.25-static.pickle"
+      }
+    }

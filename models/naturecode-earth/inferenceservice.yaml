@@ -1,0 +1,234 @@
+# naturecode-earth: Multi-Modal Temporal Vision Transformer for Forest Monitoring
+# naturecodeproject/earth — Apache 2.0, 10.9M params
+# Input: Sentinel-2 (6 bands, 4 time steps, 64x64) + lat/lon + timestamps
+# API: POST /v1/science/predict → segmentation, biomass, soil organic carbon
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: naturecode-earth-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Naturecode Earth — forest monitoring foundation model (naturecodeproject/earth).
+    Apache 2.0. 10.9M params (nano). Processes 4 quarterly Sentinel-2 composites.
+
+    API: POST /v1/science/predict
+    Input:
+      {
+        "images": [[[[6 floats], ...]], ...],  # (T=4, C=6, H=64, W=64)
+        "timestamps": [[year, doy], ...],       # (T=4, 2) e.g. [[2024,90],[2024,180],...]
+        "latitude": 0.0,
+        "longitude": 0.0,
+        "demo": true                            # returns synthetic outputs
+      }
+    Returns:
+      {
+        "segmentation": [[...], ...],   # (3, 64, 64) logits: low/medium/high forest
+        "biomass_mean": 45.2,           # Mg/ha above-ground biomass
+        "biomass_std": 3.1,             # uncertainty
+        "soil": {"soc": 1.2, "clay": 35.1, "sand": 28.4, "bulk_density": 1200, "water_content": 22.5}
+      }
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Naturecode Earth on {DEVICE}...", flush=True)
+        try:
+            import sys
+            sys.path.insert(0, "/data/src")
+            from forestfm.model import ForestFM
+            from forestfm.config import ForestFMConfig
+            ckpt = torch.load("/data/model.pt", map_location="cpu", weights_only=False)
+            cfg = ForestFMConfig(**ckpt["config"])
+            m = ForestFM(cfg)
+            m.load_state_dict(ckpt["model_state_dict"])
+            m = m.to(DEVICE).eval()
+            model = m
+            print("Naturecode Earth ready (forestfm).", flush=True)
+        except ImportError:
+            # Fallback: raw checkpoint load — expose config and state_dict
+            import torch
+            ckpt = torch.load("/data/model.pt", map_location="cpu", weights_only=False)
+            model = ckpt  # store full checkpoint for demo passthrough
+            print("Naturecode Earth loaded (raw ckpt, demo mode only).", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "naturecode-earth"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "naturecode-earth", "object": "model",
+             "owned_by": "naturecodeproject", "type": "forest-monitoring"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        import torch, numpy as np
+
+        # Demo mode
+        if req.get("demo"):
+            return {
+                "model": "naturecode-earth",
+                "segmentation_probs": [[[0.1, 0.6, 0.3]] * 64] * 64,
+                "biomass_mean": 87.4,
+                "biomass_std": 12.1,
+                "soil": {"soc": 2.8, "clay": 32.0, "sand": 25.5,
+                         "bulk_density": 1150.0, "water_content": 24.3},
+                "forest_class": "high",
+                "demo": True,
+            }
+
+        # Real inference (requires forestfm installed)
+        if isinstance(model, dict):
+            return {"error": "forestfm library not installed; demo mode only — pass demo:true"}
+
+        images = req.get("images")
+        timestamps = req.get("timestamps", [[2024, 90], [2024, 180], [2024, 270], [2024, 360]])
+        lat = float(req.get("latitude", 0.0))
+        lon = float(req.get("longitude", 0.0))
+
+        img = torch.tensor(images, dtype=torch.float32).unsqueeze(0)  # (1, T, C, H, W)
+        ts = torch.tensor(timestamps, dtype=torch.float32).unsqueeze(0)  # (1, T, 2)
+        loc = torch.tensor([[lat, lon]], dtype=torch.float32)  # (1, 2)
+
+        img = img.to(DEVICE)
+        ts = ts.to(DEVICE)
+        loc = loc.to(DEVICE)
+
+        with torch.no_grad():
+            out = model(img, ts, loc)
+
+        seg_probs = out["segmentation"].softmax(dim=1).squeeze(0).cpu().tolist()
+        biomass_mean = float(out["biomass"]["mean"].squeeze())
+        biomass_std = float(out["biomass"]["aleatoric_std"].squeeze())
+        soil = {k: float(out["soil"][k].squeeze()) for k in ["soc", "clay", "sand", "bulk_density", "water_content"]}
+        classes = ["low_forest", "medium_forest", "high_forest"]
+        forest_class = classes[int(torch.tensor(out["segmentation"].squeeze(0)).argmax(0).float().mean().round())]
+
+        return {
+            "model": "naturecode-earth",
+            "segmentation_probs": seg_probs,
+            "biomass_mean": biomass_mean,
+            "biomass_std": biomass_std,
+            "soil": soil,
+            "forest_class": forest_class,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: naturecode-earth
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.naturecode-earth-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q huggingface_hub fastapi uvicorn
+            pip install -q forestfm 2>/dev/null || echo "forestfm not on PyPI, will use raw load"
+            python3 -c "
+            from huggingface_hub import hf_hub_download
+            import os, shutil
+            path = hf_hub_download(
+                repo_id='naturecodeproject/earth',
+                filename='model.pt',
+                local_dir='/data',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+            )
+            print('Downloaded:', path)
+            "
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q fastapi uvicorn forestfm 2>/dev/null || true
+            python /app/server.py
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "1", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: naturecode-earth-data }
+      - name: app
+        configMap: { name: naturecode-earth-server }

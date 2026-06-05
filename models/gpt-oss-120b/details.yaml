@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpt-oss-120b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "gpt-oss-120b",
+      "type": "chat",
+      "description_short": "OpenAI GPT-OSS 120B MoE, configurable reasoning + native tool calling",
+      "description": "OpenAI GPT-OSS 120B MoE (MXFP4, 117B total / 5.1B active params). Text-only model with configurable reasoning effort (low/medium/high), native function calling via harmony format, structured outputs, and agentic capabilities. 128K context. Trained with same RL techniques as o3/o4-mini. Near-parity with o4-mini on reasoning benchmarks. Apache 2.0 license.",
+      "context_window": 65536,
+      "max_completion_tokens": 16000,
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "owned_by": "openai",
+      "source": "openai/gpt-oss-120b",
+      "source_url": "https://huggingface.co/openai/gpt-oss-120b",
+      "license": "Apache-2.0",
+      "parameters": "117B MoE (5.1B active)",
+      "parameter_count": 117000000000,
+      "precision": "mxfp4",
+      "architecture": "GptOssForCausalLM",
+      "framework": "vllm",
+      "model_architecture": {
+        "type": "Mixture-of-Experts Transformer",
+        "total_params": "117B",
+        "active_params_per_token": "5.1B",
+        "total_experts": 128,
+        "active_experts_per_token": 4,
+        "layers": 36,
+        "hidden_size": 2880,
+        "attention_heads": 64,
+        "kv_heads": 8,
+        "head_dimension": 64,
+        "attention_pattern": "alternating sliding_window=128 and full attention",
+        "positional_encoding": "RoPE with YaRN scaling (theta=150000, factor=32)",
+        "activation": "SiLU (SwiGLU variant)",
+        "tokenizer": "o200k_harmony (superset of o4-mini/GPT-4o tokenizer)",
+        "response_format": "harmony (NOT standard chat template)"
+      },
+      "quantization": {
+        "method": "mxfp4",
+        "description": "MoE expert MLP weights quantized to MXFP4; attention, router, embeddings, and LM head kept in higher precision",
+        "shipped_with_weights": true,
+        "changeable": false
+      },
+      "capabilities": {
+        "text_input": true,
+        "image_input": false,
+        "audio_input": false,
+        "video_input": false,
+        "multimodal": false,
+        "reasoning": true,
+        "reasoning_effort_levels": ["low", "medium", "high"],
+        "tool_calling": true,
+        "function_calling": true,
+        "structured_outputs": true,
+        "streaming": true,
+        "web_browsing": "model generates tool calls; execution requires client-side orchestrator",
+        "code_execution": "model generates code; execution requires client-side orchestrator",
+        "system_prompt": true
+      },
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 2,
+        "gpu_type": "L40S",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "startup_seconds": 90,
+        "container_image": "vllm/vllm-openai:v0.20.2",
+        "init_image": "python:3.12-slim",
+        "served_model_name": "gpt-oss-120b",
+        "node": "any-L40S",
+        "timeout": 300,
+        "model_path": "/data",
+        "weight_size": "60.77 GiB (15 safetensor shards)",
+        "memory_usage": "34.38 GiB GPU across 2x L40S",
+        "kv_cache_tokens": 281201,
+        "max_concurrency_131k": "~4x at 65K context"
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false,
+        "deployment_mode": "Knative"
+      },
+      "compatibility": {
+        "supports_streaming": true,
+        "supports_vision": false,
+        "supports_video": false,
+        "supports_audio": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": true,
+        "needs_json_fixing": false,
+        "strips_thinking": true
+      },
+      "domain": "nlp",
+      "subdomain": "large-language-model",
+      "tags": ["chat", "llm", "reasoning", "agentic", "moe", "openai", "tool-calling", "text-only"],
+      "content_types": ["text"],
+      "languages": ["multilingual"],
+      "tier": "production",
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string"},
+          "required": true,
+          "description": "Chat messages in OpenAI format. Uses harmony response format internally."
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 16000, "description": "Maximum tokens to generate"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "reasoning_effort": {"type": "string", "enum": ["low","medium","high"], "description": "Configurable reasoning effort via system prompt"},
+        "tools": {"type": "array", "description": "OpenAI-format tool definitions for function calling"},
+        "tool_choice": {"type": "string", "description": "auto or none (required not supported)"}
+      },
+      "output_map": {
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "vllm_args": [
+          "serve", "/data",
+          "--served-model-name", "gpt-oss-120b",
+          "--port", "8080",
+          "--tensor-parallel-size", "2",
+          "--max-model-len", "65536",
+          "--gpu-memory-utilization", "0.92",
+          "--max-num-seqs", "8",
+          "--reasoning-parser", "openai_gptoss",
+          "--tool-call-parser", "openai",
+          "--enable-auto-tool-choice"
+        ],
+        "env": {
+          "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
+          "OMP_NUM_THREADS": "1"
+        },
+        "vllm_version": "0.20.2",
+        "attention_backend": "TRITON_ATTN (auto-selected for SM89/L40S)",
+        "shared_memory": "16Gi",
+        "startup_warnings": [
+          "Auto-initialization of reasoning token IDs failed — harmless, openai_gptoss parser uses token IDs directly",
+          "SymmMemCommunicator not supported on SM89 — expected, L40S lacks symmetric memory",
+          "For gpt-oss, we ignore --enable-auto-tool-choice — model always has tool use enabled"
+        ],
+        "note": "Standard vLLM v0.20.2 with native gpt-oss support. No custom build, no venv, no --enforce-eager. Triton attention auto-selected for L40S. Harmony format, reasoning, and tool calling handled natively."
+      }
+    }

@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prithvi-eo-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "prithvi-eo",
+      "type": "embed",
+      "description_short": "IBM/NASA Prithvi-EO-2.0-300M earth observation foundation model. 6-band HLS, 3D ViT MAE.",
+      "description": "Prithvi-EO-2.0-300M is an IBM/NASA/JSC earth observation foundation model (300M params) built on a 3D ViT MAE architecture pretrained on NASA HLS V2 satellite imagery. It accepts 6-band multispectral data (Blue, Green, Red, NIR, SWIR, SWIR2) with multi-temporal input (4 time steps). The model produces 1024-dim patch embeddings plus CLS token, suitable for land classification, change detection, and environmental monitoring. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embed",
+        "health": "/health"
+      },
+      "owned_by": "ibm-nasa-geospatial",
+      "source": "ibm-nasa-geospatial/Prithvi-EO-2.0-300M",
+      "source_url": "https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-2.0-300M",
+      "license": "Apache-2.0",
+      "parameters": "300M",
+      "precision": "fp32",
+      "architecture": "3D ViT MAE (patch_size=16 spatial, num_frames=4 temporal, 6 input bands)",
+      "framework": "terratorch + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "2",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 180,
+        "pvc": "prithvi-eo-data (inline)",
+        "image": "python:3.11",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "prithvi-eo",
+        "api_name": "prithvi-eo",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "remote-sensing",
+      "tags": ["science", "earth-observation", "satellite", "embed", "hls", "nasa", "ibm", "vit", "mae", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "image": "[[[[6 floats], ...], ...], ...] — (T, H, W, 6) or (H, W, 6) auto-replicated to T=4",
+        "bands": "Blue, Green, Red, NIR, SWIR, SWIR2 (HLS reflectance / 10000.0)"
+      },
+      "output_map": {
+        "embeddings": "patch-level features, shape (num_patches, 1024)",
+        "shape": "[N, D] e.g. [785, 1024] for 4x224x224 input",
+        "model": "prithvi-eo-300m"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "checkpoint": "/data/Prithvi_EO_V2_300M.pt",
+        "framework": "terratorch",
+        "num_frames": 4,
+        "patch_size": 16,
+        "recommended_input": "4 time steps x 224x224 pixels"
+      }
+    }

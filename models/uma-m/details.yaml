@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: uma-m-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "uma-m",
+      "type": "force-field",
+      "description_short": "Universal Materials Architecture from Meta FAIR (EquiformerV2, ~1.1B params)",
+      "description": "UMA-M is a universal materials potential from Meta FAIR using the EquiformerV2 backbone. Predicts energy, forces, and stress for atomic structures across OC20, OC22, ODAC, and MPtrj datasets. ~1.1B parameters. Uses fairchem-core and ASE for structure handling. Non-commercial license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "meta-fair",
+      "source": "facebook/UMA",
+      "source_url": "https://huggingface.co/facebook/UMA",
+      "license": "Meta Research License (non-commercial)",
+      "parameters": "~1.1B",
+      "precision": "float32",
+      "architecture": "EquiformerV2",
+      "framework": "fairchem-core + ASE + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "8Gi", "pvc": "uma-m-data", "pvc_size": "30Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 180},
+      "routing": {"kserve_custom": false, "path_prefix": "/v1/", "isvc_name": "uma-m", "api_name": "uma-m"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["elements", "positions", "lattice", "task"]},
+      "domain": "materials",
+      "subdomain": "universal-potential",
+      "tags": ["force-field", "science", "materials", "meta", "gpu", "equiformer"],
+      "content_types": ["text"],
+      "languages": ["multilingual"],
+      "input_map": {"elements": "[str] element symbols", "positions": "[[float,float,float]]", "lattice": "[[float]] unit cell vectors", "task": "omat|omol|oc20|odac"},
+      "output_map": {"model": "uma-m", "energy": "float (eV)", "forces": "[[float]] (eV/A)", "stress": "[[float]]"},
+      "tier": 1
+    }

@@ -1,0 +1,223 @@
+# AstroCLIP: Cross-Modal Contrastive Learning for Galaxy Images + Spectra
+# polymathic-ai/astroclip — MIT license, ~1.7GB Lightning checkpoint
+# DINOv2 image encoder + spectrum transformer, contrastive pre-training
+# API: POST /v1/science/embed → galaxy image or spectrum → 512-dim embedding
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astroclip-server
+  namespace: models
+data:
+  server.py: |
+    """
+    AstroCLIP — cross-modal CLIP for galaxy images and optical spectra.
+    MIT license. polymathic-ai/astroclip. DINOv2 + spectrum transformer.
+    Trained on 90K galaxies from DESI. 512-dim joint embedding space.
+
+    API: POST /v1/science/embed
+    Input (one of):
+      {"image": [[[R,G,B], ...], ...], "modality": "image"}  # (H, W, 3) galaxy image
+      {"spectrum": [float, ...], "modality": "spectrum"}      # (wavelength_bins,) normalized flux
+      {"demo": true}
+    Returns:
+      {"embeddings": [...], "shape": [512], "model": "astroclip", "modality": "image|spectrum"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading AstroCLIP on {DEVICE}...", flush=True)
+        import sys
+        sys.path.insert(0, "/data/src/astroclip")
+        try:
+            # Load checkpoint, patching DINOv2 file path keys
+            ckpt = torch.load("/data/astroclip.ckpt", map_location="cpu", weights_only=False)
+            state = ckpt.get("state_dict", ckpt)
+            # Fix DINOv2 path references embedded in checkpoint keys
+            fixed = {}
+            for k, v in state.items():
+                new_k = k.replace("image_encoder.dino.", "image_encoder.")
+                fixed[new_k] = v
+            from astroclip.model import AstroCLIP
+            m = AstroCLIP.load_from_checkpoint("/data/astroclip.ckpt", strict=False)
+            m = m.to(DEVICE).eval()
+            model = m
+            print("AstroCLIP ready.", flush=True)
+        except Exception as e:
+            print(f"Full AstroCLIP load failed ({e}), storing raw ckpt.", flush=True)
+            model = {"_raw": True}
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "astroclip"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "astroclip", "object": "model",
+             "owned_by": "polymathic-ai", "type": "galaxy-multimodal-embedding"}
+        ]}
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch, numpy as np
+
+        if req.get("demo"):
+            return {
+                "model": "astroclip",
+                "embeddings": [0.0] * 512,
+                "shape": [512],
+                "modality": req.get("modality", "image"),
+                "demo": True,
+            }
+
+        if isinstance(model, dict) and model.get("_raw"):
+            return {"error": "AstroCLIP library not installed; pass demo:true"}
+
+        modality = req.get("modality", "image")
+        if modality == "image":
+            image = req.get("image")
+            if image is None:
+                raise ValueError("image required for modality=image")
+            img = torch.tensor(image, dtype=torch.float32)
+            if img.shape[-1] == 3:
+                img = img.permute(2, 0, 1)
+            img = img.unsqueeze(0).to(DEVICE)
+            with torch.no_grad():
+                emb = model.image_encoder(img)
+        else:
+            spectrum = req.get("spectrum")
+            if spectrum is None:
+                raise ValueError("spectrum required for modality=spectrum")
+            spec = torch.tensor(spectrum, dtype=torch.float32).unsqueeze(0).unsqueeze(-1).to(DEVICE)
+            with torch.no_grad():
+                emb = model.spectrum_encoder(spec)
+
+        emb_list = emb.squeeze(0).cpu().float().numpy().tolist()
+        return {
+            "model": "astroclip",
+            "embeddings": emb_list,
+            "shape": [len(emb_list)],
+            "modality": modality,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: astroclip
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.astroclip-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git
+            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            pip install -q huggingface_hub fastapi uvicorn lightning
+            python3 -c "
+            import os
+            from huggingface_hub import hf_hub_download
+            # AstroCLIP main checkpoint (~1.7GB Lightning ckpt)
+            hf_hub_download(
+                repo_id='polymathic-ai/astroclip',
+                filename='astroclip.ckpt',
+                local_dir='/data',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+            )
+            print('AstroCLIP checkpoint downloaded.')
+            "
+            mkdir -p /data/src
+            git clone --depth=1 https://github.com/polymathic-ai/astroclip /data/src/astroclip 2>/dev/null || echo "Clone failed"
+            pip install -q -e /data/src/astroclip 2>/dev/null || echo "Install failed"
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            pip install -q fastapi uvicorn lightning
+            pip install -q -e /data/src/astroclip 2>/dev/null || true
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: astroclip-data }
+      - name: app
+        configMap: { name: astroclip-server }

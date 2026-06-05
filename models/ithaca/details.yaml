@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ithaca-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "ithaca",
+      "type": "predict",
+      "description_short": "Ithaca — ancient Greek inscription restoration, dating, and geolocation",
+      "description": "Ithaca by DeepMind x UCL x Venice. JAX/Flax model published in Nature 2022. Restores damaged ancient Greek inscriptions, attributes chronological dating (BCE), and predicts geographic origin. Takes ancient Greek text with gaps marked [---], returns restored text, date range, and location attribution. Uses predictingthepast library with JAX/haiku. GPU required for full inference.",
+      "context_window": 750,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "deepmind",
+      "source": "google-deepmind/predictingthepast",
+      "source_url": "https://github.com/google-deepmind/predictingthepast",
+      "license": "Apache-2.0",
+      "parameters": "N/A (JAX/Flax)",
+      "parameter_count": 0,
+      "precision": "fp32",
+      "architecture": "transformer (JAX/haiku)",
+      "framework": "jax",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "startup_seconds": 120,
+        "container_image": "python:3.11",
+        "timeout": 180
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "scientific-nlp",
+      "subdomain": "digital-humanities",
+      "tags": ["predict", "ancient-greek", "digital-humanities", "classics", "epigraphy", "restoration", "deepmind"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "description": "Ancient Greek inscription text with gaps marked [---]. Must be 50-750 characters."
+        },
+        "demo": {
+          "type": "bool",
+          "required": false,
+          "description": "Return demo output for testing"
+        }
+      },
+      "output_map": {
+        "model": "string",
+        "input": "string",
+        "restoration": "string",
+        "date": {"mean": "int (BCE)", "std": "int", "range": "[int, int]"},
+        "location": {"region": "string", "subregion": "string", "lat": "float", "lon": "float"},
+        "confidence": "float"
+      },
+      "server_config": {
+        "inference_backend": "jax",
+        "framework": "dm-haiku / optax",
+        "max_text_length": 750,
+        "min_text_length": 50,
+        "weights_source": "Google Cloud Storage (public)"
+      }
+    }

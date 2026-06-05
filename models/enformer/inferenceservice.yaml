@@ -1,0 +1,191 @@
+# Enformer: Gene expression prediction from DNA sequences (EleutherAI/enformer-official-rough)
+# 37k+ HF downloads. GPU recommended. CC BY 4.0.
+# Takes 196,608 bp DNA sequence, predicts 5313 human + 1643 mouse regulatory tracks.
+# API: POST /v1/science/predict
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: enformer-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Enformer: gene expression prediction from DNA sequences.
+    Accepts DNA sequence string (196,608 bp), returns regulatory track predictions.
+    API: POST /v1/science/predict
+    Input: {"sequence": "ACGT...", "organism": "human"}  (sequence ~196kb bp)
+    Returns: {"predictions": [[...]], "shape": [896, 5313], "model": "enformer"}
+    For shorter sequences, they will be padded to 196,608 bp.
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+    SEQUENCE_LENGTH = 196_608
+
+    CHAR_TO_INT = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'N': 4}
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Enformer on {DEVICE}...", flush=True)
+        from enformer_pytorch import Enformer
+        model = Enformer.from_pretrained(MODEL_DIR)
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"Enformer ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "enformer"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": "enformer", "object": "model", "owned_by": "EleutherAI", "type": "gene-expression"}]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        sequence = request.get("sequence", "").upper()
+        if not sequence:
+            return JSONResponse({"error": "sequence required"}, 400)
+        organism = request.get("organism", "human")
+        return_tracks = request.get("return_tracks", None)
+
+        def _infer():
+            import torch
+            import numpy as np
+            # One-hot encode
+            seq = sequence[:SEQUENCE_LENGTH]
+            # Pad if needed
+            pad_len = SEQUENCE_LENGTH - len(seq)
+            if pad_len > 0:
+                seq = seq + 'N' * pad_len
+            arr = np.zeros((len(seq), 4), dtype=np.float32)
+            for i, c in enumerate(seq):
+                idx = CHAR_TO_INT.get(c, 4)
+                if idx < 4:
+                    arr[i, idx] = 1.0
+            tensor = torch.tensor(arr, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+            with torch.no_grad():
+                out = model(tensor)
+            # out contains human and mouse predictions
+            result = {}
+            if hasattr(out, 'human'):
+                preds = out.human[0].cpu().numpy()
+                if return_tracks:
+                    preds = preds[:, return_tracks]
+                result['human_predictions'] = preds.tolist()
+                result['human_shape'] = list(preds.shape)
+            if hasattr(out, 'mouse') and organism == 'mouse':
+                preds_m = out.mouse[0].cpu().numpy()
+                result['mouse_predictions'] = preds_m.tolist()
+            result['model'] = 'enformer'
+            result['sequence_length'] = len(sequence)
+            return result
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: enformer-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: enformer
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 595
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            # Check venv with transformers<4.38 (enformer-pytorch compat)
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import enformer_pytorch, fastapi; import transformers; v=transformers.__version__; assert v.startswith("4.3") and int(v.split(".")[1])<38' 2>/dev/null; then
+              echo "Creating venv with pinned transformers..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip --quiet
+              /data/venv/bin/pip install --quiet \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch \
+                "transformers>=4.28,<4.38" \
+                enformer-pytorch huggingface_hub einops \
+                fastapi uvicorn
+            else
+              echo "Venv exists"
+            fi
+
+            if [ ! -d /data/model ] || [ -z "$(ls -A /data/model 2>/dev/null)" ]; then
+              echo "Downloading Enformer..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('EleutherAI/enformer-official-rough', local_dir='/data/model')
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+            echo "Setup complete"
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits: { cpu: "8", memory: 32Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "8", memory: 16Gi }
+          limits: { cpu: "16", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "20480" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: enformer-data }
+      - name: app
+        configMap: { name: enformer-server }

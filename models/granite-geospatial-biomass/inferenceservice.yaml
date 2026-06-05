@@ -1,0 +1,211 @@
+# granite-geospatial-biomass: Above-Ground Biomass from HLS Satellite Imagery
+# ibm-granite/granite-geospatial-biomass — Apache 2.0, Swin-B + UPerNet, 350MB
+# Fine-tuned from Prithvi-EO backbone on GEDI L4A biomass labels across 15 biomes
+# API: POST /v1/science/predict → HLS image patch → biomass Mg/ha
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: granite-geospatial-biomass-server
+  namespace: models
+data:
+  server.py: |
+    """
+    IBM Granite Geospatial Biomass — above-ground biomass estimation.
+    Apache 2.0. Swin-B + UPerNet, fine-tuned on GEDI L4A + HLS.
+    15 biomes globally. Predicts biomass in Mg/ha per pixel.
+
+    API: POST /v1/science/predict
+    Input:
+      {
+        "image": [[[[6 floats], ...], ...], ...],  # (C=6, H, W) HLS bands: Blue,Green,Red,NIR,SWIR1,SWIR2
+        "demo": true                                # returns synthetic biomass map
+      }
+    Returns:
+      {
+        "biomass_map": [[...], ...],    # (H, W) predicted biomass Mg/ha per pixel
+        "biomass_mean": 45.2,           # scene mean
+        "model": "granite-geospatial-biomass"
+      }
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Granite Geospatial Biomass on {DEVICE}...", flush=True)
+        from terratorch.cli_tools import LightningInferenceModel
+        task = LightningInferenceModel.from_config(
+            "/data/config.yaml",
+            "/data/biomass_model_lightning.ckpt",
+        )
+        m = task.model
+        m = m.to(DEVICE).eval()
+        model = m
+        print("Granite Geospatial Biomass ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "granite-geospatial-biomass"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "granite-geospatial-biomass", "object": "model",
+             "owned_by": "ibm-granite", "type": "biomass-regression"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        import torch, numpy as np
+
+        if req.get("demo"):
+            H, W = 64, 64
+            demo_map = [[float(50 + 20 * np.sin(i * 0.3) * np.cos(j * 0.3))
+                         for j in range(W)] for i in range(H)]
+            return {
+                "model": "granite-geospatial-biomass",
+                "biomass_map": demo_map,
+                "biomass_mean": 50.0,
+                "demo": True,
+            }
+
+        image = req.get("image")
+        if image is None:
+            raise ValueError("image required: (C=6, H, W) HLS reflectance array")
+
+        img = torch.tensor(image, dtype=torch.float32).unsqueeze(0).to(DEVICE)  # (1, 6, H, W)
+
+        with torch.no_grad():
+            out = model(img)
+
+        if hasattr(out, "output"):
+            pred = out.output
+        elif isinstance(out, (list, tuple)):
+            pred = out[0]
+        else:
+            pred = out
+
+        biomass_map = pred.squeeze().cpu().float().numpy().tolist()
+        biomass_mean = float(np.array(biomass_map).mean())
+
+        return {
+            "model": "granite-geospatial-biomass",
+            "biomass_map": biomass_map,
+            "biomass_mean": biomass_mean,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: granite-geospatial-biomass
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.granite-biomass-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q terratorch huggingface_hub fastapi uvicorn
+            python3 -c "
+            import os
+            from huggingface_hub import hf_hub_download
+            token = os.environ.get('HF_TOKEN')
+            for filename in ['config.yaml', 'biomass_model_lightning.ckpt']:
+                hf_hub_download(
+                    repo_id='ibm-granite/granite-geospatial-biomass',
+                    filename=filename,
+                    local_dir='/data',
+                    local_dir_use_symlinks=False,
+                    token=token,
+                )
+                print(f'Downloaded {filename}')
+            "
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            pip install -q terratorch fastapi uvicorn
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: granite-geospatial-biomass-data }
+      - name: app
+        configMap: { name: granite-geospatial-biomass-server }

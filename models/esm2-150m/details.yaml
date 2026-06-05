@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esm2-150m-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "esm2-150m",
+      "type": "embedding",
+      "description_short": "ESM2 150M compact protein encoder from Meta",
+      "description": "ESM2 150M is a mid-size variant of the ESM-2 protein language model family from Meta. 150M parameters, 30 layers. Good balance of speed and accuracy. Trained on UniRef50. 1024 residue context.",
+      "context_window": 1024,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "meta",
+      "source": "facebook/esm2_t30_150M_UR50D",
+      "source_url": "https://huggingface.co/facebook/esm2_t30_150M_UR50D",
+      "license": "MIT",
+      "parameters": "150M",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "ESM-2 (Transformer, 30 layers)",
+      "framework": "transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "esm2-150m-data", "pvc_size": "3Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "esm2-150m", "api_name": "esm2-150m"},
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
+      "domain": "proteomics",
+      "subdomain": "protein-embedding",
+      "tags": ["embedding", "science", "proteomics", "protein", "meta", "gpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "input_map": {"input": "amino acid sequence(s)", "sequences": "alias for input"},
+      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "esm2-150m"},
+      "tier": 2
+    }

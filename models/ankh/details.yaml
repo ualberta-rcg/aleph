@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ankh-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "ankh",
+      "type": "embedding",
+      "description_short": "T5-based protein language model from ElnaggarLab (TUM, 113M params)",
+      "description": "Ankh is a protein language model based on the T5 encoder architecture from the ElnaggarLab at TU Munich. Trained on UniRef50. Produces high-quality protein embeddings for structure prediction, function annotation, and variant effect prediction. Requires space-separated amino acids as input. Apache 2.0 license.",
+      "context_window": 1024,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "ElnaggarLab",
+      "source": "ElnaggarLab/ankh-base",
+      "source_url": "https://huggingface.co/ElnaggarLab/ankh-base",
+      "license": "Apache-2.0",
+      "parameters": "113M",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "T5 Encoder",
+      "framework": "transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "ankh-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "ankh", "api_name": "ankh"},
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
+      "domain": "proteomics",
+      "subdomain": "protein-embedding",
+      "tags": ["embedding", "science", "proteomics", "protein", "gpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "input_map": {"input": "amino acid sequence(s)", "sequences": "alias for input"},
+      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "ankh"},
+      "tier": 2
+    }

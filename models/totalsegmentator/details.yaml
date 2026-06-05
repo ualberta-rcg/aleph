@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: totalsegmentator-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "totalsegmentator",
+      "type": "segment",
+      "description_short": "TotalSegmentator: automated segmentation of 117 anatomical structures in CT scans.",
+      "description": "TotalSegmentator is a clinical-grade automated CT scan segmentation tool that identifies and segments 117 anatomical structures. Widely used in medical imaging research, radiology AI, and clinical studies. Built on nnU-Net, it processes 3D CT volumes with voxel spacing metadata for accurate segmentation. The totalsegmentator pip package handles model weight download from HuggingFace/Zenodo. Requires GPU for fast inference.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/segment",
+        "health": "/health"
+      },
+      "owned_by": "wasserth",
+      "source": "wasserth/TotalSegmentator",
+      "source_url": "https://github.com/wasserth/TotalSegmentator",
+      "license": "Apache-2.0",
+      "parameters": "~31M",
+      "precision": "float32",
+      "architecture": "nnU-Net (3D U-Net variant for medical segmentation)",
+      "framework": "totalsegmentator + nnU-Net + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "totalsegmentator-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "totalsegmentator",
+        "api_name": "totalsegmentator",
+        "gateway_type": "segment"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "medical-imaging",
+      "subdomain": "ct-segmentation",
+      "tags": ["science", "medical", "ct", "segment", "radiology", "nnunet", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "ct_array": "3D numpy array shape [D, H, W] in Hounsfield Unit values",
+        "spacing": "voxel spacing in mm [z, y, x] (default: [1.5, 1.5, 1.5])",
+        "fast": "boolean, use fast mode (default: true)"
+      },
+      "output_map": {
+        "segmentation": "3D label array with integer labels for 117 structures",
+        "structures": "list of anatomical structure names found"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "env_var": "TOTALSEGMENTATOR_HOME"
+      }
+    }

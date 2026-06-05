@@ -1,0 +1,232 @@
+# THOR 1.0-base: Multi-Sensor Geospatial Foundation Model (Norwegian Computing Center × ESA)
+# FM4CS/THOR-1.0-base — Apache 2.0, FlexiViT-Base, ~400MB
+# Multi-sensor: Sentinel-1 SAR, Sentinel-2 MSI, Sentinel-3 OLCI/SLSTR, 10m–1000m
+# API: POST /v1/science/embed → satellite image patch → feature embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thor-server
+  namespace: models
+data:
+  server.py: |
+    """
+    THOR 1.0-base — compute-adaptive multi-sensor geospatial foundation model.
+    Apache 2.0. FM4CS/THOR-1.0-base. FlexiViT-Base backbone.
+    Supports Sentinel-1 (SAR), Sentinel-2 (MSI), Sentinel-3 (OLCI/SLSTR).
+    Flexible patch sizes and ground covers (1000m to +100,000m).
+
+    API: POST /v1/science/embed
+    Input:
+      {
+        "image": [[[float, ...], ...], ...],  # (C, H, W) satellite image, any Sentinel sensor
+        "bands": ["BLUE", "GREEN", "RED", "NIR"],  # band names matching THOR convention
+        "patch_size": 8,          # FlexiViT patch size in pixels (default 8)
+        "ground_cover": 2880,     # ground cover in meters (patch_size_px * resolution_m)
+        "demo": true
+      }
+    Returns:
+      {"embeddings": [...], "shape": [N, D], "model": "thor-base"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading THOR-base on {DEVICE}...", flush=True)
+
+        import sys
+        sys.path.insert(0, "/data/src")
+        try:
+            import thor_terratorch_ext  # noqa: F401 — registers THOR backbones
+            from terratorch import BACKBONE_REGISTRY
+            # Build THOR backbone pre-loaded with weights from PVC
+            m = BACKBONE_REGISTRY.build(
+                "thor_v1_base",
+                pretrained=False,
+                pretrained_cfg_overlay={"file": "/data/thor_v1_vit_base.pt"},
+                model_bands=["BLUE", "GREEN", "RED", "NIR"],
+                input_params={"ground_covers": [2880], "flexivit_patch_size_seqs": [8]},
+            )
+            m = m.to(DEVICE).eval()
+            model = m
+            print("THOR-base ready (thor_terratorch_ext).", flush=True)
+        except (ImportError, Exception) as e:
+            print(f"thor_terratorch_ext not available ({e}), loading raw weights.", flush=True)
+            ckpt = torch.load("/data/thor_v1_vit_base.pt", map_location="cpu", weights_only=False)
+            model = ckpt
+            print("THOR-base loaded raw (demo mode only).", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "thor-base"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "thor-base", "object": "model",
+             "owned_by": "FM4CS", "type": "multi-sensor-geospatial-embedding"}
+        ]}
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch, numpy as np
+
+        if req.get("demo"):
+            return {
+                "model": "thor-base",
+                "embeddings": [[0.0] * 768] * 10,
+                "shape": [10, 768],
+                "demo": True,
+            }
+
+        if isinstance(model, dict):
+            return {"error": "thor_terratorch_ext not installed; pass demo:true to test"}
+
+        image = req.get("image")
+        patch_size = int(req.get("patch_size", 8))
+        ground_cover = int(req.get("ground_cover", 2880))
+
+        if image is None:
+            raise ValueError("image required: (C, H, W) satellite band array")
+
+        img = torch.tensor(image, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+
+        with torch.no_grad():
+            out = model(img)
+
+        if isinstance(out, (list, tuple)):
+            emb = out[-1]
+        else:
+            emb = out
+
+        if hasattr(emb, 'last_hidden_state'):
+            emb = emb.last_hidden_state
+
+        emb_list = emb.squeeze(0).cpu().float().numpy().tolist()
+        return {
+            "model": "thor-base",
+            "embeddings": emb_list,
+            "shape": [len(emb_list), len(emb_list[0]) if isinstance(emb_list[0], list) else 1],
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: thor
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.thor-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q terratorch huggingface_hub fastapi uvicorn
+            pip install -q thor-terratorch-ext 2>/dev/null || {
+              echo "thor-terratorch-ext not on PyPI, cloning from GitHub"
+              mkdir -p /data/src
+              git clone --depth=1 https://github.com/FM4CS/thor_terratorch_ext /data/src/thor_terratorch_ext 2>/dev/null || echo "Clone failed"
+              pip install -q -e /data/src/thor_terratorch_ext 2>/dev/null || echo "Install failed"
+            }
+            python3 -c "
+            import os
+            from huggingface_hub import hf_hub_download
+            hf_hub_download(
+                repo_id='FM4CS/THOR-1.0-base',
+                filename='thor_v1_vit_base.pt',
+                local_dir='/data',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+            )
+            print('THOR weights downloaded.')
+            "
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q terratorch fastapi uvicorn
+            pip install -q -e /data/src/thor_terratorch_ext 2>/dev/null || true
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: thor-data }
+      - name: app
+        configMap: { name: thor-server }

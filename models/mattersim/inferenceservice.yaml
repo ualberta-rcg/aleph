@@ -1,0 +1,263 @@
+# MatterSim: Universal atomistic ML force field from Microsoft
+# pip install mattersim. MIT license. arxiv: 2405.04967
+# API: POST /v1/science/predict {structure: {elements, positions, lattice}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mattersim-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MatterSim: Deep Learning Atomistic Model Across Elements, Temperatures and Pressures
+    Microsoft Research, 2024. Universal machine learning force field for materials.
+    API: POST /v1/science/predict
+    Input: {"elements": ["Si", "Si"], "positions": [[0,0,0], [1.35,1.35,1.35]],
+            "lattice": [[2.7,2.7,0], [2.7,0,2.7], [0,2.7,2.7]], "model": "1M"}
+    Returns: {"energy": ..., "forces": [...], "stress": [...], "model": "mattersim"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    calculator = None
+    DEVICE = "cpu"
+
+    def load():
+        global calculator, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading MatterSim on {DEVICE}...", flush=True)
+        from mattersim.forcefield import MatterSimCalculator
+        calculator = MatterSimCalculator(device=DEVICE)
+        print("MatterSim ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if calculator else "loading", "model": "mattersim"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "mattersim", "object": "model", "owned_by": "microsoft",
+             "type": "atomistic-force-field"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if calculator is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        import numpy as np
+        from ase import Atoms
+        from ase.units import GPa
+
+        elements = req.get("elements")
+        positions = req.get("positions")
+        lattice = req.get("lattice")
+
+        if not elements or not positions:
+            raise ValueError("elements and positions required")
+
+        if lattice:
+            atoms = Atoms(
+                symbols=elements,
+                positions=positions,
+                cell=lattice,
+                pbc=True,
+            )
+        else:
+            atoms = Atoms(symbols=elements, positions=positions)
+
+        atoms.calc = calculator
+
+        energy = float(atoms.get_potential_energy())
+        forces = atoms.get_forces().tolist()
+
+        result = {
+            "model": "mattersim",
+            "energy_ev": energy,
+            "energy_per_atom_ev": energy / len(atoms),
+            "forces_ev_per_angstrom": forces,
+        }
+
+        if lattice:
+            stress = atoms.get_stress(voigt=False).tolist()
+            result["stress_ev_per_angstrom3"] = stress
+            result["stress_gpa"] = (np.array(stress) / GPa).tolist()
+
+        return result
+
+    @app.post("/v1/science/relax")
+    async def relax(request: dict):
+        """Relax atomic structure to minimize forces"""
+        if calculator is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _relax, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _relax(req):
+        import numpy as np
+        from ase import Atoms
+        from ase.optimize import BFGS
+        from ase.units import GPa
+        import io, contextlib
+
+        elements = req.get("elements")
+        positions = req.get("positions")
+        lattice = req.get("lattice")
+        fmax = req.get("fmax", 0.05)
+        steps = req.get("steps", 200)
+
+        atoms = Atoms(symbols=elements, positions=positions,
+                     cell=lattice, pbc=bool(lattice))
+        atoms.calc = calculator
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            opt = BFGS(atoms)
+            opt.run(fmax=fmax, steps=steps)
+
+        energy = float(atoms.get_potential_energy())
+        forces = atoms.get_forces().tolist()
+        result = {
+            "model": "mattersim",
+            "converged": opt.converged(),
+            "steps": opt.get_number_of_steps(),
+            "energy_ev": energy,
+            "energy_per_atom_ev": energy / len(atoms),
+            "relaxed_positions": atoms.get_positions().tolist(),
+            "forces_ev_per_angstrom": forces,
+        }
+        if lattice:
+            result["relaxed_cell"] = atoms.get_cell().tolist()
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mattersim-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: mattersim
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+          - { name: TORCH_HOME, value: "/data/torch_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git build-essential > /dev/null 2>&1
+
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'from mattersim.forcefield import MatterSimCalculator' 2>/dev/null; then
+              echo "Creating mattersim venv..."
+              if [ ! -d /data/venv/bin ]; then
+                python3 -m venv /data/venv
+              fi
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.2.0" "torchaudio>=2.2.0" "torchvision>=0.17.0" \
+                --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                "torch_geometric>=2.5.3" \
+                --find-links https://data.pyg.org/whl/torch-2.7.0+cu126.html
+              /data/venv/bin/pip install -q mattersim ase fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/torch_cache/mattersim/pretrained_models/MatterSim-v1.0.0-1M.pth ]; then
+              echo "Pre-downloading MatterSim checkpoint..."
+              mkdir -p /data/torch_cache/mattersim/pretrained_models
+              /data/venv/bin/python -c "
+            import os, torch
+            os.environ['TORCH_HOME'] = '/data/torch_cache'
+            from mattersim.forcefield import MatterSimCalculator
+            calc = MatterSimCalculator(device='cpu')
+            print('MatterSim checkpoint cached.')
+            "
+            else
+              echo "MatterSim checkpoint cached."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: TORCH_HOME, value: "/data/torch_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: mattersim-data }
+      - name: app
+        configMap: { name: mattersim-server }

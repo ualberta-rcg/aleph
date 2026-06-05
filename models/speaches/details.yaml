@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: speaches-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "speaches",
+      "type": "standalone",
+      "description_short": "Speaches: STT (Whisper Large v3) + TTS (Kokoro-82M) combined deployment",
+      "description": "Speaches is an OpenAI-compatible STT/TTS server providing two models behind a single deployment: (1) whisper-large-v3 (Systran/faster-whisper-large-v3) for speech-to-text in 99 languages, and (2) kokoro-82m (speaches-ai/Kokoro-82M-v1.0-ONNX-fp16) for text-to-speech with multiple voice presets. Both models share one time-sliced L40S GPU. Registered in gateway as two separate models (whisper-large-v3 and kokoro-82m) via EXTRA_MODELS routing to http://speaches.models.svc.cluster.local:8000. Always-on (standalone Deployment, not KServe).",
+      "context_window": 448,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "stt": "/v1/audio/transcriptions",
+        "tts": "/v1/audio/speech",
+        "health": "/health"
+      },
+      "owned_by": "speaches-ai",
+      "source": "speaches-ai/speaches",
+      "source_url": "https://github.com/speaches-ai/speaches",
+      "license": "MIT",
+      "parameters": "whisper: 1.5B + kokoro: 82M",
+      "parameter_count": 1582000000,
+      "precision": "fp16 (faster-whisper) / fp16 (Kokoro ONNX)",
+      "architecture": "faster-whisper (CTranslate2) + Kokoro ONNX Runtime",
+      "framework": "standalone",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 1,
+        "max_replicas": 1,
+        "startup_seconds": 120,
+        "container_image": "ghcr.io/speaches-ai/speaches@sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac",
+        "timeout": 600,
+        "k8s_resource_type": "Deployment + Service"
+      },
+      "routing": {
+        "backend": "http://speaches.models.svc.cluster.local:8000",
+        "health_path": "/health"
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "audio",
+      "subdomain": "speech",
+      "tags": ["audio", "speech-to-text", "tts", "gpu", "standalone"],
+      "content_types": ["text", "audio"],
+      "languages": ["multilingual (99 for STT)"],
+      "tier": "production",
+      "gateway_registered_models": {
+        "whisper-large-v3": {
+          "type": "audio",
+          "owned_by": "openai",
+          "source": "openai/whisper-large-v3",
+          "endpoint": "/v1/audio/transcriptions",
+          "input_format": {"file": "audio file (multipart form)", "model": "whisper-large-v3", "language": "ISO code (optional)"}
+        },
+        "kokoro-82m": {
+          "type": "tts",
+          "owned_by": "hexgrad",
+          "source": "hexgrad/Kokoro-82M",
+          "endpoint": "/v1/audio/speech",
+          "voices": ["af", "af_bella", "af_sky", "am_adam", "am_michael", "bf_emma", "bm_george"],
+          "input_format": {"input": "str", "voice": "voice preset ID", "model": "kokoro-82m"}
+        }
+      },
+      "server_config": {
+        "inference_backend": "Speaches (OpenAI-compatible STT/TTS server)",
+        "container_image_digest": "sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac",
+        "whisper_model": "Systran/faster-whisper-large-v3",
+        "whisper_device": "cuda",
+        "whisper_compute_type": "float16",
+        "kokoro_model": "speaches-ai/Kokoro-82M-v1.0-ONNX-fp16",
+        "hf_cache": "/data (on PVC speaches-data)",
+        "model_ttl": "-1 (keep models loaded permanently)",
+        "prefetch_marker": "/data/.speaches-hf-prefetch-ok"
+      }
+    }

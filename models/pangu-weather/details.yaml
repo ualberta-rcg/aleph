@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pangu-weather-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "pangu-weather",
+      "type": "forecast",
+      "description_short": "Huawei Pangu-Weather 3D neural network for global medium-range weather forecasting. ONNX, 0.25-degree.",
+      "description": "Pangu-Weather is Huawei's 3D neural network for global medium-range weather forecasting published in Nature 2023. It uses ONNX runtime with GPU acceleration for 6-hour forecast steps. The model accepts upper-air data (5 variables x 13 pressure levels at 721x1440) and surface data (4 variables at 721x1440) in base64-encoded float32 numpy format. Pressure levels: 50-1000 hPa. Upper variables: geopotential (Z), specific humidity (Q), temperature (T), u-wind (U), v-wind (V). Surface: MSLP, U10, V10, T2M. BY-NC-SA 4.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "huawei",
+      "source": "huawei-weather/pangu-weather",
+      "source_url": "https://github.com/SpuriousCorrelations/Pangu-Weather",
+      "license": "BY-NC-SA-4.0",
+      "parameters": "N/A (ONNX)",
+      "precision": "fp32",
+      "architecture": "3D neural network (ONNX, 6-hour model)",
+      "framework": "onnxruntime-gpu",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "4",
+        "memory_request": "16Gi",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "timeout": 600,
+        "pvc": "pangu-weather-data (10Gi, RWO)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "pangu-weather",
+        "api_name": "pangu-weather",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "forecasting",
+      "tags": ["science", "weather", "forecast", "gpu", "onnx", "era5", "nature-2023"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "input_upper": "base64 float32 ndarray shape (5, 13, 721, 1440) — Z, Q, T, U, V at 13 levels",
+        "input_surface": "base64 float32 ndarray shape (4, 721, 1440) — MSLP, U10, V10, T2M",
+        "demo": "boolean — uses synthetic ERA5-like data"
+      },
+      "output_map": {
+        "output_upper_shape": "[5, 13, 721, 1440]",
+        "output_surface_shape": "[4, 721, 1440]",
+        "output_upper_stats": "mean, std, min, max",
+        "output_surface_stats": "mean, std, min, max",
+        "inference_ms": "inference time in milliseconds",
+        "sample_t850_K": "8x8 sample of T at 850hPa"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/pangu_weather_6.onnx",
+        "pressure_levels": [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50],
+        "upper_vars": ["Z", "Q", "T", "U", "V"],
+        "surface_vars": ["MSLP", "U10", "V10", "T2M"],
+        "deployment_mode": "RawDeployment"
+      }
+    }

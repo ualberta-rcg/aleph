@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: geneformer-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "geneformer",
+      "type": "embedding",
+      "description_short": "Single-cell gene expression foundation model from NIH NCI (104M)",
+      "description": "Geneformer is a context-aware gene network inference model from NIH NCI. Pretrained on 30M single-cell transcriptomes. V2-104M variant. Takes ranked gene token IDs and produces cell-level embeddings. For cell type classification, gene network analysis, and in silico perturbation. BSD-2 license.",
+      "context_window": 4096,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embed",
+        "health": "/health"
+      },
+      "owned_by": "nih-nci",
+      "source": "ctheodoris/Geneformer",
+      "source_url": "https://huggingface.co/ctheodoris/Geneformer",
+      "license": "BSD-2-Clause",
+      "parameters": "104M",
+      "precision": "float32",
+      "architecture": "Geneformer (BERT-based gene rank encoder)",
+      "framework": "transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "geneformer-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "geneformer", "api_name": "geneformer"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["gene_ids"]},
+      "domain": "genomics",
+      "subdomain": "single-cell",
+      "tags": ["embedding", "science", "genomics", "single-cell", "transcriptomics", "gpu"],
+      "content_types": ["text"],
+      "languages": ["multilingual"],
+      "input_map": {"gene_ids": "[int] ranked gene token IDs (max 4096)"},
+      "output_map": {"model": "geneformer", "embeddings": "[[float]]", "embedding_dim": "int"},
+      "tier": 2
+    }

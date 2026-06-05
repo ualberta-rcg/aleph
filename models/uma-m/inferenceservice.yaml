@@ -1,0 +1,192 @@
+# UMA-M: Universal Materials Architecture (Meta FAIR / fairchem)
+# facebook/UMA — EquiformerV2 backbone, universal potential trained on OC20/OC22/ODAC/MPtrj/sAlex
+# Meta Research License (non-commercial). ~1.1B params.
+# API: POST /v1/science/predict {elements, positions, lattice, task}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: uma-m-server
+  namespace: models
+data:
+  server.py: |
+    """
+    UMA-M: Universal Materials Architecture from Meta FAIR.
+    EquiformerV2 backbone. Universal potential for materials property prediction.
+    Supports: energy, forces, stress (OC20 / OC22 / ODAC / MPtrj tasks).
+    HF: facebook/UMA  License: Meta Research License (non-commercial)
+
+    API: POST /v1/science/predict
+    Input:
+      {
+        "elements": ["Si", "Si"],
+        "positions": [[0,0,0], [1.35,1.35,1.35]],
+        "lattice": [[2.7,2.7,0],[2.7,0,2.7],[0,2.7,2.7]],
+        "task": "omat"   // "omat" | "omol" | "oc20" | "odac" (default: omat)
+      }
+    Returns:
+      {"energy": -10.3, "forces": [[fx,fy,fz],...], "stress": [[...]], "model": "uma-m"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    calc = None
+    DEVICE = "cpu"
+    MODEL_PATH = "/data/uma-m.pt"
+
+    def load():
+        global calc, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading UMA-M on {DEVICE}...", flush=True)
+        from fairchem.core import OCPCalculator
+        calc = OCPCalculator(checkpoint_path=MODEL_PATH, cpu=(DEVICE == "cpu"))
+        print("UMA-M ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if calc else "loading", "model": "uma-m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "uma-m", "object": "model", "owned_by": "meta-fair",
+             "type": "universal-materials-potential"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if calc is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        import numpy as np
+        from ase import Atoms
+
+        elements = req.get("elements")
+        positions = req.get("positions")
+        lattice = req.get("lattice")
+        if not elements or not positions:
+            raise ValueError("elements and positions required")
+
+        atoms = Atoms(
+            symbols=elements,
+            positions=positions,
+            cell=lattice if lattice else None,
+            pbc=bool(lattice),
+        )
+        atoms.calc = calc
+        energy = float(atoms.get_potential_energy())
+        forces = atoms.get_forces().tolist()
+        result = {"model": "uma-m", "energy": energy, "forces": forces}
+        if lattice:
+            try:
+                result["stress"] = atoms.get_stress(voigt=False).tolist()
+            except Exception:
+                pass
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: uma-m
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HUB_ENABLE_HF_TRANSFER, value: "1" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/venv/.uma-m-ready
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Creating venv..."
+              apt-get update -qq && apt-get install -y -qq git build-essential > /dev/null 2>&1
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q "fairchem-core>=2.0" ase fastapi uvicorn
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists, skipping."
+            fi
+            if [ ! -f /data/uma-m.pt ]; then
+              echo "Downloading UMA-M checkpoint (~4.5GB)..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download
+            path = hf_hub_download(
+              repo_id='facebook/UMA',
+              filename='checkpoints/uma-m-1p1.pt',
+              local_dir='/data',
+              local_dir_use_symlinks=False
+            )
+            import shutil, os
+            shutil.move(path, '/data/uma-m.pt')
+            print('UMA-M downloaded.')
+            "
+            else
+              echo "UMA-M checkpoint already present."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: uma-m-data }
+      - name: app
+        configMap: { name: uma-m-server }

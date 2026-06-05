@@ -1,0 +1,256 @@
+# DUSt3R: Geometric 3D Vision Made Easy (naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt)
+# Unconstrained 3D reconstruction from two or more images, no calibration needed.
+# State-of-the-art for novel view synthesis and 3D scene understanding.
+# API: POST /v1/science/reconstruct
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dust3r-server
+  namespace: models
+data:
+  server.py: |
+    """
+    DUSt3R: 3D reconstruction from uncalibrated images (naver/DUSt3R).
+    CVPR 2024. Takes 2+ base64-encoded images, returns 3D point cloud per image pair.
+    API: POST /v1/science/reconstruct
+    Input: {"images": ["base64_jpg...", "base64_jpg..."], "output_format": "pointcloud"}
+    Returns: {"pointclouds": [{"pts3d": [[x,y,z],...], "confidence": [...]}], "model": "dust3r"}
+    """
+    import os, asyncio, base64
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    REPO_DIR  = os.path.join(MODEL_DIR, "repo")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading DUSt3R on {DEVICE}...", flush=True)
+
+        import sys
+        sys.path.insert(0, REPO_DIR)
+
+        from dust3r.model import AsymmetricCroCo3DStereo
+        from dust3r.utils.image import load_images
+
+        ckpt_path = os.path.join(MODEL_DIR, "model.safetensors")
+        if not os.path.exists(ckpt_path):
+            ckpt_path = os.path.join(MODEL_DIR, "DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth")
+
+        model = AsymmetricCroCo3DStereo.from_pretrained(MODEL_DIR).to(DEVICE)
+        model.eval()
+        print(f"DUSt3R ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "dust3r"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "dust3r", "object": "model", "owned_by": "naver",
+             "type": "3d-reconstruction"}
+        ]}
+
+    @app.post("/v1/science/reconstruct")
+    async def reconstruct(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _reconstruct, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _reconstruct(req):
+        import torch
+        import numpy as np
+        import tempfile
+        from PIL import Image
+        import io
+        import sys
+        sys.path.insert(0, REPO_DIR)
+
+        images_b64 = req.get("images", [])
+        if len(images_b64) < 2:
+            raise ValueError("At least 2 images required")
+
+        from dust3r.inference import inference
+        from dust3r.utils.image import load_images
+        from dust3r.image_pairs import make_pairs
+        from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
+
+        # Save images to temp files
+        tmpdir = tempfile.mkdtemp()
+        try:
+            img_paths = []
+            for i, b64 in enumerate(images_b64):
+                img_bytes = base64.b64decode(b64)
+                img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                p = os.path.join(tmpdir, f"img_{i}.jpg")
+                img.save(p)
+                img_paths.append(p)
+
+            imgs = load_images(img_paths, size=512)
+            pairs = make_pairs(imgs, scene_graph="complete", symmetrize=True)
+            output = inference(pairs, model, DEVICE, batch_size=1)
+
+            scene = global_aligner(output, device=DEVICE,
+                                   mode=GlobalAlignerMode.PointCloudOptimizer)
+            loss = scene.compute_global_alignment(
+                init="mst", niter=300, schedule="linear", lr=0.01)
+
+            pts3d    = scene.get_pts3d()
+            masks    = scene.get_masks()
+            confs    = scene.get_conf()
+
+            results = []
+            for i in range(len(imgs)):
+                mask = masks[i].cpu().numpy()
+                pts  = pts3d[i].detach().cpu().numpy()
+                conf = confs[i].detach().cpu().numpy()
+                results.append({
+                    "image_idx": i,
+                    "pts3d": pts[mask].tolist(),
+                    "confidence": conf[mask].tolist(),
+                })
+
+            return {
+                "model": "dust3r",
+                "num_images": len(imgs),
+                "pointclouds": results,
+            }
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: dust3r
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git ca-certificates > /dev/null 2>&1
+            update-ca-certificates > /dev/null 2>&1 || true
+            CERT=/etc/ssl/certs/ca-certificates.crt
+            PKGS=/data/pkgs
+
+            # Use --target to install into PVC directory, avoid venv issues
+            if ! python3 -c 'import sys; sys.path.insert(0,"/data/pkgs"); import torch, einops, cv2, safetensors, roma' 2>/dev/null; then
+              echo "Installing packages to /data/pkgs..."
+              mkdir -p "$PKGS"
+              pip3 install -q --cert "$CERT" --no-cache-dir --target "$PKGS" \
+                "torch>=2.6" torchvision \
+                --index-url https://download.pytorch.org/whl/cu126
+              pip3 install -q --cert "$CERT" --no-cache-dir --target "$PKGS" \
+                Pillow scipy einops opencv-python-headless safetensors huggingface_hub fastapi uvicorn roma
+              echo "Packages installed."
+            else
+              echo "Packages already available."
+            fi
+
+            if [ ! -f /data/model/model.safetensors ]; then
+              echo "Downloading DUSt3R weights..."
+              mkdir -p /data/model
+              PYTHONPATH=/data/pkgs python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            token = os.environ.get('HF_TOKEN')
+            snapshot_download(
+                repo_id='naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('DUSt3R downloaded.', flush=True)
+            PY
+            else
+              echo "DUSt3R already on PVC."
+            fi
+
+            if [ ! -d /data/model/repo ]; then
+              echo "Cloning DUSt3R repo (with submodules for croco)..."
+              git clone --recursive https://github.com/naver/dust3r.git /data/model/repo
+              echo "Repo ready."
+            elif [ ! -d /data/model/repo/croco/models ]; then
+              echo "Initializing missing submodules..."
+              cd /data/model/repo && git submodule update --init --recursive
+            else
+              echo "Repo exists."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: dust3r-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["python3", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTHONPATH, value: "/data/pkgs:/data/model/repo" }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        volumeMounts:
+          - { name: dust3r-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: dust3r-data
+        persistentVolumeClaim:
+          claimName: dust3r-data
+      - name: app
+        configMap:
+          name: dust3r-server

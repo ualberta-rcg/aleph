@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gemma-4-26b-a4b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "gemma-4-26b-a4b",
+      "type": "chat",
+      "description_short": "Google Gemma 4 26B A4B MoE, reasoning + vision, FP8",
+      "description": "Google Gemma 4 26B A4B MoE instruction-tuned. 25.2B total / 3.8B active params (128 experts, 8 active + 1 shared). Configurable thinking mode, multimodal (text+image), 256K native context (deployed at 131K), native tool calling via gemma4 parser. FP8 quantization on 1x L40S GPU. Hybrid attention (sliding window + global layers). Native system prompt support. vLLM v0.20.2 with native gemma4 tool calling and reasoning parsers.",
+      "context_window": 131072,
+      "max_completion_tokens": 8000,
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "owned_by": "google",
+      "source": "google/gemma-4-26B-A4B-it",
+      "source_url": "https://huggingface.co/google/gemma-4-26B-A4B-it",
+      "license": "Apache-2.0",
+      "parameters": "25.2B MoE (3.8B active)",
+      "parameter_count": 25200000000,
+      "precision": "fp8",
+      "architecture": "gemma-4-moe",
+      "framework": "vllm",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "min_replicas": 1,
+        "max_replicas": 3,
+        "startup_seconds": 180,
+        "container_image": "vllm/vllm-openai:v0.20.2",
+        "served_model_name": "gemma-4-26b-a4b",
+        "node": "any-L40S",
+        "timeout": 300,
+        "venv_on_pvc": false,
+        "model_path": "/data/model"
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false,
+        "deployment_mode": "Knative"
+      },
+      "compatibility": {
+        "supports_streaming": true,
+        "supports_vision": true,
+        "supports_video": true,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": true,
+        "needs_json_fixing": false,
+        "strips_thinking": true
+      },
+      "domain": "nlp",
+      "subdomain": "large-language-model",
+      "tags": ["chat", "llm", "reasoning", "multimodal", "vision", "moe", "google", "gemma"],
+      "content_types": ["text", "image"],
+      "languages": ["multilingual"],
+      "tier": "production",
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string|array"},
+          "required": true,
+          "description": "Chat messages in OpenAI format. Content can include image_url objects."
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 8000, "description": "Maximum tokens to generate"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "temperature": {"type": "float", "default": 1.0, "description": "HF recommends 1.0"},
+        "top_p": {"type": "float", "default": 0.95, "description": "HF recommends 0.95"},
+        "top_k": {"type": "integer", "default": 64, "description": "HF recommends 64"}
+      },
+      "output_map": {
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "cli_args": [
+          "--served-model-name", "gemma-4-26b-a4b",
+          "--port", "8080",
+          "--tensor-parallel-size", "1",
+          "--max-model-len", "131072",
+          "--quantization", "fp8",
+          "--gpu-memory-utilization", "0.92",
+          "--trust-remote-code",
+          "--enable-auto-tool-choice",
+          "--tool-call-parser", "gemma4",
+          "--reasoning-parser", "gemma4",
+          "--limit-mm-per-prompt", "{\"image\": 16}",
+          "--max-num-seqs", "8",
+          "--max-num-batched-tokens", "4096"
+        ],
+        "model_path": "/data/model",
+        "weight_files": ["*.safetensors"],
+        "shared_memory": "8Gi",
+        "vllm_version": "0.20.2",
+        "note": "vLLM v0.20.2 with native gemma4 tool call parser and reasoning parser. Image-native vllm binary (no venv needed). Flash attention enabled. Weights at /data/model."
+      }
+    }

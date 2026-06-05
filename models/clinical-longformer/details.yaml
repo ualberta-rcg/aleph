@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clinical-longformer-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "clinical-longformer",
+      "type": "embedding",
+      "description_short": "Clinical-Longformer — long clinical document embeddings (4096 tokens)",
+      "description": "Clinical-Longformer by yikuan8. 149M params. Longformer model pre-trained on MIMIC-III clinical notes. Handles long clinical documents up to 4096 tokens, far exceeding standard 512-token BERT models. Superior to ClinicalBERT for long clinical texts like discharge summaries and radiology reports. Produces CLS token embeddings for clinical NLP tasks. Apache 2.0 license.",
+      "context_window": 4096,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "yikuan8",
+      "source": "yikuan8/Clinical-Longformer",
+      "source_url": "https://huggingface.co/yikuan8/Clinical-Longformer",
+      "license": "Apache-2.0",
+      "parameters": "149M",
+      "parameter_count": 149000000,
+      "precision": "fp32",
+      "architecture": "transformer (longformer)",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "startup_seconds": 30,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "clinical",
+      "subdomain": "clinical-document-embeddings",
+      "tags": ["embedding", "clinical", "nlp", "ehr", "longformer", "long-context", "mimic-iii", "healthcare"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "description": "Clinical text — discharge summaries, radiology reports, progress notes"
+        },
+        "texts": {
+          "type": "array of strings",
+          "required": false,
+          "description": "Batch of clinical texts"
+        }
+      },
+      "output_map": {
+        "embeddings": "[[float x 768]]",
+        "model": "string",
+        "dim": "int (768)"
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace)",
+        "max_seq_length": 4096,
+        "pooling": "cls (global attention)",
+        "embedding_dim": 768
+      }
+    }

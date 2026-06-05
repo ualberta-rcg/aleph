@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aeneas-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "aeneas",
+      "type": "structure",
+      "description_short": "Generative neural network for contextualising Latin inscriptions (DeepMind Nature 2025)",
+      "description": "Aeneas is a generative neural network from DeepMind (Nature 2025) for contextualising Latin inscriptions. It restores missing text, dates inscriptions, and predicts geographic origin. Built on JAX/Flax with the predictingthepast framework. Weights from GCS ithaca-resources bucket (~500MB). Uses JAX GPU runtime.",
+      "context_window": 750,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "deepmind",
+      "source": "google-deepmind/predictingthepast",
+      "source_url": "https://github.com/google-deepmind/predictingthepast",
+      "license": "Apache-2.0",
+      "parameters": "~200M",
+      "precision": "float32",
+      "architecture": "JAX/Flax transformer",
+      "framework": "JAX + dm-haiku + optax",
+      "deployment": {"image": "python:3.11", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "8Gi", "pvc": "aeneas-data", "pvc_size": "4Gi", "node_selector": "NVIDIA-L40S", "timeout": 180},
+      "routing": {"kserve_custom": false, "path_prefix": "/v1/", "isvc_name": "aeneas", "api_name": "aeneas"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["text", "demo"]},
+      "domain": "proteomics",
+      "subdomain": "inscription-restoration",
+      "tags": ["structure", "science", "latin", "inscription", "deepmind", "gpu"],
+      "content_types": ["text"],
+      "languages": ["latin"],
+      "input_map": {"text": "Latin inscription string (50-750 chars, # for unknown gaps)", "demo": "bool"},
+      "output_map": {"model": "aeneas", "restoration": "dict", "attribution": "dict", "contextualization": "dict"},
+      "tier": 3
+    }

@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: terramind-flood-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "terramind-flood",
+      "type": "classify",
+      "description_short": "IBM/ESA TerraMind-base-Flood multi-sensor flood detection. Sentinel-1 + Sentinel-2 + DEM, 256x256.",
+      "description": "TerraMind-base-Flood is a multi-sensor flood detection model fine-tuned from TerraMind-1.0-base by IBM and ESA. It uses a ViT encoder + UPerNet decoder architecture processing Sentinel-2 (12 bands), Sentinel-1 RTC (2 bands), and DEM (1 band) data across 4 time steps at 256x256 resolution. Trained on the ImpactMesh-Flood dataset, it produces binary flood segmentation masks with per-pixel probability scores. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/classify",
+        "health": "/health"
+      },
+      "owned_by": "ibm-esa-geospatial",
+      "source": "ibm-esa-geospatial/TerraMind-base-Flood",
+      "source_url": "https://huggingface.co/ibm-esa-geospatial/TerraMind-base-Flood",
+      "license": "Apache-2.0",
+      "parameters": "N/A (TerraMind-1.0-base scale)",
+      "precision": "fp32",
+      "architecture": "ViT encoder + UPerNet decoder (multi-sensor: S2 + S1 + DEM)",
+      "framework": "terratorch 1.2.1 + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "cpu_request": "2",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 180,
+        "pvc": "terramind-flood-data (4Gi, NFS)",
+        "image": "python:3.11",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "terramind-flood",
+        "api_name": "terramind-flood",
+        "gateway_type": "classify"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "flood-detection",
+      "tags": ["science", "earth-observation", "flood", "classify", "sentinel-1", "sentinel-2", "dem", "disaster", "segmentation", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "S2L2A": "[[[[12 floats], ...], ...], ...] — (C=12, T=4, H=256, W=256) Sentinel-2 L2A bands",
+        "S1RTC": "[[[[2 floats], ...], ...], ...] — (C=2, T=4, H=256, W=256) Sentinel-1 RTC VV+VH",
+        "DEM": "[[[[1 float], ...], ...], ...] — (C=1, T=4, H=256, W=256) digital elevation model",
+        "demo": "boolean — returns synthetic flood mask"
+      },
+      "output_map": {
+        "flood_mask": "[[int]] — (H, W) 0=no-flood, 1=flood",
+        "flood_prob": "[[float]] — (H, W) probability [0,1]",
+        "flood_area_pct": "float — percentage of scene flooded",
+        "model": "terramind-flood"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "checkpoint": "/data/TerraMind_v1_base_ImpactMesh_flood.pt",
+        "config": "/data/terramind_v1_base_impactmesh_flood.yaml",
+        "framework": "terratorch==1.2.1",
+        "demo_mode": true
+      }
+    }

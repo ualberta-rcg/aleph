@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mattersim-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "mattersim",
+      "type": "force-field",
+      "description_short": "Microsoft MatterSim universal atomistic ML force field for energy/forces/stress prediction and structure relaxation.",
+      "description": "MatterSim is a universal atomistic machine learning force field from Microsoft Research (arxiv: 2405.04967). It predicts energy, forces, and stress tensors from atomic structures across elements, temperatures, and pressures. Trained on a comprehensive dataset covering diverse materials. Additionally provides a /v1/science/relax endpoint for automatic structure relaxation using BFGS optimization. Uses the mattersim pip package with MatterSimCalculator ASE interface.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/mattersim",
+      "source_url": "https://huggingface.co/microsoft/mattersim",
+      "license": "MIT",
+      "parameters": "~1M",
+      "precision": "float32",
+      "architecture": "MatterSim deep learning atomistic model",
+      "framework": "mattersim + ASE + PyTorch + PyG",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "2",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "mattersim-data (10Gi NFS)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "mattersim",
+        "api_name": "mattersim",
+        "gateway_type": "force-field"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "materials-science",
+      "subdomain": "atomistic-force-fields",
+      "tags": ["science", "materials", "force-field", "molecular-dynamics", "structure-relaxation", "gpu", "microsoft"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "predict": {
+          "elements": "array of element symbols",
+          "positions": "array of [x,y,z] positions in Angstroms",
+          "lattice": "optional 3x3 cell vectors for periodic systems"
+        },
+        "relax": {
+          "elements": "array of element symbols",
+          "positions": "array of [x,y,z] positions",
+          "lattice": "3x3 cell vectors",
+          "fmax": "force convergence criterion in eV/Angstrom (default: 0.05)",
+          "steps": "max optimization steps (default: 200)"
+        }
+      },
+      "output_map": {
+        "predict": {
+          "energy_ev": "total energy in eV",
+          "energy_per_atom_ev": "energy per atom",
+          "forces_ev_per_angstrom": "per-atom forces",
+          "stress_ev_per_angstrom3": "stress tensor",
+          "stress_gpa": "stress in GPa"
+        },
+        "relax": {
+          "converged": "bool",
+          "steps": "number of optimization steps",
+          "energy_ev": "relaxed energy",
+          "relaxed_positions": "optimized positions",
+          "relaxed_cell": "optimized cell vectors"
+        }
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "checkpoint_path": "/data/torch_cache/mattersim/pretrained_models/MatterSim-v1.0.0-1M.pth"
+      }
+    }

@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esmc-300m-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "esmc-300m",
+      "type": "embedding",
+      "description_short": "ESM Cambrian 300M next-gen protein LM from EvolutionaryScale",
+      "description": "ESM-C 300M (Cambrian) is the next-generation protein language model from EvolutionaryScale (Meta spinoff). Drop-in replacement for ESM2 with improved performance. Uses the esm SDK for encoding and logits extraction. 300M parameters.",
+      "context_window": 2048,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "EvolutionaryScale",
+      "source": "EvolutionaryScale/esmc-300m-2024-12",
+      "source_url": "https://huggingface.co/EvolutionaryScale/esmc-300m-2024-12",
+      "license": "MIT",
+      "parameters": "300M",
+      "precision": "float32",
+      "architecture": "ESM-C (EvolutionaryScale proprietary arch)",
+      "framework": "esm SDK + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "esmc-300m-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "esmc-300m", "api_name": "esmc-300m"},
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
+      "domain": "proteomics",
+      "subdomain": "protein-embedding",
+      "tags": ["embedding", "science", "proteomics", "protein", "evolutionaryscale", "gpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "input_map": {"input": "amino acid sequence(s)", "sequences": "alias for input"},
+      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "esmc-300m"},
+      "tier": 2
+    }

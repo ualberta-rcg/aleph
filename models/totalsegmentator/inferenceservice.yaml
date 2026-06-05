@@ -1,0 +1,202 @@
+# TotalSegmentator: automated CT scan segmentation (117 anatomical structures)
+# pip install TotalSegmentator — weights auto-download from HuggingFace/Zenodo.
+# Used in medical imaging research, radiology AI, and clinical studies.
+# Requires GPU for fast inference. API: POST /v1/science/segment
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: totalsegmentator-server
+  namespace: models
+data:
+  server.py: |
+    """
+    TotalSegmentator: CT scan segmentation of 117 anatomical structures.
+    Widely used in medical imaging research and clinical AI.
+    API: POST /v1/science/segment
+    Input: {"ct_array": [[[...]]], "spacing": [1.5, 1.5, 1.5], "fast": true}
+           ct_array: 3D numpy array shape [D, H, W] in HU values
+           spacing: voxel spacing in mm (z, y, x)
+    Returns: {"segmentation": [[[...]]], "structures": ["liver", "kidney_right", ...]}
+    """
+    import os, asyncio, tempfile
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    _ready = False
+
+    def load():
+        global _ready
+        print("Initializing TotalSegmentator...", flush=True)
+        import totalsegmentator
+        # Set model weights directory
+        os.environ["TOTALSEGMENTATOR_HOME"] = MODEL_DIR
+        _ready = True
+        print("TotalSegmentator ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if _ready else "loading", "model": "totalsegmentator"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "totalsegmentator", "object": "model",
+             "owned_by": "jakob-wasserthal", "type": "ct-segmentation"}
+        ]}
+
+    @app.post("/v1/science/segment")
+    async def segment(request: dict):
+        if not _ready:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _segment, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _segment(req):
+        import numpy as np
+        import nibabel as nib
+        from totalsegmentator.python_api import totalsegmentator
+
+        ct_array = np.array(req["ct_array"], dtype=np.int16)
+        spacing = req.get("spacing", [1.5, 1.5, 1.5])
+        fast = req.get("fast", True)
+        task = req.get("task", "total")
+
+        os.environ["TOTALSEGMENTATOR_HOME"] = MODEL_DIR
+
+        # Write CT to temp nifti
+        tmpdir = tempfile.mkdtemp()
+        try:
+            affine = np.diag([*spacing, 1.0])
+            img = nib.Nifti1Image(ct_array, affine)
+            in_path  = os.path.join(tmpdir, "input.nii.gz")
+            out_path = os.path.join(tmpdir, "output")
+            nib.save(img, in_path)
+
+            seg_img = totalsegmentator(
+                in_path, out_path,
+                fast=fast,
+                task=task,
+                quiet=True,
+            )
+
+            seg_arr = np.array(seg_img.dataobj, dtype=np.int16)
+            # Get structure names from header
+            structures = list(seg_img.header.get_data_shape())
+
+            return {
+                "model": "totalsegmentator",
+                "segmentation_shape": list(seg_arr.shape),
+                "num_structures": int(seg_arr.max()),
+                "segmentation": seg_arr.tolist(),
+            }
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: totalsegmentator
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import totalsegmentator' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                TotalSegmentator nibabel fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            # Pre-download weights
+            if [ ! -d /data/model/nnUNet_results ]; then
+              echo "Pre-downloading TotalSegmentator weights (~2GB)..."
+              mkdir -p /data/model
+                TOTALSEGMENTATOR_HOME=/data/model /data/venv/bin/python -u <<'PY'
+            import os
+            os.environ['TOTALSEGMENTATOR_HOME'] = '/data/model'
+            from totalsegmentator.config import setup_nnunet
+            from totalsegmentator.libs import download_pretrained_weights
+            print('Downloading TotalSegmentator weights...', flush=True)
+            download_pretrained_weights(task_id=291)  # total body task
+            print('Weights downloaded.', flush=True)
+            PY
+            else
+              echo "Weights already on PVC."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: totalsegmentator-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: TOTALSEGMENTATOR_HOME, value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: totalsegmentator-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: totalsegmentator-data
+        persistentVolumeClaim:
+          claimName: totalsegmentator-data
+      - name: app
+        configMap:
+          name: totalsegmentator-server

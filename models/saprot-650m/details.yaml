@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saprot-650m-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "saprot-650m",
+      "type": "embedding",
+      "description_short": "Structure-aware protein LM combining amino acids and 3Di tokens (Westlake)",
+      "description": "SaProt 650M from Westlake University combines amino acid and 3Di structure tokens in a single vocabulary, making it structure-aware. Uses AF2-predicted structures for training. ESM-2 backbone architecture. Embeddings encode both sequence and structural information. 650M parameters.",
+      "context_window": 1024,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "westlake-repl",
+      "source": "westlake-repl/SaProt_650M_AF2",
+      "source_url": "https://huggingface.co/westlake-repl/SaProt_650M_AF2",
+      "license": "MIT",
+      "parameters": "650M",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "ESM-2 (AA+3Di vocabulary)",
+      "framework": "transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "saprot-650m-data", "pvc_size": "10Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "saprot-650m", "api_name": "saprot-650m"},
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
+      "domain": "proteomics",
+      "subdomain": "structure-aware-embedding",
+      "tags": ["embedding", "science", "proteomics", "protein", "structure", "gpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "input_map": {"input": "amino acid sequence(s) with optional 3Di tokens (e.g. 'M#a#K#b#')", "sequences": "alias for input"},
+      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "saprot-650m"},
+      "tier": 2
+    }

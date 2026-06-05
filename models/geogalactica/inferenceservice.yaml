@@ -1,0 +1,96 @@
+# GeoGalactica: Geoscience Large Language Model (30B)
+# geobrain-ai/geogalactica — Apache 2.0, 30B params (~60GB weights)
+# Further pre-trained Galactica on 65B geoscience tokens + 1M instruction pairs
+# Architecture: OPT-style decoder-only, 48 layers, 56 heads, hidden=7168
+# API: POST /v1/chat/completions (OpenAI-compatible vLLM)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: geogalactica
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "1800s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ -f "/data/config.json" ]; then
+              echo "GeoGalactica weights already on PVC, skipping download."
+              exit 0
+            fi
+            pip install -q huggingface_hub
+            HF_TOKEN="$HF_TOKEN" python3 -c "import os; from huggingface_hub import snapshot_download; print('Downloading geobrain-ai/geogalactica (~60GB)...', flush=True); snapshot_download(repo_id='geobrain-ai/geogalactica', local_dir='/data', local_dir_use_symlinks=False, token=os.environ.get('HF_TOKEN')); print('Download finished.', flush=True)"
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits: { cpu: "8", memory: 32Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.8.4
+        command: ["bash", "-c"]
+        args:
+          - |
+            # VRAM guard: need ~25GB free per GPU (30B model split across 2 GPUs)
+            NEED_MB=25000
+            for i in $(seq 1 8); do
+              FREE_MB=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+              echo "[VRAM-GUARD] attempt $i: free=${FREE_MB}MB need=${NEED_MB}MB"
+              if [ -n "$FREE_MB" ] && [ "$FREE_MB" -ge "$NEED_MB" ]; then
+                echo "[VRAM-GUARD] enough VRAM, starting vLLM (2-GPU tensor parallel)"
+                exec vllm serve /data \
+                  --served-model-name=geogalactica \
+                  --port 8080 \
+                  --tensor-parallel-size 2 \
+                  --max-model-len 2048 \
+                  --dtype bfloat16 \
+                  --gpu-memory-utilization 0.90 \
+                  --trust-remote-code
+              fi
+              echo "[VRAM-GUARD] not enough VRAM, retrying in 15s..."
+              sleep 15
+            done
+            echo "[VRAM-GUARD] giving up, exiting to reschedule"
+            exit 1
+        env:
+          - { name: HF_HUB_CACHE, value: /tmp/hf-cache }
+          - { name: VLLM_WORKER_MULTIPROC_METHOD, value: spawn }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "8", memory: 32Gi, nvidia.com/gpu: "2", nvidia.com/gpumem: "40960" }
+          limits: { cpu: "16", memory: 64Gi, nvidia.com/gpu: "2", nvidia.com/gpumem: "40960" }
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: geogalactica-data }

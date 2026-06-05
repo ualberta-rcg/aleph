@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crysta-llm-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "crysta-llm",
+      "type": "chat",
+      "description_short": "CrystaLLM GPT-2-based crystal structure generation model that outputs CIF-format structures from formula prompts.",
+      "description": "CrystaLLM is a GPT-2-based language model (c-bone/CrystaLLM-pi_base) fine-tuned to generate crystal structures in CIF format. It uses a custom character-level CIF tokenizer (vocab=377) to tokenize crystallographic data. Given a chemical formula prompt, it generates valid CIF-format crystal structure representations. ~25M parameters. MIT license. Custom tokenizer from lantunes/CrystaLLM.",
+      "context_window": 1024,
+      "max_completion_tokens": 1024,
+      "endpoints": {
+        "primary": "/v1/science/generate",
+        "health": "/health"
+      },
+      "owned_by": "c-bone",
+      "source": "c-bone/CrystaLLM-pi_base",
+      "source_url": "https://huggingface.co/c-bone/CrystaLLM-pi_base",
+      "license": "MIT",
+      "parameters": "~25M",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "GPT-2 (vocab=377, custom CIF tokenizer)",
+      "framework": "transformers (GPT2LMHeadModel) + custom tokenizer",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 300,
+        "pvc": "crysta-llm-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "crysta-llm",
+        "api_name": "crysta-llm",
+        "gateway_type": "chat"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "materials-science",
+      "subdomain": "crystal-generation",
+      "tags": ["science", "materials", "crystal", "generate", "llm", "cif", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "formula": "chemical formula e.g. \"NaCl\", \"LiFePO4\"",
+        "temperature": "sampling temperature (default: 1.0)",
+        "max_new_tokens": "maximum tokens to generate (default: 1024)",
+        "num_samples": "number of structures to generate (default: 1)"
+      },
+      "output_map": {
+        "structures": "array of CIF-format crystal structure strings",
+        "model": "crysta-llm"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "tokenizer_path": "/app/tokenizer",
+        "tokenizer_module": "crystallm_tokenizer.CIFTokenizer"
+      }
+    }

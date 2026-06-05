@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fengwu-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "fengwu",
+      "type": "forecast",
+      "description_short": "Shanghai AI Lab FengWu v2 global weather forecast model. ONNX, 0.25-degree, 83 ERA5 variables.",
+      "description": "FengWu v2 is a Shanghai AI Lab / OpenEarthLab global weather forecasting model that produces 6-hour forecasts at 0.25-degree resolution with 83 ERA5 atmospheric variables. The model runs as ONNX inference using onnxruntime-gpu. Input format matches Pangu-Weather: surface variables (4 channels: T2m, U10, V10, MSLP) at 721x1440 resolution and upper-air variables (5 vars x 13 levels) at 721x1440. Apache 2.0 license. Weights downloaded from PaddleScience CDN (~1.9GB).",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "OpenEarthLab",
+      "source": "OpenEarthLab/FengWu",
+      "source_url": "https://huggingface.co/OpenEarthLab/FengWu",
+      "license": "Apache-2.0",
+      "parameters": "N/A (ONNX)",
+      "precision": "fp32",
+      "architecture": "ONNX neural network (PaddlePaddle exported)",
+      "framework": "onnxruntime-gpu",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "cpu_request": "4",
+        "memory_request": "16Gi",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "timeout": 600,
+        "pvc": "fengwu-data (10Gi, NFS)",
+        "image": "python:3.11",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "fengwu",
+        "api_name": "fengwu",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "forecasting",
+      "tags": ["science", "weather", "forecast", "gpu", "era5", "onnx", "paddlepaddle"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "surface": "[[[[float]]]] shape (4, 721, 1440) — T2m, U10, V10, MSLP",
+        "upper": "[[[[float]]]] shape (5, 13, 721, 1440) — Z, Q, T, U, V x 13 pressure levels",
+        "demo": "boolean — returns zeroed forecast with correct shape"
+      },
+      "output_map": {
+        "surface": "[[[[float]]]] shape (4, 721, 1440) — next 6h surface",
+        "upper": "[[[[float]]]] shape (5, 13, 721, 1440) — next 6h upper-air",
+        "step_hours": 6,
+        "model": "fengwu-v2"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/fengwu_v2.onnx",
+        "onnx_providers": ["CUDAExecutionProvider", "CPUExecutionProvider"]
+      }
+    }

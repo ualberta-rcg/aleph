@@ -1,0 +1,185 @@
+# SapBERT: Biomedical entity linking via self-alignment pre-training (cambridgeltl/SapBERT-from-PubMedBERT-fulltext)
+# 110M params, MIT. 1.6M HuggingFace downloads. Maps biomedical mentions to UMLS concept embeddings.
+# Used for named entity normalization, medical concept retrieval, and clinical NLP.
+# API: POST /v1/science/embed  (biomedical text → concept embedding)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sapbert-server
+  namespace: models
+data:
+  server.py: |
+    """
+    SapBERT: Biomedical entity linking embeddings via self-alignment pre-training.
+    API: POST /v1/science/embed -> {"text": "myocardial infarction"} -> {"embedding": [...]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    app = FastAPI()
+    tokenizer = None
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global tokenizer, model, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModel
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading SapBERT on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        model = AutoModel.from_pretrained(MODEL_DIR).to(DEVICE)
+        model.eval()
+        print(f"SapBERT ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "sapbert"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"models": [{"id": "sapbert", "description": "Biomedical entity linking via SapBERT (1.6M downloads)"}]}
+
+    @app.post("/v1/science/embed")
+    async def embed(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        texts = payload.get("texts") or ([payload.get("text")] if payload.get("text") else None)
+        if not texts:
+            return JSONResponse({"error": "provide text or texts"}, 400)
+        enc = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=25)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc)
+        # SapBERT uses CLS token for entity representation (as per paper)
+        embeddings = out.last_hidden_state[:, 0, :].cpu().tolist()
+        return {"embeddings": embeddings, "model": "sapbert", "dim": len(embeddings[0])}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sapbert-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sapbert
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: sapbert-data
+      - name: server-code
+        configMap:
+          name: sapbert-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi" 2>/dev/null; then
+              echo "Creating venv..."
+              python -m venv $VENV --clear
+              $VENV/bin/pip install --quiet --upgrade pip
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet transformers huggingface_hub fastapi uvicorn
+              echo "Venv ready"
+            else
+              echo "Venv OK"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading SapBERT..."
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            snapshot_download(repo_id='cambridgeltl/SapBERT-from-PubMedBERT-fulltext', local_dir='/data/model', token=os.environ['HF_TOKEN'], ignore_patterns=['*.msgpack','flax_model*','tf_model*'])
+            print('Done')
+            "
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+          - name: server-code
+            mountPath: /app
+        env:
+          - name: MODEL_DIR
+            value: /data/model
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: HF_HUB_OFFLINE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            /data/venv/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10

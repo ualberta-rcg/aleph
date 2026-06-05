@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: brainlm-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "brainlm",
+      "type": "embed",
+      "description_short": "BrainLM 650M fMRI foundation model (ViT-MAE) for brain activity embeddings from 424 ROI time-series.",
+      "description": "BrainLM is a 650M parameter fMRI foundation model from vandijklab (ICLR 2024) based on ViT-MAE (Masked Autoencoder) architecture. Trained on 6,700 hours of fMRI recordings from UK Biobank and Human Connectome Project data. It accepts fMRI ROI time-series (424 brain regions) and returns 768-dimensional latent embeddings for downstream neuroscience tasks like disease classification, brain state prediction, and connectivity analysis.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "vandijklab",
+      "source": "vandijklab/BrainLM",
+      "source_url": "https://huggingface.co/vandijklab/BrainLM",
+      "license": "MIT",
+      "parameters": "650M",
+      "precision": "float32",
+      "architecture": "ViT-MAE (Vision Transformer Masked Autoencoder adapted for fMRI)",
+      "framework": "transformers (ViTMAEForPreTraining) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "brainlm-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "brainlm",
+        "api_name": "brainlm",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "neuroscience",
+      "subdomain": "fmri",
+      "tags": ["science", "neuroscience", "fmri", "embed", "foundation", "gpu", "brain"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "fmri": "[[roi1_t1, roi1_t2, ...], [roi2_t1, ...], ...] shape [n_rois=424, n_timepoints]",
+        "model_size": "\"650M\" (default)"
+      },
+      "output_map": {
+        "embeddings": "768-dimensional latent vectors",
+        "model": "brainlm"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model/vitmae_650M",
+        "weight_file": "pytorch_model.bin"
+      }
+    }

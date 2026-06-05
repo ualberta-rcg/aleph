@@ -1,0 +1,29 @@
+# SaProt 650M Model Deployment
+
+## What this model does
+SaProt 650M from Westlake University combines amino acid and 3Di structure tokens in a single vocabulary. Structure-aware protein embeddings. ESM-2 backbone.
+
+## Source
+- **HF**: westlake-repl/SaProt_650M_AF2 | **License**: MIT | **Params**: 650M
+
+## How the server works
+- `POST /v1/embeddings` -- protein sequences with optional 3Di tokens (e.g., 'M#a#K#b#')
+- EsmTokenizer + EsmModel from local `/data/model` directory
+- Mean-pooled embeddings, fp16 on GPU
+
+## Our config vs source
+- Weights downloaded via snapshot_download to PVC
+- HF_TOKEN required
+- GPU shared (L40S-SHARED), 10Gi PVC, minReplicas: 0
+
+## Deploy/update/test
+```bash
+kubectl apply -k models/saprot-650m/
+kubectl get inferenceservice saprot-650m -n models
+```
+
+## Gateway integration
+- MODEL_TYPES: `"saprot-650m": "embedding"` | KServe custom | Not in MODEL_METADATA
+
+## IMPORTANT
+- Do NOT modify inferenceservice.yaml unless explicitly asked

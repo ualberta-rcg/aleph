@@ -1,0 +1,178 @@
+# Caduceus: Bidirectional Mamba DNA model
+# GPU (~8GB VRAM), scale-to-zero. HF: kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16
+# Apache 2.0, Cornell/Kuleshov Lab
+# API: POST /v1/embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caduceus-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = "kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16"
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, tokenizer, DEVICE
+        from transformers import AutoTokenizer, AutoModelForMaskedLM
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Caduceus on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+        model = AutoModelForMaskedLM.from_pretrained(MODEL_ID, trust_remote_code=True,
+            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
+        model = model.to(DEVICE).eval()
+        print(f"Caduceus ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "caduceus"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "caduceus", "object": "model", "created": 1700000000,
+             "owned_by": "kuleshov-group", "type": "embedding",
+             "description": "Bidirectional Mamba DNA model (131k context)"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        sequences = request.get("input") or request.get("sequences")
+        if isinstance(sequences, str):
+            sequences = [sequences]
+        if not sequences:
+            return JSONResponse({"error": "'input' required (DNA sequences)"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, sequences)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(sequences):
+        enc = tokenizer(sequences, return_tensors="pt", padding=True, truncation=True, max_length=8192)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        
+        with torch.no_grad():
+            out = model(**enc, output_hidden_states=True)
+        
+        hidden = out.hidden_states[-1]
+        # Caduceus tokenizer has no attention_mask; mean-pool over all positions
+        if "attention_mask" in enc:
+            mask = enc["attention_mask"].unsqueeze(-1).float()
+            emb = (hidden * mask).sum(1) / mask.sum(1)
+        else:
+            emb = hidden.mean(dim=1)
+        emb = emb.cpu().float().numpy()
+        
+        data = [{"object": "embedding", "index": i, "embedding": e.tolist()}
+                for i, e in enumerate(emb)]
+        return {"object": "list", "data": data, "model": "caduceus",
+                "usage": {"prompt_tokens": sum(len(s) for s in sequences), "total_tokens": sum(len(s) for s in sequences)}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: caduceus-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: caduceus
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel
+        env:
+          - name: HF_HOME
+            value: "/data/hf_cache"
+          - name: TORCH_CUDA_ARCH_LIST
+            value: "8.9"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.caduceus-ready-v3
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            echo "Creating conda venv at /data/caduceus_env..."
+            conda run python -m venv /data/caduceus_env --system-site-packages
+            /data/caduceus_env/bin/pip install -q 'transformers>=4.38' fastapi uvicorn huggingface_hub
+            echo "Compiling causal-conv1d and mamba-ssm from source (may take 15-20 min)..."
+            TORCH_CUDA_ARCH_LIST=8.9 /data/caduceus_env/bin/pip install -q --no-build-isolation causal-conv1d mamba-ssm
+            echo "Downloading Caduceus weights..."
+            HF_HOME=/data/hf_cache /data/caduceus_env/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16'); print('weights done')"
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "8", memory: 16Gi }
+          limits: { cpu: "16", memory: 32Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel
+        env:
+          - name: HF_HOME
+            value: "/data/hf_cache"
+        command: ["bash", "-c"]
+        args:
+          - |
+            /data/caduceus_env/bin/pip install -q 'transformers>=4.38,<4.48' 2>&1 | tail -3
+            exec /data/caduceus_env/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: caduceus-data }
+      - name: app
+        configMap: { name: caduceus-server }

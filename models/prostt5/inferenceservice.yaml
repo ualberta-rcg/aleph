@@ -1,0 +1,186 @@
+# ProstT5: Protein sequence ↔ 3Di structure token translation
+# GPU (~8GB VRAM), scale-to-zero. HF: Rostlab/ProstT5
+# 27k downloads, MIT license, Rostlab (Univ Munich)
+# API: POST /v1/translate
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prostt5-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch, re
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = "Rostlab/ProstT5"
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, tokenizer, DEVICE
+        from transformers import T5Tokenizer, T5ForConditionalGeneration
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ProstT5 on {DEVICE}...", flush=True)
+        tokenizer = T5Tokenizer.from_pretrained(MODEL_ID, legacy=True, use_fast=False)
+        model = T5ForConditionalGeneration.from_pretrained(MODEL_ID,
+            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
+        model = model.to(DEVICE).eval()
+        print(f"ProstT5 ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "prostt5"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "prostt5", "object": "model", "created": 1700000000,
+             "owned_by": "Rostlab", "type": "seq2seq",
+             "description": "Protein sequence ↔ 3Di structure translation"}
+        ]}
+
+    @app.post("/v1/translate")
+    async def translate(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        sequences = request.get("input") or request.get("sequences")
+        direction = request.get("direction", "seq2struct")
+        if isinstance(sequences, str):
+            sequences = [sequences]
+        if not sequences:
+            return JSONResponse({"error": "'input' required"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _translate, sequences, direction)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _translate(sequences, direction):
+        # Add spaces between residues and prefix
+        if direction == "seq2struct":
+            prefix = "<AA2fold>"
+            seqs = [" ".join(list(re.sub(r"[UZOB]", "X", s))) for s in sequences]
+        else:
+            prefix = "<fold2AA>"
+            seqs = [" ".join(list(s)) for s in sequences]
+        
+        inputs = [f"{prefix} {s}" for s in seqs]
+        enc = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        
+        with torch.no_grad():
+            outputs = model.generate(**enc, max_length=512, do_sample=False)
+        
+        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        results = ["".join(d.split()) for d in decoded]
+        
+        return {"results": results, "direction": direction, "model": "prostt5"}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prostt5-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: prostt5
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_HOME
+            value: "/data/hf_cache"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+            fi
+            echo "Installing dependencies..."
+            /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
+            /data/venv/bin/pip install -q 'transformers==4.40.2' sentencepiece fastapi uvicorn
+            /data/venv/bin/pip uninstall -q -y tiktoken 2>/dev/null || true
+            
+            if [ ! -d /data/hf_cache/hub/models--Rostlab--ProstT5 ]; then
+              echo "Pre-downloading ProstT5..."
+              HF_HOME=/data/hf_cache /data/venv/bin/python -c "
+            import os; os.environ['HF_HOME']='/data/hf_cache'
+            from transformers import T5Tokenizer, T5ForConditionalGeneration
+            T5Tokenizer.from_pretrained('Rostlab/ProstT5', legacy=True, use_fast=False)
+            T5ForConditionalGeneration.from_pretrained('Rostlab/ProstT5')
+            print('ProstT5 cached')
+            "
+            else
+              echo "Model already cached"
+            fi
+            # Remove tokenizer.json from cache - it uses tiktoken but model needs sentencepiece
+            find /data/hf_cache -name "tokenizer.json" -path "*ProstT5*" -delete 2>/dev/null || true
+            find /data/hf_cache -name "tokenizer.json" -path "*prot_t5*" -delete 2>/dev/null || true
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: prostt5-data }
+      - name: app
+        configMap: { name: prostt5-server }

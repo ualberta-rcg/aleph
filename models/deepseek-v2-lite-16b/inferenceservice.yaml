@@ -1,0 +1,119 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: deepseek-v2-lite-16b
+  namespace: models
+spec:
+  predictor:
+    minReplicas: 1
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if Path("/data/config.json").is_file():
+                print("Model already on PVC, skipping download.", flush=True)
+            else:
+                from huggingface_hub import snapshot_download
+                print("Downloading deepseek-ai/DeepSeek-V2-Lite-Chat ...", flush=True)
+                snapshot_download(
+                    repo_id="deepseek-ai/DeepSeek-V2-Lite-Chat",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: deepseek-v2-lite-16b
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.7.2
+        args:
+          - --model=/data
+          - --served-model-name=deepseek-v2-lite-16b
+          - --port=8080
+          - --tensor-parallel-size=1
+          - --max-model-len=32768
+          - --dtype=bfloat16
+          - --gpu-memory-utilization=0.90
+          - --trust-remote-code
+          - --enforce-eager
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "2"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+          limits:
+            cpu: "8"
+            memory: 24Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 60
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: deepseek-v2-lite-16b
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: deepseek-v2-lite-16b
+        persistentVolumeClaim:
+          claimName: deepseek-v2-lite-16b
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

@@ -1,0 +1,227 @@
+# Prithvi-EO-2.0-300M: Earth Observation Foundation Model (IBM × NASA × JSC)
+# ibm-nasa-geospatial/Prithvi-EO-2.0-300M — Apache 2.0, 13K downloads
+# 3D ViT MAE pretrained on HLS V2 (6 bands: Blue, Green, Red, NIR, SWIR, SWIR2)
+# API: POST /v1/embed {image: [[6 floats], ...], height: 224, width: 224}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prithvi-eo-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Prithvi-EO-2.0-300M: IBM × NASA Earth Observation Foundation Model.
+    Apache 2.0 license. ibm-nasa-geospatial/Prithvi-EO-2.0-300M
+    3D ViT MAE model, 300M params, pretrained on NASA HLS V2 satellite imagery.
+    Input: 6-band multispectral imagery (Blue, Green, Red, NIR, SWIR, SWIR2).
+
+    API: POST /v1/embed
+    Input:
+      {
+        "image": [[[[6 floats], ...], ...], ...]  // (T, H, W, 6) array; T=4 time steps
+                                                  // or (H, W, 6) single frame (auto-replicated to T=4)
+      }
+    Returns:
+      {"embeddings": [...], "shape": [N, D], "model": "prithvi-eo-300m"}
+      embeddings: patch-level ViT features, shape (num_patches, 1024)
+                  num_patches = T × (H/16) × (W/16) + 1 (CLS), e.g. 785 for 4×224×224
+
+    Note: image should be normalized to ~0-1 (HLS reflectance / 10000.0).
+    Recommended input size: 4 time steps × 224×224 pixels.
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+    MODEL_PATH = "/data/hf_cache"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Prithvi-EO-2.0-300M on {DEVICE}...", flush=True)
+        from terratorch.models.backbones.prithvi_vit import prithvi_eo_v2_300
+
+        # Build model with random init, then load pretrained weights manually.
+        # Prithvi-EO-2.0-300M: patch_size=16 spatial, num_frames=4 temporal.
+        # Verification: 4 × (224/16)² = 4 × 196 = 784 patches + CLS = 785 pos_embed ✓
+        m = prithvi_eo_v2_300(
+            pretrained=False,
+            num_frames=4,
+            encoder_only=True,
+        )
+        ckpt = torch.load("/data/Prithvi_EO_V2_300M.pt", map_location=DEVICE, weights_only=True)
+        raw = ckpt.get("model", ckpt)
+        # Checkpoint stores encoder weights under "encoder." prefix; strip it
+        state = {}
+        for k, v in raw.items():
+            if k.startswith("encoder."):
+                state[k[len("encoder."):]] = v
+            elif not k.startswith("decoder."):
+                state[k] = v
+        missing, unexpected = m.load_state_dict(state, strict=False)
+        if missing:
+            print(f"  still missing (first 3): {missing[:3]}", flush=True)
+        m = m.to(DEVICE).eval()
+        model = m
+        print("Prithvi-EO-2.0-300M ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "prithvi-eo-300m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "prithvi-eo-300m", "object": "model",
+             "owned_by": "ibm-nasa-geospatial", "type": "earth-observation-embedding"}
+        ]}
+
+    @app.post("/v1/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch, numpy as np
+
+        image = req.get("image")
+        if image is None:
+            raise ValueError("image required: (T, H, W, 6) or (H, W, 6) array")
+
+        img_np = np.array(image, dtype=np.float32)
+        # Accept (H, W, 6) single frame → replicate to (T=4, H, W, 6)
+        if img_np.ndim == 3:
+            img_np = np.stack([img_np] * 4, axis=0)  # (4, H, W, 6)
+        # img_np is (T, H, W, 6), convert to (B, C, T, H, W) = (1, 6, T, H, W)
+        T, H, W, C = img_np.shape
+        tensor = torch.tensor(img_np).permute(3, 0, 1, 2).unsqueeze(0)  # (1, 6, T, H, W)
+        tensor = tensor.to(DEVICE)
+
+        with torch.no_grad():
+            out = model(tensor)
+
+        # Extract patch embeddings
+        if isinstance(out, (list, tuple)):
+            embeddings = out[-1]  # last feature map
+        else:
+            embeddings = out
+
+        if hasattr(embeddings, 'last_hidden_state'):
+            emb = embeddings.last_hidden_state
+        else:
+            emb = embeddings
+
+        emb_list = emb.squeeze(0).cpu().float().numpy().tolist()
+        return {
+            "model": "prithvi-eo-300m",
+            "embeddings": emb_list,
+            "shape": [len(emb_list), len(emb_list[0]) if isinstance(emb_list[0], list) else 1],
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: prithvi-eo
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/venv/.prithvi-eo-ready-v3
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q terratorch huggingface_hub fastapi uvicorn
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+            if [ ! -f /data/Prithvi_EO_V2_300M.pt ]; then
+              echo "Downloading Prithvi-EO-2.0-300M weights..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download
+            import shutil
+            path = hf_hub_download(
+              repo_id='ibm-nasa-geospatial/Prithvi-EO-2.0-300M',
+              filename='Prithvi_EO_V2_300M.pt',
+              local_dir='/data',
+              local_dir_use_symlinks=False
+            )
+            shutil.move(path, '/data/Prithvi_EO_V2_300M.pt')
+            print('Prithvi-EO-2.0-300M downloaded.')
+            "
+            else
+              echo "Prithvi-EO-2.0-300M weights present."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: prithvi-eo-data }
+      - name: app
+        configMap: { name: prithvi-eo-server }

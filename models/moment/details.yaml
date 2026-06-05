@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moment-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "moment",
+      "type": "forecast",
+      "description_short": "MOMENT-1-large (385M) open time-series foundation model from CMU for forecasting, classification, and anomaly detection.",
+      "description": "MOMENT-1-large is an open time-series foundation model from AutonLab at CMU (2024). Built on a T5-based architecture with 385M parameters, it supports multiple downstream tasks: forecasting, classification, anomaly detection, and imputation. The model is loaded via the momentfm library with MOMENTPipeline. Apache 2.0 license. GPU-accelerated.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/forecast",
+        "health": "/health"
+      },
+      "owned_by": "AutonLab-CMU",
+      "source": "AutonLab/MOMENT-1-large",
+      "source_url": "https://huggingface.co/AutonLab/MOMENT-1-large",
+      "license": "Apache-2.0",
+      "parameters": "385M",
+      "precision": "float32",
+      "architecture": "T5-based encoder-decoder for time series",
+      "framework": "momentfm + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "moment-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "moment",
+        "api_name": "moment",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "time-series",
+      "subdomain": "forecasting",
+      "tags": ["science", "timeseries", "forecast", "classification", "anomaly-detection", "gpu", "cmu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "time_series": "array of numeric values",
+        "prediction_length": "future steps to forecast (default: 96)"
+      },
+      "output_map": {
+        "forecast": "predicted values array"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model"
+      }
+    }

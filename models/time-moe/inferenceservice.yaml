@@ -1,0 +1,214 @@
+# TimeMoE-50M: Time Series Mixture-of-Experts Foundation Model
+# Maple728/TimeMoE-50M — 50M params, 336K downloads, Apache 2.0
+# arxiv: 2409.16040. Universal time series forecasting with MoE architecture.
+# API: POST /v1/forecast {time_series: [...], prediction_length: 96}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: time-moe-server
+  namespace: models
+data:
+  server.py: |
+    """
+    TimeMoE-50M: Time Series Mixture-of-Experts Foundation Model.
+    Maple728/TimeMoE-50M. Apache 2.0. 336K+ downloads.
+    Pretrained universal time series forecasting with MoE architecture.
+    Supports prediction lengths: 1, 96, 192, 336, 720.
+    arxiv: 2409.16040
+
+    API: POST /v1/forecast
+    Input:
+      {
+        "time_series": [v1, v2, ..., vN],   // univariate float list, min ~100 values
+        "prediction_length": 96             // 1|96|192|336|720 (default: 96)
+      }
+    Returns:
+      {"forecast": [...], "model": "time-moe-50m", "prediction_length": 96}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+    MODEL_ID = "Maple728/TimeMoE-50M"
+    HF_CACHE = "/data/hf_cache"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading TimeMoE-50M on {DEVICE}...", flush=True)
+        from transformers import AutoModelForCausalLM
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_ID,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16 if DEVICE != "cpu" else torch.float32,
+            cache_dir=HF_CACHE,
+        ).to(DEVICE).eval()
+        print("TimeMoE-50M ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "time-moe-50m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "time-moe-50m", "object": "model", "owned_by": "maple728",
+             "type": "time-series-forecasting",
+             "supported_prediction_lengths": [1, 96, 192, 336, 720]}
+        ]}
+
+    @app.post("/v1/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch, numpy as np
+
+        ts = req.get("time_series", [])
+        pred_len = int(req.get("prediction_length", 96))
+        if not ts:
+            raise ValueError("time_series required")
+        if pred_len not in [1, 96, 192, 336, 720]:
+            return {"warning": f"pred_len {pred_len} not in supported set, using 96",
+                    "forecast": [], "model": "time-moe-50m"}
+
+        ts_arr = np.array(ts, dtype=np.float32)
+        # Normalize
+        mean, std = ts_arr.mean(), ts_arr.std() + 1e-8
+        ts_norm = (ts_arr - mean) / std
+
+        # TimeMoE expects shape (batch, seq_len) as float32
+        tensor = torch.tensor(ts_norm, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+
+        # Cast to model dtype to avoid float/bfloat16 mismatch
+        model_dtype = next(model.parameters()).dtype
+        tensor = tensor.to(dtype=model_dtype)
+        # TimeMoE forward uses in-place unsqueeze on input_ids; pre-unsqueeze to 3D
+        context = tensor.unsqueeze(-1)  # (1, T, 1)
+
+        forecasted = []
+        with torch.no_grad():
+            for _ in range(pred_len):
+                # Pass clone to prevent in-place mutation of context
+                out = model(input_ids=context.clone())
+                logits = out.logits if hasattr(out, 'logits') else out[0]
+                # logits: (batch, T, horizon_or_1); take last step first channel
+                next_val = logits[0, -1, 0].cpu().float()
+                forecasted.append(float(next_val))
+                next_inp = next_val.to(device=DEVICE, dtype=model_dtype).reshape(1, 1, 1)
+                context = torch.cat([context, next_inp], dim=1)
+                if context.shape[1] > 2048:
+                    context = context[:, -2048:, :]
+
+        forecast_norm = np.array(forecasted)
+        forecast = (forecast_norm * std + mean).tolist()
+
+        return {
+            "model": "time-moe-50m",
+            "input_length": len(ts),
+            "prediction_length": pred_len,
+            "forecast": forecast,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: time-moe
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/venv/.time-moe-ready
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q "transformers==4.44.2" huggingface_hub fastapi uvicorn accelerate
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+            if [ ! -d /data/hf_cache/models--Maple728--TimeMoE-50M ]; then
+              echo "Downloading TimeMoE-50M..."
+              HF_HOME=/data/hf_cache /data/venv/bin/python -c "
+            from transformers import AutoModelForCausalLM
+            AutoModelForCausalLM.from_pretrained('Maple728/TimeMoE-50M', trust_remote_code=True, cache_dir='/data/hf_cache')
+            print('TimeMoE-50M cached.')
+            "
+            else
+              echo "TimeMoE-50M already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: time-moe-data }
+      - name: app
+        configMap: { name: time-moe-server }

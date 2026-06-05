@@ -1,0 +1,205 @@
+# Stanford Deidentifier: Clinical note de-identification NER (StanfordAIMI/stanford-deidentifier-base)
+# 110M params, Apache 2.0. 1.46M downloads. Removes PHI from clinical notes: names, dates, IDs, locations.
+# Critical for HIPAA-compliant clinical NLP pipelines.
+# API: POST /v1/science/deidentify  (clinical text → anonymized text + NER tags)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stanford-deidentifier-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Stanford Deidentifier: PHI removal from clinical notes via NER.
+    API: POST /v1/science/deidentify -> {"text": "Patient John Smith..."} -> {"entities": [...], "anonymized": "..."}
+         POST /v1/science/embed      -> {"text": "..."} -> {"embedding": [...]}
+    """
+    import os, asyncio, re
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    app = FastAPI()
+    tokenizer = None
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global tokenizer, model, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModelForTokenClassification
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Stanford Deidentifier on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        model = AutoModelForTokenClassification.from_pretrained(MODEL_DIR).to(DEVICE)
+        model.eval()
+        print(f"Stanford Deidentifier ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "stanford-deidentifier"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"models": [{"id": "stanford-deidentifier", "description": "Clinical PHI de-identification NER (1.46M downloads)"}]}
+
+    @app.post("/v1/science/deidentify")
+    async def deidentify(payload: dict):
+        import torch
+        from transformers import pipeline
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        text = payload.get("text", "")
+        if not text:
+            return JSONResponse({"error": "provide text"}, 400)
+        pipe = pipeline("token-classification", model=model, tokenizer=tokenizer,
+                        aggregation_strategy="simple", device=0 if DEVICE=="cuda" else -1)
+        entities = pipe(text)
+        # Build anonymized version
+        anonymized = text
+        for ent in sorted(entities, key=lambda x: x["start"], reverse=True):
+            anonymized = anonymized[:ent["start"]] + f"[{ent['entity_group']}]" + anonymized[ent["end"]:]
+        return {
+            "entities": [{"text": e["word"], "label": e["entity_group"], "score": float(e["score"]),
+                          "start": e["start"], "end": e["end"]} for e in entities],
+            "anonymized": anonymized,
+            "model": "stanford-deidentifier"
+        }
+
+    @app.post("/v1/science/embed")
+    async def embed(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        texts = payload.get("texts") or ([payload.get("text")] if payload.get("text") else None)
+        if not texts:
+            return JSONResponse({"error": "provide text or texts"}, 400)
+        enc = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model.bert(**enc)
+        embeddings = out.last_hidden_state[:, 0, :].cpu().tolist()
+        return {"embeddings": embeddings, "model": "stanford-deidentifier", "dim": len(embeddings[0])}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stanford-deidentifier-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: stanford-deidentifier
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: stanford-deidentifier-data
+      - name: server-code
+        configMap:
+          name: stanford-deidentifier-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi" 2>/dev/null; then
+              python -m venv $VENV --clear
+              $VENV/bin/pip install --quiet --upgrade pip
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet transformers huggingface_hub fastapi uvicorn
+              echo "Venv ready"
+            else
+              echo "Venv OK"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download; import os
+            snapshot_download(repo_id='StanfordAIMI/stanford-deidentifier-base', local_dir='/data/model', token=os.environ['HF_TOKEN'], ignore_patterns=['*.msgpack','flax_model*','tf_model*'])
+            print('Done')
+            "
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+          - name: server-code
+            mountPath: /app
+        env:
+          - name: MODEL_DIR
+            value: /data/model
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: HF_HUB_OFFLINE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            /data/venv/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10

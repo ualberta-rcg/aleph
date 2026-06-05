@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: enformer-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "enformer",
+      "type": "predict",
+      "description_short": "Gene expression prediction from 196kb DNA sequences (DeepMind/EleutherAI)",
+      "description": "Enformer predicts gene expression (regulatory track values) from 196,608 bp DNA sequences. Trained by DeepMind on human and mouse genomic data. Predicts 5313 human + 1643 mouse regulatory tracks. Requires pinned transformers<4.38 for enformer-pytorch compatibility. ~500M parameters.",
+      "context_window": 196608,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "EleutherAI",
+      "source": "EleutherAI/enformer-official-rough",
+      "source_url": "https://huggingface.co/EleutherAI/enformer-official-rough",
+      "license": "CC-BY-4.0",
+      "parameters": "~500M",
+      "precision": "float32",
+      "architecture": "Enformer (convolutional trunk + transformer torso)",
+      "framework": "enformer-pytorch + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 2, "cpu_request": "8", "memory_request": "16Gi", "pvc": "enformer-data", "pvc_size": "10Gi", "node_selector": null, "timeout": 595},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "enformer", "api_name": "enformer"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["sequence", "organism", "return_tracks"]},
+      "domain": "genomics",
+      "subdomain": "gene-expression",
+      "tags": ["predict", "science", "genomics", "dna", "gene-expression", "regulatory", "gpu"],
+      "content_types": ["text"],
+      "languages": ["dna"],
+      "input_map": {"sequence": "DNA sequence (~196kb bp)", "organism": "human|mouse", "return_tracks": "[int] optional track indices"},
+      "output_map": {"model": "enformer", "human_predictions": "[[float]] shape [896, 5313]", "human_shape": "[int]", "sequence_length": "int"},
+      "tier": 1
+    }

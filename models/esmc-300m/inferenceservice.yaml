@@ -1,0 +1,177 @@
+# ESM-C 300M: Next-gen protein LM from EvolutionaryScale (Meta spinoff)
+# GPU (~1GB VRAM), scale-to-zero. HF: EvolutionaryScale/esmc-300m-2024-12
+# Drop-in replacement for ESM2 with better performance
+# API: POST /v1/embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esmc-300m-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    client = None
+    DEVICE = "cpu"
+
+    def load():
+        global client, DEVICE
+        from esm.models.esmc import ESMC
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ESM-C 300M on {DEVICE}...", flush=True)
+        client = ESMC.from_pretrained("esmc_300m").to(DEVICE)
+        client.eval()
+        print(f"ESM-C 300M ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if client else "loading", "model": "esmc-300m", "device": DEVICE}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "esmc-300m", "object": "model", "created": 1700000000,
+             "owned_by": "EvolutionaryScale", "type": "embedding",
+             "description": "ESM Cambrian 300M protein encoder (Meta spinoff)"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if client is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        sequences = request.get("input") or request.get("sequences")
+        if isinstance(sequences, str):
+            sequences = [sequences]
+        if not sequences:
+            return JSONResponse({"error": "'input' field required (protein sequences)"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, sequences)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(sequences):
+        from esm.sdk.api import ESMProtein, LogitsConfig
+        
+        embeddings = []
+        for seq in sequences:
+            protein = ESMProtein(sequence=seq)
+            protein_tensor = client.encode(protein)
+            logits_output = client.logits(protein_tensor, LogitsConfig(sequence=True, return_embeddings=True))
+            # Mean pool across sequence dimension
+            emb = logits_output.embeddings.mean(dim=1).squeeze().cpu().float().numpy()
+            embeddings.append(emb.tolist())
+        
+        data = [{"object": "embedding", "index": i, "embedding": e}
+                for i, e in enumerate(embeddings)]
+        return {"object": "list", "data": data, "model": "esmc-300m",
+                "usage": {"prompt_tokens": sum(len(s) for s in sequences), "total_tokens": sum(len(s) for s in sequences)}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: esmc-300m-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: esmc-300m
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_HOME
+            value: "/data/hf_cache"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+            else
+              echo "venv exists"
+            fi
+            echo "Installing dependencies..."
+            /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
+            /data/venv/bin/pip install -q esm fastapi uvicorn httpx
+            
+            echo "Pre-downloading ESM-C 300M weights..."
+            /data/venv/bin/python -c "
+            import os
+            os.environ['HF_HOME'] = '/data/hf_cache'
+            from esm.models.esmc import ESMC
+            print('Loading model to trigger download...')
+            _ = ESMC.from_pretrained('esmc_300m')
+            print('ESM-C 300M cached')
+            "
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: esmc-300m-data }
+      - name: app
+        configMap: { name: esmc-300m-server }

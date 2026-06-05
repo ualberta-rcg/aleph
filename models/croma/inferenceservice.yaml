@@ -1,0 +1,215 @@
+# CROMA: Cross-modal Remote sensing foundation model (antofuller/CROMA)
+# Self-supervised model pre-trained on paired SAR + optical satellite imagery.
+# Useful for land classification, change detection, and crop mapping.
+# API: POST /v1/embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: croma-server
+  namespace: models
+data:
+  server.py: |
+    """
+    CROMA: Cross-modal Remote Sensing Foundation Model (SAR + optical).
+    Returns patch embeddings from Sentinel-1 (SAR) and/or Sentinel-2 (optical) images.
+    API: POST /v1/embeddings
+    Input: {"sar_images": [[...]], "optical_images": [[...]], "modality": "both"|"sar"|"optical"}
+           sar_images: list of [2, H, W] arrays (VV, VH channels)
+           optical_images: list of [12, H, W] arrays (Sentinel-2 bands)
+    Returns: {"embeddings": [[...]], "model": "croma"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading CROMA-base on {DEVICE}...", flush=True)
+
+        import sys
+        repo_dir = os.path.join(MODEL_DIR, "repo")
+        sys.path.insert(0, repo_dir)
+
+        # CROMA repo has use_croma.py with PretrainedCROMA class (for inference)
+        from use_croma import PretrainedCROMA
+
+        ckpt_path = os.path.join(MODEL_DIR, "CROMA_base.pt")
+        m = PretrainedCROMA(pretrained_path=ckpt_path, size="base", modality="both",
+                            image_resolution=120)
+        m.to(DEVICE).eval()
+        model = m
+        print(f"CROMA ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "croma"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "croma", "object": "model", "owned_by": "antofuller",
+             "type": "satellite-embedding"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch
+        import numpy as np
+
+        modality = req.get("modality", "both")
+        sar = req.get("sar_images")
+        optical = req.get("optical_images")
+
+        def to_tensor(lst):
+            arr = np.array(lst, dtype=np.float32)
+            if arr.ndim == 3:
+                arr = arr[np.newaxis]
+            return torch.tensor(arr).to(DEVICE)
+
+        with torch.inference_mode():
+            # PretrainedCROMA uses SAR_images and optical_images kwargs
+            kwargs = {}
+            if sar:     kwargs["SAR_images"]     = to_tensor(sar)
+            if optical: kwargs["optical_images"] = to_tensor(optical)
+            out = model(**kwargs)
+
+        emb = out if isinstance(out, torch.Tensor) else out[0]
+        return {
+            "object": "list",
+            "model": "croma",
+            "data": [{"index": i, "embedding": e.tolist(), "object": "embedding"}
+                     for i, e in enumerate(emb.cpu())]
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: croma
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import torch' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" torchvision \
+                --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                einops timm fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/model/CROMA_base.pt ]; then
+              echo "Downloading CROMA weights..."
+              mkdir -p /data/model
+                /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import hf_hub_download
+            token = os.environ.get('HF_TOKEN')
+            for fname in ['CROMA_base.pt']:
+                hf_hub_download(repo_id='antofuller/CROMA', filename=fname,
+                    local_dir='/data/model', local_dir_use_symlinks=False, token=token)
+            print('CROMA downloaded.', flush=True)
+            PY
+            else
+              echo "CROMA already on PVC."
+            fi
+
+            if [ ! -d /data/model/repo ]; then
+              git clone --depth 1 https://github.com/antofuller/CROMA.git /data/model/repo
+              echo "CROMA repo cloned."
+            else
+              echo "Repo exists."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: croma-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTHONPATH, value: /data/model/repo }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: croma-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: croma-data
+        persistentVolumeClaim:
+          claimName: croma-data
+      - name: app
+        configMap:
+          name: croma-server

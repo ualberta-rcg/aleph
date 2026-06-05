@@ -1,0 +1,211 @@
+# MACE-MP-0: Materials Project interatomic potential (universal)
+# mace-foundations/mace-mp-0 — MACE-MP-0b3-medium, MIT license
+# Equivariant message passing neural network for materials energy/forces/stress
+# mace-torch pip package. ~10M params. CPU+GPU.
+# API: POST /v1/science/predict {elements, positions, lattice, model}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mace-mp-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MACE-MP-0: Universal interatomic potential for materials science.
+    mace-foundations/mace-mp-0, MIT license.
+    Trained on Materials Project database. Supports energy, forces, stress.
+
+    API: POST /v1/science/predict
+    Input:
+      {
+        "elements": ["Si", "Si"],
+        "positions": [[0,0,0], [1.35,1.35,1.35]],
+        "lattice": [[2.7,2.7,0],[2.7,0,2.7],[0,2.7,2.7]],  // optional, adds PBC
+        "model": "medium"   // "small" | "medium" | "large" (default: medium)
+      }
+    Returns:
+      {"energy": -10.3, "forces": [[fx,fy,fz],...], "stress": [...], "model": "mace-mp-0"}
+
+    Note: energy in eV, forces in eV/Å, stress in eV/Å³ (Voigt 6-component).
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    calc_cache = {}
+    MODEL_DIR = "/data/models"
+    DEVICE = "cpu"
+
+    def get_calc(model_size="medium"):
+        if model_size not in calc_cache:
+            import torch
+            from mace.calculators import MACECalculator
+            size_map = {
+                "small":  "mace-mp-0b2-small.model",
+                "medium": "mace-mp-0b3-medium.model",
+                "large":  "mace-mp-0b2-large.model",
+            }
+            model_file = os.path.join(MODEL_DIR, size_map.get(model_size, "mace-mp-0b3-medium.model"))
+            calc_cache[model_size] = MACECalculator(
+                model_paths=model_file,
+                device=DEVICE,
+                default_dtype="float64",
+            )
+        return calc_cache[model_size]
+
+    def load():
+        global DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading MACE-MP-0 (medium) on {DEVICE}...", flush=True)
+        get_calc("medium")
+        print("MACE-MP-0 ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if "medium" in calc_cache else "loading", "model": "mace-mp-0"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "mace-mp-0", "object": "model", "owned_by": "mace-foundations",
+             "type": "universal-interatomic-potential",
+             "variants": ["small", "medium", "large"]}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if "medium" not in calc_cache:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        from ase import Atoms
+        elements = req.get("elements")
+        positions = req.get("positions")
+        lattice   = req.get("lattice")
+        model_sz  = req.get("model", "medium")
+        if not elements or not positions:
+            raise ValueError("elements and positions required")
+
+        atoms = Atoms(
+            symbols=elements,
+            positions=positions,
+            cell=lattice if lattice else None,
+            pbc=bool(lattice),
+        )
+        calc = get_calc(model_sz)
+        atoms.calc = calc
+        energy = float(atoms.get_potential_energy())
+        forces = atoms.get_forces().tolist()
+        result = {"model": "mace-mp-0", "variant": model_sz, "energy_eV": energy, "forces_eV_per_Ang": forces}
+        if lattice:
+            try:
+                result["stress_eV_per_Ang3"] = atoms.get_stress(voigt=True).tolist()
+            except Exception:
+                pass
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: mace-mp
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/venv/.mace-mp-ready
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Installing venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q "mace-torch>=0.3" ase huggingface_hub fastapi uvicorn
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+            mkdir -p /data/models
+            if [ ! -f /data/models/mace-mp-0b3-medium.model ]; then
+              echo "Downloading MACE-MP-0 models..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download
+            import shutil, os
+            for fname in ['mace-mp-0b3-medium.model', 'mace-mp-0b2-small.model', 'mace-mp-0b2-large.model']:
+                dest = f'/data/models/{fname}'
+                if not os.path.exists(dest):
+                    path = hf_hub_download(repo_id='mace-foundations/mace-mp-0', filename=fname,
+                                           local_dir='/data/hf_cache', local_dir_use_symlinks=False)
+                    shutil.copy(path, dest)
+                    print(f'Downloaded {fname}')
+            print('MACE-MP-0 models ready.')
+            "
+            else
+              echo "MACE-MP-0 models present."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: mace-mp-data }
+      - name: app
+        configMap: { name: mace-mp-server }

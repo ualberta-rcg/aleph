@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oceangpt-30b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "oceangpt-30b",
+      "type": "chat",
+      "description_short": "OceanGPT 30B MoE, ocean science (marine biology, oceanography)",
+      "description": "OceanGPT 30B A3B MoE instruction-tuned. Based on Qwen3 MoE architecture. 30.5B total params (128 experts), ~3B active per token. Trained on marine biology, oceanography, climate, and fisheries data in English and Chinese. 128-expert weights (~61GB) require 2x L40S with tensor parallel. Includes VRAM guard startup script.",
+      "context_window": 8192,
+      "max_completion_tokens": 8000,
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "owned_by": "zjunlp",
+      "source": "zjunlp/OceanGPT-basic-30B-A3B-Instruct",
+      "source_url": "https://huggingface.co/zjunlp/OceanGPT-basic-30B-A3B-Instruct",
+      "license": "Apache-2.0",
+      "parameters": "30.5B MoE (3B active)",
+      "parameter_count": 30500000000,
+      "precision": "bfloat16",
+      "architecture": "qwen3-moe",
+      "framework": "vllm",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 2,
+        "gpu_type": "L40S",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "startup_seconds": 300,
+        "container_image": "vllm/vllm-openai:v0.8.4",
+        "served_model_name": "oceangpt-30b",
+        "node": "any-L40S",
+        "timeout": 300
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false,
+        "deployment_mode": "Knative"
+      },
+      "compatibility": {
+        "supports_streaming": true,
+        "supports_vision": false,
+        "supports_video": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "science",
+      "subdomain": "ocean-science",
+      "tags": ["chat", "llm", "ocean", "marine", "science", "moe"],
+      "content_types": ["text"],
+      "languages": ["english", "chinese"],
+      "tier": "production",
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string"},
+          "required": true,
+          "description": "Chat messages in OpenAI format."
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 8000, "description": "Maximum tokens to generate"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "temperature": {"type": "float", "default": 0.7}
+      },
+      "output_map": {
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "cli_args": ["vllm serve /data", "--served-model-name=oceangpt-30b", "--port 8080", "--tensor-parallel-size 2", "--max-model-len 8192", "--dtype bfloat16", "--gpu-memory-utilization 0.90", "--trust-remote-code"],
+        "model_path": "/data",
+        "weight_files": ["*.safetensors"],
+        "shared_memory": "16Gi",
+        "vram_guard": true,
+        "vram_guard_need_mb": 25000
+      }
+    }

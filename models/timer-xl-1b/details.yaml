@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timer-xl-1b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "timer-xl-1b",
+      "type": "forecast",
+      "description_short": "Timer-XL-1B large universal time-series forecasting model (Tsinghua THUML, 1B params).",
+      "description": "Timer-XL is the large variant (1B parameters) of the Timer universal time-series forecasting model from THUML at Tsinghua University (2025). It uses a decoder-only transformer pretrained on multi-domain time-series data for zero-shot forecasting. Significantly stronger than the base 84M variant. Supports configurable prediction lengths. Uses HuggingFace AutoModelForCausalLM with trust_remote_code. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/forecast",
+        "health": "/health"
+      },
+      "owned_by": "thuml",
+      "source": "thuml/Timer-XL-1B",
+      "source_url": "https://huggingface.co/thuml/Timer-XL-1B",
+      "license": "Apache-2.0",
+      "parameters": "1B",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "Decoder-only transformer for time series (large variant)",
+      "framework": "transformers (AutoModelForCausalLM, trust_remote_code) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "timer-xl-1b-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "timer-xl-1b",
+        "api_name": "timer-xl-1b",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "time-series",
+      "subdomain": "forecasting",
+      "tags": ["science", "timeseries", "forecast", "zero-shot", "gpu", "thuml", "tsinghua", "large"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "time_series": "array of numeric values (min 96 values recommended)",
+        "prediction_length": "future steps to forecast (default: 96)"
+      },
+      "output_map": {
+        "forecast": "predicted values array",
+        "model": "timer-xl-1b",
+        "input_length": "number of input values",
+        "prediction_length": "forecast horizon"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "hf_model_id": "thuml/Timer-XL-1B"
+      }
+    }

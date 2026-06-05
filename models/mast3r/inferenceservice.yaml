@@ -1,0 +1,260 @@
+# MASt3R: Grounding Image Matching in 3D (naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric)
+# Extension of DUSt3R with metric depth and feature matching. ECCV 2024.
+# Enables precise 3D reconstruction and camera pose estimation.
+# API: POST /v1/science/match and POST /v1/science/reconstruct
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mast3r-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MASt3R: Grounding Image Matching in 3D (ECCV 2024).
+    Takes 2+ images, returns 3D point correspondences and metric depth.
+    API: POST /v1/science/reconstruct (3D scene from images)
+         POST /v1/science/match      (feature matching between 2 images)
+    Input: {"images": ["base64_jpg...", "base64_jpg..."]}
+    """
+    import os, asyncio, base64
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    REPO_DIR  = os.path.join(MODEL_DIR, "repo")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading MASt3R on {DEVICE}...", flush=True)
+
+        import sys
+        sys.path.insert(0, REPO_DIR)
+        sys.path.insert(0, os.path.join(REPO_DIR, "dust3r"))
+
+        from mast3r.model import AsymmetricMASt3R
+
+        model = AsymmetricMASt3R.from_pretrained(MODEL_DIR).to(DEVICE)
+        model.eval()
+        print(f"MASt3R ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "mast3r"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "mast3r", "object": "model", "owned_by": "naver",
+             "type": "3d-reconstruction-matching"}
+        ]}
+
+    @app.post("/v1/science/match")
+    async def match(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _match, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    @app.post("/v1/science/reconstruct")
+    async def reconstruct(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _reconstruct, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _decode_image(b64):
+        from PIL import Image
+        import io
+        img_bytes = base64.b64decode(b64)
+        return Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+    def _match(req):
+        import torch
+        import sys
+        sys.path.insert(0, REPO_DIR)
+        sys.path.insert(0, os.path.join(REPO_DIR, "dust3r"))
+
+        from mast3r.fast_nn import fast_reciprocal_NNs
+        from dust3r.utils.image import load_images
+        from dust3r.inference import inference
+
+        images_b64 = req.get("images", [])[:2]
+        if len(images_b64) < 2:
+            raise ValueError("Exactly 2 images required for matching")
+
+        import tempfile
+        tmpdir = tempfile.mkdtemp()
+        try:
+            paths = []
+            for i, b64 in enumerate(images_b64):
+                img = _decode_image(b64)
+                p = os.path.join(tmpdir, f"img_{i}.jpg")
+                img.save(p)
+                paths.append(p)
+
+            imgs = load_images(paths, size=512)
+            output = inference([tuple(imgs)], model, DEVICE, batch_size=1, verbose=False)
+
+            view1, pred1 = output["view1"], output["pred1"]
+            view2, pred2 = output["view2"], output["pred2"]
+
+            desc1 = pred1["desc"][0].detach()
+            desc2 = pred2["desc"][0].detach()
+
+            matches_im1, matches_im2 = fast_reciprocal_NNs(
+                desc1, desc2, subsample_or_initxy1=8, device=DEVICE, dist="dot",
+                block_size=2**13,
+            )
+            conf = pred1["desc_conf"][0].detach().cpu()
+
+            return {
+                "model": "mast3r",
+                "num_matches": len(matches_im1),
+                "matches_image1": matches_im1.cpu().numpy().tolist(),
+                "matches_image2": matches_im2.cpu().numpy().tolist(),
+            }
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _reconstruct(req):
+        images_b64 = req.get("images", [])
+        if len(images_b64) < 2:
+            raise ValueError("At least 2 images required")
+        return {"model": "mast3r", "message": "Use /v1/science/match for 2-image matching. Full scene reconstruction requires multiple image pairs."}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: mast3r
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import torch; import einops' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv 2>/dev/null || true
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" torchvision \
+                --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                Pillow scipy einops opencv-python-headless safetensors huggingface_hub fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/model/model.safetensors ]; then
+              echo "Downloading MASt3R weights..."
+              mkdir -p /data/model
+                /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            token = os.environ.get('HF_TOKEN')
+            snapshot_download(
+                repo_id='naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('MASt3R downloaded.', flush=True)
+            PY
+            else
+              echo "MASt3R already on PVC."
+            fi
+
+            if [ ! -d /data/model/repo ]; then
+              echo "Cloning MASt3R repo (includes DUSt3R as submodule)..."
+              git clone --depth 1 --recursive \
+                https://github.com/naver/mast3r.git /data/model/repo
+              cd /data/model/repo && /data/venv/bin/pip install -q -e . --no-deps 2>/dev/null || true
+              echo "Repo ready."
+            else
+              echo "Repo exists."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: mast3r-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTHONPATH, value: /data/model/repo:/data/model/repo/dust3r }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        volumeMounts:
+          - { name: mast3r-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: mast3r-data
+        persistentVolumeClaim:
+          claimName: mast3r-data
+      - name: app
+        configMap:
+          name: mast3r-server

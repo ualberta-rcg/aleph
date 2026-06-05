@@ -1,0 +1,137 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gpt-oss-120b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 1
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.12-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            if [ -f /data/config.json ]; then
+                echo "Model already on PVC, skipping download."
+            else
+                echo "Downloading openai/gpt-oss-120b ..."
+                python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="openai/gpt-oss-120b",
+                local_dir="/data",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: gpt-oss-120b
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
+        args:
+          - serve
+          - /data
+          - --served-model-name
+          - gpt-oss-120b
+          - --port
+          - "8080"
+          - --tensor-parallel-size
+          - "2"
+          - --max-model-len
+          - "65536"
+          - --gpu-memory-utilization
+          - "0.92"
+          - --max-num-seqs
+          - "8"
+          - --reasoning-parser
+          - openai_gptoss
+          - --tool-call-parser
+          - openai
+          - --enable-auto-tool-choice
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: OMP_NUM_THREADS
+            value: "1"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "2"
+            nvidia.com/gpumem: "45056"
+          limits:
+            cpu: "16"
+            memory: 64Gi
+            nvidia.com/gpu: "2"
+            nvidia.com/gpumem: "45056"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 40
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: gpt-oss-120b
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: gpt-oss-120b
+        persistentVolumeClaim:
+          claimName: gpt-oss-120b
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

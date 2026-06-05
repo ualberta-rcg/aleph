@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: diffdock-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "diffdock-l",
+      "type": "dock",
+      "description_short": "DiffDock-L diffusion-based protein-ligand docking",
+      "description": "DiffDock-L (gcorso/DiffDock v1.1.3) is a diffusion-based generative model for protein-ligand docking. Given a protein structure (PDB) and a small molecule (SMILES), it predicts docked 3D poses with confidence scores. Uses the official rbgcsail/diffdock Docker image with rdkit, ESM-2, and torch-geometric pre-built. Runs inference via subprocess call to DiffDock CLI. Returns ranked SDF poses. GPU required. MIT license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/dock",
+        "health": "/health"
+      },
+      "owned_by": "gcorso",
+      "source": "gcorso/DiffDock",
+      "source_url": "https://github.com/gcorso/DiffDock",
+      "license": "MIT",
+      "parameters": "20M",
+      "parameter_count": 20000000,
+      "precision": "fp32",
+      "architecture": "diffusion (score model + confidence model)",
+      "framework": "custom",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "startup_seconds": 240,
+        "container_image": "rbgcsail/diffdock:v1.1.3",
+        "timeout": 600
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": true
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "structural-biology",
+      "subdomain": "molecular-docking",
+      "tags": ["dock", "science", "drug-discovery", "protein", "ligand", "diffusion", "gpu"],
+      "content_types": ["text"],
+      "languages": [],
+      "tier": "production",
+      "input_map": {
+        "protein_pdb": {
+          "type": "string",
+          "required": true,
+          "description": "Protein structure in PDB format"
+        },
+        "ligand_smiles": {
+          "type": "string",
+          "required": true,
+          "description": "Ligand as SMILES string (e.g. CC(=O)Oc1ccccc1C(=O)O)"
+        },
+        "num_poses": {
+          "type": "integer",
+          "required": false,
+          "default": 10,
+          "description": "Number of docked poses to generate"
+        },
+        "inference_steps": {
+          "type": "integer",
+          "required": false,
+          "default": 20,
+          "description": "Number of diffusion inference steps"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "Model name (diffdock-l)"},
+        "ligand_smiles": {"type": "string", "description": "Input SMILES"},
+        "num_poses": {"type": "integer", "description": "Number of poses returned"},
+        "poses": {"type": "array", "description": "Ranked poses with rank, confidence, and SDF content"}
+      },
+      "server_config": {
+        "inference_backend": "subprocess (DiffDock CLI inference.py)",
+        "model_path": "/data",
+        "weights_path": "/data/weights",
+        "diffdock_dir": "/home/appuser/DiffDock",
+        "batch_size": 5,
+        "dependencies": "fastapi==0.103.2 uvicorn==0.23.2 huggingface_hub (installed via pip --target)",
+        "pip_note": "Server deps installed to /data/pylibs39 (Python 3.9 compatible); DiffDock uses conda env inside rbgcsail/diffdock image",
+        "esm2_cache": "/data/hf_cache (facebook/esm2_t33_650M_UR50D)",
+        "python_path": "micromamba at /home/appuser/micromamba/envs/diffdock/bin/python3"
+      }
+    }

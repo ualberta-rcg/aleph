@@ -1,0 +1,293 @@
+# CrystaLLM: Crystal structure generation via language model
+# c-bone/CrystaLLM-pi_base — GPT-2 (vocab=377) trained on CIF-format crystal structures
+# MIT license. ~25M params. Tokenizer: lantunes/CrystaLLM (GitHub)
+# API: POST /v1/science/generate {formula: "NaCl", temperature: 1.0, max_new_tokens: 1024}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crysta-llm-server
+  namespace: models
+data:
+  server.py: |
+    """
+    CrystaLLM: Crystal structure generation via language model.
+    Model: c-bone/CrystaLLM-pi_base (GPT-2, vocab=377)
+    Tokenizer: lantunes/CrystaLLM (custom CIF character-level tokenizer)
+    MIT license.
+
+    API: POST /v1/science/generate
+    Input:  {"formula": "NaCl", "temperature": 1.0, "max_new_tokens": 1024, "num_samples": 1}
+    Returns: {"structures": ["data_...\n..."], "model": "crysta-llm"}
+    """
+    import os, sys, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    sys.path.insert(0, "/app/tokenizer")
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+    MODEL_DIR = "/data/model"
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        from transformers import GPT2LMHeadModel
+        from crystallm_tokenizer import CIFTokenizer
+
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading CrystaLLM on {DEVICE}...", flush=True)
+
+        tokenizer = CIFTokenizer()
+        model = GPT2LMHeadModel.from_pretrained(
+            MODEL_DIR,
+            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32,
+        ).to(DEVICE).eval()
+        print(f"CrystaLLM ready. Vocab={tokenizer.vocab_size}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "crysta-llm"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "crysta-llm", "object": "model", "owned_by": "c-bone",
+             "type": "crystal-structure-generation"}
+        ]}
+
+    @app.post("/v1/science/generate")
+    async def generate(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _generate, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _generate(req):
+        import torch
+        formula = req.get("formula", "NaCl")
+        temperature = float(req.get("temperature", 1.0))
+        max_new_tokens = int(req.get("max_new_tokens", 1024))
+        num_samples = min(int(req.get("num_samples", 1)), 4)
+
+        prompt = f"data_{formula}\n"
+        input_ids = tokenizer.encode(prompt)
+        inp = torch.tensor([input_ids], dtype=torch.long).to(DEVICE)
+
+        structures = []
+        for _ in range(num_samples):
+            with torch.no_grad():
+                out = model.generate(
+                    inp,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature if temperature > 0 else 1.0,
+                    do_sample=temperature > 0,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
+            text = tokenizer.decode(out[0].tolist())
+            structures.append(text)
+
+        return {"model": "crysta-llm", "formula": formula,
+                "num_samples": num_samples, "structures": structures}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+  crystallm_tokenizer.py: |
+    """
+    Minimal CIF tokenizer for CrystaLLM (vocab=377).
+    Adapted from lantunes/CrystaLLM (MIT license).
+    Supports encode/decode for crystal structure generation.
+    """
+    ATOMS = [
+        "Si","C","Pb","I","Br","Cl","Eu","O","Fe","Sb","In","S","N","U","Mn","Lu","Se","Tl","Hf",
+        "Ir","Ca","Ta","Cr","K","Pm","Mg","Zn","Cu","Sn","Ti","B","W","P","H","Pd","As","Co","Np",
+        "Tc","Hg","Pu","Al","Tm","Tb","Ho","Nb","Ge","Zr","Cd","V","Sr","Ni","Rh","Th","Na","Ru",
+        "La","Re","Y","Er","Ce","Pt","Ga","Li","Cs","F","Ba","Te","Mo","Gd","Pr","Bi","Sc","Ag","Rb",
+        "Dy","Yb","Nd","Au","Os","Pa","Sm","Be","Ac","Xe","Kr","He","Ne","Ar"
+    ]
+    DIGITS = [str(d) for d in range(10)]
+    KEYWORDS = [
+        "_cell_length_b","_atom_site_occupancy","_atom_site_attached_hydrogens","_cell_length_a",
+        "_cell_angle_beta","_symmetry_equiv_pos_as_xyz","_cell_angle_gamma","_atom_site_fract_x",
+        "_symmetry_space_group_name_H-M","_symmetry_Int_Tables_number","_chemical_formula_structural",
+        "_cell_volume","_cell_length_c","_cell_angle_alpha","_atom_site_fract_z","_atom_site_fract_y",
+        "_atom_site_type_symbol","_atom_site_label","_chemical_formula_sum","loop_","data_",
+    ]
+    SYMBOLS = list(" -()'./+")
+    SPECIAL_TOKENS = ["<pad>","<eos>","<unk>","<bos>"]
+    # Build vocab: keywords first, then atoms, digits, symbols, specials
+    _VOCAB = KEYWORDS + ATOMS + DIGITS + SYMBOLS + SPECIAL_TOKENS
+    # Extend with space groups from standard list
+    SPACE_GROUPS = [
+        "P1","P-1","P2","P2_1","C2","Pm","Pc","Cm","Cc","P2/m","P2_1/m","C2/m","P2/c","P2_1/c",
+        "C2/c","P222","P222_1","P2_12_12","P2_12_12_1","C222_1","C222","F222","I222","I2_12_12_1",
+        "Pmm2","Pmc2_1","Pcc2","Pma2","Pca2_1","Pnc2","Pmn2_1","Pba2","Pna2_1","Pnn2","Cmm2",
+        "Cmc2_1","Ccc2","Amm2","Abm2","Ama2","Aba2","Fmm2","Fdd2","Imm2","Iba2","Ima2","Pmmm",
+        "Pnnn","Pccm","Pban","Pmma","Pnna","Pmna","Pcca","Pbam","Pccn","Pbcm","Pnnm","Pmmn",
+        "Pbcn","Pbca","Pnma","Cmcm","Cmca","Cmmm","Cccm","Cmma","Ccca","Fmmm","Fddd","Immm",
+        "Ibam","Ibca","Imma","P4","P4_1","P4_2","P4_3","I4","I4_1","P-4","I-4","P4/m","P4_2/m",
+        "P4/n","P4_2/n","I4/m","I4_1/a","P422","P42_12","P4_122","P4_12_12","P4_222","P4_22_12",
+        "P4_322","P4_32_12","I422","I4_122","P4mm","P4bm","P4_2cm","P4_2nm","P4cc","P4nc",
+        "P4_2mc","P4_2bc","I4mm","I4cm","I4_1md","I4_1cd","P-42m","P-42c","P-42_1m","P-42_1c",
+        "P-4m2","P-4c2","P-4b2","P-4n2","I-4m2","I-4c2","I-42m","I-42d","P4/mmm","P4/mcc",
+        "P4/nbm","P4/nnc","P4/mbm","P4/mnc","P4/nmm","P4/ncc","P4_2/mmc","P4_2/mcm","P4_2/nbc",
+        "P4_2/nnm","P4_2/mbc","P4_2/mnm","P4_2/nmc","P4_2/ncm","I4/mmm","I4/mcm","I4_1/amd",
+        "I4_1/acd","P3","P3_1","P3_2","R3","P-3","R-3","P312","P321","P3_112","P3_121","P3_212",
+        "P3_221","R32","P3m1","P31m","P3c1","P31c","R3m","R3c","P-31m","P-31c","P-3m1","P-3c1",
+        "R-3m","R-3c","P6","P6_1","P6_5","P6_2","P6_4","P6_3","P-6","P6/m","P6_3/m","P622",
+        "P6_122","P6_522","P6_222","P6_422","P6_322","P6mm","P6cc","P6_3cm","P6_3mc","P-6m2",
+        "P-6c2","P-62m","P-62c","P6/mmm","P6/mcc","P6_3/mcm","P6_3/mmc","P23","F23","I23",
+        "P2_13","I2_13","Pm-3","Pn-3","Fm-3","Fd-3","Im-3","Pa-3","Ia-3","P432","P4_232",
+        "F432","F4_132","I432","P4_332","P4_132","I4_132","P-43m","F-43m","I-43m","P-43n",
+        "F-43c","I-43d","Pm-3m","Pn-3n","Pm-3n","Pn-3m","Fm-3m","Fm-3c","Fd-3m","Fd-3c",
+        "Im-3m","Ia-3d",
+    ]
+
+    class CIFTokenizer:
+        def __init__(self):
+            vocab = KEYWORDS + self.SPACE_GROUPS + ATOMS + DIGITS + SYMBOLS + SPECIAL_TOKENS
+            # deduplicate preserving order
+            seen, self._vocab = set(), []
+            for t in vocab:
+                if t not in seen:
+                    seen.add(t)
+                    self._vocab.append(t)
+            self._token2id = {t: i for i, t in enumerate(self._vocab)}
+            self._id2token = {i: t for t, i in self._token2id.items()}
+            self.pad_token_id = self._token2id.get("<pad>", 0)
+            self.eos_token_id = self._token2id.get("<eos>", 1)
+            self.bos_token_id = self._token2id.get("<bos>", 3)
+            self.unk_token_id = self._token2id.get("<unk>", 2)
+
+        @property
+        def SPACE_GROUPS(self):
+            return SPACE_GROUPS
+
+        @property
+        def vocab_size(self):
+            return len(self._vocab)
+
+        def _tokenize(self, text):
+            tokens = []
+            i = 0
+            while i < len(text):
+                matched = False
+                # try longest match first (keywords > space groups > atoms > digits/symbols)
+                for candidates in [KEYWORDS, SPACE_GROUPS, ATOMS, DIGITS, SYMBOLS]:
+                    for tok in sorted(candidates, key=len, reverse=True):
+                        if text[i:i+len(tok)] == tok:
+                            tokens.append(tok)
+                            i += len(tok)
+                            matched = True
+                            break
+                    if matched:
+                        break
+                if not matched:
+                    tokens.append("<unk>")
+                    i += 1
+            return tokens
+
+        def encode(self, text):
+            return [self._token2id.get(t, self.unk_token_id) for t in self._tokenize(text)]
+
+        def decode(self, ids):
+            return "".join(self._id2token.get(i, "<unk>") for i in ids)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: crysta-llm
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/venv/.crysta-llm-v2-ready
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q transformers huggingface_hub fastapi uvicorn
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading CrystaLLM-pi_base weights..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+              repo_id='c-bone/CrystaLLM-pi_base',
+              local_dir='/data/model',
+              local_dir_use_symlinks=False,
+            )
+            print('Model downloaded.')
+            "
+            else
+              echo "Model weights present."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: crysta-llm-data }
+      - name: app
+        configMap: { name: crysta-llm-server }

@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: croma-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "croma",
+      "type": "segment",
+      "description_short": "CROMA cross-modal remote sensing foundation model. SAR + optical paired satellite imagery. ~300M.",
+      "description": "CROMA (Cross-modal Remote sensing foundation model) is a self-supervised model pre-trained on paired SAR (Sentinel-1) and optical (Sentinel-2) satellite imagery. It produces patch embeddings from either or both modalities simultaneously. SAR input is 2-channel (VV, VH) and optical is 12-channel (Sentinel-2 bands). Useful for land classification, change detection, and crop mapping. Returns per-patch embeddings via the PretrainedCROMA interface.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "antofuller",
+      "source": "antofuller/CROMA",
+      "source_url": "https://huggingface.co/antofuller/CROMA",
+      "license": "MIT",
+      "parameters": "~300M",
+      "precision": "fp32",
+      "architecture": "Dual-encoder ViT (SAR encoder + optical encoder, cross-modal attention)",
+      "framework": "PyTorch + CROMA repo",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "2",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "timeout": 120,
+        "pvc": "croma-data (5Gi, NFS, inline)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "croma",
+        "api_name": "croma",
+        "gateway_type": "segment"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "remote-sensing",
+      "tags": ["science", "earth-observation", "satellite", "segment", "sar", "sentinel-1", "sentinel-2", "cross-modal", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "sar_images": "list of [2, H, W] arrays — VV, VH channels (Sentinel-1 SAR)",
+        "optical_images": "list of [12, H, W] arrays — Sentinel-2 MSI bands",
+        "modality": "both|sar|optical (default: both)"
+      },
+      "output_map": {
+        "data": "list of {index, embedding, object} per input patch",
+        "model": "croma"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "checkpoint": "CROMA_base.pt",
+        "repo_path": "/data/model/repo",
+        "image_resolution": 120
+      }
+    }

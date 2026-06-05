@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mace-mp-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "mace-mp-0",
+      "type": "force-field",
+      "description_short": "MACE-MP-0 universal ML interatomic potential covering 89 elements with small/medium/large model variants.",
+      "description": "MACE-MP-0 is a universal machine learning interatomic potential from the Materials Project, covering 89 elements. It uses equivariant message passing neural networks (MACE architecture) to predict energy, forces, and stress tensors from atomic structures. The deployment offers three model sizes: small (~2M), medium (~10M), and large (~30M params). Models are downloaded from ACEsuit/mace-mp-0 on HuggingFace. Uses mace-torch with ASE for structure manipulation. GPU-accelerated with CUDA, falls back to CPU.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "Cambridge/DeepMind",
+      "source": "ACEsuit/mace-mp-0",
+      "source_url": "https://huggingface.co/ACEsuit/mace-mp-0",
+      "license": "MIT",
+      "parameters": "~10M (medium)",
+      "precision": "float64",
+      "architecture": "MACE (Multi Atomic Cluster Expansion equivariant MPNN)",
+      "framework": "mace-torch + ASE + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "2",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "mace-mp-data (PVC)",
+        "image": "python:3.11-slim",
+        "venv": true,
+        "k8s_isvc_name": "mace-mp"
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "mace-mp",
+        "api_name": "mace-mp-0",
+        "gateway_type": "force-field"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "materials-science",
+      "subdomain": "interatomic-potentials",
+      "tags": ["science", "materials", "force-field", "molecular-dynamics", "chemistry", "physics", "mace", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "elements": "array of element symbols e.g. [\"Si\", \"Si\"]",
+        "positions": "array of [x,y,z] positions in Angstroms",
+        "lattice": "optional 3x3 cell vectors for periodic systems",
+        "model": "\"small\" | \"medium\" (default) | \"large\""
+      },
+      "output_map": {
+        "energy_eV": "total potential energy in eV",
+        "forces_eV_per_Ang": "per-atom forces in eV/Angstrom",
+        "stress_eV_per_Ang3": "Voigt 6-component stress tensor (periodic only)"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/models",
+        "weight_files": ["mace-mp-0b3-medium.model", "mace-mp-0b2-small.model", "mace-mp-0b2-large.model"],
+        "sentinel": "/data/venv/.mace-mp-ready"
+      }
+    }

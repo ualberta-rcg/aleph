@@ -1,0 +1,238 @@
+# granite-geospatial-ocean: Ocean Color Foundation Model (IBM × STFC)
+# ibm-granite/granite-geospatial-ocean — Apache 2.0, ViT MAE, Sentinel-3
+# Pretrained on 512K Sentinel-3 OLCI+SLSTR images (16 bands, 42x42 patches)
+# API: POST /v1/science/embed → ocean image → feature embeddings for downstream tasks
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: granite-geospatial-ocean-server
+  namespace: models
+data:
+  server.py: |
+    """
+    IBM Granite Geospatial Ocean — Sentinel-3 foundation model for ocean color.
+    Apache 2.0. ViT + MAE pretrained on 512K OLCI+SLSTR images.
+    16 bands: OL1-OL12, OL16, OL17, OL18, OL21 + SLSTR SST. Image size: 42x42.
+
+    API: POST /v1/science/embed
+    Input:
+      {
+        "image": [[[16 floats], ...], ...],  # (C=16, H=42, W=42) Sentinel-3 bands
+        "demo": true                          # returns synthetic embeddings
+      }
+    Returns:
+      {"embeddings": [...], "shape": [N, D], "model": "granite-geospatial-ocean"}
+      Typical shape: (num_patches+1, 768) for ViT-Base
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch, json
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Granite Geospatial Ocean on {DEVICE}...", flush=True)
+        # config.yaml is a custom architecture JSON config (not LightningCLI yaml)
+        # Load checkpoint directly and use as feature extractor
+        ckpt = torch.load("/data/checkpoint.pt", map_location=DEVICE, weights_only=False)
+        if isinstance(ckpt, dict):
+            # It may contain state_dict directly or under 'state_dict' key
+            if "state_dict" in ckpt:
+                state = ckpt["state_dict"]
+            elif "model" in ckpt:
+                state = ckpt["model"]
+            else:
+                state = ckpt
+        else:
+            state = ckpt
+
+        # Try to build with terratorch Prithvi backbone (matching config)
+        try:
+            from terratorch.models.backbones.prithvi_vit import prithvi_eo_v2_300
+            m = prithvi_eo_v2_300(
+                pretrained=False,
+                num_frames=1,
+                in_chans=17,
+                img_size=(1, 42, 42),
+                patch_size=(1, 2, 2),
+                encoder_only=True,
+            )
+            # Try loading state dict, ignore mismatches
+            cleaned = {}
+            for k, v in state.items():
+                # Strip common prefixes
+                for prefix in ["model.encoder.", "model.", "encoder.", "backbone."]:
+                    if k.startswith(prefix):
+                        k = k[len(prefix):]
+                        break
+                cleaned[k] = v
+            missing, unexpected = m.load_state_dict(cleaned, strict=False)
+            print(f"  missing: {len(missing)}, unexpected: {len(unexpected)}", flush=True)
+            m = m.to(DEVICE).eval()
+            model = m
+            print("Granite Geospatial Ocean ready (prithvi_eo_v2_300 backbone).", flush=True)
+        except Exception as e:
+            print(f"Backbone load failed ({e}), storing raw state dict.", flush=True)
+            model = {"_state": state, "_demo": True}
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "granite-geospatial-ocean"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "granite-geospatial-ocean", "object": "model",
+             "owned_by": "ibm-granite", "type": "ocean-color-embedding"}
+        ]}
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch, numpy as np
+
+        if req.get("demo"):
+            return {
+                "model": "granite-geospatial-ocean",
+                "embeddings": [[0.0] * 768] * 10,
+                "shape": [10, 768],
+                "demo": True,
+            }
+
+        image = req.get("image")
+        if image is None:
+            raise ValueError("image required: (C=16, H=42, W=42) Sentinel-3 bands")
+
+        img = torch.tensor(image, dtype=torch.float32).unsqueeze(0).to(DEVICE)  # (1, 16, H, W)
+
+        with torch.no_grad():
+            out = model(img)
+
+        if hasattr(out, 'last_hidden_state'):
+            emb = out.last_hidden_state
+        elif hasattr(out, 'output'):
+            emb = out.output
+        elif isinstance(out, (list, tuple)):
+            emb = out[-1]
+        else:
+            emb = out
+
+        emb_list = emb.squeeze(0).cpu().float().numpy().tolist()
+        return {
+            "model": "granite-geospatial-ocean",
+            "embeddings": emb_list,
+            "shape": [len(emb_list), len(emb_list[0]) if isinstance(emb_list[0], list) else 1],
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: granite-geospatial-ocean
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.granite-ocean-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q terratorch huggingface_hub fastapi uvicorn
+            python3 -c "
+            import os
+            from huggingface_hub import hf_hub_download
+            token = os.environ.get('HF_TOKEN')
+            for filename in ['config.yaml', 'checkpoint.pt']:
+                hf_hub_download(
+                    repo_id='ibm-granite/granite-geospatial-ocean',
+                    filename=filename,
+                    local_dir='/data',
+                    local_dir_use_symlinks=False,
+                    token=token,
+                )
+                print(f'Downloaded {filename}')
+            "
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            pip install -q terratorch fastapi uvicorn
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: granite-geospatial-ocean-data }
+      - name: app
+        configMap: { name: granite-geospatial-ocean-server }

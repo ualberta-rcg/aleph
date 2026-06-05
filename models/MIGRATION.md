@@ -76,90 +76,90 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 
 ## Wave 2 — gpu=1 bucket, 80
 
-- [ ] aeneas
-- [ ] ancient-greek-bert
-- [ ] ankh
-- [ ] astroclip
-- [ ] astropt
-- [ ] astrosage
-- [ ] aurora
-- [ ] biogpt
-- [ ] biolinkbert
-- [ ] biomed-roberta
-- [ ] biomedbert-large
-- [ ] biomedclip
-- [ ] boltz-1
-- [ ] borzoi
-- [ ] brainlm
-- [ ] caduceus
-- [ ] chemgpt
-- [ ] chgnet
-- [ ] climax
-- [ ] clinical-longformer
-- [ ] croma
-- [ ] crysta-llm
-- [ ] deepseek-v2-lite-16b
-- [ ] diffdock
-- [ ] dust3r
-- [ ] earthpt
-- [ ] enformer
-- [ ] ernierna
-- [ ] esm1b
-- [ ] esm2-150m
-- [ ] esm2-3b
-- [ ] esmc-300m
-- [ ] esmfold
-- [ ] fengwu
-- [ ] fourcastnet3
-- [ ] gemma-4-26b-a4b
-- [ ] gena-lm
-- [ ] gena-lm-large
-- [ ] geneformer
-- [ ] granite-geospatial-biomass
-- [ ] granite-geospatial-ocean
-- [ ] ithaca
-- [ ] kandinsky-3
-- [ ] mace-mh-1
-- [ ] mace-mp
-- [ ] mast3r
-- [ ] mattergen
-- [ ] mattersim
-- [ ] medcpt-article
-- [ ] medcpt-query
-- [ ] moirai
-- [ ] moirai-moe
-- [ ] moment
-- [ ] naturecode-earth
-- [ ] pangu-weather
-- [ ] phi-4-reasoning
-- [ ] prithvi-eo
-- [ ] prithvi-wxc
-- [ ] progen2
-- [ ] prostt5
-- [ ] protgpt2
-- [ ] qwen25-vl-3b
-- [ ] rnabert
-- [ ] rnafm
-- [ ] rnamsm
-- [ ] sapbert
-- [ ] saprot-650m
-- [ ] scgpt
-- [ ] scincl
-- [ ] speaches
-- [ ] stanford-deidentifier
-- [ ] surya
-- [ ] terramind-flood
-- [ ] thor
-- [ ] time-moe
-- [ ] timer
-- [ ] timer-xl-1b
-- [ ] timesfm
-- [ ] totalsegmentator
-- [ ] uma-m
+- [x] aeneas (audio TTS, GPU 1/gpumem10240; /v1/speech deployed)
+- [x] ancient-greek-bert (ancient Greek BERT embed, GPU; HF_TOKEN→secret; deployed)
+- [x] ankh (protein LM embed, GPU 1/gpumem8192; deployed)
+- [x] astroclip (astronomy ViT+CLIP embed, GPU; deployed)
+- [x] astropt (astro transformer, GPU; HF_TOKEN→secret; deployed)
+- [x] astrosage (astronomy LLM, GPU 1/gpumem16384; deployed)
+- [x] aurora (weather model, GPU 1/gpumem16384; deployed)
+- [x] biogpt (biomedical GPT text-gen, GPU; deployed)
+- [x] biolinkbert (biomedical LinkBERT embed, GPU; deployed)
+- [x] biomed-roberta (biomedical RoBERTa embed, GPU; deployed)
+- [x] biomedbert-large (biomedical BERT-large embed, GPU; deployed)
+- [x] biomedclip (biomedical CLIP multimodal, GPU; deployed)
+- [x] boltz-1 (protein structure prediction, GPU 1/gpumem20480; RawDeployment→Knative; deployed)
+- [x] borzoi (genomic prediction, GPU; deployed)
+- [x] brainlm (brain signal LM, GPU; deployed)
+- [x] caduceus (genomic caduceus arch, GPU; deployed)
+- [x] chemgpt (chemistry GPT, GPU; deployed)
+- [x] chgnet (crystal structure GNN, GPU; deployed)
+- [x] climax (climate foundation model, GPU; deployed)
+- [x] clinical-longformer (clinical Longformer embed, GPU; deployed)
+- [x] croma (remote sensing CLIP, GPU; deployed)
+- [x] crysta-llm (crystal structure LLM, GPU; deployed)
+- [x] deepseek-v2-lite-16b (DeepSeek-V2-Lite 16B, GPU 1/gpumem20480; deployed)
+- [x] diffdock (molecular docking diffusion, GPU 1/gpumem16384; deployed)
+- [x] dust3r (3D reconstruction, GPU 1/gpumem16384; deployed)
+- [x] earthpt (earth science foundation model, GPU; deployed)
+- [x] enformer (genomic regulation prediction, GPU 1/gpumem20480; deployed)
+- [x] ernierna (RNA language model (ERNIE-RNA), GPU; deployed)
+- [x] esm1b (ESM-1b protein LM 650M, GPU; deployed)
+- [x] esm2-150m (ESM2 150M protein embed, GPU; deployed)
+- [x] esm2-3b (ESM2 3B protein embed, GPU 1/gpumem20480; deployed)
+- [x] esmc-300m (ESMC 300M protein embed, GPU; deployed)
+- [x] esmfold (ESMFold structure prediction, GPU 1/gpumem30720; deployed)
+- [x] fengwu (FengWu weather forecasting, GPU 1/gpumem30720; deployed)
+- [x] fourcastnet3 (FourCastNet v3 weather, GPU 1/gpumem30720; deployed)
+- [x] gemma-4-26b-a4b (Gemma-4 26B/4B active, GPU 1/gpumem40960; deployed)
+- [x] gena-lm (GENA-LM DNA foundation model, GPU; deployed)
+- [x] gena-lm-large (GENA-LM-large DNA, GPU; deployed)
+- [x] geneformer (Geneformer single-cell transformer, GPU; deployed)
+- [x] granite-geospatial-biomass (Granite geospatial biomass, GPU; deployed)
+- [x] granite-geospatial-ocean (Granite geospatial ocean, GPU 1/gpumem16384; deployed)
+- [x] ithaca (historical text restoration, GPU 1/gpumem16384; deployed)
+- [s] kandinsky-3 (DEFERRED: uses RayService + KubeRay, needs custom Ray cluster integration)
+- [x] mace-mh-1 (MACE-MH-1 atomistic ML, GPU 1/gpumem16384; deployed)
+- [x] mace-mp (MACE-MP atomistic, GPU; deployed)
+- [x] mast3r (MASt3R 3D reconstruction, GPU 1/gpumem16384; deployed)
+- [x] mattergen (crystal generation, GPU 1/gpumem16384; deployed)
+- [x] mattersim (materials simulation, GPU; deployed)
+- [x] medcpt-article (MedCPT article embed, GPU; deployed)
+- [x] medcpt-query (MedCPT query embed, GPU; deployed)
+- [x] moirai (Moirai time-series forecast, GPU; deployed)
+- [x] moirai-moe (Moirai-MoE time-series, GPU; deployed)
+- [x] moment (MOMENT time-series, GPU; deployed)
+- [x] naturecode-earth (NatureCode earth obs, GPU; deployed)
+- [x] pangu-weather (Pangu-Weather 3D, GPU 1/gpumem30720; deployed)
+- [x] phi-4-reasoning (Phi-4 reasoning LLM, GPU 1/gpumem40960; deployed)
+- [x] prithvi-eo (Prithvi EO satellite embed, GPU 1/gpumem16384; deployed)
+- [x] prithvi-wxc (Prithvi WxC weather, GPU 1/gpumem40960; deployed)
+- [x] progen2 (ProGen2 protein LM, GPU 1/gpumem30720; deployed)
+- [x] prostt5 (ProteinT5 structure pred, GPU 1/gpumem16384; deployed)
+- [x] protgpt2 (ProtGPT2 protein gen, GPU; deployed)
+- [x] qwen25-vl-3b (Qwen2.5-VL-3B multimodal, GPU 1/gpumem12288; deployed)
+- [x] rnabert (RNA-BERT embed, GPU; deployed)
+- [x] rnafm (RNA-FM embed, GPU; deployed)
+- [x] rnamsm (RNA-MSM embed, GPU; deployed)
+- [x] sapbert (SapBERT biomedical embed, GPU; deployed)
+- [x] saprot-650m (SaProt 650M protein embed, GPU; deployed)
+- [x] scgpt (scGPT single-cell transformer, GPU; deployed)
+- [x] scincl (SciNCL scientific embed, GPU; deployed)
+- [s] speaches (DEFERRED: standalone Deployment+Service, not ISVC; needs custom whisper+kokoro image)
+- [x] stanford-deidentifier (Stanford de-identifier NLP, GPU; deployed)
+- [x] surya (Surya OCR document, GPU 1/gpumem30720; deployed)
+- [x] terramind-flood (TerraMind flood prediction, GPU 1/gpumem16384; deployed)
+- [x] thor (THOR weather prediction, GPU 1/gpumem16384; deployed)
+- [x] time-moe (Time-MoE time-series, GPU; deployed)
+- [x] timer (Timer time-series embed, GPU; deployed)
+- [x] timer-xl-1b (Timer-XL 1B, GPU; deployed)
+- [x] timesfm (TimesFM forecasting, GPU; deployed)
+- [x] totalsegmentator (TotalSegmentator 3D CT, GPU 1/gpumem16384; deployed)
+- [x] uma-m (UMA-M universal atomistic, GPU 1/gpumem16384; deployed)
 
 ## Wave 3 — gpu=2 bucket (tensor-parallel), 4
 
-- [ ] geogalactica
-- [ ] gpt-oss-120b
-- [ ] medgemma-27b-it
-- [ ] oceangpt-30b
+- [x] geogalactica (astro LLM 13B, vLLM TP=2, GPU 2/gpumem40960; deployed)
+- [x] gpt-oss-120b (120B LLM, vLLM TP=2, GPU 2/gpumem45056; deployed)
+- [x] medgemma-27b-it (MedGemma 27B-IT, vLLM TP=2, GPU 2/gpumem40960; HF_TOKEN→secret; deployed)
+- [x] oceangpt-30b (OceanGPT 30B, vLLM TP=2, GPU 2/gpumem40960; deployed)

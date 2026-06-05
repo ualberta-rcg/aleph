@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prostt5-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "prostt5",
+      "type": "embedding",
+      "description_short": "Protein sequence to 3Di structure token translation (Rostlab)",
+      "description": "ProstT5 from Rostlab translates between protein amino acid sequences and 3Di (3-state discrete) structure tokens. Enables fast structure prediction without MSA. Based on T5ForConditionalGeneration. Supports seq2struct and struct2seq directions. ~800M parameters. Requires transformers==4.40.2 and sentencepiece.",
+      "context_window": 512,
+      "max_completion_tokens": 512,
+      "endpoints": {
+        "primary": "/v1/translate",
+        "health": "/health"
+      },
+      "owned_by": "Rostlab",
+      "source": "Rostlab/ProstT5",
+      "source_url": "https://huggingface.co/Rostlab/ProstT5",
+      "license": "MIT",
+      "parameters": "~800M",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "T5 (seq2seq)",
+      "framework": "transformers==4.40.2 + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "4", "memory_request": "8Gi", "pvc": "prostt5-data", "pvc_size": "20Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "prostt5", "api_name": "prostt5"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["input", "sequences", "direction"]},
+      "domain": "proteomics",
+      "subdomain": "structure-prediction",
+      "tags": ["embedding", "science", "proteomics", "protein", "structure", "gpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "input_map": {"input": "amino acid sequence(s) or 3Di tokens", "direction": "seq2struct|fold2AA"},
+      "output_map": {"results": "[str] translated sequences", "direction": "str", "model": "prostt5"},
+      "tier": 2
+    }

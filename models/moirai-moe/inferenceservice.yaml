@@ -1,0 +1,233 @@
+# Moirai-MoE: Mixture-of-Experts universal time series forecasting from Salesforce
+# 175K downloads, CC BY-NC-4.0
+# API: POST /v1/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moirai-moe-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Moirai-MoE: Universal time series forecasting with Mixture-of-Experts
+    Salesforce Research, 2024. Outperforms base Moirai on diverse datasets.
+    API: POST /v1/forecast
+    Input: {"time_series": [1.0, 2.0, ...], "prediction_length": 24, "freq": "H"}
+    Returns: {"forecast": {"mean": [...], "quantiles": {...}}, "model": "moirai-moe"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data")
+    HF_HOME = os.environ.get("HF_HOME", "/data/hf_cache")
+
+    app = FastAPI()
+    pipeline = None
+    DEVICE = "cpu"
+
+    def load():
+        global pipeline, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Moirai-MoE on {DEVICE}...", flush=True)
+        from uni2ts.model.moirai_moe import MoiraiMoEForecast, MoiraiMoEModule
+        model = MoiraiMoEModule.from_pretrained("Salesforce/moirai-moe-1.0-R-base")
+        pipeline = MoiraiMoEForecast(
+            module=model,
+            prediction_length=24,
+            context_length=200,
+            patch_size="auto",
+            num_samples=100,
+            target_dim=1,
+            feat_dynamic_real_dim=0,
+            past_feat_dynamic_real_dim=0,
+        )
+        if DEVICE == "cuda":
+            pipeline = pipeline.to(DEVICE)
+        print(f"Moirai-MoE ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if pipeline else "loading", "model": "moirai-moe"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "moirai-moe", "object": "model", "owned_by": "salesforce",
+             "type": "time-series-forecasting"}
+        ]}
+
+    @app.post("/v1/forecast")
+    async def forecast(request: dict):
+        if pipeline is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+        from einops import rearrange
+
+        ts = req.get("time_series", [])
+        pred_len = req.get("prediction_length", 24)
+        freq = req.get("freq", "H")
+
+        if not ts:
+            return JSONResponse({"error": "time_series required"}, 400)
+
+        # Rebuild pipeline with requested prediction_length
+        from uni2ts.model.moirai_moe import MoiraiMoEForecast
+        p = MoiraiMoEForecast(
+            module=pipeline.module,
+            prediction_length=pred_len,
+            context_length=min(len(ts), 512),
+            patch_size="auto",
+            num_samples=100,
+            target_dim=1,
+            feat_dynamic_real_dim=0,
+            past_feat_dynamic_real_dim=0,
+        )
+        if DEVICE == "cuda":
+            p = p.to(DEVICE)
+
+        context = torch.tensor(ts, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+        context = context.to(DEVICE)
+
+        observed_mask = (~torch.isnan(context)).to(DEVICE)
+        # MoiraiMoEForecast expects (past_target, past_observed_target, past_is_pad, ...)
+        past_is_pad = torch.zeros(context.shape[:-1], dtype=torch.bool).to(DEVICE)
+        with torch.no_grad():
+            try:
+                forecast = p(context, observed_mask, past_is_pad)
+            except TypeError:
+                try:
+                    forecast = p(context, observed_mask=observed_mask)
+                except TypeError:
+                    forecast = p(context)
+
+        samples = forecast.samples.cpu().numpy()  # (num_samples, pred_len, 1)
+        samples = samples.squeeze(-1)  # (num_samples, pred_len)
+
+        return {
+            "model": "moirai-moe",
+            "prediction_length": pred_len,
+            "forecast": {
+                "mean": samples.mean(axis=0).tolist(),
+                "quantiles": {
+                    "0.1": np.quantile(samples, 0.1, axis=0).tolist(),
+                    "0.5": np.quantile(samples, 0.5, axis=0).tolist(),
+                    "0.9": np.quantile(samples, 0.9, axis=0).tolist(),
+                },
+            }
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moirai-moe-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: moirai-moe
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'from uni2ts.model.moirai_moe import MoiraiMoEModule' 2>/dev/null; then
+              echo "Creating/updating venv..."
+              if [ ! -d /data/venv/bin ]; then
+                python3 -m venv /data/venv
+              fi
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q uni2ts gluonts pandas fastapi uvicorn einops
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/hf_cache/models--Salesforce--moirai-moe-1.0-R-base ]; then
+              echo "Pre-downloading Moirai-MoE..."
+              /data/venv/bin/python -c "
+            from uni2ts.model.moirai_moe import MoiraiMoEModule
+            MoiraiMoEModule.from_pretrained('Salesforce/moirai-moe-1.0-R-base')
+            print('Moirai-MoE cached.')
+            "
+            else
+              echo "Moirai-MoE already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: moirai-moe-data }
+      - name: app
+        configMap: { name: moirai-moe-server }

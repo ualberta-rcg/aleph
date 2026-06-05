@@ -1,0 +1,213 @@
+# astroPT v2.0: Large Observation Model for Astronomy (UniverseTBD)
+# Smith42/astroPT_v2.0 — MIT license, 95M params (095M variant)
+# Autoregressive GPT trained on 8.6M galaxy images from SDSS/DESI
+# API: POST /v1/science/embed → galaxy image → latent embedding vector
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astropt-server
+  namespace: models
+data:
+  server.py: |
+    """
+    AstroPT v2.0 — autoregressive galaxy image transformer.
+    MIT license. Smith42/astroPT_v2.0 (095M params).
+    Trained on 8.6M galaxies from SDSS/DESI. Tokenizes 64x64 galaxy images
+    into patch sequences and generates latent embeddings via causal attention.
+
+    API: POST /v1/science/embed
+    Input:
+      {
+        "image": [[[R,G,B], ...], ...],  # (H, W, 3) or (3, H, W) galaxy image, float [0,1]
+        "demo": true                      # returns random embedding
+      }
+    Returns:
+      {"embeddings": [...], "shape": [N, D], "model": "astropt-095m"}
+      embeddings shape: (num_patches, embed_dim) e.g. (256, 512)
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+    MODEL_DIR = "/data"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading AstroPT 095M on {DEVICE}...", flush=True)
+        # Use the official load_astropt API — handles modality_registry, GPT config, etc.
+        # HF_HOME=/tmp so it caches downloads there (writable)
+        from astropt.model_utils import load_astropt
+        m = load_astropt("Smith42/astroPT_v2.0", path="astropt/095M")
+        m = m.to(DEVICE).eval()
+        model = m
+        print("AstroPT 095M ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "astropt-095m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "astropt-095m", "object": "model",
+             "owned_by": "Smith42/UniverseTBD", "type": "galaxy-image-embedding"}
+        ]}
+
+    @app.post("/v1/science/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch, numpy as np
+        from torchvision import transforms
+        from functools import partial
+
+        if req.get("demo"):
+            return {
+                "model": "astropt-095m",
+                "embeddings": [[0.0] * 512] * 16,
+                "shape": [16, 512],
+                "demo": True,
+            }
+
+        image = req.get("image")
+        if image is None:
+            raise ValueError("image required: (H, W, 3) RGB float array")
+
+        img_np = np.array(image, dtype=np.float32)
+        if img_np.ndim == 3 and img_np.shape[-1] == 3:
+            # (H, W, 3) → (3, H, W)
+            img_np = img_np.transpose(2, 0, 1)
+        tensor = torch.tensor(img_np, dtype=torch.float)
+
+        # Normalize per-channel as astropt expects
+        def normalise(x):
+            std, mean = torch.std_mean(x, dim=1, keepdim=True)
+            return (x - mean) / (std + 1e-8)
+
+        transform = transforms.Compose([transforms.Lambda(normalise)])
+        tensor = transform(tensor.unsqueeze(0)).squeeze(0)  # (3, H, W)
+
+        positions = torch.arange(0, tensor.shape[0] * tensor.shape[1] // 16, dtype=torch.long)
+        batch = {
+            "images": tensor.unsqueeze(0).to(DEVICE),
+            "images_positions": positions.unsqueeze(0).to(DEVICE),
+        }
+
+        with torch.no_grad():
+            out = model.generate_embeddings(batch)
+
+        emb = out["images"].squeeze(0).cpu().float().numpy().tolist()
+        return {
+            "model": "astropt-095m",
+            "embeddings": emb,
+            "shape": [len(emb), len(emb[0]) if isinstance(emb[0], list) else 1],
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: astropt
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.astropt-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            pip install -q astropt huggingface_hub fastapi uvicorn
+            python3 -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id='Smith42/astroPT_v2.0',
+                local_dir='/data',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+            )
+            print('AstroPT weights downloaded.')
+            "
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            pip install -q astropt fastapi uvicorn
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: astropt-data }
+      - name: app
+        configMap: { name: astropt-server }

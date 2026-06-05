@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caduceus-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "caduceus",
+      "type": "embedding",
+      "description_short": "Bidirectional Mamba DNA model with 131k context (Cornell/Kuleshov)",
+      "description": "Caduceus from the Kuleshov Lab at Cornell is a bidirectional Mamba-based DNA foundation model supporting up to 131k base pair context. Uses reverse complement equivariance for DNA-specific modeling. Requires mamba-ssm and causal-conv1d compiled from source (CUDA). ~45M parameters. Uses PyTorch devel image for compilation.",
+      "context_window": 8192,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "kuleshov-group",
+      "source": "kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16",
+      "source_url": "https://huggingface.co/kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16",
+      "license": "Apache-2.0",
+      "parameters": "~45M",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "Bidirectional Mamba (state-space model)",
+      "framework": "transformers + mamba-ssm + torch",
+      "deployment": {"image": "pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "4", "memory_request": "8Gi", "pvc": "caduceus-data", "pvc_size": "10Gi", "node_selector": "NVIDIA-L40S", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "caduceus", "api_name": "caduceus"},
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
+      "domain": "genomics",
+      "subdomain": "dna-embedding",
+      "tags": ["embedding", "science", "genomics", "dna", "mamba", "long-range", "gpu"],
+      "content_types": ["text"],
+      "languages": ["dna"],
+      "input_map": {"input": "DNA sequence (ACGT) or [sequences]", "sequences": "alias for input"},
+      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "caduceus"},
+      "tier": 2
+    }

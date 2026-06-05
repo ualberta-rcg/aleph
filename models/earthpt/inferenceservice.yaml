@@ -1,0 +1,324 @@
+# EarthPT: Earth Observation Foundation Model (time-series autoregressive)
+# Smith42/EarthPT — 700M param nanoGPT-based model for EO pixel time-series
+# MIT license. arxiv: 2309.06929. n_layer=36, n_head=20, n_embd=1280, n_chan=18
+# Input: 18 channels (14 spectral bands + 4 time metadata), block_size=256
+# Output: 14 spectral band predictions for next time step
+# API: POST /v1/science/predict {time_series: [[18 floats], ...], predict_steps: 6}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: earthpt-server
+  namespace: models
+data:
+  server.py: |
+    """
+    EarthPT-700M: Earth Observation time-series foundation model.
+    Aspia Space / Smith et al., 2023. MIT license.
+    HF: Smith42/EarthPT (700M_ckpt.pt)
+
+    Architecture: nanoGPT variant with float-input wte.
+      n_layer=36, n_head=20, n_embd=1280, n_chan=18 (14 spectral + 4 time), block_size=256
+      Output: 14 spectral channels per step.
+
+    API: POST /v1/science/predict
+    Input:
+      {
+        "time_series": [[v1,...,v18], ...],  // list of 18-float observations
+                                              // min 1, max 256 steps
+        "predict_steps": 6                   // future steps to predict (default 6)
+      }
+    Returns:
+      {"predictions": [[v1,...,v14], ...], "model": "earthpt-700m"}
+
+    Channels 0-13: spectral (MODIS bands, scaled 0-1 approx)
+    Channels 14-17: time metadata (day-of-year cos/sin, year fraction cos/sin)
+    """
+    import os, sys, asyncio, math
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+    MODEL_PATH = "/data/earthpt_700m.pt"
+
+    # --- Minimal EarthPT model (time-series version) ---
+    import torch
+    import torch.nn as nn
+    from torch.nn import functional as F
+    from dataclasses import dataclass
+
+    class LayerNorm(nn.Module):
+        def __init__(self, ndim, bias):
+            super().__init__()
+            self.weight = nn.Parameter(torch.ones(ndim))
+            self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
+        def forward(self, x):
+            return F.layer_norm(x, self.weight.shape, self.weight, self.bias, 1e-5)
+
+    class CausalSelfAttention(nn.Module):
+        def __init__(self, config):
+            super().__init__()
+            assert config.n_embd % config.n_head == 0
+            self.c_attn = nn.Linear(config.n_embd, 3*config.n_embd, bias=config.bias)
+            self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+            self.attn_dropout = nn.Dropout(config.dropout)
+            self.resid_dropout = nn.Dropout(config.dropout)
+            self.n_head = config.n_head
+            self.n_embd = config.n_embd
+            self.dropout = config.dropout
+            self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+            if not self.flash:
+                self.register_buffer("bias",
+                    torch.tril(torch.ones(config.block_size, config.block_size))
+                    .view(1,1,config.block_size,config.block_size))
+        def forward(self, x):
+            B, T, C = x.size()
+            q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+            k = k.view(B, T, self.n_head, C//self.n_head).transpose(1, 2)
+            q = q.view(B, T, self.n_head, C//self.n_head).transpose(1, 2)
+            v = v.view(B, T, self.n_head, C//self.n_head).transpose(1, 2)
+            if self.flash:
+                y = torch.nn.functional.scaled_dot_product_attention(
+                    q, k, v, attn_mask=None,
+                    dropout_p=self.dropout if self.training else 0, is_causal=True)
+            else:
+                att = (q @ k.transpose(-2,-1)) * (1.0/math.sqrt(k.size(-1)))
+                att = att.masked_fill(self.bias[:,:,:T,:T]==0, float('-inf'))
+                att = F.softmax(att, dim=-1)
+                att = self.attn_dropout(att)
+                y = att @ v
+            y = y.transpose(1,2).contiguous().view(B, T, C)
+            return self.resid_dropout(self.c_proj(y))
+
+    class MLP(nn.Module):
+        def __init__(self, config):
+            super().__init__()
+            self.c_fc   = nn.Linear(config.n_embd, 4*config.n_embd, bias=config.bias)
+            self.c_proj = nn.Linear(4*config.n_embd, config.n_embd, bias=config.bias)
+            self.dropout = nn.Dropout(config.dropout)
+        def forward(self, x):
+            return self.dropout(self.c_proj(torch.nn.functional.gelu(self.c_fc(x))))
+
+    class Block(nn.Module):
+        def __init__(self, config):
+            super().__init__()
+            self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+            self.attn = CausalSelfAttention(config)
+            self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+            self.mlp  = MLP(config)
+        def forward(self, x):
+            x = x + self.attn(self.ln_1(x))
+            x = x + self.mlp(self.ln_2(x))
+            return x
+
+    @dataclass
+    class EarthPTConfig:
+        block_size: int = 256
+        n_layer: int = 36
+        n_head: int = 20
+        n_embd: int = 1280
+        n_chan: int = 18      # input channels (14 spectral + 4 time)
+        n_out:  int = 14      # output channels (spectral only)
+        dropout: float = 0.0
+        bias: bool = False
+
+    class EarthPT(nn.Module):
+        """Time-series variant matching Smith42/EarthPT 700M checkpoint."""
+        def __init__(self, config):
+            super().__init__()
+            self.config = config
+            self.transformer = nn.ModuleDict(dict(
+                wte = nn.Sequential(
+                    nn.Linear(config.n_chan, config.n_embd, bias=config.bias),
+                    nn.ReLU(),
+                    nn.Linear(config.n_embd, config.n_embd, bias=config.bias),
+                    nn.ReLU(),
+                ),
+                wpe = nn.Embedding(config.block_size, config.n_embd),
+                drop = nn.Dropout(config.dropout),
+                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+                ln_f = LayerNorm(config.n_embd, bias=config.bias),
+            ))
+            self.lm_head = nn.Linear(config.n_embd, config.n_out, bias=config.bias)
+            # weight tying attribute (for state_dict compat)
+            self.transformer.wte.weight = self.lm_head.weight
+
+        def forward(self, x):
+            B, T, C = x.size()
+            pos = torch.arange(T, device=x.device).unsqueeze(0)
+            tok_emb = self.transformer.wte(x)
+            pos_emb = self.transformer.wpe(pos)
+            h = self.transformer.drop(tok_emb + pos_emb)
+            for block in self.transformer.h:
+                h = block(h)
+            h = self.transformer.ln_f(h)
+            return self.lm_head(h)  # (B, T, n_out)
+
+    def load():
+        global model, DEVICE
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading EarthPT-700M on {DEVICE}...", flush=True)
+        cfg = EarthPTConfig()
+        m = EarthPT(cfg)
+        ck = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
+        m.load_state_dict(ck['model'], strict=False)
+        m = m.to(DEVICE).eval()
+        if DEVICE == "cuda":
+            m = m.half()
+        model = m
+        print("EarthPT-700M ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "earthpt-700m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "earthpt-700m", "object": "model", "owned_by": "aspia-space",
+             "type": "earth-observation-forecasting"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        ts = req.get("time_series", [])
+        predict_steps = int(req.get("predict_steps", 6))
+        if not ts:
+            raise ValueError("time_series required (list of 18-float observations)")
+
+        x = torch.tensor(ts, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+        if DEVICE == "cuda":
+            x = x.half()
+        # Clip to block_size
+        if x.shape[1] > 256:
+            x = x[:, -256:, :]
+
+        preds = []
+        with torch.no_grad():
+            context = x
+            for _ in range(predict_steps):
+                out = model(context)             # (1, T, 14)
+                next_spectral = out[:, -1:, :]  # (1, 1, 14)
+                # Pad with zero time features to make 18 channels for next context step
+                time_pad = torch.zeros(1, 1, 4, dtype=x.dtype, device=DEVICE)
+                next_step = torch.cat([next_spectral, time_pad], dim=-1)  # (1,1,18)
+                preds.append(next_spectral.squeeze(0).squeeze(0).cpu().float().numpy().tolist())
+                context = torch.cat([context, next_step], dim=1)
+                if context.shape[1] > 256:
+                    context = context[:, -256:, :]
+
+        return {
+            "model": "earthpt-700m",
+            "input_steps": len(ts),
+            "predict_steps": predict_steps,
+            "predictions": preds,
+            "channels": "14 spectral (MODIS bands scaled 0-1)"
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: earthpt
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/venv/.earthpt-v2-ready
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q huggingface_hub fastapi uvicorn numpy
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+            if [ ! -f /data/earthpt_700m.pt ]; then
+              echo "Downloading EarthPT-700M checkpoint..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import hf_hub_download
+            import shutil
+            path = hf_hub_download(
+              repo_id='Smith42/EarthPT',
+              filename='700M_ckpt.pt',
+              local_dir='/data',
+              local_dir_use_symlinks=False
+            )
+            shutil.move(path, '/data/earthpt_700m.pt')
+            print('EarthPT-700M downloaded.')
+            "
+            else
+              echo "EarthPT-700M checkpoint present."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: earthpt-data }
+      - name: app
+        configMap: { name: earthpt-server }

@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rnamsm-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "rnamsm",
+      "type": "embedding",
+      "description_short": "RNA MSA transformer for secondary structure prediction (~96M)",
+      "description": "RNA-MSM from multimolecule is an MSA transformer-based RNA model. ~96M parameters, trained on Rfam. Uses multiple sequence alignment context for improved RNA secondary structure prediction. Uses multimolecule RnaTokenizer and RnaMsmModel. AGPL-3.0 license.",
+      "context_window": 1024,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "multimolecule",
+      "source": "multimolecule/rnamsm",
+      "source_url": "https://huggingface.co/multomolecule/rnamsm",
+      "license": "AGPL-3.0",
+      "parameters": "~96M",
+      "precision": "float32",
+      "architecture": "MSA Transformer (RNA)",
+      "framework": "multimolecule + transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 1, "cpu_request": "1", "memory_request": "2Gi", "pvc": "rnamsm-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "rnamsm", "api_name": "rnamsm"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["sequence", "sequences"]},
+      "domain": "genomics",
+      "subdomain": "rna-embedding",
+      "tags": ["embedding", "science", "genomics", "rna", "msa", "structure", "gpu"],
+      "content_types": ["text"],
+      "languages": ["rna"],
+      "input_map": {"sequence": "RNA sequence (AUGC)", "sequences": "[str] multiple sequences"},
+      "output_map": {"embeddings": "[[float]]", "model": "rnamsm", "dim": "int"},
+      "tier": 3
+    }

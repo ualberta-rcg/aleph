@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rnabert-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "rnabert",
+      "type": "embedding",
+      "description_short": "RNA BERT pre-trained on structured alignments from Rfam (~86M)",
+      "description": "RNA-BERT from multimolecule is pre-trained on the Rfam database of structured RNA alignments. ~86M parameters. Produces embeddings useful for RNA secondary structure prediction and functional element analysis. Uses multimolecule RnaTokenizer. Max 440 residue context. AGPL-3.0 license.",
+      "context_window": 440,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "multimolecule",
+      "source": "multimolecule/rnabert",
+      "source_url": "https://huggingface.co/multimolecule/rnabert",
+      "license": "AGPL-3.0",
+      "parameters": "~86M",
+      "precision": "float32",
+      "architecture": "BERT (RNA structured alignment pre-training)",
+      "framework": "multimolecule + transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 1, "cpu_request": "1", "memory_request": "2Gi", "pvc": "rnabert-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "rnabert", "api_name": "rnabert"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["sequence", "sequences"]},
+      "domain": "genomics",
+      "subdomain": "rna-embedding",
+      "tags": ["embedding", "science", "genomics", "rna", "structure", "gpu"],
+      "content_types": ["text"],
+      "languages": ["rna"],
+      "input_map": {"sequence": "RNA sequence (AUGC)", "sequences": "[str] multiple sequences"},
+      "output_map": {"embeddings": "[[float]]", "model": "rnabert", "dim": "int"},
+      "tier": 3
+    }

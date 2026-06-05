@@ -1,0 +1,223 @@
+# Boltz-1: Open-source biomolecular structure prediction (MIT)
+# Predicts 3D structures of proteins, RNA, DNA, small molecules, glycans
+# HF: boltz-community/boltz-1 (boltz1.ckpt 6.9GB + boltz1_conf.ckpt 3.6GB)
+# API: POST /v1/science/predict {"sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ...", "demo": true}
+#      Returns: {"pdb": "ATOM ...", "confidence": {...}, "plddt": [...]}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boltz-1-server
+  namespace: models
+data:
+  server.py: |
+    import asyncio, json, os, subprocess, tempfile
+    import uvicorn
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+
+    app = FastAPI(title="Boltz-1 API")
+    ready = False
+    DEMO_SEQ = "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPLAGKFLMQIQREQLDQIPQFP"  # 58aa demo
+
+    @app.on_event("startup")
+    async def startup():
+        global ready
+        # Check weights exist
+        if os.path.exists("/data/boltz_cache/boltz1.ckpt"):
+            ready = True
+            print("Boltz-1 ready (weights found).", flush=True)
+        else:
+            print("Warning: Boltz-1 weights not found at /data/boltz_cache/boltz1.ckpt", flush=True)
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok" if ready else "loading", "model": "boltz-1"}
+
+    @app.get("/v1/models")
+    def models_list():
+        return {"object": "list", "data": [{"id": "boltz-1", "object": "model",
+            "description": "Boltz-1 biomolecular structure prediction (protein/RNA/DNA/ligand, MIT license)",
+            "input_formats": ["FASTA sequence", "YAML multi-entity schema"]}]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if not ready:
+            return JSONResponse({"error": "model loading or weights missing"}, 503)
+        demo = request.get("demo", False)
+        sequence = request.get("sequence", DEMO_SEQ if demo else None)
+        if not sequence:
+            return JSONResponse({"error": "sequence required (or set demo:true)"}, 400)
+        entity_type = request.get("type", "protein")  # protein|rna|dna
+        use_msa_server = request.get("use_msa_server", True)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, sequence, entity_type, use_msa_server)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(sequence, entity_type, use_msa_server):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Write FASTA input — boltz requires ">name|entity_type" header
+            fasta_path = os.path.join(tmpdir, "input.fasta")
+            with open(fasta_path, "w") as f:
+                etype = entity_type if entity_type else "protein"
+                f.write(f">A|{etype}\n{sequence}\n")
+            out_dir = os.path.join(tmpdir, "output")
+            os.makedirs(out_dir, exist_ok=True)
+
+            cmd = [
+                "boltz", "predict", fasta_path,
+                "--out_dir", out_dir,
+                "--cache", "/data/boltz_cache",
+                "--model", "boltz1",
+                "--devices", "1",
+                "--accelerator", "gpu",
+                "--output_format", "pdb",
+                "--recycling_steps", "3",
+                "--sampling_steps", "200",
+            ]
+            if use_msa_server:
+                cmd += ["--use_msa_server"]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if result.returncode != 0:
+                raise RuntimeError(f"boltz failed: {result.stderr[-2000:]}")
+
+            # Find output PDB
+            pdb_files = []
+            for root, dirs, files in os.walk(out_dir):
+                for fn in files:
+                    if fn.endswith(".pdb"):
+                        pdb_files.append(os.path.join(root, fn))
+            if not pdb_files:
+                raise RuntimeError(f"No PDB output found. stdout={result.stdout[-500:]}")
+
+            pdb_content = open(pdb_files[0]).read()
+
+            # Try to parse pLDDT from B-factor column
+            plddt = []
+            for line in pdb_content.split("\n"):
+                if line.startswith("ATOM") or line.startswith("HETATM"):
+                    try:
+                        bfactor = float(line[60:66].strip())
+                        plddt.append(bfactor)
+                    except Exception:
+                        pass
+
+            confidence_files = [f for root, dirs, files in os.walk(out_dir)
+                                 for f in files if 'confidence' in f.lower() and f.endswith('.json')]
+            confidence = {}
+            if confidence_files:
+                try:
+                    confidence = json.load(open(confidence_files[0]))
+                except Exception:
+                    pass
+
+            return {
+                "model": "boltz-1",
+                "sequence": sequence,
+                "entity_type": entity_type,
+                "pdb": pdb_content[:50000],  # cap at 50KB
+                "plddt": plddt[:200],
+                "mean_plddt": float(sum(plddt)/len(plddt)) if plddt else None,
+                "confidence": confidence,
+            }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: boltz-1-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 25Gi
+  storageClassName: nfs-client
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: boltz-1
+  namespace: models
+  annotations:
+spec:
+  predictor:
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.boltz1-ready-v2
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git
+            echo "Installing boltz..."
+            pip install -q boltz huggingface_hub
+            echo "Downloading Boltz-1 weights (10.5 GB)..."
+            python3 -c "
+            from huggingface_hub import snapshot_download
+            import shutil, os
+            path = snapshot_download('boltz-community/boltz-1')
+            os.makedirs('/data/boltz_cache', exist_ok=True)
+            for f in ['boltz1.ckpt', 'boltz1_conf.ckpt']:
+                src = os.path.join(path, f)
+                dst = f'/data/boltz_cache/{f}'
+                if not os.path.exists(dst):
+                    shutil.copy(src, dst)
+                    print(f'Copied {f}')
+                else:
+                    print(f'{f} already exists')
+            print('All weights downloaded.')
+            "
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126 2>&1 | tail -2
+            pip install -q boltz fastapi uvicorn 2>&1 | tail -2
+            exec python3 /app/server.py
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+
+            nvidia.com/gpumem: "20480"
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: boltz-1-data
+      - name: server-config
+        configMap:
+          name: boltz-1-server

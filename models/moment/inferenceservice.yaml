@@ -1,0 +1,241 @@
+# MOMENT-1-large: Time Series Foundation Model from AutonLab CMU
+# 187K downloads. Apache 2.0. API: POST /v1/forecast or /v1/embed
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moment-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MOMENT-1-large: Open time series foundation model (T5-based, 385M params).
+    AutonLab, CMU 2024. Supports forecasting, classification, anomaly detection.
+    API: POST /v1/forecast {time_series: [...], prediction_length: 96}
+         POST /v1/embed {time_series: [...]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading MOMENT on {DEVICE}...", flush=True)
+        from momentfm import MOMENTPipeline
+        MODEL_PATH = os.environ.get("MODEL_DIR", "/data/model")
+        model = MOMENTPipeline.from_pretrained(
+            MODEL_PATH,
+            model_kwargs={"task_name": "forecasting", "forecast_horizon": 96},
+        )
+        model.init()
+        if DEVICE == "cuda":
+            model = model.to(DEVICE)
+        print("MOMENT ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "moment"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "moment", "object": "model", "owned_by": "autonlab-cmu",
+             "type": "time-series-foundation"}
+        ]}
+
+    @app.post("/v1/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+
+        ts = req.get("time_series", [])
+        pred_len = req.get("prediction_length", 96)
+
+        if not ts:
+            raise ValueError("time_series required")
+
+        # MOMENT expects input of shape (batch, n_channels, seq_len)
+        ts_arr = np.array(ts, dtype=np.float32)
+        if ts_arr.ndim == 1:
+            ts_arr = ts_arr[np.newaxis, np.newaxis, :]  # (1, 1, seq_len)
+        elif ts_arr.ndim == 2:
+            ts_arr = ts_arr[np.newaxis, :, :]  # (1, n_channels, seq_len)
+
+        tensor = torch.tensor(ts_arr).to(DEVICE)
+
+        # Use only last 512 time steps (MOMENT's max context)
+        if tensor.shape[-1] > 512:
+            tensor = tensor[:, :, -512:]
+
+        with torch.no_grad():
+            output = model(x_enc=tensor)
+
+        forecast_vals = output.forecast.cpu().numpy()
+        # forecast shape: (batch, pred_len, n_channels) or (batch, n_channels, pred_len)
+        if forecast_vals.ndim == 3:
+            # Get first batch, first channel
+            vals = forecast_vals[0, :pred_len, 0].tolist() if forecast_vals.shape[-1] > 1 else forecast_vals[0, :pred_len, 0].tolist()
+
+        return {
+            "model": "moment",
+            "prediction_length": pred_len,
+            "forecast": vals[:pred_len],
+        }
+
+    @app.post("/v1/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch
+        import numpy as np
+        ts = req.get("time_series", [])
+        if not ts:
+            raise ValueError("time_series required")
+        ts_arr = np.array(ts, dtype=np.float32)
+        if ts_arr.ndim == 1:
+            ts_arr = ts_arr[np.newaxis, np.newaxis, :]
+        tensor = torch.tensor(ts_arr).to(DEVICE)
+        if tensor.shape[-1] > 512:
+            tensor = tensor[:, :, -512:]
+        with torch.no_grad():
+            output = model.embed(x_enc=tensor)
+        embeddings = output.embeddings.cpu().numpy()
+        return {"embeddings": embeddings.tolist(), "model": "moment"}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moment-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: moment
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'from momentfm import MOMENTPipeline; import starlette' 2>/dev/null; then
+              echo "Creating/updating venv..."
+              if [ ! -d /data/venv/bin ]; then
+                python3 -m venv /data/venv
+              fi
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              # Install momentfm with relaxed deps
+              /data/venv/bin/pip install -q momentfm --no-deps
+              /data/venv/bin/pip install -q fastapi uvicorn starlette \
+                huggingface_hub transformers einops omegaconf numpy
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/model/model.safetensors ] && [ ! -f /data/model/pytorch_model.bin ]; then
+              echo "Downloading MOMENT-1-large..."
+              mkdir -p /data/model
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                'AutonLab/MOMENT-1-large',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+            )
+            print('MOMENT downloaded.')
+            "
+            else
+              echo "MOMENT already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+          - { name: MODEL_DIR, value: "/data/model" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: moment-data }
+      - name: app
+        configMap: { name: moment-server }

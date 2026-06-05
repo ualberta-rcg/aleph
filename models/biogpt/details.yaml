@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biogpt-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "biogpt",
+      "type": "generate",
+      "description_short": "BioGPT — biomedical text generation from Microsoft",
+      "description": "BioGPT by Microsoft. 347M params. GPT-2 style autoregressive language model pre-trained on 15M PubMed abstracts. Generates biomedical text, descriptions of drugs/proteins/diseases, and can perform relation extraction. Produces biomedical entity descriptions and answers biomedical questions. Max input length 1024 tokens.",
+      "context_window": 1024,
+      "max_completion_tokens": 100,
+      "endpoints": {
+        "primary": "/v1/completions",
+        "health": "/health"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/biogpt",
+      "source_url": "https://huggingface.co/microsoft/biogpt",
+      "license": "MIT",
+      "parameters": "347M",
+      "parameter_count": 347000000,
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "startup_seconds": 30,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "biomedical",
+      "subdomain": "biomedical-text-generation",
+      "tags": ["generate", "biomedical", "nlp", "gpt", "pubmed", "biology", "text-generation"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "description": "Biomedical text prompt"
+        },
+        "max_tokens": {
+          "type": "int",
+          "required": false,
+          "description": "Maximum tokens to generate (default: 100)"
+        }
+      },
+      "output_map": {
+        "id": "string",
+        "object": "string (text_completion)",
+        "model": "string",
+        "choices": {
+          "type": "array",
+          "items": {
+            "text": "string",
+            "index": "int",
+            "finish_reason": "string"
+          }
+        }
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace)",
+        "max_seq_length": 1024,
+        "generation_strategy": "sampling"
+      }
+    }

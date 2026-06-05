@@ -1,0 +1,158 @@
+# BioLinkBERT: Biomedical link prediction from Stanford
+# GPU (~1GB VRAM), scale-to-zero. HF: michiyasunaga/BioLinkBERT-base
+# 17k downloads, MIT
+# API: POST /v1/embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biolinkbert-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = "michiyasunaga/BioLinkBERT-base"
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, tokenizer, DEVICE
+        from transformers import AutoTokenizer, AutoModel
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading BioLinkBERT on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        model = AutoModel.from_pretrained(MODEL_ID,
+            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
+        model = model.to(DEVICE).eval()
+        print(f"BioLinkBERT ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "biolinkbert"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "biolinkbert", "object": "model", "created": 1700000000,
+             "owned_by": "michiyasunaga", "type": "embedding",
+             "description": "BioLinkBERT biomedical link prediction"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        texts = request.get("input") or request.get("texts")
+        if isinstance(texts, str):
+            texts = [texts]
+        if not texts:
+            return JSONResponse({"error": "'input' required"}, 400)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, texts)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(texts):
+        enc = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc)
+        mask = enc["attention_mask"].unsqueeze(-1).float()
+        emb = (out.last_hidden_state * mask).sum(1) / mask.sum(1)
+        emb = emb.cpu().float().numpy()
+        data = [{"object": "embedding", "index": i, "embedding": e.tolist()} for i, e in enumerate(emb)]
+        return {"object": "list", "data": data, "model": "biolinkbert", "usage": {"prompt_tokens": len(texts), "total_tokens": len(texts)}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biolinkbert-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: biolinkbert
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_HOME
+            value: "/data/hf_cache"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
+            fi
+            /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
+            /data/venv/bin/pip install -q transformers fastapi uvicorn
+            /data/venv/bin/python -c "
+            from transformers import AutoTokenizer, AutoModel
+            AutoTokenizer.from_pretrained('michiyasunaga/BioLinkBERT-base')
+            AutoModel.from_pretrained('michiyasunaga/BioLinkBERT-base')
+            "
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: biolinkbert-data }
+      - name: app
+        configMap: { name: biolinkbert-server }

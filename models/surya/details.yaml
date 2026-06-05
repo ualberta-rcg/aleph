@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: surya-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "surya-366m",
+      "type": "forecast",
+      "description_short": "Surya 1.0 — NASA-IBM heliophysics foundation model (366M, GPU)",
+      "description": "Surya 1.0 by NASA-IBM AI4Science. 366M params. Spatiotemporal transformer pretrained on 9 years of NASA SDO data (AIA 8 channels + HMI 5 channels) at 4096x4096 resolution. Features spectral gating and long-short range attention. Fine-tuned for solar flare forecasting, active region segmentation, and solar wind prediction. Full 4096x4096 input uses ~6GB VRAM; 256x256 patches for testing. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "nasa-ibm-ai4science",
+      "source": "nasa-ibm-ai4science/Surya-1.0",
+      "source_url": "https://huggingface.co/nasa-ibm-ai4science/Surya-1.0",
+      "license": "Apache-2.0",
+      "parameters": "366M",
+      "parameter_count": 366000000,
+      "precision": "fp32",
+      "architecture": "spatiotemporal-transformer",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "startup_seconds": 180,
+        "container_image": "python:3.11",
+        "timeout": 300
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "scientific-nlp",
+      "subdomain": "heliophysics",
+      "tags": ["forecast", "heliophysics", "solar", "nasa", "ibm", "sdo", "space-weather", "gpu"],
+      "content_types": ["numeric-array"],
+      "tier": "production",
+      "input_map": {
+        "image": {
+          "type": "array [C=13, H, W] float32",
+          "required": true,
+          "description": "SDO channels (8 AIA + 5 HMI) normalized reflectance"
+        },
+        "demo": {
+          "type": "bool",
+          "required": false,
+          "description": "Return demo output for testing"
+        }
+      },
+      "output_map": {
+        "forecast": "[C=13, H, W] float array",
+        "flare_risk": "float [0,1]",
+        "model": "string",
+        "demo": "bool (optional)"
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "custom NASA-IMPACT/Surya or raw weights",
+        "input_channels": 13,
+        "native_resolution": 4096,
+        "vram_full_resolution": "~6GB"
+      }
+    }

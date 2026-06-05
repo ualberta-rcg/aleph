@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biomedbert-large-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "biomedbert-large",
+      "type": "embedding",
+      "description_short": "BiomedBERT-large — large PubMed BERT embeddings (340M, 1024-dim)",
+      "description": "BiomedBERT-large by Microsoft. 340M params. Large BERT model pre-trained on PubMed abstracts. State-of-the-art on BioASQ, PubMedQA, and BLURB biomedical benchmarks. Produces 1024-dimensional dense embeddings. Larger variant of BiomedBERT for higher-accuracy biomedical NLP tasks. Max sequence length 512 tokens.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/BiomedNLP-BiomedBERT-large-uncased-abstract",
+      "source_url": "https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-large-uncased-abstract",
+      "license": "MIT",
+      "parameters": "340M",
+      "parameter_count": 340000000,
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "startup_seconds": 30,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "biomedical",
+      "subdomain": "biomedical-text-embeddings",
+      "tags": ["embedding", "biomedical", "nlp", "pubmed", "biology", "large"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "description": "Biomedical text — PubMed abstracts, clinical text"
+        },
+        "texts": {
+          "type": "array of strings",
+          "required": false,
+          "description": "Batch of biomedical texts"
+        }
+      },
+      "output_map": {
+        "embeddings": "[[float x 1024]]",
+        "model": "string",
+        "dim": "int (1024)"
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace)",
+        "max_seq_length": 512,
+        "pooling": "cls",
+        "embedding_dim": 1024
+      }
+    }

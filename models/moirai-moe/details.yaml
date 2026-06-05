@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moirai-moe-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "moirai-moe",
+      "type": "forecast",
+      "description_short": "Salesforce Moirai-MoE mixture-of-experts universal time-series forecasting model.",
+      "description": "Moirai-MoE is Salesforce Research's mixture-of-experts variant of the Moirai time-series forecasting model. It outperforms the base Moirai on diverse datasets by routing different time-series patterns through specialized expert networks. Supports any-variate, zero-shot forecasting with configurable prediction length and context. CC BY-NC-4.0 license. GPU-accelerated.",
+      "context_window": 200,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/forecast",
+        "health": "/health"
+      },
+      "owned_by": "Salesforce",
+      "source": "Salesforce/moirai-moe-1.0-R-base",
+      "source_url": "https://huggingface.co/Salesforce/moirai-moe-1.0-R-base",
+      "license": "CC-BY-NC-4.0",
+      "parameters": "~150M",
+      "precision": "float32",
+      "architecture": "Moirai-MoE (mixture-of-experts transformer for time series)",
+      "framework": "uni2ts + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "moirai-moe-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "moirai-moe",
+        "api_name": "moirai-moe",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "time-series",
+      "subdomain": "forecasting",
+      "tags": ["science", "timeseries", "forecast", "zero-shot", "gpu", "salesforce", "moirai", "moe"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "time_series": "array of numeric values",
+        "prediction_length": "future steps to forecast (default: 24)",
+        "freq": "frequency string (default: 'H')"
+      },
+      "output_map": {
+        "forecast": {
+          "mean": "mean forecast values",
+          "quantiles": "probabilistic quantile forecasts"
+        }
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "hf_model_id": "Salesforce/moirai-moe-1.0-R-base"
+      }
+    }

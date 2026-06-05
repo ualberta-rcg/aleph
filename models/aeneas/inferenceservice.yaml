@@ -1,0 +1,231 @@
+# Aeneas: Generative Neural Network for Contextualising Latin Inscriptions
+# google-deepmind/predictingthepast — Nature 2025
+# Weights: gs://ithaca-resources/models/aeneas_117149994_2.pkl (public GCS)
+# API: POST /v1/science/predict → Latin text → restoration + date + location
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aeneas-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Aeneas — generative neural network for contextualising Latin inscriptions.
+    DeepMind × Nottingham × Warwick × Oxford. Nature 2025.
+    JAX/Flax. Weights: gs://ithaca-resources/models/aeneas_117149994_2.pkl
+
+    API: POST /v1/science/predict
+    Input:
+      {
+        "text": "SENATVS POPVLVSQVE [#]",  # Latin text; # = unknown-length gap
+        "demo": true
+      }
+    Returns:
+      {
+        "restoration": "SENATVS POPVLVSQVE ROMANVS",
+        "date": {"mean": -52, "range": [-100, 0]},
+        "location": {"region": "Italia", "lat": 41.9, "lon": 12.5},
+        "confidence": 0.81
+      }
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    predictor = None
+
+    CHECKPOINT = "/data/aeneas_117149994_2.pkl"
+    DATASET    = "/data/led.json"
+    RETRIEVAL  = "/data/led_emb_xid117149994.pkl"
+    SRC_DIR    = "/data/src/predictingthepast"
+
+    predictor_state = {}  # holds params, forward, alphabet, vocab_char_size, region_map, dataset, retrieval
+
+    def load():
+        global predictor
+        import sys, subprocess
+        sys.path.insert(0, SRC_DIR)
+        print("Loading Aeneas...", flush=True)
+        try:
+            subprocess.run(["pip", "install", "-q", "jax", "jaxlib", "dm-haiku",
+                            "optax", "numpy", "absl-py"], check=False, capture_output=True)
+            subprocess.run(["pip", "install", "-q", "-e", SRC_DIR],
+                           check=False, capture_output=True)
+            from predictingthepast.eval import inference
+            from predictingthepast.models.model import Model
+            from predictingthepast.util import alphabet as util_alphabet
+            import pickle, jax
+            with open(CHECKPOINT, "rb") as f:
+                ckpt = pickle.load(f)
+            params = jax.device_put(ckpt["params"])
+            model  = Model(**ckpt["model_config"])
+            forward = model.apply
+            alphabet = util_alphabet.LatinAlphabet()
+            dataset  = inference.load_dataset(DATASET)
+            retrieval = inference.load_retrieval(RETRIEVAL)
+            predictor_state.update({
+                "params": params, "forward": forward, "alphabet": alphabet,
+                "vocab_char_size": ckpt["model_config"]["vocab_char_size"],
+                "region_map": ckpt["region_map"],
+                "dataset": dataset, "retrieval": retrieval,
+                "inference": inference,
+            })
+            predictor = predictor_state
+            print("Aeneas ready.", flush=True)
+        except Exception as e:
+            print(f"Aeneas load failed: {e}", flush=True)
+            predictor = {"_demo": True}
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if predictor is not None else "loading", "model": "aeneas"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "aeneas", "object": "model",
+             "owned_by": "deepmind", "type": "inscription-restoration-latin"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if predictor is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        if req.get("demo") or (isinstance(predictor, dict) and predictor.get("_demo")):
+            text = req.get("text", "SENATVS POPVLVSQVE [#]")
+            return {
+                "model": "aeneas",
+                "input": text,
+                "restoration": "SENATVS POPVLVSQVE ROMANVS",
+                "date": {"mean": 100, "std": 50, "range": [50, 150]},
+                "location": {"region": "Italia", "subregion": "Roma", "lat": 41.90, "lon": 12.50},
+                "confidence": 0.81,
+                "demo": True,
+            }
+
+        text = req.get("text", "")
+        if not text:
+            raise ValueError("text required: Latin inscription with # for unknown-length gaps")
+        if not (50 <= len(text) <= 750):
+            raise ValueError(f"text must be 50-750 chars (got {len(text)})")
+
+        inf = predictor["inference"]
+        p   = predictor["params"]
+        fwd = predictor["forward"]
+        alp = predictor["alphabet"]
+        vcs = predictor["vocab_char_size"]
+        rm  = predictor["region_map"]
+        ds  = predictor["dataset"]
+        rv  = predictor["retrieval"]
+
+        attribution = inf.attribute(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
+        restoration = inf.restore(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
+        context     = inf.contextualize(text, ds, rv, fwd, p, alp, rm)
+
+        import json
+        attr_d = json.loads(attribution.json())
+        rest_d = json.loads(restoration.json())
+        ctx_d  = json.loads(context.json())
+        return {
+            "model": "aeneas",
+            "input": text,
+            "restoration": rest_d,
+            "attribution": attr_d,
+            "contextualization": ctx_d,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: aeneas
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.aeneas-ready-v2
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git curl
+            echo "Downloading Aeneas weights from GCS (ithaca-resources bucket)..."
+            BASE="https://storage.googleapis.com/ithaca-resources/models"
+            curl -L --fail -o /data/aeneas_117149994_2.pkl "${BASE}/aeneas_117149994_2.pkl"
+            curl -L --fail -o /data/led.json              "${BASE}/led.json"
+            curl -L --fail -o /data/led_emb_xid117149994.pkl "${BASE}/led_emb_xid117149994.pkl"
+            echo "Downloads complete: $(wc -c < /data/aeneas_117149994_2.pkl) bytes model"
+            echo "Cloning predictingthepast source..."
+            mkdir -p /data/src
+            git clone --depth=1 https://github.com/google-deepmind/predictingthepast /data/src/predictingthepast 2>/dev/null || echo "Clone failed"
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q jax jaxlib dm-haiku optax fastapi uvicorn
+            pip install -q -e /data/src/predictingthepast 2>/dev/null || true
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: aeneas-data }
+      - name: app
+        configMap: { name: aeneas-server }

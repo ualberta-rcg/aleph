@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: time-moe-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "time-moe",
+      "type": "forecast",
+      "description_short": "TimeMoE-50M mixture-of-experts universal time-series forecasting model from Tsinghua.",
+      "description": "TimeMoE-50M is a universal time-series forecasting model using mixture-of-experts architecture from Maple728/Tsinghua (arxiv: 2409.16040). Pretrained on diverse time-series data for zero-shot forecasting. Supports standard prediction lengths: 1, 96, 192, 336, 720 steps. Uses HuggingFace AutoModelForCausalLM with trust_remote_code. Apache 2.0 license. GPU-accelerated.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/forecast",
+        "health": "/health"
+      },
+      "owned_by": "Maple728",
+      "source": "Maple728/TimeMoE-50M",
+      "source_url": "https://huggingface.co/Maple728/TimeMoE-50M",
+      "license": "Apache-2.0",
+      "parameters": "50M",
+      "precision": "bfloat16 (GPU) / float32 (CPU)",
+      "architecture": "Mixture-of-Experts decoder-only transformer",
+      "framework": "transformers (AutoModelForCausalLM) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "time-moe-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "time-moe",
+        "api_name": "time-moe",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "time-series",
+      "subdomain": "forecasting",
+      "tags": ["science", "timeseries", "forecast", "zero-shot", "gpu", "moe"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "time_series": "array of numeric values (minimum ~100 values recommended)",
+        "prediction_length": "1 | 96 | 192 | 336 | 720 (default: 96)"
+      },
+      "output_map": {
+        "forecast": "predicted values array",
+        "model": "time-moe-50m",
+        "prediction_length": "forecast horizon used"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "hf_model_id": "Maple728/TimeMoE-50M",
+        "hf_cache": "/data/hf_cache"
+      }
+    }

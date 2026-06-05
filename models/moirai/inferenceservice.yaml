@@ -1,0 +1,179 @@
+# Moirai: Universal time series forecasting model from Salesforce
+# GPU (~4GB VRAM), scale-to-zero. HF: Salesforce/moirai-1.0-R-base
+# 6k downloads, Apache 2.0
+# API: POST /v1/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moirai-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    pipeline = None
+    DEVICE = "cpu"
+
+    def load():
+        global pipeline, DEVICE
+        from uni2ts.model.moirai import MoiraiForecast, MoiraiModule
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Moirai on {DEVICE}...", flush=True)
+        model = MoiraiModule.from_pretrained("Salesforce/moirai-1.0-R-base")
+        pipeline = MoiraiForecast(module=model, prediction_length=24,
+            context_length=200, patch_size=32, num_samples=100,
+            target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0)
+        if DEVICE == "cuda":
+            pipeline = pipeline.to(DEVICE)
+        print(f"Moirai ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if pipeline else "loading", "model": "moirai"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "moirai", "object": "model", "created": 1700000000,
+             "owned_by": "Salesforce", "type": "time-series",
+             "description": "Moirai universal time series forecasting"}
+        ]}
+
+    @app.post("/v1/forecast")
+    async def forecast(request: dict):
+        if pipeline is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        values = request.get("values") or request.get("input")
+        horizon = request.get("horizon", 24)
+        
+        if not values:
+            return JSONResponse({"error": "'values' required (time series array)"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, values, horizon)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(values, horizon):
+        import numpy as np
+        from gluonts.dataset.pandas import PandasDataset
+        import pandas as pd
+        
+        # Create a simple dataset
+        df = pd.DataFrame({"target": values})
+        df.index = pd.date_range(start="2024-01-01", periods=len(values), freq="h")
+        ds = PandasDataset(dict(df), target="target")
+        
+        # Forecast
+        forecasts = list(pipeline.create_predictor(batch_size=1).predict(ds))
+        
+        if forecasts:
+            forecast = forecasts[0]
+            return {
+                "model": "moirai",
+                "forecast": {
+                    "mean": forecast.mean.tolist(),
+                    "quantile_10": forecast.quantile(0.1).tolist(),
+                    "quantile_90": forecast.quantile(0.9).tolist(),
+                }
+            }
+        return {"error": "no forecast generated"}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moirai-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: moirai
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_HOME
+            value: "/data/hf_cache"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+            fi
+            echo "Installing dependencies..."
+            /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
+            /data/venv/bin/pip install -q uni2ts gluonts pandas fastapi uvicorn
+            
+            echo "Pre-downloading Moirai..."
+            /data/venv/bin/python -c "
+            from uni2ts.model.moirai import MoiraiModule
+            MoiraiModule.from_pretrained('Salesforce/moirai-1.0-R-base')
+            print('Moirai cached')
+            "
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: moirai-data }
+      - name: app
+        configMap: { name: moirai-server }

@@ -1,0 +1,185 @@
+# ERNIE-RNA: Structure-aware RNA foundation model (multimolecule/ernierna)
+# ~86M params, AGPL-3.0. Pre-trained on RNAcentral with structure-aware objectives.
+# 9,040 HuggingFace downloads. Outperforms RNA-FM on structure prediction tasks.
+# API: POST /v1/science/embed  (RNA sequence → embeddings)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ernierna-server
+  namespace: models
+data:
+  server.py: |
+    """
+    ERNIE-RNA: Structure-aware RNA embeddings.
+    API: POST /v1/science/embed -> {"sequence": "AUGCAUGC..."} -> {"embedding": [...]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    app = FastAPI()
+    tokenizer = None
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global tokenizer, model, DEVICE
+        import torch
+        from multimolecule import ErnieRnaModel
+        from transformers import BertTokenizer
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ERNIE-RNA on {DEVICE}...", flush=True)
+        # ERNIE-RNA uses WordPiece vocab (vocab.txt) - use BertTokenizer directly
+        tokenizer = BertTokenizer.from_pretrained(MODEL_DIR)
+        model = ErnieRnaModel.from_pretrained(MODEL_DIR).to(DEVICE)
+        model.eval()
+        print(f"ERNIE-RNA ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "ernierna"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"models": [{"id": "ernierna", "description": "ERNIE-RNA structure-aware RNA embeddings"}]}
+
+    @app.post("/v1/science/embed")
+    async def embed(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        seqs = payload.get("sequences") or ([payload.get("sequence")] if payload.get("sequence") else None)
+        if not seqs:
+            return JSONResponse({"error": "provide sequence or sequences"}, 400)
+        enc = tokenizer(seqs, return_tensors="pt", padding=True, truncation=True, max_length=1024)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc)
+        mask = enc["attention_mask"].unsqueeze(-1).float()
+        embeddings = (out.last_hidden_state * mask).sum(1) / mask.sum(1)
+        return {"embeddings": embeddings.cpu().tolist(), "model": "ernierna", "dim": embeddings.shape[-1]}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ernierna-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ernierna
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: ernierna-data
+      - name: server-code
+        configMap:
+          name: ernierna-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import multimolecule, fastapi, sentencepiece; from multimolecule import ErnieRnaModel" 2>/dev/null; then
+              echo "Creating venv..."
+              python -m venv $VENV --clear
+              $VENV/bin/pip install --quiet --upgrade pip
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet multimolecule transformers sentencepiece huggingface_hub fastapi uvicorn
+              echo "Venv ready"
+            else
+              echo "Venv OK"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading ERNIE-RNA..."
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            snapshot_download(repo_id='multimolecule/ernierna', local_dir='/data/model', token=os.environ['HF_TOKEN'], ignore_patterns=['*.msgpack','flax_model*','tf_model*'])
+            print('Done')
+            "
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "10240"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "10240"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+          - name: server-code
+            mountPath: /app
+        env:
+          - name: MODEL_DIR
+            value: /data/model
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            /data/venv/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 10

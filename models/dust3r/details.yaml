@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dust3r-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "dust3r",
+      "type": "3d",
+      "description_short": "DUSt3R (CVPR 2024): unconstrained 3D reconstruction from 2+ uncalibrated images without known camera intrinsics.",
+      "description": "DUSt3R (Discrete Universal Stereo Transformer) from NAVER is a CVPR 2024 best paper candidate for unconstrained 3D reconstruction. It takes 2 or more images without any camera calibration information and produces dense 3D point clouds with confidence maps. No known intrinsics, extrinsics, or depth ranges required. Uses AsymmetricCroCo3DStereo architecture. Requires a cloned dust3r repo for model code.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/reconstruct",
+        "health": "/health"
+      },
+      "owned_by": "naver",
+      "source": "naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt",
+      "source_url": "https://huggingface.co/naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt",
+      "license": "CC-BY-NC-4.0",
+      "parameters": "~300M",
+      "precision": "float32",
+      "architecture": "AsymmetricCroCo3DStereo (ViT-Large encoder, Base decoder, DPT head)",
+      "framework": "dust3r (custom) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "dust3r-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "dust3r",
+        "api_name": "dust3r",
+        "gateway_type": "3d"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "3d-vision",
+      "subdomain": "reconstruction",
+      "tags": ["science", "3d", "reconstruction", "vision", "geometry", "stereo", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "images": "array of 2+ base64-encoded JPEG/PNG images",
+        "output_format": "\"pointcloud\" (default) or \"depth\""
+      },
+      "output_map": {
+        "pointclouds": [{"pts3d": "[[x,y,z], ...]", "confidence": "[float, ...]"}],
+        "model": "dust3r"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "repo_path": "/data/model/repo",
+        "weight_files": ["model.safetensors", "DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"]
+      }
+    }

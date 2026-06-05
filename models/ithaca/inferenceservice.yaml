@@ -1,0 +1,225 @@
+# Ithaca: Deep Neural Network for Restoring Ancient Greek Inscriptions
+# DeepMind × UCL × Venice, Nature 2022. JAX/Flax model.
+# Weights from Google Cloud Storage (public): gs://ithaca-public/ithaca_weights.pkl
+# API: POST /v1/science/predict → ancient Greek text → restoration + date + location
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ithaca-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Ithaca — ancient Greek inscription restoration/dating/geolocation.
+    DeepMind × UCL × Venice. Nature 2022.
+    JAX/Flax model. Weights: gs://ithaca-public/ithaca_weights.pkl
+
+    API: POST /v1/science/predict
+    Input:
+      {
+        "text": "ΕΜΟΙ ΔΕ ΤΙΣ [---]",   # Ancient Greek text with gaps marked [---]
+        "demo": true
+      }
+    Returns:
+      {
+        "restoration": "ΕΜΟΙ ΔΕ ΤΙΣ ΑΓΑΘΟΣ",  # restored text
+        "date": {"mean": -350, "range": [-400, -300]},  # BCE year (negative)
+        "location": {"region": "Attica", "lat": 38.0, "lon": 23.7},
+        "confidence": 0.87
+      }
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+
+    predictor_state = {}
+
+    def load():
+        global model
+        import sys, subprocess
+        SRC_DIR = "/data/src/predictingthepast"
+        sys.path.insert(0, SRC_DIR)
+        print("Loading Ithaca...", flush=True)
+        try:
+            subprocess.run(["pip", "install", "-q", "jax", "jaxlib", "dm-haiku",
+                            "optax", "numpy", "absl-py"], check=False, capture_output=True)
+            subprocess.run(["pip", "install", "-q", "-e", SRC_DIR],
+                           check=False, capture_output=True)
+            from predictingthepast.eval import inference
+            from predictingthepast.models.model import Model
+            from predictingthepast.util import alphabet as util_alphabet
+            import pickle, jax
+            with open("/data/ithaca_153143996_2.pkl", "rb") as f:
+                ckpt = pickle.load(f)
+            params  = jax.device_put(ckpt["params"])
+            mdl     = Model(**ckpt["model_config"])
+            forward = mdl.apply
+            alphabet = util_alphabet.GreekAlphabet()
+            dataset  = inference.load_dataset("/data/iphi.json")
+            retrieval = inference.load_retrieval("/data/iphi_emb_xid153143996.pkl")
+            predictor_state.update({
+                "params": params, "forward": forward, "alphabet": alphabet,
+                "vocab_char_size": ckpt["model_config"]["vocab_char_size"],
+                "region_map": ckpt["region_map"],
+                "dataset": dataset, "retrieval": retrieval,
+                "inference": inference,
+            })
+            model = predictor_state
+            print("Ithaca ready.", flush=True)
+        except Exception as e:
+            print(f"Ithaca load failed: {e}", flush=True)
+            model = {"_demo": True}
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "ithaca"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "ithaca", "object": "model",
+             "owned_by": "deepmind", "type": "inscription-restoration"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        if req.get("demo") or (isinstance(model, dict) and model.get("_demo")):
+            text = req.get("text", "ΕΜΟΙ ΔΕ ΤΙΣ [---]")
+            restored = text.replace("[---]", "ΑΓΑΘΟΣ")
+            return {
+                "model": "ithaca",
+                "input": text,
+                "restoration": restored,
+                "date": {"mean": -350, "std": 50, "range": [-420, -280]},
+                "location": {"region": "Attica", "subregion": "Athens", "lat": 37.97, "lon": 23.72},
+                "confidence": 0.87,
+                "demo": True,
+            }
+
+        text = req.get("text", "")
+        if not text:
+            raise ValueError("text required: ancient Greek inscription with # for unknown-length gaps")
+        if not (50 <= len(text) <= 750):
+            raise ValueError(f"text must be 50-750 chars (got {len(text)})")
+
+        inf = model["inference"]
+        p   = model["params"]
+        fwd = model["forward"]
+        alp = model["alphabet"]
+        vcs = model["vocab_char_size"]
+        rm  = model["region_map"]
+        ds  = model["dataset"]
+        rv  = model["retrieval"]
+
+        attribution = inf.attribute(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
+        restoration = inf.restore(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
+        context     = inf.contextualize(text, ds, rv, fwd, p, alp, rm)
+
+        import json
+        return {
+            "model": "ithaca",
+            "input": text,
+            "restoration": json.loads(restoration.json()),
+            "attribution": json.loads(attribution.json()),
+            "contextualization": json.loads(context.json()),
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ithaca
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 180
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.ithaca-ready-v3
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git curl
+            echo "Downloading Ithaca weights from GCS (ithaca-resources bucket)..."
+            BASE="https://storage.googleapis.com/ithaca-resources/models"
+            curl -L --fail -o /data/ithaca_153143996_2.pkl "${BASE}/ithaca_153143996_2.pkl"
+            curl -L --fail -o /data/iphi.json               "${BASE}/iphi.json"
+            curl -L --fail -o /data/iphi_emb_xid153143996.pkl "${BASE}/iphi_emb_xid153143996.pkl"
+            echo "Downloads complete: $(wc -c < /data/ithaca_153143996_2.pkl) bytes model"
+            echo "Cloning predictingthepast source..."
+            mkdir -p /data/src
+            git clone --depth=1 https://github.com/google-deepmind/predictingthepast /data/src/predictingthepast 2>/dev/null || echo "Clone failed"
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q jax jaxlib dm-haiku optax fastapi uvicorn
+            pip install -q -e /data/src/predictingthepast 2>/dev/null || true
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: ithaca-data }
+      - name: app
+        configMap: { name: ithaca-server }

@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thor-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "thor",
+      "type": "forecast",
+      "description_short": "Norwegian Computing Center THOR 1.0-base multi-sensor geospatial foundation model. FlexiViT-Base.",
+      "description": "THOR 1.0-base is a compute-adaptive multi-sensor geospatial foundation model from the Norwegian Computing Center (NR) and ESA. Built on FlexiViT-Base backbone (~400MB), it supports Sentinel-1 SAR, Sentinel-2 MSI, and Sentinel-3 OLCI/SLSTR sensors at resolutions from 10m to 1000m. The model features flexible patch sizes and ground cover ranges (1000m to 100,000m+). It generates 768-dim patch embeddings for satellite image analysis. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "FM4CS",
+      "source": "FM4CS/THOR-1.0-base",
+      "source_url": "https://huggingface.co/FM4CS/THOR-1.0-base",
+      "license": "Apache-2.0",
+      "parameters": "~86M (FlexiViT-Base)",
+      "precision": "fp32",
+      "architecture": "FlexiViT-Base (flexible patch size Vision Transformer)",
+      "framework": "terratorch + thor_terratorch_ext",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "cpu_request": "2",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 180,
+        "pvc": "thor-data (4Gi, NFS)",
+        "image": "python:3.11",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "thor",
+        "api_name": "thor",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "remote-sensing",
+      "tags": ["science", "earth-observation", "satellite", "multi-sensor", "sar", "sentinel", "embed", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "image": "[[[float, ...], ...], ...] — (C, H, W) satellite image, any Sentinel sensor",
+        "bands": "band names matching THOR convention e.g. [BLUE, GREEN, RED, NIR]",
+        "patch_size": "FlexiViT patch size in pixels (default 8)",
+        "ground_cover": "ground cover in meters (patch_size_px * resolution_m, default 2880)",
+        "demo": "boolean — returns synthetic 768-dim embeddings"
+      },
+      "output_map": {
+        "embeddings": "[[float]] — (N, 768) patch embeddings",
+        "shape": "[N, D] embedding dimensions",
+        "model": "thor-base"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/thor_v1_vit_base.pt",
+        "extension_path": "/data/src/thor_terratorch_ext",
+        "framework": "terratorch"
+      }
+    }

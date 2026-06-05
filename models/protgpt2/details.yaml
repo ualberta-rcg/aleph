@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: protgpt2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "protgpt2",
+      "type": "chat",
+      "description_short": "ProtGPT2 protein sequence generation model — generates novel protein sequences from scratch.",
+      "description": "ProtGPT2 is a protein language model (nferruz/ProtGPT2) based on the GPT-2 architecture, trained on natural protein sequences to generate novel, stable protein sequences. It can generate proteins from scratch or continue partial sequences. Uses HuggingFace GPT2LMHeadModel. MIT license. GPU-accelerated with float16, ~2GB VRAM.",
+      "context_window": 1024,
+      "max_completion_tokens": 512,
+      "endpoints": {
+        "primary": "/v1/completions",
+        "health": "/health"
+      },
+      "owned_by": "nferruz",
+      "source": "nferruz/ProtGPT2",
+      "source_url": "https://huggingface.co/nferruz/ProtGPT2",
+      "license": "MIT",
+      "parameters": "~1.5B",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "GPT-2 (decoder-only protein language model)",
+      "framework": "transformers (GPT2LMHeadModel) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "protgpt2-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "protgpt2",
+        "api_name": "protgpt2",
+        "gateway_type": "chat"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "biology",
+      "subdomain": "protein-generation",
+      "tags": ["science", "biology", "protein", "generate", "llm", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "prompt": "partial amino acid sequence (optional)",
+        "max_tokens": "maximum tokens to generate",
+        "temperature": "sampling temperature",
+        "num_sequences": "number of sequences to generate"
+      },
+      "output_map": {
+        "sequences": "generated protein sequences",
+        "model": "protgpt2"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "hf_model_id": "nferruz/ProtGPT2"
+      }
+    }

@@ -1,0 +1,274 @@
+# DiffDock-L: diffusion-based protein-ligand docking (gcorso/DiffDock v1.1.3)
+# Uses rbgcsail/diffdock:v1.1.3 official image (rdkit, ESM2, torch-geometric pre-built)
+# API: POST /v1/dock {protein_pdb, ligand_smiles, num_poses, inference_steps}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: diffdock-server
+  namespace: models
+data:
+  server.py: |
+    """
+    DiffDock-L: protein-ligand docking via subprocess call to DiffDock CLI.
+    Weights and ESM2 cache live on PVC. Returns ranked SDF poses with confidence scores.
+    API: POST /v1/dock
+    """
+    import os, asyncio, tempfile, shutil, subprocess, glob, re
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    DIFFDOCK_DIR = os.environ.get("DIFFDOCK_DIR", "/app")
+    MODEL_DIR    = os.environ.get("MODEL_DIR", "/data")
+    WEIGHTS_DIR  = os.path.join(MODEL_DIR, "weights")
+
+    app = FastAPI()
+
+    @app.get("/health")
+    async def health():
+        weights_ok = os.path.isdir(WEIGHTS_DIR) and bool(os.listdir(WEIGHTS_DIR))
+        return {"status": "ok" if weights_ok else "weights_missing", "model": "diffdock-l"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "diffdock-l", "object": "model", "owned_by": "gcorso", "type": "docking"}
+        ]}
+
+    @app.post("/v1/dock")
+    async def dock(request: dict):
+        protein_pdb   = request.get("protein_pdb")
+        ligand_smiles = request.get("ligand_smiles")
+        if not protein_pdb or not ligand_smiles:
+            return JSONResponse({"error": "protein_pdb and ligand_smiles required"}, 400)
+        num_poses        = request.get("num_poses", 10)
+        inference_steps  = request.get("inference_steps", 20)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(
+                None, _dock, protein_pdb, ligand_smiles, num_poses, inference_steps
+            )
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _dock(protein_pdb, ligand_smiles, num_poses, inference_steps):
+        tmpdir = tempfile.mkdtemp()
+        try:
+            pdb_path = os.path.join(tmpdir, "protein.pdb")
+            with open(pdb_path, "w") as f:
+                f.write(protein_pdb)
+
+            # DiffDock accepts .smi files as ligand input
+            lig_path = os.path.join(tmpdir, "ligand.smi")
+            with open(lig_path, "w") as f:
+                f.write(ligand_smiles)
+
+            out_dir = os.path.join(tmpdir, "output")
+            os.makedirs(out_dir)
+
+            env = os.environ.copy()
+            env["HF_HOME"]    = os.path.join(MODEL_DIR, "hf_cache")
+            env["TORCH_HOME"] = os.path.join(MODEL_DIR, "torch_cache")
+
+            # Find the diffdock python executable
+            import shutil, sys
+            py = shutil.which("python3") or shutil.which("python") or sys.executable
+            for candidate in [
+                "/home/appuser/micromamba/envs/diffdock/bin/python3",
+                "/opt/conda/envs/diffdock/bin/python3",
+                "/opt/conda/bin/python3",
+            ]:
+                if os.path.isfile(candidate):
+                    py = candidate
+                    break
+            cmd = [
+                py, os.path.join(DIFFDOCK_DIR, "inference.py"),
+                "--protein_path", pdb_path,
+                "--ligand", lig_path,
+                "--out_dir", out_dir,
+                "--inference_steps", str(inference_steps),
+                "--samples_per_complex", str(num_poses),
+                "--batch_size", "5",
+                "--no_final_step_noise",
+            ]
+            # Point to downloaded weights if available
+            all_pts    = glob.glob(os.path.join(WEIGHTS_DIR, "**", "*.pt"), recursive=True)
+            score_ckpt = next((f for f in all_pts if "score" in os.path.basename(f).lower()), None)
+            conf_ckpt  = next((f for f in all_pts if "confidence" in os.path.basename(f).lower()), None)
+            if score_ckpt:
+                cmd += ["--model_dir", os.path.dirname(score_ckpt)]
+            if conf_ckpt:
+                cmd += ["--confidence_model_dir", os.path.dirname(conf_ckpt)]
+
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    timeout=600, cwd=DIFFDOCK_DIR, env=env)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"DiffDock failed (rc={result.returncode}):\n"
+                    f"STDOUT:{result.stdout[-2000:]}\nSTDERR:{result.stderr[-2000:]}"
+                )
+
+            # Parse output: rank1_confidence-1.23.sdf
+            sdf_files = sorted(glob.glob(os.path.join(out_dir, "**", "rank*.sdf"), recursive=True))
+            poses = []
+            for sdf_file in sdf_files:
+                fname  = os.path.basename(sdf_file)
+                rank_m = re.search(r'rank(\d+)', fname)
+                conf_m = re.search(r'confidence([-\d.]+)', fname)
+                with open(sdf_file) as f:
+                    sdf_content = f.read()
+                poses.append({
+                    "rank":       int(rank_m.group(1))   if rank_m else len(poses) + 1,
+                    "confidence": float(conf_m.group(1)) if conf_m else 0.0,
+                    "sdf":        sdf_content,
+                })
+
+            return {
+                "model": "diffdock-l",
+                "ligand_smiles": ligand_smiles,
+                "num_poses": len(poses),
+                "poses": poses,
+            }
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: diffdock
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            # Install fastapi/uvicorn to PVC target dir
+            # (main container uses rbgcsail/diffdock conda image — inject via PYTHONPATH)
+            # Always reinstall server deps to ensure Python 3.9 compatible versions
+            if [ ! -f /data/pylibs39/fastapi/__init__.py ]; then
+              echo "Installing server deps for Python 3.9 to /data/pylibs39..."
+              mkdir -p /data/pylibs39
+              pip install -q --target /data/pylibs39 \
+                "fastapi==0.103.2" "uvicorn==0.23.2" "anyio<4.0" \
+                "huggingface_hub>=0.19" "starlette==0.27.0" \
+                "pydantic>=1.10,<2.0"
+              echo "Server deps installed."
+            else
+              echo "Server deps already on PVC."
+            fi
+
+            # Download DiffDock-L weights from GitHub release v1.1
+            if [ ! -d /data/weights ] || [ -z "$(ls -A /data/weights 2>/dev/null)" ]; then
+              echo "Downloading DiffDock-L weights..."
+              mkdir -p /data/weights
+                python3 -u <<'PY'
+            import urllib.request, zipfile
+            url = 'https://github.com/gcorso/DiffDock/releases/download/v1.1/diffdock_models.zip'
+            print('Fetching', url, flush=True)
+            urllib.request.urlretrieve(url, '/tmp/dfdock.zip')
+            print('Extracting...', flush=True)
+            with zipfile.ZipFile('/tmp/dfdock.zip') as zf:
+                zf.extractall('/data/weights')
+            print('Weights ready.', flush=True)
+            PY
+            else
+              echo "Weights already on PVC."
+            fi
+
+            # Pre-cache ESM2 (DiffDock-L uses it for protein embeddings)
+            mkdir -p /data/hf_cache
+            if [ ! -d /data/hf_cache/models--facebook--esm2_t33_650M_UR50D ]; then
+              echo "Caching ESM2..."
+                HF_HOME=/data/hf_cache python3 -u <<'PY'
+            import sys; sys.path.insert(0, '/data/pylibs39')
+            from huggingface_hub import snapshot_download
+            snapshot_download('facebook/esm2_t33_650M_UR50D')
+            print('ESM2 cached.', flush=True)
+            PY
+            else
+              echo "ESM2 already cached."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: rbgcsail/diffdock:v1.1.3
+        command: ["bash", "-c"]
+        args:
+          - |
+            export PYTHONPATH=/data/pylibs39:${PYTHONPATH}
+            # rbgcsail/diffdock uses micromamba at /home/appuser
+            PYTHON=""
+            for pypath in \
+              /home/appuser/micromamba/envs/diffdock/bin/python3 \
+              /home/appuser/micromamba/envs/diffdock/bin/python \
+              /opt/conda/envs/diffdock/bin/python3 \
+              /opt/conda/envs/diffdock/bin/python \
+              /opt/conda/bin/python3 \
+              /opt/conda/bin/python; do
+              if [ -x "$pypath" ]; then
+                PYTHON="$pypath"
+                break
+              fi
+            done
+            if [ -z "$PYTHON" ]; then
+              PYTHON=$(find /home -name python3 -path "*/diffdock/*" -type f 2>/dev/null | head -1)
+            fi
+            if [ -z "$PYTHON" ]; then
+              PYTHON=$(find /home -name python -path "*/diffdock/*" -type f 2>/dev/null | head -1)
+            fi
+            echo "Using Python: $PYTHON"
+            [ -z "$PYTHON" ] && echo "ERROR: No Python found!" && exit 1
+            exec "$PYTHON" /server/server.py
+        env:
+          - { name: MODEL_DIR,    value: /data }
+          - { name: DIFFDOCK_DIR, value: /home/appuser/DiffDock }
+          - { name: HF_HOME,      value: /data/hf_cache }
+          - { name: TORCH_HOME,   value: /data/torch_cache }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits:   { cpu: "8", memory: 24Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: server-code, mountPath: /server }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: diffdock-data
+      - name: server-code
+        configMap:
+          name: diffdock-server

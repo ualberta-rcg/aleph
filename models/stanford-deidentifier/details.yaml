@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stanford-deidentifier-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "stanford-deidentifier",
+      "type": "deidentify",
+      "description_short": "Stanford Deidentifier — clinical PHI removal via NER",
+      "description": "Stanford Deidentifier by Stanford AIMI. 110M params. BERT-base token classification model for removing Protected Health Information (PHI) from clinical notes. Detects names, dates, IDs, locations, and other HIPAA identifiers. Critical for HIPAA-compliant clinical NLP pipelines. 1.46M HuggingFace downloads. Also provides text embeddings via underlying BERT model. Max sequence length 512 tokens.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/deidentify",
+        "secondary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "StanfordAIMI",
+      "source": "StanfordAIMI/stanford-deidentifier-base",
+      "source_url": "https://huggingface.co/StanfordAIMI/stanford-deidentifier-base",
+      "license": "Apache-2.0",
+      "parameters": "110M",
+      "parameter_count": 110000000,
+      "precision": "fp32",
+      "architecture": "transformer (token-classification)",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "startup_seconds": 30,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "clinical",
+      "subdomain": "phi-deidentification",
+      "tags": ["deidentify", "clinical", "nlp", "phi", "hipaa", "ner", "privacy", "ehr"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "description": "Clinical note text containing PHI"
+        }
+      },
+      "output_map": {
+        "entities": "[{text: string, label: string, score: float, start: int, end: int}]",
+        "anonymized": "string (PHI replaced with [LABEL] tags)",
+        "model": "string"
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace)",
+        "max_seq_length": 512,
+        "aggregation_strategy": "simple",
+        "task": "token-classification"
+      }
+    }

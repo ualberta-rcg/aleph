@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mattergen-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "mattergen",
+      "type": "generate",
+      "description_short": "Microsoft MatterGen diffusion model for generating novel crystal structures conditioned on composition or properties.",
+      "description": "MatterGen is a 45M parameter diffusion model from Microsoft Research (Nature 2025) for crystal structure generation. It generates novel inorganic crystal structures conditioned on chemical system, space group, or bulk modulus. The model uses a CLIP-based conditioner with a diffusion backbone trained on Materials Project data. Generation is performed via the mattergen-generate CLI tool, which outputs CIF format crystal structures. Requires a cloned GitHub repo alongside the HF checkpoint.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/generate",
+        "health": "/health"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/mattergen",
+      "source_url": "https://huggingface.co/microsoft/mattergen",
+      "license": "MIT",
+      "parameters": "45M",
+      "precision": "float32",
+      "architecture": "Diffusion model with CLIP conditioner",
+      "framework": "mattergen-generate CLI + PyTorch Lightning + PyG",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "4",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "timeout": 600,
+        "pvc": "mattergen-data",
+        "image": "python:3.11-slim",
+        "venv": true,
+        "venv_path": "/data/mg-venv"
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "mattergen",
+        "api_name": "mattergen",
+        "gateway_type": "generate"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "materials-science",
+      "subdomain": "crystal-generation",
+      "tags": ["science", "materials", "crystal", "generate", "generative", "diffusion", "gpu", "microsoft"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "chemical_system": "optional element system e.g. \"Li-Fe-O\"",
+        "num_structures": "number of structures to generate (default: 5)",
+        "checkpoint": "model checkpoint name (default: mattergen_base)"
+      },
+      "output_map": {
+        "structures": "array of {cif: string, file: string} objects",
+        "chemical_system": "input chemical system",
+        "num_structures": "count of generated structures"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "checkpoint_dir": "/data/model/checkpoints/mattergen_base",
+        "repo_path": "/data/model/repo",
+        "uses_subprocess": true
+      }
+    }

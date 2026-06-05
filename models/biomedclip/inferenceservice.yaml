@@ -1,0 +1,256 @@
+# BiomedCLIP: Microsoft biomedical vision-language model
+# CLIP variant pre-trained on 15M PubMed figure-caption pairs.
+# State-of-the-art on biomedical image classification, cross-modal retrieval.
+# Apache 2.0. API: POST /v1/embeddings and POST /v1/classify
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biomedclip-server
+  namespace: models
+data:
+  server.py: |
+    """
+    BiomedCLIP: Microsoft biomedical CLIP model.
+    Encode biomedical images and text in shared embedding space.
+    API:
+      POST /v1/embeddings — encode images or texts
+      POST /v1/classify   — zero-shot classify biomedical images with text labels
+    Input for /v1/embeddings: {"images": ["base64...", ...], "texts": ["..."] or null}
+    Input for /v1/classify:   {"images": ["base64...", ...], "labels": ["pneumonia", "normal", ...]}
+    """
+    import os, asyncio, base64
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    preprocess = None
+
+    def load():
+        global model, preprocess
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading BiomedCLIP on {device}...", flush=True)
+
+        import open_clip
+        m, _, prep = open_clip.create_model_and_transforms(
+            "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+            cache_dir=MODEL_DIR,
+        )
+        m.to(device).eval()
+        model = m
+        preprocess = prep
+        print("BiomedCLIP ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "biomedclip"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "biomedclip", "object": "model", "owned_by": "microsoft",
+             "type": "biomedical-vision-language"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    @app.post("/v1/classify")
+    async def classify(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _classify, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _decode_images(images_b64):
+        from PIL import Image
+        import io
+        imgs = []
+        for b64 in images_b64:
+            img_bytes = base64.b64decode(b64)
+            imgs.append(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
+        return imgs
+
+    def _embed(req):
+        import torch
+        import open_clip
+
+        images_b64 = req.get("images")
+        texts       = req.get("texts")
+        results = {}
+
+        if images_b64:
+            imgs = _decode_images(images_b64)
+            x = torch.stack([preprocess(img) for img in imgs])
+            device = next(model.parameters()).device
+            with torch.inference_mode():
+                image_emb = model.encode_image(x.to(device))
+            results["image_embeddings"] = image_emb.cpu().numpy().tolist()
+
+        if texts:
+            tokenizer = open_clip.get_tokenizer(
+                "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224")
+            tokens = tokenizer(texts)
+            device = next(model.parameters()).device
+            with torch.inference_mode():
+                text_emb = model.encode_text(tokens.to(device))
+            results["text_embeddings"] = text_emb.cpu().numpy().tolist()
+
+        return {"model": "biomedclip", **results}
+
+    def _classify(req):
+        import torch, torch.nn.functional as F
+        import open_clip
+
+        images_b64 = req.get("images", [])
+        labels      = req.get("labels", [])
+
+        if not images_b64 or not labels:
+            raise ValueError("images and labels required")
+
+        imgs = _decode_images(images_b64)
+        x = torch.stack([preprocess(img) for img in imgs])
+        tokenizer = open_clip.get_tokenizer(
+            "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224")
+        tokens = tokenizer(labels)
+
+        device = next(model.parameters()).device
+        with torch.inference_mode():
+            image_emb = model.encode_image(x.to(device))
+            text_emb  = model.encode_text(tokens.to(device))
+            image_emb = F.normalize(image_emb, dim=-1)
+            text_emb  = F.normalize(text_emb, dim=-1)
+            logits = (image_emb @ text_emb.T) * model.logit_scale.exp()
+            probs  = F.softmax(logits, dim=-1)
+
+        results = []
+        for img_probs in probs.cpu().numpy():
+            ranked = sorted(zip(labels, img_probs.tolist()), key=lambda x: -x[1])
+            results.append([{"label": l, "score": float(s)} for l, s in ranked])
+
+        return {"model": "biomedclip", "classifications": results}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: biomedclip
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import open_clip; import transformers' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" torchvision \
+                --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                open_clip_torch transformers Pillow fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/model/hub/models--microsoft--BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 ]; then
+              echo "Pre-caching BiomedCLIP..."
+              mkdir -p /data/model
+                HF_HOME=/data/model /data/venv/bin/python -u <<'PY'
+            import os
+            os.environ['HF_HOME'] = '/data/model'
+            import open_clip
+            print('Downloading BiomedCLIP...', flush=True)
+            m, _, _ = open_clip.create_model_and_transforms(
+                'hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224',
+                cache_dir='/data/model'
+            )
+            print('BiomedCLIP cached.', flush=True)
+            PY
+            else
+              echo "BiomedCLIP already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: biomedclip-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HOME,   value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 6Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: biomedclip-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: biomedclip-data
+        persistentVolumeClaim:
+          claimName: biomedclip-data
+      - name: app
+        configMap:
+          name: biomedclip-server

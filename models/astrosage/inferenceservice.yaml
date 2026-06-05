@@ -1,0 +1,222 @@
+# AstroSage-8B: Llama-3 based astronomy/astrophysics LLM (AstroMLab/AstroSage-8B)
+# Fine-tuned on astronomy literature, textbooks, and QA datasets.
+# Answers astrophysics questions, assists with data analysis and observation planning.
+# API: POST /v1/chat/completions (OpenAI-compatible)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astrosage-server
+  namespace: models
+data:
+  server.py: |
+    """
+    AstroSage-8B: Llama-3-8B fine-tuned on astronomy (AstroMLab/AstroSage-8B).
+    OpenAI-compatible chat API for astronomy and astrophysics Q&A.
+    API: POST /v1/chat/completions (OpenAI-compatible)
+         POST /v1/completions
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    pipeline = None
+    tokenizer = None
+
+    def load():
+        global pipeline, tokenizer
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading AstroSage-8B on {device}...", flush=True)
+
+        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline as hf_pipeline
+
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_DIR,
+            torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+            device_map="auto",
+        )
+        pipeline = hf_pipeline(
+            "text-generation",
+            model=model,
+            tokenizer=tokenizer,
+            device_map="auto",
+        )
+        print("AstroSage-8B ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if pipeline else "loading", "model": "astrosage"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "astrosage", "object": "model", "owned_by": "astroMLab",
+             "type": "astronomy-llm"}
+        ]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(request: dict):
+        if pipeline is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _chat, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _chat(req):
+        messages = req.get("messages", [])
+        max_tokens = req.get("max_tokens", 512)
+        temperature = req.get("temperature", 0.7)
+
+        # Fall back to simple prompt if no chat template defined
+        if tokenizer.chat_template:
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+        else:
+            prompt = "\n".join(
+                f"{m['role'].upper()}: {m['content']}" for m in messages
+            ) + "\nASSISTANT:"
+        outputs = pipeline(
+            prompt,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+            do_sample=temperature > 0,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+        text = outputs[0]["generated_text"][len(prompt):]
+
+        return {
+            "id": "astrosage-response",
+            "object": "chat.completion",
+            "model": "astrosage",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": text},
+                         "finish_reason": "stop"}],
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: astrosage-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 25Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: astrosage
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import torch; import transformers' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                transformers accelerate fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading AstroSage-8B..."
+              mkdir -p /data/model
+                /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            token = os.environ.get('HF_TOKEN')
+            snapshot_download(
+                repo_id='AstroMLab/AstroSage-8B',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('AstroSage-8B downloaded.', flush=True)
+            PY
+            else
+              echo "AstroSage-8B already on PVC."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits:   { cpu: "8", memory: 32Gi }
+        volumeMounts:
+          - { name: astrosage-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: HF_HOME,   value: /data/hf_cache }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits:   { cpu: "8", memory: 24Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 60
+        volumeMounts:
+          - { name: astrosage-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: astrosage-data
+        persistentVolumeClaim:
+          claimName: astrosage-data
+      - name: app
+        configMap:
+          name: astrosage-server

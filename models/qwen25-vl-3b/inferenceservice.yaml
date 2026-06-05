@@ -1,0 +1,123 @@
+# Qwen2.5-VL-3B: Vision-language model (Qwen/Qwen2.5-VL-3B-Instruct)
+# Dedicated PVC with init container download; 1x time-sliced L40S GPU via vLLM.
+# API: POST /v1/chat/completions (OpenAI-style with image support)
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen25-vl-3b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 150
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if Path("/data/config.json").is_file():
+                print("Model already on PVC, skipping download.", flush=True)
+            else:
+                from huggingface_hub import snapshot_download
+                print("Downloading Qwen/Qwen2.5-VL-3B-Instruct ...", flush=True)
+                snapshot_download(
+                    repo_id="Qwen/Qwen2.5-VL-3B-Instruct",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.8.4
+        args:
+          - --model=/data
+          - --served-model-name=qwen25-vl-3b
+          - --port=8080
+          - --max-model-len=4096
+          - --dtype=bfloat16
+          - --gpu-memory-utilization=0.90
+          - --trust-remote-code
+          - --limit-mm-per-prompt=image=4
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "2"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "12288"
+          limits:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "12288"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 30
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: qwen-vl-3b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 4Gi

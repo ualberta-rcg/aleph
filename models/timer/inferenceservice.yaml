@@ -1,0 +1,214 @@
+# Timer: Universal Time Series Forecasting with Decoder-only Architecture
+# thuml/timer-base-84m, 15K downloads, Apache 2.0
+# API: POST /v1/forecast {time_series: [...], prediction_length: 96}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timer-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Timer: Universal time series forecasting, Tsinghua 2024.
+    Decoder-only transformer pretrained on multi-domain TS data.
+    API: POST /v1/forecast {time_series: [...], prediction_length: 96}
+    Returns: {"forecast": [...], "model": "timer"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Timer on {DEVICE}...", flush=True)
+        from transformers import AutoModelForCausalLM, AutoConfig
+        config = AutoConfig.from_pretrained(
+            "thuml/timer-base-84m",
+            trust_remote_code=True,
+        )
+        model_obj = AutoModelForCausalLM.from_pretrained(
+            "thuml/timer-base-84m",
+            trust_remote_code=True,
+        )
+        model_obj = model_obj.to(DEVICE).eval()
+
+        # Store in global
+        global model
+        model = model_obj
+        print("Timer ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "timer"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "timer", "object": "model", "owned_by": "thuml",
+             "type": "time-series-forecasting"}
+        ]}
+
+    @app.post("/v1/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+
+        ts = req.get("time_series", [])
+        pred_len = req.get("prediction_length", 96)
+
+        if not ts:
+            raise ValueError("time_series required")
+
+        ts_arr = np.array(ts, dtype=np.float32)
+
+        # Timer requires minimum 96 input steps - pad if shorter
+        if len(ts_arr) < 96:
+            pad = np.full(96 - len(ts_arr), ts_arr[0] if len(ts_arr) > 0 else 0.0, dtype=np.float32)
+            ts_arr = np.concatenate([pad, ts_arr])
+
+        # Normalize
+        mean = ts_arr.mean()
+        std = ts_arr.std() + 1e-8
+        ts_norm = (ts_arr - mean) / std
+
+        # Timer takes input as (batch, seq_len) tensor
+        tensor = torch.tensor(ts_norm[-512:], dtype=torch.float32).unsqueeze(0).to(DEVICE)
+
+        with torch.no_grad():
+            output = model.generate(
+                inputs=tensor,
+                max_new_tokens=pred_len,
+            )
+
+        forecast_norm = output[0, -pred_len:].cpu().numpy()
+        forecast = forecast_norm * std + mean
+
+        return {
+            "model": "timer",
+            "input_length": len(ts),
+            "prediction_length": pred_len,
+            "forecast": forecast.tolist(),
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timer-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: timer
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'from transformers import AutoModelForSeq2SeqLM' 2>/dev/null; then
+              echo "Creating/updating venv..."
+              if [ ! -d /data/venv/bin ]; then
+                python3 -m venv /data/venv
+              fi
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q transformers huggingface_hub fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/hf_cache/models--thuml--timer-base-84m ]; then
+              echo "Downloading Timer-base-84m..."
+              HF_HOME=/data/hf_cache /data/venv/bin/python -c "
+            from transformers import AutoModelForCausalLM, AutoConfig
+            AutoConfig.from_pretrained('thuml/timer-base-84m', trust_remote_code=True)
+            AutoModelForCausalLM.from_pretrained('thuml/timer-base-84m', trust_remote_code=True)
+            print('Timer cached.')
+            "
+            else
+              echo "Timer already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: timer-data }
+      - name: app
+        configMap: { name: timer-server }

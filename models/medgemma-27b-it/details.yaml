@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medgemma-27b-it-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "medgemma-27b-it",
+      "type": "chat",
+      "description_short": "Google MedGemma 27B, medical multimodal (text + radiology images)",
+      "description": "Google MedGemma 27B instruction-tuned multimodal model. Fine-tuned on medical text, radiology (CXR, CT), dermatology, ophthalmology (fundus), and histopathology images. Uses SigLIP image encoder pre-trained on de-identified medical data. 128K context window. Based on Gemma 3 architecture. 2x L40S GPUs. Supports text-only and text+image inputs.",
+      "context_window": 120000,
+      "max_completion_tokens": 8000,
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "owned_by": "google",
+      "source": "google/medgemma-27b-it",
+      "source_url": "https://huggingface.co/google/medgemma-27b-it",
+      "license": "Health AI Developer Foundations Terms of Use",
+      "parameters": "27B",
+      "parameter_count": 27000000000,
+      "precision": "bfloat16",
+      "architecture": "gemma3",
+      "framework": "vllm",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 2,
+        "gpu_type": "L40S",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "startup_seconds": 300,
+        "container_image": "vllm/vllm-openai:v0.8.4",
+        "served_model_name": "medgemma-27b-it",
+        "node": "any-L40S",
+        "timeout": 150
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false,
+        "deployment_mode": "Knative"
+      },
+      "compatibility": {
+        "supports_streaming": true,
+        "supports_vision": true,
+        "supports_video": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "biomedical",
+      "subdomain": "medical-multimodal",
+      "tags": ["chat", "llm", "biomedical", "clinical", "radiology", "multimodal", "science", "vision"],
+      "content_types": ["text", "image"],
+      "languages": ["english"],
+      "tier": "production",
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string|array"},
+          "required": true,
+          "description": "Chat messages in OpenAI format. Content can include image_url objects for medical images."
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 8000, "description": "Maximum tokens to generate"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "temperature": {"type": "float", "default": 0.7, "description": "Sampling temperature"}
+      },
+      "output_map": {
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "cli_args": ["--model=/data", "--served-model-name=medgemma-27b-it", "--port=8080", "--tensor-parallel-size=2", "--max-model-len=32768", "--dtype=bfloat16", "--gpu-memory-utilization=0.92", "--trust-remote-code", "--limit-mm-per-prompt=image=5"],
+        "model_path": "/data",
+        "weight_files": ["*.safetensors"],
+        "shared_memory": "16Gi"
+      }
+    }

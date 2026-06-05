@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chemgpt-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "chemgpt-1.2b",
+      "type": "generate",
+      "description_short": "ChemGPT-1.2B — autoregressive SMILES molecule generation",
+      "description": "ChemGPT-1.2B by ncfrey. 1.2B params. GPT-Neo model trained on PubChem SMILES for autoregressive molecule generation and completion. Generates valid drug-like molecules as SMILES strings. Also provides molecular embeddings via hidden state extraction. Ideal for de novo drug design and high-throughput molecular screening. Max sequence length 512 tokens.",
+      "context_window": 512,
+      "max_completion_tokens": 500,
+      "endpoints": {
+        "primary": "/v1/science/generate",
+        "secondary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "ncfrey",
+      "source": "ncfrey/ChemGPT-1.2B",
+      "source_url": "https://huggingface.co/ncfrey/ChemGPT-1.2B",
+      "license": "MIT",
+      "parameters": "1.2B",
+      "parameter_count": 1200000000,
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "startup_seconds": 60,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "chemistry",
+      "subdomain": "molecule-generation",
+      "tags": ["generate", "chemistry", "smiles", "molecules", "drug-discovery", "gpt-neo", "autoregressive"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "smiles": {
+          "type": "string",
+          "required": false,
+          "description": "SMILES prompt for molecule completion"
+        },
+        "max_new_tokens": {
+          "type": "int",
+          "required": false,
+          "description": "Maximum new tokens to generate (default: 100, max: 500)"
+        },
+        "num_return_sequences": {
+          "type": "int",
+          "required": false,
+          "description": "Number of molecules to generate (default: 1, max: 5)"
+        }
+      },
+      "output_map": {
+        "generated": "[string]",
+        "model": "string",
+        "prompt": "string"
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace)",
+        "max_seq_length": 512,
+        "generation_strategy": "sampling"
+      }
+    }

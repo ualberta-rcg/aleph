@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fourcastnet3-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "fourcastnet3",
+      "type": "forecast",
+      "description_short": "NVIDIA FourCastNet3 Spherical Fourier Neural Operator for global weather. 73 ERA5 variables, 0.25-degree.",
+      "description": "FourCastNet3 (FCNv3) is NVIDIA's Spherical Fourier Neural Operator (SFNO) weather model operating at 0.25-degree global resolution with 73 ERA5 variables. Weights are auto-downloaded from NVIDIA NGC via the earth2studio framework on first startup. The model supports multi-step rollout forecasting. Currently runs in demo mode pending full earth2studio integration for real inference.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "nvidia",
+      "source": "nvidia/fourcastnet3",
+      "source_url": "https://huggingface.co/nvidia/fourcastnet3",
+      "license": "NVIDIA Software License",
+      "parameters": "N/A (NGC)",
+      "precision": "fp32",
+      "architecture": "Spherical Fourier Neural Operator (SFNO)",
+      "framework": "earth2studio + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "cpu_request": "4",
+        "memory_request": "16Gi",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "timeout": 600,
+        "pvc": "fourcastnet3-data (not defined in repo)",
+        "image": "python:3.11",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "fourcastnet3",
+        "api_name": "fourcastnet3",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "forecasting",
+      "tags": ["science", "weather", "forecast", "gpu", "sfno", "nvidia", "era5", "ngc"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "variables": "dict of {var_name: [[float]]} — (lat, lon) arrays e.g. t2m, u10, v10",
+        "steps": "number of 6h forecast steps to run (default 4 = 24h)",
+        "demo": "boolean — returns synthetic multi-step forecast"
+      },
+      "output_map": {
+        "forecasts": "list of {step, lead_hours, variables} per forecast step",
+        "model": "fourcastnet3"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_registry": "/data/model_registry",
+        "framework": "earth2studio",
+        "demo_mode": true
+      }
+    }

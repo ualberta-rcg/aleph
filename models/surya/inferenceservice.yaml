@@ -1,0 +1,232 @@
+# Surya 1.0: NASA-IBM Heliophysics Foundation Model
+# nasa-ibm-ai4science/Surya-1.0 — Apache 2.0, 366M params
+# Pretrained on 9 years of NASA SDO data (AIA 8ch + HMI 5ch) at 4096x4096
+# Spatiotemporal transformer with spectral gating + long-short range attention
+# API: POST /v1/science/forecast → SDO image stack → next-step solar forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: surya-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Surya 1.0 — NASA-IBM heliophysics foundation model (nasa-ibm-ai4science/Surya-1.0).
+    Apache 2.0. 366M params. 13-channel SDO input (8 AIA + 5 HMI) at 4096x4096.
+    Fine-tuned for solar flare forecasting, active region segmentation, solar wind.
+
+    API: POST /v1/science/forecast
+    Input:
+      {
+        "image": [[[[13 floats], ...], ...], ...],  # (C=13, H, W) SDO channels normalized
+        "demo": true
+      }
+    Returns:
+      {
+        "forecast": [[[[13 floats], ...], ...], ...],  # (C=13, H, W) next-step prediction
+        "flare_risk": 0.23,   # scalar risk score from final layer pooling [0,1]
+        "model": "surya-366m"
+      }
+    Note: Full 4096x4096 input uses ~6GB VRAM. For demo/testing use 256x256 patches.
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    config = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, config, DEVICE
+        import torch, yaml
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Surya-366M on {DEVICE}...", flush=True)
+
+        with open("/data/config.yaml") as f:
+            config = yaml.safe_load(f)
+
+        # Attempt to import from NASA-IMPACT/Surya repo
+        import sys
+        sys.path.insert(0, "/data/src/Surya")
+        try:
+            from surya.model import SuryaModel
+            m = SuryaModel(config)
+            ckpt = torch.load("/data/surya.366m.v1.pt", map_location="cpu", weights_only=True)
+            m.load_state_dict(ckpt, strict=False)
+            m = m.to(DEVICE).eval()
+            model = m
+            print("Surya-366M ready (SuryaModel).", flush=True)
+        except (ImportError, ModuleNotFoundError):
+            # Fallback: load raw weights and expose config
+            ckpt = torch.load("/data/surya.366m.v1.pt", map_location="cpu", weights_only=False)
+            model = ckpt
+            print("Surya-366M loaded raw (demo mode only).", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "surya-366m"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "surya-366m", "object": "model",
+             "owned_by": "nasa-ibm-ai4science", "type": "heliophysics-forecast"}
+        ]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch, numpy as np
+
+        if req.get("demo"):
+            H, W, C = 64, 64, 13
+            demo_fc = [[[float(0.5 + 0.1 * np.sin(i * 0.3 + c)) for c in range(C)]
+                        for j in range(W)] for i in range(H)]
+            return {
+                "model": "surya-366m",
+                "forecast": demo_fc,
+                "flare_risk": 0.12,
+                "demo": True,
+            }
+
+        if isinstance(model, dict):
+            return {"error": "Surya library not available; pass demo:true to test"}
+
+        image = req.get("image")
+        if image is None:
+            raise ValueError("image required: (C=13, H, W) SDO channels array")
+
+        img = torch.tensor(image, dtype=torch.float32).unsqueeze(0).to(DEVICE)  # (1, 13, H, W)
+
+        with torch.no_grad():
+            out = model(img)
+
+        if isinstance(out, (list, tuple)):
+            fc = out[0]
+        else:
+            fc = out
+
+        fc_np = fc.squeeze(0).cpu().float().numpy()
+        # Pool for a scalar flare risk indicator
+        flare_risk = float(torch.sigmoid(torch.tensor(fc_np)).mean())
+
+        return {
+            "model": "surya-366m",
+            "forecast": fc_np.tolist(),
+            "flare_risk": round(flare_risk, 4),
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: surya
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.surya-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q huggingface_hub pyyaml fastapi uvicorn
+            python3 -c "
+            import os
+            from huggingface_hub import hf_hub_download
+            token = os.environ.get('HF_TOKEN')
+            for filename in ['surya.366m.v1.pt', 'config.yaml', 'scalers.yaml']:
+                hf_hub_download(
+                    repo_id='nasa-ibm-ai4science/Surya-1.0',
+                    filename=filename,
+                    local_dir='/data',
+                    local_dir_use_symlinks=False,
+                    token=token,
+                )
+                print(f'Downloaded {filename}')
+            "
+            # Try cloning the Surya inference code
+            mkdir -p /data/src
+            git clone --depth=1 https://github.com/NASA-IMPACT/Surya /data/src/Surya 2>/dev/null || echo "Surya repo clone failed, demo mode only"
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+            pip install -q pyyaml fastapi uvicorn
+            cd /data/src/Surya && pip install -q -e . 2>/dev/null || true
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "30720" }
+          limits: { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "30720" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 180
+          periodSeconds: 15
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: surya-data }
+      - name: app
+        configMap: { name: surya-server }

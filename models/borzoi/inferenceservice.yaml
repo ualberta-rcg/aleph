@@ -1,0 +1,209 @@
+# Borzoi: RNA-seq prediction from genomic sequence (Calico/Linder 2023)
+# johahi/borzoi-pytorch, 68K downloads, CC-BY-4.0
+# API: POST /v1/science/predict {sequence: "ACGT...", n_bins: 8}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: borzoi-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Borzoi: Prediction of RNA-seq from 524kb genomic sequences.
+    Calico Research, 2023. Predicts gene expression from DNA sequence.
+    API: POST /v1/science/predict
+    Input: {"sequence": "ACGT...", "n_bins": 8}
+    Returns: {"predictions": [...], "model": "borzoi"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Borzoi on {DEVICE}...", flush=True)
+        from borzoi_pytorch import Borzoi
+        model = Borzoi.from_pretrained("johahi/borzoi-replicate-0")
+        model = model.to(DEVICE).eval()
+        print("Borzoi ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "borzoi"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "borzoi", "object": "model", "owned_by": "calico",
+             "type": "genomic-expression-prediction"}
+        ]}
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _predict, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _predict(req):
+        import torch
+        import numpy as np
+
+        sequence = req.get("sequence", "")
+        if not sequence:
+            raise ValueError("sequence required (ACGT string, ~524kb = 524288 bp)")
+
+        # One-hot encode DNA sequence
+        seq_len = 524288  # Borzoi context length
+        nuc_map = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'N': 0}
+
+        seq_pad = sequence.upper()
+        # Pad or truncate
+        if len(seq_pad) < seq_len:
+            seq_pad = seq_pad + 'N' * (seq_len - len(seq_pad))
+        elif len(seq_pad) > seq_len:
+            seq_pad = seq_pad[:seq_len]
+
+        one_hot = np.zeros((4, seq_len), dtype=np.float32)
+        for i, nuc in enumerate(seq_pad):
+            idx = nuc_map.get(nuc, 0)
+            one_hot[idx, i] = 1.0
+
+        x = torch.tensor(one_hot).unsqueeze(0).to(DEVICE)  # (1, 4, seq_len)
+
+        n_bins = req.get("n_bins", 16)
+
+        with torch.no_grad():
+            output = model(x)  # (1, bins, tracks)
+
+        preds = output.cpu().numpy()  # (1, bins, n_tracks)
+        # Take first n_bins from center
+        center = preds.shape[1] // 2
+        half = n_bins // 2
+        center_preds = preds[0, center-half:center+half, :]  # (n_bins, n_tracks)
+
+        return {
+            "model": "borzoi",
+            "sequence_length": len(sequence),
+            "bins_returned": center_preds.shape[0],
+            "num_tracks": center_preds.shape[1],
+            "predictions": center_preds.tolist(),
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: borzoi-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: borzoi
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'from borzoi_pytorch import Borzoi' 2>/dev/null; then
+              echo "Creating/updating venv..."
+              if [ ! -d /data/venv/bin ]; then
+                python3 -m venv /data/venv
+              fi
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q "borzoi-pytorch" "transformers<4.51" fastapi uvicorn einops
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/hf_cache/hub/models--johahi--borzoi-replicate-0 ]; then
+              echo "Downloading Borzoi weights..."
+              HF_HOME=/data/hf_cache /data/venv/bin/python -c "
+            from borzoi_pytorch import Borzoi
+            Borzoi.from_pretrained('johahi/borzoi-replicate-0')
+            print('Borzoi downloaded.')
+            "
+            else
+              echo "Borzoi already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: borzoi-data }
+      - name: app
+        configMap: { name: borzoi-server }

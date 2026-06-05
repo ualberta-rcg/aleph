@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scincl-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "scincl",
+      "type": "embedding",
+      "description_short": "ScINCL — scientific citation embeddings via incl-training (768-dim)",
+      "description": "ScINCL by malteos. 110M params. BERT-base model trained with incl-Training (inconsistent citation training) for scientific document embeddings. Produces CLS token embeddings that capture citation context for academic paper similarity and recommendation. Outperforms SPECTER2 on some citation-based benchmarks. Max sequence length 512 tokens.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "malteos",
+      "source": "malteos/scincl",
+      "source_url": "https://huggingface.co/malteos/scincl",
+      "license": "MIT",
+      "parameters": "110M",
+      "parameter_count": 110000000,
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "startup_seconds": 30,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "scientific-nlp",
+      "subdomain": "citation-embeddings",
+      "tags": ["embedding", "science", "nlp", "citation", "papers", "academic", "similarity"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "Scientific paper text: title + abstract"
+        }
+      },
+      "output_map": {
+        "object": "string (list)",
+        "model": "string",
+        "data": {
+          "type": "array",
+          "items": {
+            "object": "string (embedding)",
+            "index": "int",
+            "embedding": "[float x 768]"
+          }
+        },
+        "usage": {"prompt_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace)",
+        "max_seq_length": 512,
+        "pooling": "cls",
+        "embedding_dim": 768
+      }
+    }

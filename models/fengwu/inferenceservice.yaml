@@ -1,0 +1,180 @@
+# FengWu v2: Shanghai AI Lab Global Weather Forecasting Model (ONNX)
+# OpenEarthLab/FengWu — 6-hour global ERA5 forecasts, 0.25° resolution
+# 83 atmospheric variables, ONNX model downloaded from PaddleScience CDN (~1.9GB)
+# API: POST /v1/science/forecast → ERA5 state → 6-hour forecast (same as Pangu-Weather)
+# Similar to pangu-weather already deployed; same input/output format
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fengwu-server
+  namespace: models
+data:
+  server.py: |
+    """
+    FengWu v2 — Shanghai AI Lab global weather forecast model.
+    Apache 2.0. ONNX, 0.25° resolution, 6h steps, 83 ERA5 variables.
+    Input/output format matches Pangu-Weather (see pangu-weather service).
+
+    API: POST /v1/science/forecast
+    Input:
+      {
+        "surface":    [[[[float]]]], # (4, 721, 1440) surface vars: T2m, U10, V10, MSL
+        "upper":      [[[[float]]]], # (5, 13, 721, 1440) upper-air: Z, Q, T, U, V × 13 levels
+        "demo": true                 # returns zeroed forecast with correct shape
+      }
+    Returns:
+      {
+        "surface":    [[[[float]]]],  # (4, 721, 1440) next 6h surface
+        "upper":      [[[[float]]]],  # (5, 13, 721, 1440) next 6h upper-air
+        "model": "fengwu-v2",
+        "step_hours": 6
+      }
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    session = None
+
+    def load():
+        global session
+        import onnxruntime as ort, numpy as np
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        print("Loading FengWu v2 ONNX...", flush=True)
+        session = ort.InferenceSession("/data/fengwu_v2.onnx", providers=providers)
+        provider = session.get_providers()[0]
+        print(f"FengWu v2 ready on {provider}.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if session else "loading", "model": "fengwu-v2"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "fengwu-v2", "object": "model",
+             "owned_by": "OpenEarthLab", "type": "weather-forecast"}
+        ]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if session is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import numpy as np
+
+        if req.get("demo"):
+            return {
+                "model": "fengwu-v2",
+                "surface": np.zeros((4, 721, 1440), dtype=np.float32).tolist(),
+                "upper": np.zeros((5, 13, 721, 1440), dtype=np.float32).tolist(),
+                "step_hours": 6,
+                "demo": True,
+            }
+
+        surface = np.array(req["surface"], dtype=np.float32)   # (4, 721, 1440)
+        upper   = np.array(req["upper"],   dtype=np.float32)   # (5, 13, 721, 1440)
+
+        # FengWu expects batch dimension
+        inputs = {
+            "input": upper[np.newaxis],          # (1, 5, 13, 721, 1440)
+            "input_surface": surface[np.newaxis], # (1, 4, 721, 1440)
+        }
+        out_surf, out_upper = session.run(None, inputs)
+
+        return {
+            "model": "fengwu-v2",
+            "surface": out_surf[0].tolist(),
+            "upper": out_upper[0].tolist(),
+            "step_hours": 6,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: fengwu
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.fengwu-ready-v1
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq curl
+            pip install -q onnxruntime-gpu fastapi uvicorn
+            echo "Downloading FengWu v2 ONNX from PaddleScience CDN (~1.9GB)..."
+            curl -L --retry 5 --retry-delay 10 -o /data/fengwu_v2.onnx \
+              "https://paddle-org.bj.bcebos.com/paddlescience/models/Fengwu/fengwu_v2.onnx"
+            echo "Download complete: $(du -sh /data/fengwu_v2.onnx)"
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install -q onnxruntime-gpu fastapi uvicorn
+            python /app/server.py
+        env:
+          - { name: HF_HOME, value: /tmp }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "30720" }
+          limits: { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "30720" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: fengwu-data }
+      - name: app
+        configMap: { name: fengwu-server }

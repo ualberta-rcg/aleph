@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kandinsky-3-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "kandinsky-3",
+      "type": "image",
+      "description_short": "Kandinsky 3 text-to-image and image-to-image generation",
+      "description": "Kandinsky 3 (ai-forever/Kandinsky-3) is a text-to-image diffusion model by Sber AI. Generates images from text prompts and supports image editing (img2img). Uses diffusers AutoPipeline with fp16 variant on GPU. Deployed via Ray Serve (not KServe) with a dedicated head + GPU worker architecture. OpenAI-compatible /v1/images/generations endpoint. Always-on (minReplicas=1).",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/images/generations",
+        "edit": "/v1/images/edits",
+        "health": "/healthz"
+      },
+      "owned_by": "ai-forever",
+      "source": "ai-forever/Kandinsky-3",
+      "source_url": "https://huggingface.co/ai-forever/Kandinsky-3",
+      "license": "Apache-2.0",
+      "parameters": "~5B",
+      "parameter_count": 5000000000,
+      "precision": "fp16",
+      "architecture": "diffusion (diffusers AutoPipelineForText2Image)",
+      "framework": "ray-serve",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "min_replicas": 1,
+        "max_replicas": 1,
+        "startup_seconds": 180,
+        "container_image": "rayproject/ray:2.44.1-py311-gpu",
+        "timeout": 300,
+        "k8s_resource_type": "RayService"
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": true,
+        "backend": "http://kandinsky-serve-svc.models.svc.cluster.local:8000"
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "image-generation",
+      "subdomain": "text-to-image",
+      "tags": ["image-generation", "text-to-image", "img2img", "gpu"],
+      "content_types": ["text", "image"],
+      "languages": [],
+      "tier": "production",
+      "input_map": {
+        "text2img": {
+          "prompt": {"type": "string", "required": true, "description": "Text prompt for image generation"},
+          "negative_prompt": {"type": "string", "required": false, "default": ""},
+          "n": {"type": "integer", "required": false, "default": 1, "description": "Number of images (max 4)"},
+          "size": {"type": "string", "required": false, "default": "1024x1024"},
+          "num_inference_steps": {"type": "integer", "required": false, "default": 25},
+          "guidance_scale": {"type": "float", "required": false, "default": 4.0},
+          "seed": {"type": "integer", "required": false},
+          "quality": {"type": "string", "required": false, "description": "Set to 'hd' for >=50 steps"}
+        },
+        "img2img": {
+          "prompt": {"type": "string", "required": true},
+          "image": {"type": "string (base64)", "required": true, "description": "Source image as base64"},
+          "strength": {"type": "float", "required": false, "default": 0.75},
+          "num_inference_steps": {"type": "integer", "required": false, "default": 25},
+          "guidance_scale": {"type": "float", "required": false, "default": 4.0}
+        }
+      },
+      "output_map": {
+        "created": {"type": "integer", "description": "Unix timestamp"},
+        "data": {"type": "array", "description": "List of {b64_json: base64-encoded PNG image}"}
+      },
+      "server_config": {
+        "inference_backend": "diffusers (AutoPipelineForText2Image + AutoPipelineForImage2Image)",
+        "model_path": "/mnt/models/kandinsky-3",
+        "variant": "fp16",
+        "torch_dtype": "float16",
+        "dependencies": "diffusers==0.29.2 transformers>=4.35.0,<4.50.0 accelerate>=0.26.0 huggingface_hub sentencepiece safetensors protobuf torch>=2.0.0",
+        "pip_note": "Dependencies declared in Ray Serve runtime_env; model weights pre-loaded via download-job.yaml",
+        "ray_config": "1 head pod (no GPU) + 1 GPU worker (L40S); CPU offload enabled"
+      }
+    }

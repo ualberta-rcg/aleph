@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gena-lm-large-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "gena-lm-large",
+      "type": "embedding",
+      "description_short": "Large DNA BERT for long genomic sequences (340M, AIRI)",
+      "description": "GENA-LM-large is the large variant of GENA-LM from AIRI Institute. 340M parameters trained on hg38+T2T human genome, handles up to 36kb context. Upgrade from gena-lm-base for complex genomic element classification. Uses CLS token embedding instead of mean pooling.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "AIRI-Institute",
+      "source": "AIRI-Institute/gena-lm-bert-large-t2t",
+      "source_url": "https://huggingface.co/AIRI-Institute/gena-lm-bert-large-t2t",
+      "license": "Apache-2.0",
+      "parameters": "340M",
+      "precision": "float32",
+      "architecture": "BERT-large (DNA tokenizer)",
+      "framework": "transformers<4.45 + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 1, "cpu_request": "1", "memory_request": "2Gi", "pvc": "gena-lm-large-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "gena-lm-large", "api_name": "gena-lm-large"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["sequence", "sequences"]},
+      "domain": "genomics",
+      "subdomain": "dna-embedding",
+      "tags": ["embedding", "science", "genomics", "dna", "human-genome", "gpu"],
+      "content_types": ["text"],
+      "languages": ["dna"],
+      "input_map": {"sequence": "DNA sequence", "sequences": "[str] multiple sequences"},
+      "output_map": {"embeddings": "[[float]]", "model": "gena-lm-large", "dim": "int"},
+      "tier": 2
+    }

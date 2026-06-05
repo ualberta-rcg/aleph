@@ -1,0 +1,237 @@
+# MatterGen: Microsoft crystal structure generation via diffusion (microsoft/mattergen)
+# 45M parameter diffusion model trained on Materials Project. Nature 2025.
+# Generates novel crystal structures conditioned on chemical system or properties.
+# API: POST /v1/science/generate
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mattergen-server
+  namespace: models
+data:
+  server.py: |
+    """
+    MatterGen: diffusion model for crystal structure generation (microsoft/mattergen).
+    Nature 2025. Conditioned generation by chemical system, space group, or bulk modulus.
+    API: POST /v1/science/generate
+    Input: {"chemical_system": "Li-Fe-O", "num_structures": 5, "checkpoint": "mattergen_base"}
+    Returns: {"structures": [{"formula": "...", "lattice": [...], "sites": [...]}], "model": "mattergen"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    pipeline = None
+
+    def load():
+        global pipeline
+        import subprocess, sys, os
+        # Verify mattergen-generate CLI is available
+        repo_path = os.path.join(MODEL_DIR, "repo")
+        venv_python = "/data/mg-venv/bin/python"
+        result = subprocess.run(
+            [venv_python, "-c", "import mattergen; print('mattergen ok')"],
+            capture_output=True, text=True, cwd=repo_path,
+            env={**os.environ, "MODELS_PROJECT_ROOT": repo_path}
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"mattergen import failed: {result.stderr[-300:]}")
+        pipeline = {"python": venv_python, "repo": repo_path}
+        print("MatterGen CLI ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if pipeline is not None else "loading", "model": "mattergen"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "mattergen", "object": "model", "owned_by": "microsoft",
+             "type": "crystal-structure-generation"}
+        ]}
+
+    @app.post("/v1/science/generate")
+    async def generate(request: dict):
+        if pipeline is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _generate, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _generate(req):
+        import tempfile, subprocess, os, json, glob
+        chemical_system = req.get("chemical_system")
+        num_structures = req.get("num_structures", 5)
+
+        # Use mattergen-generate CLI for generation
+        import sys
+        repo_path = os.path.join(MODEL_DIR, "repo")
+        if repo_path not in sys.path:
+            sys.path.insert(0, repo_path)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cmd = [
+                sys.executable, "-m", "mattergen.scripts.generate",
+                tmpdir,
+                f"--pretrained-name=mattergen_base",
+                f"--batch_size={num_structures}",
+                "--num_batches=1",
+                "--record-trajectories=False",
+            ]
+            if chemical_system:
+                cmd.append(f"--properties_to_condition_on={{\"chemical_system\": \"{chemical_system}\"}}")
+
+            env = dict(os.environ)
+            env["MATTERGEN_CHECKPOINT_DIR"] = os.path.join(MODEL_DIR, "checkpoints")
+
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    cwd=repo_path, env=env, timeout=300)
+            if result.returncode != 0:
+                raise RuntimeError(f"mattergen-generate failed: {result.stderr[-500:]}")
+
+            # Parse CIF files
+            structures = []
+            for cif_file in glob.glob(os.path.join(tmpdir, "*.cif")):
+                with open(cif_file) as f:
+                    structures.append({"cif": f.read(), "file": os.path.basename(cif_file)})
+
+        return {
+            "model": "mattergen",
+            "chemical_system": chemical_system,
+            "num_structures": len(structures),
+            "structures": structures,
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: mattergen
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
+
+            VENV=/data/mg-venv
+            if [ ! -d "$VENV" ] || ! "$VENV/bin/python" -c 'import torch, ase, pymatgen, omegaconf, torch_geometric, pytorch_lightning, fire, emmet' 2>/dev/null; then
+              echo "Creating mattergen venv at $VENV..."
+              python3 -m venv "$VENV" 2>/dev/null || { python3 -m venv --clear "$VENV"; }
+              "$VENV/bin/pip" install -q -U pip
+              "$VENV/bin/pip" install -q \
+                "torch==2.2.1" "torchvision==0.17.1" "torchaudio==2.2.1" \
+                --index-url https://download.pytorch.org/whl/cu118
+              "$VENV/bin/pip" install -q \
+                "torch_geometric>=2.5" \
+                --find-links https://data.pyg.org/whl/torch-2.2.1+cu118.html
+              "$VENV/bin/pip" install -q \
+                "torch_scatter" "torch_sparse" "torch_cluster" \
+                --find-links https://data.pyg.org/whl/torch-2.2.1+cu118.html
+              "$VENV/bin/pip" install -q \
+                "ase>=3.22,<=3.25" "numpy<2.0" pymatgen fastapi uvicorn \
+                huggingface_hub "hydra-core==1.3.1" "omegaconf==2.3.0" \
+                "wandb>=0.10.33" "matplotlib==3.8.4" pytorch_lightning fire \
+                "emmet-core" mp-api
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/model/checkpoints/mattergen_base ]; then
+              echo "Downloading MatterGen checkpoints..."
+              mkdir -p /data/model
+                /data/mg-venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            token = os.environ.get('HF_TOKEN')
+            snapshot_download(
+                repo_id='microsoft/mattergen',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('MatterGen downloaded.', flush=True)
+            PY
+            else
+              echo "MatterGen already on PVC."
+            fi
+
+            if [ ! -d /data/model/repo ]; then
+              echo "Cloning MatterGen repo..."
+              git clone --depth 1 https://github.com/microsoft/mattergen.git /data/model/repo
+              cd /data/model/repo && /data/mg-venv/bin/pip install -q -e . --no-deps
+              echo "Repo ready."
+            else
+              echo "Repo exists."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: mattergen-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/mg-venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTHONPATH, value: /data/model/repo }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 90
+          periodSeconds: 20
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 60
+        volumeMounts:
+          - { name: mattergen-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: mattergen-data
+        persistentVolumeClaim:
+          claimName: mattergen-data
+      - name: app
+        configMap:
+          name: mattergen-server

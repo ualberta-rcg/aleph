@@ -1,0 +1,266 @@
+# Aurora: Microsoft's AI weather forecasting model (microsoft/aurora)
+# 1.3B parameter model for global medium-range weather forecasting
+# Nature 2025 paper. 0.25° resolution, 6h steps.
+# API: POST /v1/science/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aurora-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Aurora weather forecasting model (microsoft/aurora).
+    Accepts current atmospheric state, returns 6-hour forecast.
+    API: POST /v1/science/forecast
+    Input JSON:
+      {
+        "surf_vars": {
+          "2t":  [[...]]   # 2m temperature (K), shape [lat, lon]
+          "10u": [[...]]   # 10m u-wind (m/s)
+          "10v": [[...]]   # 10m v-wind (m/s)
+          "msl": [[...]]   # mean sea-level pressure (Pa)
+        },
+        "atmos_vars": {
+          "t":  [[[...]]]  # temperature at pressure levels, shape [level, lat, lon]
+          "u":  [[[...]]]
+          "v":  [[[...]]]
+          "q":  [[[...]]]  # specific humidity
+          "z":  [[[...]]]  # geopotential
+        },
+        "lat": [90, ..., -90],
+        "lon": [0, ..., 359.75],
+        "time": "2024-01-01T00:00:00",
+        "atmos_levels": [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]
+      }
+    Returns: same structure for the next 6-hour step.
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+
+    def load():
+        global model
+        import torch
+        from aurora import AuroraSmallPretrained
+        print("Loading Aurora 0.25-small-pretrained...", flush=True)
+        # Set HF_HOME so load_checkpoint uses PVC cache (files already downloaded there)
+        os.environ["HF_HOME"] = MODEL_DIR
+        # AuroraSmallPretrained has correct smaller architecture for the small checkpoint
+        m = AuroraSmallPretrained()
+        m.load_checkpoint(
+            "microsoft/aurora",
+            "aurora-0.25-small-pretrained.ckpt",
+        )
+        m.eval()
+        if torch.cuda.is_available():
+            m = m.cuda()
+        model = m
+        print("Aurora ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "aurora"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "aurora", "object": "model", "owned_by": "microsoft",
+             "type": "weather-forecast"}
+        ]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+        from datetime import datetime
+        from aurora import Batch, Metadata
+
+        lat  = torch.tensor(req["lat"],  dtype=torch.float32)
+        lon  = torch.tensor(req["lon"],  dtype=torch.float32)
+        time = (datetime.fromisoformat(req["time"]),)
+        atmos_levels = tuple(req.get("atmos_levels",
+            [50,100,150,200,250,300,400,500,600,700,850,925,1000]))
+
+        def _t(v, ndim=2):
+            arr = np.array(v, dtype=np.float32)
+            # Add batch dim: (1, ...) for surf; (1, levels, lat, lon) for atmos
+            return torch.tensor(arr).unsqueeze(0)
+
+        surf_vars  = {k: _t(v) for k, v in req["surf_vars"].items()}
+        atmos_vars = {k: _t(v) for k, v in req["atmos_vars"].items()}
+
+        # Load static vars from pickle and interpolate to input grid size
+        import pickle, glob, torch.nn.functional as F
+        H_in = len(req["lat"])
+        W_in = len(req["lon"])
+        static_files = glob.glob(os.path.join(MODEL_DIR, "**", "aurora-0.25-static.pickle"), recursive=True)
+        static_path = static_files[0] if static_files else ""
+        if os.path.exists(static_path):
+            with open(static_path, "rb") as f:
+                raw_static = pickle.load(f)
+            static_vars = {}
+            for k, v in raw_static.items():
+                t = (torch.from_numpy(np.array(v, dtype=np.float32))
+                     if not isinstance(v, torch.Tensor) else v.float())
+                # Interpolate static grid to match input lat/lon dimensions
+                if t.shape != (H_in, W_in):
+                    t = F.interpolate(
+                        t.unsqueeze(0).unsqueeze(0),
+                        size=(H_in, W_in),
+                        mode="bilinear", align_corners=True,
+                    ).squeeze(0).squeeze(0)
+                static_vars[k] = t
+        else:
+            static_vars = {}
+
+        batch = Batch(
+            surf_vars=surf_vars,
+            atmos_vars=atmos_vars,
+            static_vars=static_vars,
+            metadata=Metadata(lat=lat, lon=lon, time=time,
+                               atmos_levels=atmos_levels),
+        )
+
+        with torch.inference_mode():
+            pred = model.forward(batch)
+
+        def _to_list(t):
+            return t.squeeze(0).cpu().numpy().tolist()
+
+        return {
+            "model": "aurora",
+            "step": "6h",
+            "surf_vars":  {k: _to_list(v) for k, v in pred.surf_vars.items()},
+            "atmos_vars": {k: _to_list(v) for k, v in pred.atmos_vars.items()},
+            "lat": lat.tolist(),
+            "lon": lon.tolist(),
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: aurora
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import torchvision; from torchvision import ops' 2>/dev/null; then
+              echo "Creating venv (or fixing torchvision mismatch)..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              # Install torch + torchvision together from same cu126 index to ensure matching versions
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" torchvision torchaudio \
+                --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q \
+                "microsoft-aurora" \
+                fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists and torchvision OK, skipping."
+            fi
+
+            AURORA_CACHE="/data/model/hub/models--microsoft--aurora"
+            SMALL_FILE="$AURORA_CACHE/snapshots"
+            if [ ! -d "$AURORA_CACHE" ] || [ ! -f /data/model/aurora-ready-v2 ]; then
+              echo "Downloading Aurora small-pretrained checkpoint..."
+              mkdir -p /data/model
+              HF_HOME=/data/model /data/venv/bin/python -u <<'PY'
+            import os
+            os.environ['HF_HOME'] = '/data/model'
+            from huggingface_hub import hf_hub_download
+            token = os.environ.get('HF_TOKEN')
+            for fname in ['aurora-0.25-small-pretrained.ckpt', 'aurora-0.25-static.pickle']:
+                print(f'Downloading {fname}...', flush=True)
+                hf_hub_download(repo_id='microsoft/aurora', filename=fname, token=token)
+            print('Downloads complete.', flush=True)
+            PY
+              touch /data/model/aurora-ready-v2
+            else
+              echo "Aurora weights already in HF cache on PVC."
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: aurora-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR,  value: /data/model }
+          - { name: HF_HOME,    value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        volumeMounts:
+          - { name: aurora-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: aurora-data
+        persistentVolumeClaim:
+          claimName: aurora-data
+      - name: app
+        configMap:
+          name: aurora-server

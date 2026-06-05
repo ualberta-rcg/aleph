@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: phi-4-reasoning-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "phi-4-reasoning",
+      "type": "chat",
+      "description_short": "Microsoft Phi-4 Reasoning 14B, chain-of-thought math/science/code",
+      "description": "Microsoft Phi-4-reasoning 14B dense decoder-only Transformer. Fine-tuned from Phi-4 using SFT on chain-of-thought traces and RL. Excels at math, science, and coding reasoning. Outputs two sections: a reasoning chain-of-thought block followed by a summarization block. 32K context window. 1x L40S GPU. Uses --enable-reasoning and --reasoning-parser=deepseek_r1 for proper thought parsing.",
+      "context_window": 32768,
+      "max_completion_tokens": 16000,
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/Phi-4-reasoning",
+      "source_url": "https://huggingface.co/microsoft/Phi-4-reasoning",
+      "license": "MIT",
+      "parameters": "14B",
+      "parameter_count": 14000000000,
+      "precision": "bfloat16",
+      "architecture": "phi-4",
+      "framework": "vllm",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "startup_seconds": 180,
+        "container_image": "vllm/vllm-openai:v0.8.4",
+        "served_model_name": "phi-4-reasoning",
+        "node": "any-L40S",
+        "timeout": 150
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false,
+        "deployment_mode": "Knative"
+      },
+      "compatibility": {
+        "supports_streaming": true,
+        "supports_vision": false,
+        "supports_video": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "reasoning_model": true,
+        "needs_json_fixing": false,
+        "strips_thinking": true
+      },
+      "domain": "nlp",
+      "subdomain": "reasoning",
+      "tags": ["chat", "llm", "reasoning", "math", "science", "code"],
+      "content_types": ["text"],
+      "languages": ["english"],
+      "tier": "production",
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string"},
+          "required": true,
+          "description": "Chat messages in OpenAI format. HF recommends a specific system prompt for best results."
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 16000, "description": "Maximum tokens to generate. HF recommends 32768 for complex queries."},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "temperature": {"type": "float", "default": 0.8, "description": "HF recommends 0.8 (MUST use do_sample=True)"},
+        "top_k": {"type": "integer", "default": 50, "description": "HF recommends 50"},
+        "top_p": {"type": "float", "default": 0.95, "description": "HF recommends 0.95"}
+      },
+      "output_map": {
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "cli_args": ["--model=/data", "--served-model-name=phi-4-reasoning", "--port=8080", "--max-model-len=32768", "--dtype=bfloat16", "--gpu-memory-utilization=0.90", "--trust-remote-code", "--enable-reasoning", "--reasoning-parser=deepseek_r1"],
+        "model_path": "/data",
+        "weight_files": ["*.safetensors"],
+        "shared_memory": "8Gi"
+      }
+    }

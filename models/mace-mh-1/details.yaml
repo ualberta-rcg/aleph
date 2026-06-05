@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mace-mh-1-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "mace-mh-1",
+      "type": "force-field",
+      "description_short": "MACE-MH-1 multi-head foundation force field for cross-domain atomistic simulation (inorganic, molecular, surfaces, reactive chemistry).",
+      "description": "MACE-MH-1 is a multi-head foundation ML interatomic potential from mace-foundations. It covers 89 elements across 7 specialized heads: omat_pbe (inorganic solids), omol (molecules), spice_wB97M (SPICE dataset), rgd1_b3lyp (RGD1 reactions), oc20_usemppbe (catalysis), matpes_r2scan (Materials Project PES), and oc20_usemppbe. Each head is optimized for a different chemical domain. Uses equivariant MACE architecture with float64 precision. GPU-accelerated with CUDA fallback to CPU.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "mace-foundations",
+      "source": "mace-foundations/mace-mh-1",
+      "source_url": "https://huggingface.co/mace-foundations/mace-mh-1",
+      "license": "ASL (academic/non-commercial)",
+      "parameters": "~50M",
+      "precision": "float64",
+      "architecture": "MACE multi-head (equivariant MPNN, 7 heads)",
+      "framework": "mace-torch + ASE + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "4",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "mace-mh-1-data (5Gi NFS)",
+        "image": "python:3.11-slim",
+        "venv": true,
+        "sentinel": "/data/venv/.mace-mh1-ready"
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "mace-mh-1",
+        "api_name": "mace-mh-1",
+        "gateway_type": "force-field"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "materials-science",
+      "subdomain": "interatomic-potentials",
+      "tags": ["science", "materials", "force-field", "molecular-dynamics", "chemistry", "multi-head", "gpu", "mace"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "elements": "array of element symbols e.g. [\"Cu\", \"Cu\"]",
+        "positions": "array of [x,y,z] positions in Angstroms",
+        "lattice": "optional 3x3 cell vectors for periodic systems",
+        "head": "one of: omat_pbe, omol, spice_wB97M, rgd1_b3lyp, oc20_usemppbe, matpes_r2scan (default: omat_pbe)"
+      },
+      "output_map": {
+        "energy_eV": "total potential energy in eV",
+        "forces_eV_per_Ang": "per-atom forces in eV/Angstrom",
+        "stress_eV_per_Ang3": "Voigt 6-component stress tensor (periodic only)"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/models/mace-mh-1.model",
+        "valid_heads": ["omat_pbe", "omol", "spice_wB97M", "rgd1_b3lyp", "oc20_usemppbe", "matpes_r2scan"]
+      }
+    }

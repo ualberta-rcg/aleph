@@ -1,0 +1,145 @@
+# OceanGPT-30B-A3B-Instruct: ocean science LLM (zjunlp/OceanGPT-basic-30B-A3B-Instruct)
+# Qwen3-MoE: 30.5B total params (128 experts, 8 active), ~3B active per token.
+# 128-expert weights (~61GB) need 2x L40S with tensor parallel.
+# API: POST /v1/chat/completions (OpenAI-style)
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: oceangpt-30b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os
+            from pathlib import Path
+            if Path("/data/config.json").is_file():
+                print("OceanGPT weights already on PVC, skipping download.", flush=True)
+            else:
+                from huggingface_hub import snapshot_download
+                print("Downloading zjunlp/OceanGPT-basic-30B-A3B-Instruct ...", flush=True)
+                snapshot_download(
+                    repo_id="zjunlp/OceanGPT-basic-30B-A3B-Instruct",
+                    local_dir="/data",
+                    local_dir_use_symlinks=False,
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                print("Download finished.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: oceangpt-30b-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.8.4
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            # VRAM guard: need ~25GB free per GPU (experts split across 2 GPUs).
+            NEED_MB=25000
+            for i in $(seq 1 6); do
+              FREE_MB=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+              echo "[VRAM-GUARD] attempt $i: free=${FREE_MB}MB need=${NEED_MB}MB"
+              if [ -n "$FREE_MB" ] && [ "$FREE_MB" -ge "$NEED_MB" ]; then
+                echo "[VRAM-GUARD] enough VRAM, starting vLLM (2-GPU tensor parallel)"
+                exec vllm serve /data \
+                  --served-model-name=oceangpt-30b \
+                  --port 8080 \
+                  --tensor-parallel-size 2 \
+                  --max-model-len 8192 \
+                  --dtype bfloat16 \
+                  --gpu-memory-utilization 0.90 \
+                  --trust-remote-code
+              fi
+              echo "[VRAM-GUARD] not enough VRAM, retrying in 10s..."
+              sleep 10
+            done
+            echo "[VRAM-GUARD] giving up after 6 attempts, exiting to reschedule"
+            exit 1
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "2"
+            nvidia.com/gpumem: "40960"
+          limits:
+            cpu: "16"
+            memory: 48Gi
+            nvidia.com/gpu: "2"
+            nvidia.com/gpumem: "40960"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 40
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: oceangpt-30b-data
+            mountPath: /data
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: oceangpt-30b-data
+        persistentVolumeClaim:
+          claimName: oceangpt-30b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

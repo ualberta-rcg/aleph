@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prithvi-wxc-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "prithvi-wxc",
+      "type": "embed",
+      "description_short": "NASA-IBM Prithvi-WxC 2.3B weather-climate foundation model. MERRA-2, 160 variables, 0.5-degree.",
+      "description": "Prithvi-WxC is a 2.3B parameter weather-climate foundation model from NASA-IBM trained on MERRA-2 reanalysis data. It processes 160 atmospheric variables on a 0.5-degree global grid. The rollout variant (ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout) is optimized for forecasting with 6-hour steps up to 168 hours. The 28.4GB checkpoint requires significant GPU memory. Currently in demo mode with full inference pipeline pending implementation. Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "ibm-nasa-geospatial",
+      "source": "ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout",
+      "source_url": "https://huggingface.co/ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout",
+      "license": "Apache-2.0",
+      "parameters": "2.3B",
+      "precision": "fp16 (GPU), fp32 (CPU)",
+      "architecture": "ViT MAE with climate-specific modifications (patch-based, Fourier positional encoding)",
+      "framework": "PrithviWxC + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "cpu_request": "8",
+        "memory_request": "64Gi",
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "timeout": 600,
+        "pvc": "prithvi-wxc-data (inline)",
+        "image": "python:3.11",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "prithvi-wxc",
+        "api_name": "prithvi-wxc",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "forecasting",
+      "tags": ["science", "weather", "climate", "forecast", "merra-2", "nasa", "ibm", "gpu", "large-model"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "state": "dict of {var_name: [[float], ...]} — MERRA-2 variable arrays",
+        "lead_time": "forecast lead time in hours (multiples of 6, up to 168)",
+        "demo": "boolean — returns synthetic forecast"
+      },
+      "output_map": {
+        "forecast": "dict of {var_name: [[float], ...]} — same structure as input",
+        "lead_time_hours": "forecast lead time used",
+        "model": "prithvi-wxc-2300m"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "checkpoint": "/data/prithvi.wxc.rollout.2300m.v1.pt (28.4GB)",
+        "config": "/data/config.yaml",
+        "src_path": "/data/src/prithvi-wxc",
+        "demo_mode": true
+      }
+    }

@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: climax-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "climax",
+      "type": "forecast",
+      "description_short": "Microsoft ClimaX 108M climate/weather foundation model pre-trained on CMIP6, fine-tuned on ERA5.",
+      "description": "Microsoft ClimaX is a 108M parameter ViT-based climate foundation model pre-trained on CMIP6 climate simulations and fine-tuned on ERA5 reanalysis data. It supports diverse weather forecasting and climate projection tasks at 5.625-degree resolution. The model accepts variable names and corresponding gridded data with configurable lead times. It uses a ViT architecture with patch embedding and variable-aware tokenization.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/forecast",
+        "health": "/health"
+      },
+      "owned_by": "microsoft",
+      "source": "microsoft/ClimaX",
+      "source_url": "https://github.com/microsoft/ClimaX",
+      "license": "MIT",
+      "parameters": "108M",
+      "precision": "fp32",
+      "architecture": "ViT (patch_size=2, embed_dim=1024, depth=8, num_heads=16, decoder_depth=2)",
+      "framework": "PyTorch + timm 0.6.13",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "2",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "timeout": 300,
+        "pvc": "climax-data (5Gi, NFS)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "climax",
+        "api_name": "climax",
+        "gateway_type": "forecast"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "weather-climate",
+      "subdomain": "forecasting",
+      "tags": ["science", "climate", "weather", "forecast", "gpu", "cmip6", "era5"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "variables": "list of variable names e.g. [t2m, u10, v10, msl, z500, t850]",
+        "data": "list of [lat x lon] grids matching variables order",
+        "lead_time": "forecast lead time in hours (default 72)"
+      },
+      "output_map": {
+        "forecast": "predicted variable grids (same shape as input data)",
+        "lead_time_hours": "lead time used",
+        "variables": "variable names"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model",
+        "checkpoint": "5.625deg.ckpt or 1.40625deg.ckpt",
+        "repo_path": "/data/model/repo (cloned from GitHub)"
+      }
+    }

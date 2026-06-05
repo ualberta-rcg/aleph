@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gena-lm-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "gena-lm",
+      "type": "embedding",
+      "description_short": "BERT-style DNA language model trained on T2T human genome (AIRI)",
+      "description": "GENA-LM is a BERT-style DNA language model from AIRI Institute trained on the T2T human genome. Produces embeddings for DNA sequences up to 512bp. Uses output_hidden_states for last-layer embeddings. 110M parameters. Apache 2.0 license.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "AIRI-Institute",
+      "source": "AIRI-Institute/gena-lm-bert-base-t2t",
+      "source_url": "https://huggingface.co/AIRI-Institute/gena-lm-bert-base-t2t",
+      "license": "Apache-2.0",
+      "parameters": "110M",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "BERT (DNA tokenizer)",
+      "framework": "transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "gena-lm-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "gena-lm", "api_name": "gena-lm"},
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
+      "domain": "genomics",
+      "subdomain": "dna-embedding",
+      "tags": ["embedding", "science", "genomics", "dna", "human-genome", "gpu"],
+      "content_types": ["text"],
+      "languages": ["dna"],
+      "input_map": {"input": "DNA sequence (ACGT)", "sequences": "alias for input"},
+      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "gena-lm"},
+      "tier": 2
+    }

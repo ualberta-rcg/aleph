@@ -1,0 +1,221 @@
+# ChemGPT-1.2B: GPT-Neo trained on PubChem SMILES for molecule generation (ncfrey/ChemGPT-1.2B)
+# 1.2B params, MIT license. Autoregressive SMILES generation and completion.
+# 2400+ HuggingFace downloads. Generates valid drug-like molecules as SMILES strings.
+# API: POST /v1/science/generate  (prompt SMILES → generated molecules)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chemgpt-server
+  namespace: models
+data:
+  server.py: |
+    """
+    ChemGPT-1.2B: Autoregressive SMILES generation for drug discovery.
+    API: POST /v1/science/generate -> {"smiles": "CC(=O)", "max_new_tokens": 50} -> {"generated": [...]}
+         POST /v1/science/embed   -> {"smiles": "CC(=O)Oc1ccccc1C(=O)O"} -> {"embedding": [...]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    tokenizer = None
+    model = None
+    DEVICE = "cpu"
+
+    def load():
+        global tokenizer, model, DEVICE
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ChemGPT-1.2B on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        model = AutoModelForCausalLM.from_pretrained(MODEL_DIR, torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"ChemGPT-1.2B ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": "chemgpt-1.2b"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"models": [{"id": "chemgpt-1.2b", "description": "ChemGPT SMILES molecule generation (1.2B params)"}]}
+
+    @app.post("/v1/science/generate")
+    async def generate(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        prompt = payload.get("smiles", "")
+        max_new_tokens = min(payload.get("max_new_tokens", 100), 500)
+        num_return = min(payload.get("num_return_sequences", 1), 5)
+        temperature = payload.get("temperature", 1.0)
+        enc = tokenizer(prompt, return_tensors="pt").to(DEVICE)
+        with torch.no_grad():
+            out = model.generate(
+                **enc,
+                max_new_tokens=max_new_tokens,
+                num_return_sequences=num_return,
+                temperature=temperature,
+                do_sample=temperature != 1.0 or num_return > 1,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        generated = [tokenizer.decode(o, skip_special_tokens=True) for o in out]
+        return {"generated": generated, "model": "chemgpt-1.2b", "prompt": prompt}
+
+    @app.post("/v1/science/embed")
+    async def embed(payload: dict):
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        smiles_list = payload.get("smiles_list") or ([payload.get("smiles")] if payload.get("smiles") else None)
+        if not smiles_list:
+            return JSONResponse({"error": "provide smiles or smiles_list"}, 400)
+        enc = tokenizer(smiles_list, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc, output_hidden_states=True)
+        # Use last hidden state mean pooled as embedding
+        last_hidden = out.hidden_states[-1]
+        mask = enc["attention_mask"].unsqueeze(-1).float()
+        embeddings = (last_hidden * mask).sum(1) / mask.sum(1)
+        return {"embeddings": embeddings.cpu().tolist(), "model": "chemgpt-1.2b", "dim": embeddings.shape[-1]}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chemgpt-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: chemgpt
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
+    autoscaling.knative.dev/scaleToZeroPodRetentionPeriod: "10m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: chemgpt-data
+      - name: server-code
+        configMap:
+          name: chemgpt-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "1"
+          limits:
+            memory: "8Gi"
+            cpu: "2"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf_cache
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi" 2>/dev/null; then
+              echo "Creating venv..."
+              python -m venv $VENV --clear
+              $VENV/bin/pip install --quiet --upgrade pip
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet transformers accelerate huggingface_hub fastapi uvicorn
+              echo "Venv ready"
+            else
+              echo "Venv OK"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading ChemGPT-1.2B..."
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            snapshot_download(
+              repo_id='ncfrey/ChemGPT-1.2B',
+              local_dir='/data/model',
+              token=os.environ['HF_TOKEN'],
+              ignore_patterns=['*.msgpack','flax_model*','tf_model*','*.h5'],
+            )
+            print('Download complete')
+            "
+            else
+              echo "Model already downloaded"
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        resources:
+          requests:
+            memory: "6Gi"
+            cpu: "1"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+          limits:
+            memory: "10Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+          - name: server-code
+            mountPath: /app
+        env:
+          - name: MODEL_DIR
+            value: /data/model
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: HF_HUB_OFFLINE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            /data/venv/bin/python /app/server.py
+        ports:
+          - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 10

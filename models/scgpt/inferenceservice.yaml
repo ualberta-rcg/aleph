@@ -1,0 +1,268 @@
+# scGPT: single-cell gene expression foundation model
+# GPU, scale-to-zero. API: POST /v1/embeddings
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scgpt-server
+  namespace: models
+data:
+  server.py: |
+    """
+    scGPT: single-cell gene expression foundation model (bowang-lab/scGPT).
+    Returns cell embeddings from gene expression data.
+    API: POST /v1/embeddings (OpenAI-style)
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    vocab = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, vocab, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading scGPT on {DEVICE}...", flush=True)
+
+        from scgpt.model import TransformerModel
+        from scgpt.tokenizer import GeneVocab
+
+        vocab_path = os.path.join(MODEL_DIR, "vocab.json")
+        if not os.path.exists(vocab_path):
+            # Fall back to bundled default vocab from scgpt package
+            import scgpt
+            pkg_dir = os.path.dirname(scgpt.__file__)
+            for candidate in ["tokenizer/default_census_vocab.json",
+                              "tokenizer/default_gene_vocab.json"]:
+                candidate_path = os.path.join(pkg_dir, candidate)
+                if os.path.exists(candidate_path):
+                    vocab_path = candidate_path
+                    break
+        vocab = GeneVocab.from_file(vocab_path)
+        # Add special tokens if missing (required by TransformerModel)
+        special_tokens = ["<pad>", "<cls>", "<eoc>"]
+        for s in special_tokens:
+            if s not in vocab:
+                vocab.append_token(s)
+        vocab.set_default_index(vocab["<pad>"])
+
+        import json
+        config_path = os.path.join(MODEL_DIR, "args.json")
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                config = json.load(f)
+        else:
+            config = {
+                "embsize": 512, "nhead": 8, "nlayers": 12,
+                "d_hid": 512, "dropout": 0.0, "mask_gene_id": len(vocab),
+            }
+
+        ntokens = len(vocab)
+        model = TransformerModel(
+            ntokens,
+            config.get("embsize", 512),
+            config.get("nhead", 8),
+            config.get("d_hid", 512),
+            config.get("nlayers", 12),
+            vocab=vocab,
+            dropout=config.get("dropout", 0.0),
+        )
+
+        import glob as _glob
+        ckpt_path = os.path.join(MODEL_DIR, "best_model.pt")
+        if not os.path.exists(ckpt_path):
+            # Try other checkpoint files (*.pt, *.bin)
+            for pat in ["*.pt", "*.bin"]:
+                hits = _glob.glob(os.path.join(MODEL_DIR, pat))
+                if hits:
+                    ckpt_path = hits[0]
+                    break
+        if os.path.exists(ckpt_path):
+            checkpoint = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+            state = checkpoint.get("model_state_dict", checkpoint)
+            try:
+                model.load_state_dict(state)
+            except Exception as e:
+                print(f"WARNING: Could not load checkpoint exactly: {e}", flush=True)
+
+        model = model.to(DEVICE)
+        model.eval()
+        print(f"scGPT ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "scgpt", "device": DEVICE}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "scgpt", "object": "model", "created": 1700000000,
+             "owned_by": "bowang-lab", "type": "embedding"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+
+        inp = request.get("input")
+        if not inp:
+            return JSONResponse({"error": "input required"}, 400)
+
+        if isinstance(inp, dict):
+            cells = [inp]
+        elif isinstance(inp, list):
+            cells = inp
+        else:
+            return JSONResponse({"error": "input must be cell dict or list of cell dicts"}, 400)
+
+        loop = asyncio.get_event_loop()
+        try:
+            embeddings_list = await loop.run_in_executor(None, _embed, cells)
+            data = [{"object": "embedding", "index": i, "embedding": emb}
+                    for i, emb in enumerate(embeddings_list)]
+            return {"object": "list", "data": data, "model": "scgpt"}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(cells):
+        import torch
+        import numpy as np
+
+        results = []
+        for cell in cells:
+            genes = cell.get("genes", [])
+            values = cell.get("values", [])
+
+            if not genes or not values:
+                results.append([0.0] * 512)
+                continue
+
+            gene_ids = []
+            for g in genes:
+                if g in vocab:
+                    gene_ids.append(vocab[g])
+                else:
+                    gene_ids.append(vocab.get("<pad>", 0))
+
+            gene_ids = torch.tensor([gene_ids], dtype=torch.long, device=DEVICE)
+            values_t = torch.tensor([values], dtype=torch.float32, device=DEVICE)
+
+            with torch.no_grad():
+                embeddings = model._encode(gene_ids, values_t)
+                emb = embeddings.mean(dim=1).cpu().float().numpy().flatten().tolist()
+
+            results.append(emb)
+
+        return results
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: scgpt
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import fastapi, scgpt; import numpy as np; assert int(np.__version__.split(".")[0])<2' 2>/dev/null; then
+              echo "Creating/updating venv..."
+              if [ ! -d /data/venv/bin ]; then
+                python3 -m venv /data/venv
+              fi
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install "numpy<2.0" 
+              /data/venv/bin/pip install "torch==2.1.2" "torchtext==0.16.2" \
+                --index-url https://download.pytorch.org/whl/cu121
+              /data/venv/bin/pip install "numpy<2.0" scgpt fastapi uvicorn huggingface_hub ipython
+            else
+              echo "venv exists"
+              # Ensure huggingface_hub is installed for model download
+              /data/venv/bin/pip install -q huggingface_hub 2>/dev/null || true
+            fi
+            
+            if [ ! -f /data/model/vocab.json ]; then
+              echo "Downloading scGPT weights..."
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            snapshot_download(
+                repo_id='tdc/scGPT',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+                allow_patterns=['*.pt', '*.json', 'vocab.json'],
+            )
+            "
+            else
+              echo "Weights exist"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: scgpt-data
+      - name: app
+        configMap:
+          name: scgpt-server

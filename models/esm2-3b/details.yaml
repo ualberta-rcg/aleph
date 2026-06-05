@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esm2-3b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "esm2-3b",
+      "type": "embedding",
+      "description_short": "ESM-2 3B protein language model embeddings",
+      "description": "ESM-2 3B (facebook/esm2_t36_3B_UR50D) is a state-of-the-art protein language model trained on masked language modelling over UniRef50. Returns 2560-dimensional mean-pooled embeddings from amino acid sequences. Max 1022 residues. Higher accuracy than smaller ESM-2 checkpoints for structure prediction, function annotation, and variant effect prediction. Runs on GPU (fp16) with CPU fallback.",
+      "context_window": 1022,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "facebook",
+      "source": "facebook/esm2_t36_3B_UR50D",
+      "source_url": "https://huggingface.co/facebook/esm2_t36_3B_UR50D",
+      "license": "MIT",
+      "parameters": "3B",
+      "parameter_count": 3000000000,
+      "precision": "fp16",
+      "architecture": "transformer (ESM-2, 36 layers)",
+      "framework": "custom",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "startup_seconds": 300,
+        "container_image": "python:3.11-slim",
+        "timeout": 150
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": true
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "proteomics",
+      "subdomain": "protein-embeddings",
+      "tags": ["embedding", "science", "proteomics", "protein", "biology", "gpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "tier": "production",
+      "input_map": {
+        "input": {
+          "type": "string or list[string]",
+          "required": true,
+          "pattern": "^[ACDEFGHIKLMNPQRSTVWY]+$",
+          "max_length": 1022,
+          "description": "Amino acid sequence(s) in single-letter codes"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "Model name (esm2-3b)"},
+        "data": {"type": "array", "description": "List of embedding objects with 2560-dim vectors"},
+        "usage": {"type": "object", "description": "Token usage stats"}
+      },
+      "server_config": {
+        "inference_backend": "pytorch (HuggingFace EsmModel)",
+        "model_path": "/data/model",
+        "batch_size": 1,
+        "max_sequence_length": 1022,
+        "embedding_dim": 2560,
+        "dependencies": "torch transformers fastapi uvicorn huggingface_hub",
+        "pip_note": "Unpinned deps in init container; venv idempotent check"
+      }
+    }

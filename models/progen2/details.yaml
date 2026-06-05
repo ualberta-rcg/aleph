@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: progen2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "progen2",
+      "type": "chat",
+      "description_short": "ProGen2-XLarge (6.4B) protein sequence generation model from Salesforce Research.",
+      "description": "ProGen2-XLarge is a 6.4B parameter protein language model from Salesforce Research (hugohrban/progen2-xlarge). It generates novel protein sequences via autoregressive language modeling. Given a partial amino acid sequence or prompt, it produces plausible protein sequence completions. Uses HuggingFace AutoModelForCausalLM with trust_remote_code. BSD-3 license. GPU-accelerated with float16.",
+      "context_window": 2048,
+      "max_completion_tokens": 1024,
+      "endpoints": {
+        "primary": "/v1/completions",
+        "health": "/health"
+      },
+      "owned_by": "Salesforce",
+      "source": "hugohrban/progen2-xlarge",
+      "source_url": "https://huggingface.co/hugohrban/progen2-xlarge",
+      "license": "BSD-3-Clause",
+      "parameters": "6.4B",
+      "precision": "float16 (GPU) / float32 (CPU)",
+      "architecture": "ProGen2 (decoder-only protein language model)",
+      "framework": "transformers (AutoModelForCausalLM) + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "progen2-data",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "progen2",
+        "api_name": "progen2",
+        "gateway_type": "chat"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "biology",
+      "subdomain": "protein-generation",
+      "tags": ["science", "biology", "protein", "generate", "llm", "gpu", "salesforce"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "prompt": "partial amino acid sequence e.g. \"MKTIIAL\"",
+        "max_tokens": "maximum tokens to generate",
+        "temperature": "sampling temperature",
+        "num_sequences": "number of sequences to generate"
+      },
+      "output_map": {
+        "sequences": "generated protein sequences",
+        "model": "progen2"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "hf_model_id": "hugohrban/progen2-xlarge"
+      }
+    }

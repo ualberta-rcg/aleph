@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: naturecode-earth-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "naturecode-earth",
+      "type": "embed",
+      "description_short": "Naturecode Earth 10.9M forest monitoring model. Sentinel-2 time-series, forest segmentation + biomass + soil.",
+      "description": "Naturecode Earth is a 10.9M parameter multi-modal temporal vision transformer for forest monitoring from the NatureCode project. It processes 4 quarterly Sentinel-2 composites (6 bands, 64x64) combined with latitude, longitude, and timestamp metadata. The model produces per-pixel forest segmentation (low/medium/high), above-ground biomass estimates with uncertainty, and soil properties (SOC, clay, sand, bulk density, water content). Apache 2.0 license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "naturecodeproject",
+      "source": "naturecodeproject/earth",
+      "source_url": "https://huggingface.co/naturecodeproject/earth",
+      "license": "Apache-2.0",
+      "parameters": "10.9M",
+      "precision": "fp32",
+      "architecture": "Temporal ViT (nano variant, multi-task decoder)",
+      "framework": "forestfm + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "cpu_request": "1",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 180,
+        "pvc": "naturecode-earth-data (inline)",
+        "image": "python:3.11",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "naturecode-earth",
+        "api_name": "naturecode-earth",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "forest-monitoring",
+      "tags": ["science", "earth-observation", "forest", "biomass", "soil", "sentinel-2", "classify", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "images": "[[[[6 floats], ...]], ...] — (T=4, C=6, H=64, W=64) Sentinel-2 composites",
+        "timestamps": "[[year, doy], ...] — (T=4, 2) e.g. [[2024,90],[2024,180],[2024,270],[2024,360]]",
+        "latitude": "float — center latitude",
+        "longitude": "float — center longitude",
+        "demo": "boolean — returns synthetic outputs"
+      },
+      "output_map": {
+        "segmentation_probs": "[[[float]]] — (3, 64, 64) class probabilities: low/medium/high forest",
+        "biomass_mean": "float — above-ground biomass Mg/ha",
+        "biomass_std": "float — uncertainty (aleatoric std)",
+        "soil": "dict of {soc, clay, sand, bulk_density, water_content}",
+        "forest_class": "low_forest, medium_forest, or high_forest"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/model.pt",
+        "library": "forestfm (optional)",
+        "sentinel_file": "/data/.naturecode-earth-ready-v1"
+      }
+    }

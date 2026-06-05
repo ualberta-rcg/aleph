@@ -1,0 +1,289 @@
+# ClimaX: Microsoft climate/weather foundation model (microsoft/ClimaX)
+# 100M parameter ViT pre-trained on CMIP6 climate simulations, fine-tuned on ERA5.
+# Supports weather forecasting and climate projection tasks.
+# API: POST /v1/science/forecast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: climax-server
+  namespace: models
+data:
+  server.py: |
+    """
+    ClimaX: Microsoft climate/weather foundation model (microsoft/ClimaX).
+    Pre-trained on CMIP6 data. Accepts ERA5-format surface vars, returns forecast.
+    API: POST /v1/science/forecast
+    Input: {"variables": ["t2m","u10","v10","msl"], "data": [[...]], "lead_time": 72}
+    Returns: {"forecast": [[...]], "variables": [...]}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    transforms = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, transforms, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ClimaX on {DEVICE}...", flush=True)
+
+        import sys
+        repo_path = os.path.join(MODEL_DIR, "repo")
+        sys.path.insert(0, repo_path)
+
+        from climax.arch import ClimaX as ClimaXModel
+
+        # ClimaX default variables (48 vars matching 5.625deg checkpoint)
+        CLIMAX_DEFAULT_VARS = [
+            "land_sea_mask",
+            "orography",
+            "lattitude",
+            "2m_temperature",
+            "10m_u_component_of_wind",
+            "10m_v_component_of_wind",
+            "geopotential_50",
+            "geopotential_250",
+            "geopotential_500",
+            "geopotential_600",
+            "geopotential_700",
+            "geopotential_850",
+            "geopotential_925",
+            "u_component_of_wind_50",
+            "u_component_of_wind_250",
+            "u_component_of_wind_500",
+            "u_component_of_wind_600",
+            "u_component_of_wind_700",
+            "u_component_of_wind_850",
+            "u_component_of_wind_925",
+            "v_component_of_wind_50",
+            "v_component_of_wind_250",
+            "v_component_of_wind_500",
+            "v_component_of_wind_600",
+            "v_component_of_wind_700",
+            "v_component_of_wind_850",
+            "v_component_of_wind_925",
+            "temperature_50",
+            "temperature_250",
+            "temperature_500",
+            "temperature_600",
+            "temperature_700",
+            "temperature_850",
+            "temperature_925",
+            "relative_humidity_50",
+            "relative_humidity_250",
+            "relative_humidity_500",
+            "relative_humidity_600",
+            "relative_humidity_700",
+            "relative_humidity_850",
+            "relative_humidity_925",
+            "specific_humidity_50",
+            "specific_humidity_250",
+            "specific_humidity_500",
+            "specific_humidity_600",
+            "specific_humidity_700",
+            "specific_humidity_850",
+            "specific_humidity_925",
+        ]
+
+        # Load 5.625 degree checkpoint (smaller, global)
+        ckpt_path = os.path.join(MODEL_DIR, "5.625deg.ckpt")
+        if not os.path.exists(ckpt_path):
+            ckpt_path = os.path.join(MODEL_DIR, "1.40625deg.ckpt")
+
+        checkpoint = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+
+        m = ClimaXModel(
+            default_vars=CLIMAX_DEFAULT_VARS,
+            img_size=[32, 64],
+            patch_size=2,
+            embed_dim=1024,
+            depth=8,
+            decoder_depth=2,
+            num_heads=16,
+            mlp_ratio=4,
+            drop_path=0.1,
+            drop_rate=0.1,
+        )
+        state = checkpoint.get("state_dict", checkpoint)
+        m.load_state_dict({k.replace("net.", ""): v for k, v in state.items()}, strict=False)
+        m.to(DEVICE).eval()
+        model = m
+        print(f"ClimaX ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "climax"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "climax", "object": "model", "owned_by": "microsoft",
+             "type": "weather-climate-forecast"}
+        ]}
+
+    @app.post("/v1/science/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+
+        variables = req.get("variables", ["t2m", "u10", "v10", "msl"])
+        data      = req.get("data")         # list of [lat x lon] grids
+        lead_time = req.get("lead_time", 72)  # hours
+
+        if data is None:
+            raise ValueError("data required: list of variable grids")
+
+        x = torch.tensor(np.array(data, dtype=np.float32)).unsqueeze(0).to(DEVICE)
+        lead_times = torch.tensor([lead_time], dtype=torch.float32).to(DEVICE)
+
+        with torch.inference_mode():
+            # forward(x, y, lead_times, variables, out_variables, metric, lat)
+            # y/lat/metric not needed when metric=None
+            _, preds = model.forward(
+                x, None, lead_times,
+                tuple(variables), tuple(variables),
+                metric=None, lat=None,
+            )
+
+        return {
+            "model": "climax",
+            "lead_time_hours": lead_time,
+            "variables": variables,
+            "forecast": preds.squeeze(0).cpu().numpy().tolist(),
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: climax
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import torch; import timm; v=timm.__version__; assert v.startswith("0.6"), f"bad timm {v}"' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch>=2.6" torchvision \
+                --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q fastapi uvicorn huggingface_hub "timm==0.6.13" einops
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/model/5.625deg.ckpt ]; then
+              echo "Downloading ClimaX checkpoints..."
+              mkdir -p /data/model
+                /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import hf_hub_download
+            token = os.environ.get('HF_TOKEN')
+            for f in ['5.625deg.ckpt', '1.40625deg.ckpt']:
+                print(f'Downloading {f}...', flush=True)
+                hf_hub_download(repo_id='microsoft/ClimaX', filename=f,
+                    local_dir='/data/model', local_dir_use_symlinks=False, token=token)
+            print('Done.', flush=True)
+            PY
+            else
+              echo "Checkpoints already on PVC."
+            fi
+
+            if [ ! -d /data/model/repo ]; then
+              echo "Cloning ClimaX repo for model code..."
+              git clone --depth 1 https://github.com/microsoft/ClimaX.git /data/model/repo
+              echo "Repo cloned."
+            fi
+            # Patch np.float -> float for numpy 1.24+ compatibility
+            PE=/data/model/repo/src/climax/utils/pos_embed.py
+            if grep -q 'np\.float[^0-9_]' "$PE" 2>/dev/null; then
+              sed -i 's/np\.float\b/float/g' "$PE"
+              echo "Patched np.float in pos_embed.py"
+            fi
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: climax-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: PYTHONPATH, value: /data/model/repo/src }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        volumeMounts:
+          - { name: climax-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: climax-data
+        persistentVolumeClaim:
+          claimName: climax-data
+      - name: app
+        configMap:
+          name: climax-server

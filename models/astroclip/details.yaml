@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astroclip-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "astroclip",
+      "type": "embed",
+      "description_short": "AstroCLIP cross-modal CLIP for galaxy images and optical spectra. 512-dim joint embedding space.",
+      "description": "AstroCLIP is a cross-modal contrastive learning model from Polymathic AI that embeds galaxy images and optical spectra into a shared 512-dim space. Built on DINOv2 (image encoder) + spectrum transformer, it was trained on 90K galaxies from DESI using contrastive pre-training. The model enables cross-modal retrieval (find spectra matching an image and vice versa). MIT license.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "polymathic-ai",
+      "source": "polymathic-ai/astroclip",
+      "source_url": "https://huggingface.co/polymathic-ai/astroclip",
+      "license": "MIT",
+      "parameters": "N/A",
+      "precision": "fp32",
+      "architecture": "DINOv2 image encoder + spectrum transformer, contrastive CLIP",
+      "framework": "Lightning + PyTorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "cpu_request": "2",
+        "memory_request": "8Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 180,
+        "pvc": "astroclip-data (inline)",
+        "image": "python:3.11",
+        "venv": false
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "astroclip",
+        "api_name": "astroclip",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "astronomy",
+      "subdomain": "multimodal",
+      "tags": ["science", "astronomy", "embed", "clip", "galaxy", "spectrum", "desi", "cross-modal", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "image": "[[[R,G,B], ...], ...] — (H, W, 3) galaxy image float array",
+        "spectrum": "[float, ...] — normalized flux per wavelength bin",
+        "modality": "image or spectrum (default: image)",
+        "demo": "boolean — returns 512-dim zero embedding"
+      },
+      "output_map": {
+        "embeddings": "512-dim float vector",
+        "shape": "[512]",
+        "model": "astroclip",
+        "modality": "image or spectrum"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "checkpoint": "/data/astroclip.ckpt",
+        "repo_path": "/data/src/astroclip",
+        "embedding_dim": 512
+      }
+    }

@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medcpt-query-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "medcpt-query",
+      "type": "embedding",
+      "description_short": "MedCPT Query Encoder — medical query embeddings from NCBI (768-dim)",
+      "description": "MedCPT Query Encoder by NCBI. 110M params. BERT-base model fine-tuned for medical query embeddings using contrastive pre-training on PubMed click logs. Produces CLS token embeddings for biomedical query encoding. Designed to pair with MedCPT Article Encoder for retrieval-augmented generation. Short-context model (max 64 tokens for queries). Max sequence length 64 tokens.",
+      "context_window": 64,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "health": "/health"
+      },
+      "owned_by": "ncbi",
+      "source": "ncbi/MedCPT-Query-Encoder",
+      "source_url": "https://huggingface.co/ncbi/MedCPT-Query-Encoder",
+      "license": "MIT",
+      "parameters": "110M",
+      "parameter_count": 110000000,
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "pytorch",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "startup_seconds": 30,
+        "container_image": "python:3.11-slim",
+        "timeout": 120
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false
+      },
+      "domain": "biomedical",
+      "subdomain": "medical-query-retrieval",
+      "tags": ["embedding", "biomedical", "nlp", "retrieval", "pubmed", "contrastive", "ncbi", "query"],
+      "content_types": ["text"],
+      "tier": "production",
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "Medical search queries"
+        }
+      },
+      "output_map": {
+        "object": "string (list)",
+        "model": "string",
+        "data": {
+          "type": "array",
+          "items": {
+            "object": "string (embedding)",
+            "index": "int",
+            "embedding": "[float x 768]"
+          }
+        },
+        "usage": {"prompt_tokens": "int", "total_tokens": "int"}
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "framework": "transformers (HuggingFace)",
+        "max_seq_length": 64,
+        "pooling": "cls",
+        "embedding_dim": 768
+      }
+    }

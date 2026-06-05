@@ -1,0 +1,167 @@
+# ProGen2 XLarge: Protein sequence generation model
+# GPU (~13GB VRAM), scale-to-zero. HF: hugohrban/progen2-xlarge
+# BSD-3 license, Salesforce Research
+# API: POST /v1/completions
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: progen2-server
+  namespace: models
+data:
+  server.py: |
+    import os, asyncio, torch
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = "hugohrban/progen2-xlarge"
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, tokenizer, DEVICE
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading ProGen2 on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(MODEL_ID, trust_remote_code=True,
+            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
+        model = model.to(DEVICE).eval()
+        print(f"ProGen2 ready on {DEVICE}", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "progen2"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "progen2", "object": "model", "created": 1700000000,
+             "owned_by": "Salesforce", "type": "text-generation",
+             "description": "ProGen2 XLarge protein generation (6.4B params)"}
+        ]}
+
+    @app.post("/v1/completions")
+    async def completions(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        
+        prompt = request.get("prompt", "")
+        max_tokens = request.get("max_tokens", 100)
+        temperature = request.get("temperature", 1.0)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _generate, prompt, max_tokens, temperature)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _generate(prompt, max_tokens, temperature):
+        enc = tokenizer(prompt, return_tensors="pt")
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        
+        with torch.no_grad():
+            outputs = model.generate(**enc, max_new_tokens=max_tokens,
+                temperature=temperature if temperature > 0 else 1.0,
+                do_sample=temperature > 0, pad_token_id=tokenizer.eos_token_id)
+        
+        generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        return {"id": "gen-1", "object": "text_completion", "model": "progen2",
+                "choices": [{"text": generated, "index": 0, "finish_reason": "length"}]}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: progen2-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: progen2
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_HOME
+            value: "/data/hf_cache"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+            fi
+            echo "Installing dependencies..."
+            /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
+            /data/venv/bin/pip install -q 'transformers<4.45' fastapi uvicorn
+            
+            echo "Pre-downloading ProGen2..."
+            /data/venv/bin/python -c "
+            from transformers import AutoTokenizer, AutoModelForCausalLM
+            AutoTokenizer.from_pretrained('hugohrban/progen2-xlarge', trust_remote_code=True)
+            AutoModelForCausalLM.from_pretrained('hugohrban/progen2-xlarge', trust_remote_code=True)
+            print('ProGen2 cached')
+            "
+        resources:
+          requests: { cpu: "2", memory: 16Gi }
+          limits: { cpu: "4", memory: 32Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "30720" }
+          limits: { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "30720" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: progen2-data }
+      - name: app
+        configMap: { name: progen2-server }

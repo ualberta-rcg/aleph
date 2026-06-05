@@ -1,0 +1,207 @@
+# Geneformer: In silico pretraining for single-cell gene expression
+# ctheodoris/Geneformer, 10K downloads, BSD-2
+# API: POST /v1/embed {gene_expression: {...}} or /v1/predict
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: geneformer-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Geneformer: Context-aware gene network inference from single-cell data.
+    NIH NCI, 2023. Pretrained on 30M single-cell transcriptomes.
+    API: POST /v1/embed {genes: ["TP53", "BRCA1", ...], expression: [1.2, 0.5, ...]}
+    Returns: {"embeddings": [...], "model": "geneformer"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    HF_HOME = os.environ.get("HF_HOME", "/data/hf_cache")
+
+    app = FastAPI()
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Geneformer on {DEVICE}...", flush=True)
+        from transformers import AutoModel, AutoTokenizer
+
+        # Use V2 104M model
+        model_path = os.path.join(MODEL_DIR, "Geneformer-V2-104M")
+        model_obj = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        model_obj = model_obj.to(DEVICE).eval()
+        global model
+        model = model_obj
+        print("Geneformer ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "geneformer"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "geneformer", "object": "model", "owned_by": "nih-nci",
+             "type": "gene-expression-transformer"}
+        ]}
+
+    @app.post("/v1/embed")
+    async def embed(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch
+        import numpy as np
+
+        # Geneformer takes tokenized gene sequences
+        # Input: list of gene token IDs (ranked by expression)
+        gene_ids = req.get("gene_ids", [])
+        if not gene_ids:
+            raise ValueError("gene_ids required (ranked gene token IDs)")
+
+        # Create input tensor: (1, seq_len)
+        max_len = 4096
+        input_ids = torch.tensor([gene_ids[:max_len]], dtype=torch.long).to(DEVICE)
+        attention_mask = torch.ones_like(input_ids)
+
+        with torch.no_grad():
+            outputs = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                output_hidden_states=True,
+            )
+
+        # Get last hidden state embedding
+        hidden = outputs.hidden_states[-1] if hasattr(outputs, 'hidden_states') else outputs.last_hidden_state
+        # Mean pool across sequence
+        embedding = hidden.mean(dim=1).cpu().numpy()
+
+        return {
+            "model": "geneformer",
+            "embeddings": embedding.tolist(),
+            "embedding_dim": embedding.shape[-1],
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: geneformer-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: geneformer
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'from transformers import AutoModel' 2>/dev/null; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q transformers huggingface_hub fastapi uvicorn
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -d /data/model/Geneformer-V2-104M ]; then
+              echo "Downloading Geneformer V2-104M..."
+              mkdir -p /data/model
+              /data/venv/bin/python -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                'ctheodoris/Geneformer',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                allow_patterns=['Geneformer-V2-104M/*', 'README.md'],
+            )
+            print('Geneformer downloaded.')
+            "
+            else
+              echo "Geneformer already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: "/data/model" }
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: geneformer-data }
+      - name: app
+        configMap: { name: geneformer-server }

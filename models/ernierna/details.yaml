@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ernierna-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "ernierna",
+      "type": "embedding",
+      "description_short": "Structure-aware RNA foundation model from Baidu/multimolecule (~86M)",
+      "description": "ERNIE-RNA is a structure-aware RNA foundation model from multimolecule/Baidu. ~86M parameters, pre-trained on RNAcentral with structure-aware objectives. Outperforms RNA-FM on structure prediction tasks. Uses BertTokenizer (WordPiece vocab). AGPL-3.0 license.",
+      "context_window": 1024,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "owned_by": "multimolecule",
+      "source": "multimolecule/ernierna",
+      "source_url": "https://huggingface.co/multimolecule/ernierna",
+      "license": "AGPL-3.0",
+      "parameters": "~86M",
+      "precision": "float32",
+      "architecture": "ERNIE-RNA (BERT-based with structure objectives)",
+      "framework": "multimolecule + transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 1, "cpu_request": "1", "memory_request": "2Gi", "pvc": "ernierna-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
+      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "ernierna", "api_name": "ernierna"},
+      "compatibility": {"openai_embeddings": false, "input_fields": ["sequence", "sequences"]},
+      "domain": "genomics",
+      "subdomain": "rna-embedding",
+      "tags": ["embedding", "science", "genomics", "rna", "structure", "gpu"],
+      "content_types": ["text"],
+      "languages": ["rna"],
+      "input_map": {"sequence": "RNA sequence (AUGC)", "sequences": "[str] multiple sequences"},
+      "output_map": {"embeddings": "[[float]]", "model": "ernierna", "dim": "int"},
+      "tier": 2
+    }

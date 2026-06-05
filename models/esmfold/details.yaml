@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esmfold-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "esmfold",
+      "type": "structure",
+      "description_short": "ESMfold protein structure prediction from sequence",
+      "description": "ESMfold end-to-end protein folding model by Meta. Predicts 3D protein structures directly from amino acid sequences without MSA lookup. Based on ESM-2 backbone (~690M params). Returns PDB-formatted structures with per-residue pLDDT confidence scores. Max 1022 residues. Single-sequence method — no external databases needed.",
+      "context_window": 0,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/structure",
+        "health": "/health"
+      },
+      "owned_by": "Meta",
+      "source": "facebook/esmfold_v1",
+      "source_url": "https://huggingface.co/facebook/esmfold_v1",
+      "license": "MIT",
+      "parameters": "~690M",
+      "parameter_count": 690000000,
+      "precision": "fp32",
+      "architecture": "transformer",
+      "framework": "custom",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S",
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "startup_seconds": 180,
+        "container_image": "python:3.11-slim",
+        "timeout": 150
+      },
+      "routing": {
+        "path_prefix": "/v1/",
+        "serialize": false,
+        "no_stream": false
+      },
+      "compatibility": {
+        "supports_streaming": false,
+        "supports_vision": false,
+        "reasoning_model": false,
+        "needs_json_fixing": false,
+        "strips_thinking": false
+      },
+      "domain": "proteomics",
+      "subdomain": "structure-prediction",
+      "tags": ["structure", "science", "protein", "folding", "gpu"],
+      "content_types": ["text"],
+      "languages": ["protein"],
+      "tier": "production",
+      "input_map": {
+        "sequence": {
+          "type": "string",
+          "required": true,
+          "pattern": "^[ACDEFGHIKLMNPQRSTVWY]+$",
+          "max_length": 1022,
+          "description": "Amino acid sequence in single-letter codes"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "Model name"},
+        "pdb": {"type": "string", "description": "Predicted structure in PDB format"},
+        "plddt": {"type": "float", "description": "Mean pLDDT confidence score (0-100)"}
+      },
+      "server_config": {
+        "inference_backend": "pytorch",
+        "model_path": "/data/model",
+        "batch_size": 1,
+        "max_sequence_length": 1022,
+        "dependencies": "torch transformers protobuf fastapi uvicorn huggingface_hub",
+        "pip_note": "numpy<2 required (numpy 2.x breaks transformers protein.py format specs)"
+      }
+    }

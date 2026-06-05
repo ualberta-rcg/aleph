@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: earthpt-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "earthpt",
+      "type": "embed",
+      "description_short": "EarthPT 700M EO time-series autoregressive foundation model. 18-channel pixel time-series prediction.",
+      "description": "EarthPT is a 700M parameter nanoGPT-based autoregressive foundation model for Earth observation pixel time-series from Aspia Space / Smith et al. 2023. It processes 18-channel inputs (14 spectral MODIS bands + 4 time metadata channels) with a context window of 256 time steps (block_size=256). The model autoregressively predicts the next 14 spectral channels. Architecture: 36 transformer layers, 20 heads, 1280 embedding dim. MIT license.",
+      "context_window": 256,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "aspia-space",
+      "source": "Smith42/EarthPT",
+      "source_url": "https://huggingface.co/Smith42/EarthPT",
+      "license": "MIT",
+      "parameters": "700M",
+      "precision": "fp16 (GPU), fp32 (CPU)",
+      "architecture": "nanoGPT variant (n_layer=36, n_head=20, n_embd=1280, n_chan=18, block_size=256)",
+      "framework": "PyTorch (custom nanoGPT implementation)",
+      "deployment": {
+        "gpu": true,
+        "gpu_count": 1,
+        "gpu_type": "L40S-SHARED",
+        "cpu_request": "2",
+        "memory_request": "4Gi",
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "timeout": 120,
+        "pvc": "earthpt-data (10Gi, NFS, inline)",
+        "image": "python:3.11-slim",
+        "venv": true
+      },
+      "routing": {
+        "kserve_custom": true,
+        "k8s_name": "earthpt",
+        "api_name": "earthpt",
+        "gateway_type": "embed"
+      },
+      "compatibility": {
+        "openai_compatible": false,
+        "streaming": false
+      },
+      "domain": "earth-observation",
+      "subdomain": "satellite",
+      "tags": ["science", "earth-observation", "time-series", "autoregressive", "modis", "forecast", "gpu"],
+      "content_types": ["application/json"],
+      "tier": 2,
+      "input_map": {
+        "time_series": "[[v1,...,v18], ...] — list of 18-float observations (14 spectral + 4 time metadata)",
+        "predict_steps": "number of future steps to predict (default 6)"
+      },
+      "output_map": {
+        "predictions": "[[v1,...,v14], ...] — 14 spectral channel predictions per step",
+        "input_steps": "number of input observations used",
+        "predict_steps": "number of predictions generated",
+        "channels": "14 spectral (MODIS bands scaled 0-1)"
+      },
+      "server_config": {
+        "port": 8080,
+        "health_path": "/health",
+        "model_path": "/data/earthpt_700m.pt",
+        "block_size": 256,
+        "n_chan": 18,
+        "n_out": 14
+      }
+    }

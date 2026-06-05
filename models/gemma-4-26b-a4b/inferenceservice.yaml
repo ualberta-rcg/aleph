@@ -1,0 +1,167 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gemma-4-26b-a4b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 1
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # ── Step 1: Setup venv for downloads (only huggingface_hub, no vllm) ──
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+
+            # ── Step 2: Migrate weights from old flat layout ──
+            if [ -f /data/config.json ] && [ ! -d /data/model ]; then
+                echo "Migrating weights from /data to /data/model ..."
+                mkdir -p /data/model
+                for f in /data/*; do
+                    base=$(basename "$f")
+                    case "$base" in
+                        venv|model) continue ;;
+                        *) mv "$f" /data/model/ ;;
+                    esac
+                done
+                echo "Migration done."
+            fi
+
+            # ── Step 3: Download model weights (skips if already present) ──
+            if [ -f /data/model/config.json ]; then
+                echo "Model weights already on PVC, skipping download."
+            else
+                echo "Downloading google/gemma-4-26B-A4B-it ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="google/gemma-4-26B-A4B-it",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: gemma-4-26b-a4b-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
+        args:
+          - serve
+          - /data/model
+          - --served-model-name
+          - gemma-4-26b-a4b
+          - --port
+          - "8080"
+          - --tensor-parallel-size
+          - "1"
+          - --max-model-len
+          - "131072"
+          - --quantization
+          - fp8
+          - --gpu-memory-utilization
+          - "0.92"
+          - --trust-remote-code
+          - --enable-auto-tool-choice
+          - --tool-call-parser
+          - gemma4
+          - --reasoning-parser
+          - gemma4
+          - --limit-mm-per-prompt
+          - '{"image": 16}'
+          - --max-num-seqs
+          - "8"
+          - --max-num-batched-tokens
+          - "4096"
+        env:
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "40960"
+          limits:
+            cpu: "8"
+            memory: 48Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "40960"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 40
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: gemma-4-26b-a4b-data
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: gemma-4-26b-a4b-data
+        persistentVolumeClaim:
+          claimName: gemma-4-26b-a4b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi
