@@ -1,0 +1,107 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: tinyllama
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 600
+    initContainers:
+      - name: hf-fetch
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            import os, shutil
+            from pathlib import Path
+            dest = Path("/mnt/models/cpu-models/tinyllama/model.gguf")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists() and dest.stat().st_size > 1_000_000:
+                print("TinyLlama GGUF already present, skipping download.", flush=True)
+            else:
+                from huggingface_hub import hf_hub_download
+                p = hf_hub_download(
+                    repo_id="TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+                    filename="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+                    local_dir=str(dest.parent),
+                    token=os.environ.get("HF_TOKEN"),
+                )
+                if p != str(dest):
+                    shutil.move(p, str(dest))
+                print("Download complete:", dest, flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+        volumeMounts:
+          - name: tinyllama-models
+            mountPath: /mnt/models
+    containers:
+      - name: kserve-container
+        image: ghcr.io/abetlen/llama-cpp-python@sha256:8528cd3c39357e4138a4fd80f17449b6617206e56f0397016c5cb536f89a87d8
+        imagePullPolicy: IfNotPresent
+        workingDir: /
+        command:
+          - python3
+          - -m
+          - llama_cpp.server
+        args:
+          - --model=/mnt/models/cpu-models/tinyllama/model.gguf
+          - --host=0.0.0.0
+          - --port=8080
+          - --n_ctx=4096
+          - --n_gpu_layers=0
+          - --n_threads=8
+          - --n_threads_batch=8
+          - --model_alias=tinyllama-1.1b
+        env: []
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 3Gi
+          limits:
+            cpu: "8"
+            memory: 4Gi
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: tinyllama-models
+            mountPath: /mnt/models
+            readOnly: true
+    volumes:
+      - name: tinyllama-models
+        persistentVolumeClaim:
+          claimName: tinyllama-models
