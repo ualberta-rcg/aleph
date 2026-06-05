@@ -2,6 +2,15 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate clap (audio-language, CPU)
+
+### clap (Wave 1)
+- Ported CLAP (laion/larger_clap_general) from 232: `/v1/embeddings` (audio+text, 512-dim)
+  and `/v1/classify` (zero-shot audio). CPU.
+- Fixes: switched unused GPU torch → CPU torch; patched `/v1/classify` for transformers
+  `ClapModel.logit_scale_a` (was `logit_scale`). Inline token → secretKeyRef; v2 card.
+- Verified text dim=512 and 440Hz sine classified as "pure tone" (0.99999).
+
 ## 2026-06-04 — migrate chronos-bolt (time-series forecast, CPU)
 
 ### chronos-bolt (Wave 1)

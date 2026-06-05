@@ -1,0 +1,247 @@
+# CLAP: Contrastive Language-Audio Pretraining (laion/larger_clap_general)
+# General audio-language model for zero-shot audio classification, audio-text retrieval.
+# Widely used in bioacoustics, environmental sound monitoring, and speech science.
+# Apache 2.0. API: POST /v1/embeddings and POST /v1/classify
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clap-server
+  namespace: models
+data:
+  server.py: |
+    """
+    CLAP: Contrastive Language-Audio Pretraining (laion/larger_clap_general).
+    Zero-shot audio classification and audio-text retrieval.
+    Use cases: bioacoustics, environmental monitoring, audio scene analysis.
+    API:
+      POST /v1/embeddings  — encode audio or text into shared embedding space
+      POST /v1/classify    — zero-shot classify audio with text labels
+    Input for /v1/embeddings: {"audio": [[samples...]] or null, "texts": ["..."] or null,
+                                "sample_rate": 48000}
+    Input for /v1/classify:   {"audio": [[samples...]], "labels": ["bird song", "rain", ...],
+                                "sample_rate": 48000}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+
+    app = FastAPI()
+    model = None
+    processor = None
+
+    def load():
+        global model, processor
+        print("Loading CLAP model...", flush=True)
+
+        from transformers import ClapModel, ClapProcessor
+
+        model_path = MODEL_DIR
+        processor = ClapProcessor.from_pretrained(model_path)
+        model = ClapModel.from_pretrained(model_path)
+        model.eval()
+        print("CLAP ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "clap"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "clap", "object": "model", "owned_by": "laion",
+             "type": "audio-language"}
+        ]}
+
+    @app.post("/v1/embeddings")
+    @app.post("/v1/science/embed")
+    async def embeddings(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _embed, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    @app.post("/v1/classify")
+    async def classify(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _classify, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _embed(req):
+        import torch
+        import numpy as np
+
+        audio_data = req.get("audio")
+        texts = req.get("texts")
+        sample_rate = req.get("sample_rate", 48000)
+
+        results = {}
+
+        if audio_data is not None:
+            audios = [np.array(a, dtype=np.float32) for a in audio_data]
+            inputs = processor(audios=audios, sampling_rate=sample_rate,
+                               return_tensors="pt", padding=True)
+            with torch.inference_mode():
+                audio_emb = model.get_audio_features(**inputs)
+            results["audio_embeddings"] = audio_emb.cpu().numpy().tolist()
+
+        if texts is not None:
+            inputs = processor(text=texts, return_tensors="pt", padding=True)
+            with torch.inference_mode():
+                text_emb = model.get_text_features(**inputs)
+            results["text_embeddings"] = text_emb.cpu().numpy().tolist()
+
+        return {"model": "clap", **results}
+
+    def _classify(req):
+        import torch
+        import numpy as np
+        import torch.nn.functional as F
+
+        audio_data = req.get("audio")
+        labels = req.get("labels", [])
+        sample_rate = req.get("sample_rate", 48000)
+
+        if not audio_data or not labels:
+            raise ValueError("audio and labels required")
+
+        audios = [np.array(a, dtype=np.float32) for a in audio_data]
+        audio_inputs = processor(audios=audios, sampling_rate=sample_rate,
+                                 return_tensors="pt", padding=True)
+        text_inputs = processor(text=labels, return_tensors="pt", padding=True)
+
+        with torch.inference_mode():
+            audio_emb = model.get_audio_features(**audio_inputs)
+            text_emb  = model.get_text_features(**text_inputs)
+            # Normalize
+            audio_emb = F.normalize(audio_emb, dim=-1)
+            text_emb  = F.normalize(text_emb, dim=-1)
+            # transformers ClapModel exposes logit_scale_a/_t (not a single logit_scale)
+            _scale = getattr(model, "logit_scale_a", getattr(model, "logit_scale", None))
+            _ls = _scale.exp() if _scale is not None else 1.0
+            logits = (audio_emb @ text_emb.T) * _ls
+            probs = F.softmax(logits, dim=-1)
+
+        results = []
+        for i, audio_probs in enumerate(probs.cpu().numpy()):
+            ranked = sorted(zip(labels, audio_probs.tolist()), key=lambda x: -x[1])
+            results.append([{"label": l, "score": float(s)} for l, s in ranked])
+
+        return {"model": "clap", "classifications": results}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: clap
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 3
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+
+            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import transformers' 2>/dev/null; then
+              echo "Creating venv..."
+              rm -rf /data/venv
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q \
+                "torch==2.5.1" --index-url https://download.pytorch.org/whl/cpu
+              /data/venv/bin/pip install -q \
+                "transformers==4.46.3" librosa soundfile fastapi uvicorn huggingface_hub
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading CLAP model..."
+              mkdir -p /data/model
+                /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            token = os.environ.get('HF_TOKEN')
+            snapshot_download(
+                repo_id='laion/larger_clap_general',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=token,
+            )
+            print('CLAP downloaded.', flush=True)
+            PY
+            else
+              echo "CLAP already on PVC."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: clap-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 6Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: clap-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: clap-data
+        persistentVolumeClaim:
+          claimName: clap-data
+      - name: app
+        configMap:
+          name: clap-server

@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clap-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "clap",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "classify": "/v1/classify",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "clap",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-3 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {
+        "sample_rate": 48000
+      },
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "CLAP — audio/text contrastive embeddings + zero-shot audio classify",
+        "description": "CLAP (laion/larger_clap_general): Contrastive Language-Audio Pretraining. Encodes audio and text into a shared embedding space for audio-text retrieval and zero-shot audio classification (bioacoustics, environmental sound, scene analysis). /v1/embeddings returns audio_embeddings and/or text_embeddings; /v1/classify ranks text labels for an audio clip. CPU.",
+        "owned_by": "LAION",
+        "source": "laion/larger_clap_general",
+        "source_url": "https://huggingface.co/laion/larger_clap_general",
+        "license": "Apache-2.0",
+        "parameters": "~190M",
+        "precision": "fp32",
+        "framework": "transformers",
+        "domain": "audio",
+        "subdomain": "audio-language",
+        "tags": [
+          "embedding",
+          "audio",
+          "clap",
+          "zero-shot",
+          "classification",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "clap",
+          "audio": "[[float samples]] (optional)",
+          "texts": "[str] (optional)",
+          "labels": "[str] (for /v1/classify)",
+          "sample_rate": "int (default 48000)"
+        },
+        "embedding_dimensions": 512,
+        "pooling": "model"
+      }
+    }
