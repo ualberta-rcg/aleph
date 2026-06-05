@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "gpt-oss-120b",
+      "status": "production",
       "type": "chat",
       "description_short": "OpenAI GPT-OSS 120B MoE, configurable reasoning + native tool calling",
       "description": "OpenAI GPT-OSS 120B MoE (MXFP4, 117B total / 5.1B active params). Text-only model with configurable reasoning effort (low/medium/high), native function calling via harmony format, structured outputs, and agentic capabilities. 128K context. Trained with same RL techniques as o3/o4-mini. Near-parity with o4-mini on reasoning benchmarks. Apache 2.0 license.",

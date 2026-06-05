@@ -79,7 +79,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
 | geogalactica | chat | true | /v1/chat/completions | NOT-READY | FAIL | gated HF repo geobrain-ai/geogalactica (403); needs access approval |
-| gpt-oss-120b | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x45GB MoE; progress-deadline added; awaiting GPU capacity |
+| gpt-oss-120b | chat | true | /v1/chat/completions | READY | FIXED | TP2 ~200tok/s; full GPUs (no gpumem) + --disable-custom-all-reduce (HAMi custom-AR stall); reasoning+OpenAI+Anthropic |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | NOT-READY | PENDING |  |
 | granite-geospatial-ocean | classify | true | /v1/science/embed | NOT-READY | PENDING |  |
