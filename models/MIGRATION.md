@@ -35,10 +35,10 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [x] climatebert (classification, DistilRoBERTa, CPU, dim=768; detect+netzero+embeddings OK)
 - [x] clinicalbert (embedding, CPU, dim=768; id=clinicalbert-110m)
 - [ ] depth-anything
-- [ ] dino-vit-b8
-- [ ] dnabert-2
-- [ ] dnabert-s
-- [ ] efficientnet-b0
+- [x] dino-vit-b8 (vision embedding, CPU)
+- [x] dnabert-2 (DNA embedding, CPU, dim=768; tuple-output fix)
+- [x] dnabert-s (species-aware DNA embedding, CPU, dim=768; RawDeployment->Knative)
+- [x] efficientnet-b0 (image classification, ONNX CPU)
 - [ ] galileo
 - [ ] geneformer-v2
 - [ ] graphcast
@@ -46,32 +46,32 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [ ] labram
 - [ ] lag-llama
 - [ ] leandojo
-- [ ] led
+- [s] led (DEFERRED: only a stub card on 232, no server.py/ISVC — needs long-doc summarization server built from scratch)
 - [ ] ligandmpnn
-- [ ] longformer
+- [s] longformer (DEFERRED: only a stub card on 232, no server.py/ISVC — needs long-doc classification server built from scratch)
 - [ ] mace-mp-0
 - [ ] maskrcnn
 - [ ] medsam
 - [ ] megadetector
 - [ ] moirai-large
-- [ ] multilingual-e5-small
+- [x] multilingual-e5-small (embedding, XLM-RoBERTa, CPU, 512-dim; transformers==4.44.2 for lazy-import fix)
 - [ ] neuralgcm
 - [ ] omnigenome
 - [ ] presto
-- [ ] pubmedbert
+- [x] pubmedbert (embedding, CPU, dim=768; built fresh from biomedbert pattern)
 - [ ] retinanet
-- [ ] rita
+- [x] rita (protein generation, CPU; /v1/science/generate OK after lm_head patch)
 - [ ] satmae
-- [ ] scibert
+- [x] scibert (embedding, CPU, dim=768; k8s_name added to card)
 - [ ] science-embed
 - [ ] seisbench
-- [ ] specter2
+- [x] specter2 (embedding, CPU, dim=768; k8s_name added to card)
 - [ ] splicebert
 - [ ] sundial
-- [ ] tinyllama
+- [x] tinyllama (chat LLM, llama.cpp GGUF Q4_K_M, CPU; removed GPU nodeSelector)
 - [ ] ttm
-- [ ] yolov8n
-- [ ] yolov8s
+- [x] yolov8n (object detection, ONNX CPU, 80-class COCO; empty detects on 1x1 image OK)
+- [x] yolov8s (object detection, ONNX CPU, 80-class COCO)
 - [ ] zoobot
 
 ## Wave 2 — gpu=1 bucket, 80

@@ -27,6 +27,78 @@ Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 - /v1/science/generate (tasks: forward_synthesis, retrosynthesis, mol2text, text2mol, etc).
   Demo forward_synthesis PASS. ~10s beam search on CPU.
 
+## 2026-06-05 — migrate tinyllama (chat LLM, CPU llama.cpp)
+
+### tinyllama (Wave 1)
+- Ported TinyLlama-1.1B-Chat (GGUF Q4_K_M) from 232 via llama-cpp-python server.
+- Removed `nvidia.com/gpu.product: NVIDIA-L40S-SHARED` nodeSelector; minReplicas:1→0;
+  added Knative scale-to-zero; HF_TOKEN→secretKeyRef; `--n_gpu_layers=0` for CPU.
+- POST /v1/chat/completions PASS (~270ms). OpenAI-compatible. Context 4096.
+
+## 2026-06-05 — migrate yolov8n + yolov8s (object detection, ONNX, CPU)
+
+### yolov8n + yolov8s (Wave 1)
+- Ported YOLOv8n/s (Ultralytics COCO 80-class, ONNX) from 232. Already Knative.
+- Added `routing.k8s_name` to both cards. POST /v1/vision/detect PASS.
+- Init exports `.pt` → `.onnx` on first cold start (cached on PVC).
+
+## 2026-06-05 — migrate dino-vit-b8 + efficientnet-b0 (vision, CPU)
+
+### dino-vit-b8 + efficientnet-b0 (Wave 1)
+- Ported DINO ViT-B/8 and EfficientNet-B0 (ONNX) from 232. Already Knative.
+- Added `routing.k8s_name` to both cards.
+- /v1/vision/embed (dino-vit-b8) and /v1/vision/classify (efficientnet-b0) PASS.
+
+## 2026-06-05 — migrate rita (protein generation, CPU)
+
+### rita (Wave 1)
+- Ported RITA-XL (LightOn, 1.2B, protein autoregressive LM) from 232. CPU.
+- Already Knative; added `routing.k8s_name`, fixed `endpoints` dict, added /v1/science/generate alias.
+- Fix: `transformers==4.36.2` required (4.37+ adds `can_generate()` check that breaks RITA custom model).
+- /v1/science/generate PASS.
+
+## 2026-06-05 — migrate multilingual-e5-small (multilingual embedding, CPU)
+
+### multilingual-e5-small (Wave 1)
+- Ported intfloat/multilingual-e5-small (117M, 512-dim, 100+ languages) from 232.
+- Rewrote from TEI (ghcr.io/huggingface/text-embeddings-inference) to standard Python FastAPI
+  embedding server (same pattern as biomedbert), enabling standard /v1/embeddings routing.
+- Fix: added `sentencepiece` to venv; `transformers==4.44.2` (4.46.3 has lazy-import bug for XLM-R).
+- HF_TOKEN→secretKeyRef; minReplicas:1→0; Knative scale-to-zero.
+- /v1/embeddings (3-language batch) PASS. 512-dim, L2-normalized.
+
+## 2026-06-05 — migrate scibert + specter2 (scientific embeddings, CPU)
+
+### scibert + specter2 (Wave 1)
+- Ported from 232. Already Knative + nfs-client. Only change: HF_TOKEN→secretKeyRef,
+  added `routing.k8s_name`.
+- /v1/embeddings (768-dim) PASS for both.
+
+## 2026-06-05 — migrate dnabert-2 + dnabert-s (DNA embeddings, CPU)
+
+### dnabert-2 (Wave 1)
+- Ported from 232 (already Knative). HF_TOKEN→secretKeyRef, k8s_name added.
+- Fix: model returns tuple not ModelOutput — patched to use `raw[0]` as hidden states.
+- /v1/embeddings PASS.
+
+### dnabert-s (Wave 1)
+- RawDeployment → Knative; removed GPU nodeSelector; added PVC + init container.
+- MODEL_ID env var → local path `/data/model`; HF_HUB_OFFLINE=1 at runtime.
+- Fixed `endpoints` list→dict in card. /v1/embeddings PASS.
+
+## 2026-06-05 — migrate pubmedbert (biomedical embedding, CPU)
+
+### pubmedbert (Wave 1)
+- 232 source was a stub-only card. Built fresh (biomedbert pattern).
+  microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract (110M, 768-dim).
+- /v1/embeddings PASS. Use model id `pubmedbert` (response shows `pubmedbert-110m`).
+
+## 2026-06-05 — defer longformer + led (stub-only on 232)
+
+### longformer + led (Wave 1, deferred)
+- Both were stub-only directories on 232 (card + kustomization, no server.py/ISVC).
+- Deferred. Implementation notes in CLAUDE.md for each.
+
 ## 2026-06-04 — migrate biot5 (bio T5, CPU)
 
 ### biot5 (Wave 1)
