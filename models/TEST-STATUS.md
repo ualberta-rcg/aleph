@@ -48,7 +48,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | climax | forecast | true | /v1/science/forecast | READY | PASS | needs valid ERA5 var names (e.g. 2m_temperature) |
 | clinical-longformer | embedding | true | /v1/science/embed | NOT-READY | FAIL | hangs on CPU (gpu=true but no CUDA use); needs GPU/attention fix |
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
-| command-r-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
+| command-r-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
 | crysta-llm | chat | true | /v1/science/generate | NOT-READY | PENDING |  |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
@@ -73,14 +73,14 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
-| gemma-3-4b-it | chat | ? | /v1/chat/completions | READY | PENDING |  |
+| gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
 | geogalactica | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | gpt-oss-120b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| gpt-oss-20b | chat | ? | /v1/chat/completions | READY | PENDING |  |
+| gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | NOT-READY | PENDING |  |
 | granite-geospatial-ocean | classify | true | /v1/science/embed | NOT-READY | PENDING |  |
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
@@ -127,7 +127,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | protgpt2 | generate | true | /v1/completions | READY | PASS | de novo protein generation (recreated) |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| qwen25-vl-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
+| qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic + vision (image_url) |
 | qwen35-122b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |

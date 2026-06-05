@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "gemma-3-4b-it",
+      "status": "production",
       "type": "chat",
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
