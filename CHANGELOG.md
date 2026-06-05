@@ -2,6 +2,15 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate biomedbert (biomedical embeddings, CPU)
+
+### biomedbert (Wave 1, gpu=0)
+- Ported Microsoft BiomedBERT (110M) from 232: `/v1/embeddings`, 768-dim, CPU,
+  scale-to-zero, `nfs-client` PVC.
+- Inline HF token → `secretKeyRef`; pinned `torch==2.5.1`/`transformers==4.46.3`.
+- v2 card with `routing.k8s_name: biomedbert` (id `biomedbert-110m`). Verified dim=768
+  via gateway. See models/biomedbert/TEST.md.
+
 ## 2026-06-04 — migrate ablang2 (antibody embeddings, CPU)
 
 ### ablang2 (Wave 1, gpu=0)

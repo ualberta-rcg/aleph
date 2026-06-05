@@ -1,0 +1,143 @@
+# BiomedBERT: Biomedical text embeddings (microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract)
+# API: POST /v1/embeddings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biomedbert-server
+  namespace: models
+data:
+  server.py: |
+    """Embedding server for BiomedBERT."""
+    import os, asyncio, numpy as np
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR  = os.environ.get("MODEL_DIR", "/data/model")
+    MODEL_NAME = os.environ.get("MODEL_NAME", "biomedbert-110m")
+    MAX_LEN    = int(os.environ.get("MAX_LEN", "512"))
+
+    app = FastAPI()
+    tokenizer = None
+    pt_model  = None
+
+    def load():
+        global tokenizer, pt_model
+        from transformers import AutoTokenizer, AutoModel
+        import torch
+        print(f"Loading {MODEL_NAME} from {MODEL_DIR}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+        pt_model = AutoModel.from_pretrained(MODEL_DIR, torch_dtype=torch.float32)
+        pt_model.eval()
+        print(f"{MODEL_NAME} loaded", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if pt_model else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "microsoft", "type": "embedding"}]}
+
+    def _infer(texts):
+        import torch
+        enc = tokenizer(texts, padding=True, truncation=True, max_length=MAX_LEN, return_tensors="pt")
+        with torch.no_grad():
+            out = pt_model(**enc).last_hidden_state.numpy()
+        mask = enc["attention_mask"].numpy().astype(np.float32)
+        m = mask[:, :, np.newaxis]
+        return (out * m).sum(1) / m.sum(1)
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if pt_model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        inputs = request.get("input", "")
+        if isinstance(inputs, str):
+            inputs = [inputs]
+        emb = await asyncio.get_event_loop().run_in_executor(None, _infer, inputs)
+        data = [{"object": "embedding", "index": i, "embedding": e.tolist()} for i, e in enumerate(emb)]
+        return {"object": "list", "model": MODEL_NAME, "data": data,
+                "usage": {"prompt_tokens": sum(len(s.split()) for s in inputs), "total_tokens": 0}}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: biomedbert
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+                "torch==2.5.1" "transformers==4.46.3" fastapi uvicorn huggingface_hub
+            else
+              echo "venv exists"
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              echo "Downloading BiomedBERT..."
+              /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(repo_id='microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract', local_dir='/data/model', local_dir_use_symlinks=False, token=os.environ.get('HF_TOKEN'))
+            "
+            else
+              echo "Model exists"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+          - { name: MODEL_NAME, value: biomedbert-110m }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits: { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: biomedbert-data }
+      - name: app
+        configMap: { name: biomedbert-server }

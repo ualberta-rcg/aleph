@@ -24,7 +24,7 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [ ] aion
 - [ ] alphafold2
 - [ ] arcface
-- [ ] biomedbert
+- [x] biomedbert (embedding, CPU, dim=768; id=biomedbert-110m)
 - [ ] biot5
 - [ ] birdnet-analyzer
 - [ ] chem-t5
