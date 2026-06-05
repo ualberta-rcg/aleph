@@ -84,7 +84,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | gpt-oss-20b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | NOT-READY | PENDING |  |
 | granite-geospatial-ocean | classify | true | /v1/science/embed | NOT-READY | PENDING |  |
-| graphcast | forecast | false | /v1/science/predict | READY | PENDING |  |
+| graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
 | kandinsky-3 | image | true | /v1/images/generations | NO-ISVC | PENDING |  |
@@ -95,7 +95,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ligandmpnn | design | false | /v1/design | READY | PENDING |  |
 | longformer | stub | false | - | NO-ISVC | PENDING |  |
 | mace-mh-1 | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
-| mace-mp-0 | force-field | false | /v1/science/energy | READY | PENDING |  |
+| mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
 | mace-mp | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
 | mast3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
@@ -117,7 +117,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | neuralgcm | forecast | false | /v1/science/predict | READY | PENDING |  |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PENDING |  |
 | oceangpt-30b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| omnigenome | embedding | false | /v1/science/predict | READY | PENDING |  |
+| omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | phi-4-reasoning | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | presto | classify | false | /v1/embeddings | READY | PENDING |  |
@@ -149,7 +149,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | specter2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id specter2-110m) |
 | splicebert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id splicebert-86m) |
 | stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PENDING |  |
-| sundial | forecast | false | /v1/science/forecast | READY | PENDING |  |
+| sundial | forecast | false | /v1/science/forecast | READY | FIXED | fixed input shape + pinned transformers 4.40.2; forecast+quantiles PASS |
 | surya | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | terramind-flood | classify | true | /v1/science/classify | NOT-READY | PENDING |  |
 | thor | forecast | true | /v1/science/embed | NOT-READY | PENDING |  |

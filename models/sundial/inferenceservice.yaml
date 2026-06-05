@@ -66,26 +66,30 @@ data:
             mean_val = float(np.mean(seq))
             std_val = float(np.std(seq)) + 1e-8
             seq_norm = (seq - mean_val) / std_val
-            tensor = torch.tensor(seq_norm, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+            # Sundial expects a 2D tensor [batch_size, lookback_length] and returns
+            # generated forecasts of shape [batch, num_samples, horizon] (forecast only).
+            tensor = torch.tensor(seq_norm, dtype=torch.float32).unsqueeze(0)
             with torch.no_grad():
-                out = model.generate(
-                    tensor,
-                    max_new_tokens=horizon,
-                    do_sample=True,
-                    num_return_sequences=num_samples,
-                ) if num_samples > 1 else model.generate(tensor, max_new_tokens=horizon)
-            if out.dim() == 3:
-                forecasts_norm = out[:, len(series):, 0].cpu().numpy().tolist()
-                forecast_mean = [v * std_val + mean_val for v in np.mean(forecasts_norm, axis=0).tolist()]
-                forecast_std = [v * std_val for v in np.std(forecasts_norm, axis=0).tolist()]
+                out = model.generate(tensor, max_new_tokens=horizon, num_samples=num_samples)
+            arr = out.cpu().numpy()
+            # Normalize to shape [num_samples, horizon].
+            if arr.ndim == 3:
+                samples = arr[0]
+            elif arr.ndim == 2:
+                samples = arr
             else:
-                forecasts_norm = out[0, len(series):].cpu().numpy().tolist()
-                forecast_mean = [v * std_val + mean_val for v in forecasts_norm]
-                forecast_std = None
+                samples = arr.reshape(1, -1)
+            samples = samples[:, -horizon:]
+            denorm = samples * std_val + mean_val
+            forecast_mean = denorm.mean(axis=0).tolist()
+            forecast_std = denorm.std(axis=0).tolist() if denorm.shape[0] > 1 else None
+            q = np.quantile(denorm, [0.1, 0.5, 0.9], axis=0).tolist() if denorm.shape[0] > 1 else None
             return {
                 "forecast": forecast_mean,
                 "forecast_std": forecast_std,
+                "quantiles": {"0.1": q[0], "0.5": q[1], "0.9": q[2]} if q else None,
                 "horizon": horizon,
+                "num_samples": num_samples,
                 "input_length": len(series),
             }
 
@@ -116,6 +120,7 @@ metadata:
 spec:
   predictor:
     minReplicas: 0
+    maxReplicas: 5
     scaleTarget: 2
     scaleMetric: concurrency
     timeout: 300
@@ -133,10 +138,16 @@ spec:
               /data/venv/bin/pip install --quiet \
                 --extra-index-url https://download.pytorch.org/whl/cpu \
                 torch \
-                transformers accelerate huggingface_hub \
+                "transformers==4.40.2" accelerate huggingface_hub \
                 fastapi uvicorn
             else
               echo "Venv exists"
+            fi
+            # Sundial remote code uses DynamicCache.seen_tokens (removed in transformers>=4.44).
+            # Pin to a compatible version even on cached venvs.
+            if ! /data/venv/bin/python -c 'import transformers; assert transformers.__version__=="4.40.2"' 2>/dev/null; then
+              echo "Pinning transformers==4.40.2"
+              /data/venv/bin/pip install --quiet "transformers==4.40.2"
             fi
 
             if [ ! -d /data/model ] || [ -z "$(ls -A /data/model 2>/dev/null)" ]; then

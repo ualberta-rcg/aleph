@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "sundial",
+      "status": "production",
       "type": "forecast",
       "description_short": "Sundial — generative time series foundation model (128M, CPU)",
       "description": "Sundial by THUML (Tsinghua). 128M params. Generative time series foundation model for zero-shot probabilistic forecasting. Autoregressive generation with normalization-aware inference. Supports arbitrary horizon lengths and multi-sample probabilistic outputs. CPU-capable with no GPU required. Apache 2.0 license. 1M+ HuggingFace downloads.",

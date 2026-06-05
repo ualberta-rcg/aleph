@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "mace-mp-0",
+      "status": "production",
       "type": "force-field",
       "description_short": "MACE-MP-0 universal ML force field (medium variant) for materials energy/forces/stress prediction.",
       "description": "MACE-MP-0 universal machine learning force field from Cambridge/DeepMind. Uses mace_mp() convenience function from mace-torch to load the medium model variant. Predicts energy (eV), forces (eV/Angstrom), and stress tensors from atomic structures using the MACE equivariant message passing architecture. Trained on Materials Project DFT data covering 89 elements. CPU-only deployment (no GPU requested). Uses mace-torch's built-in checkpoint download.",

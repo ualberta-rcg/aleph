@@ -20,10 +20,13 @@ data:
 
     def load():
         global calculator
+        import os
         from mace.calculators import mace_mp
         print(f"Loading {MODEL_NAME}...", flush=True)
-        calculator = mace_mp(model="medium", device="cpu", default_dtype="float32")
-        print(f"{MODEL_NAME} loaded", flush=True)
+        local = "/data/mace-models/medium.model"
+        model_arg = local if os.path.exists(local) else "medium"
+        calculator = mace_mp(model=model_arg, device="cpu", default_dtype="float32")
+        print(f"{MODEL_NAME} loaded (model={model_arg})", flush=True)
 
     @app.on_event("startup")
     async def startup():
@@ -39,12 +42,21 @@ data:
 
     def _infer(structure):
         from ase import Atoms
+        cell = structure.get("cell")
+        # PBC only makes sense with a real cell. A periodic calc with a zero/None cell
+        # gives garbage energies (~1e13 eV). Default to non-periodic for molecules;
+        # use PBC only when a cell is supplied (or explicitly requested).
+        if cell:
+            pbc = structure.get("pbc", [True, True, True])
+        else:
+            cell = None
+            pbc = structure.get("pbc", False)
         atoms = Atoms(symbols=structure["elements"], positions=structure["positions"],
-                     cell=structure.get("cell"), pbc=structure.get("pbc", [True, True, True]))
+                     cell=cell, pbc=pbc)
         atoms.calc = calculator
         energy = float(atoms.get_potential_energy())
         forces = atoms.get_forces().tolist()
-        stress = atoms.get_stress().tolist() if atoms.cell.any() else None
+        stress = atoms.get_stress().tolist() if (atoms.cell is not None and atoms.cell.any()) else None
         return {"energy_eV": energy, "forces_eV_A": forces, "stress_eV_A3": stress}
 
     @app.post("/v1/science/energy")
@@ -70,6 +82,7 @@ metadata:
 spec:
   predictor:
     minReplicas: 0
+    maxReplicas: 5
     scaleTarget: 2
     scaleMetric: concurrency
     timeout: 600
@@ -88,6 +101,16 @@ spec:
                 torch mace-torch ase fastapi uvicorn
             else
               echo "venv exists"
+            fi
+            # Cache the MACE-MP medium model on the PVC so cold starts don't re-download
+            # 42MB to ephemeral /root/.cache each time (slow scale-from-zero).
+            mkdir -p /data/mace-models
+            if [ ! -f /data/mace-models/medium.model ]; then
+              echo "Downloading MACE-MP medium model to PVC..."
+              /data/venv/bin/python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/ACEsuit/mace-mp/releases/download/mace_mp_0/2023-12-03-mace-128-L1_epoch-199.model', '/data/mace-models/medium.model')"
+              echo "Model cached."
+            else
+              echo "MACE model already cached."
             fi
         resources:
           requests: { cpu: "4", memory: 8Gi }
