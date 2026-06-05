@@ -74,7 +74,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | fourcastnet3 | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
 | gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
-| gemma-4-26b-a4b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
+| gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8 (progress-deadline fix); correct answers |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |

@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "gemma-4-26b-a4b",
+      "status": "production",
       "type": "chat",
       "description_short": "Google Gemma 4 26B A4B MoE, reasoning + vision, FP8",
       "description": "Google Gemma 4 26B A4B MoE instruction-tuned. 25.2B total / 3.8B active params (128 experts, 8 active + 1 shared). Configurable thinking mode, multimodal (text+image), 256K native context (deployed at 131K), native tool calling via gemma4 parser. FP8 quantization on 1x L40S GPU. Hybrid attention (sliding window + global layers). Native system prompt support. vLLM v0.20.2 with native gemma4 tool calling and reasoning parsers.",
