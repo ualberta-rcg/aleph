@@ -101,7 +101,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mattersim | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
-| medgemma-27b-it | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x40GB; context trimmed to 8192; awaiting GPU capacity |
+| medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | 27B TP2; medical answers + Anthropic (deleted hog isvcs to schedule) |
 | medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
 | megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |

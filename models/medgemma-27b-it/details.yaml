@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "medgemma-27b-it",
+      "status": "production",
       "type": "chat",
       "description_short": "Google MedGemma 27B, medical multimodal (text + radiology images)",
       "description": "Google MedGemma 27B instruction-tuned multimodal model. Fine-tuned on medical text, radiology (CXR, CT), dermatology, ophthalmology (fundus), and histopathology images. Uses SigLIP image encoder pre-trained on de-identified medical data. 128K context window. Based on Gemma 3 architecture. 2x L40S GPUs. Supports text-only and text+image inputs.",
