@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "ancient-greek-bert",
+      "status": "production",
       "type": "embedding",
       "description_short": "Ancient Greek BERT — embeddings for Ancient and Byzantine Greek (768-dim)",
       "description": "Ancient Greek BERT by pranaydeeps. 110M params. BERT-base model pre-trained on Ancient Greek texts for Digital Humanities and classical studies. Supports masked token prediction and text embeddings for Ancient and Byzantine Greek corpora. Useful for philological analysis, authorship attribution, and textual similarity in classical texts. Max sequence length 512 tokens.",

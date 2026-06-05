@@ -10,11 +10,11 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 |---|---|---|---|---|---|---|
 | ablang2 | embedding | false | /v1/embeddings | READY | FIXED | embeddings+batch PASS; /v1/restore was broken, fixed (heavy/light pairs), now PASS |
 | aeneas | structure | true | /v1/science/predict | READY | PENDING |  |
-| agront | embedding | true | /v1/embeddings | READY | PENDING | had TEST.md (pre-loop) |
+| agront | embedding | true | /v1/embeddings | READY | PASS | 1500-dim DNA |
 | aion | embed | false | /v1/science/embed | READY | FIXED | rewrote to real AION CodecManager API; legacy_image + photometry -> 768-dim; was non-functional |
 | alphafold2 | structure-prediction | true | /v1/science/predict | READY | PENDING | had TEST.md (pre-loop) |
-| ancient-greek-bert | embedding | true | /v1/science/embed | READY | PENDING |  |
-| ankh | embedding | true | /v1/embeddings | READY | PENDING |  |
+| ancient-greek-bert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
+| ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
 | astroclip | embed | true | /v1/science/embed | READY | PENDING |  |
 | astropt | embed | true | /v1/science/embed | READY | PENDING |  |
@@ -23,13 +23,13 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
 | bge-small |  |  | - | READY | PENDING |  |
-| biobert | embedding | true | /v1/embeddings | READY | PENDING |  |
+| biobert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biogpt | generate | true | /v1/completions | READY | PENDING |  |
-| biolinkbert | embedding | true | /v1/embeddings | READY | PENDING |  |
-| biomed-roberta | embedding | true | /v1/embeddings | READY | PENDING |  |
-| biomedbert-large | embedding | true | /v1/science/embed | READY | PENDING |  |
+| biolinkbert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
+| biomed-roberta | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
+| biomedbert-large | embedding | true | /v1/science/embed | READY | PASS | 1024-dim (field: text) |
 | biomedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id biomedbert-110m) |
-| biomedclip | embed | true | /v1/embeddings | READY | PENDING |  |
+| biomedclip | embed | true | /v1/embeddings | READY | PASS | text_embeddings (texts/images) |
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz-1 | structure | true | /v1/science/predict | READY | PENDING |  |

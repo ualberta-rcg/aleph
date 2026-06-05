@@ -27,8 +27,8 @@ data:
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Loading Ankh on {DEVICE}...", flush=True)
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-        model = T5EncoderModel.from_pretrained(MODEL_ID,
-            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
+        # T5 encoders overflow to NaN/Inf in fp16; use fp32 (ankh-base is small).
+        model = T5EncoderModel.from_pretrained(MODEL_ID, torch_dtype=torch.float32)
         model = model.to(DEVICE).eval()
         print(f"Ankh ready on {DEVICE}", flush=True)
 
@@ -78,7 +78,8 @@ data:
         
         mask = enc["attention_mask"].unsqueeze(-1).float()
         emb = (out.last_hidden_state * mask).sum(1) / mask.sum(1)
-        emb = emb.cpu().float().numpy()
+        emb = emb.cpu().float()
+        emb = torch.nan_to_num(emb, nan=0.0, posinf=0.0, neginf=0.0).numpy()
         
         data = [{"object": "embedding", "index": i, "embedding": e.tolist()}
                 for i, e in enumerate(emb)]

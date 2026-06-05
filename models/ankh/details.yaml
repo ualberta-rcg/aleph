@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "ankh",
+      "status": "production",
       "type": "embedding",
       "description_short": "T5-based protein language model from ElnaggarLab (TUM, 113M params)",
       "description": "Ankh is a protein language model based on the T5 encoder architecture from the ElnaggarLab at TU Munich. Trained on UniRef50. Produces high-quality protein embeddings for structure prediction, function annotation, and variant effect prediction. Requires space-separated amino acids as input. Apache 2.0 license.",

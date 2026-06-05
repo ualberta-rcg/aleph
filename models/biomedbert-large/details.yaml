@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "biomedbert-large",
+      "status": "production",
       "type": "embedding",
       "description_short": "BiomedBERT-large — large PubMed BERT embeddings (340M, 1024-dim)",
       "description": "BiomedBERT-large by Microsoft. 340M params. Large BERT model pre-trained on PubMed abstracts. State-of-the-art on BioASQ, PubMedQA, and BLURB biomedical benchmarks. Produces 1024-dimensional dense embeddings. Larger variant of BiomedBERT for higher-accuracy biomedical NLP tasks. Max sequence length 512 tokens.",

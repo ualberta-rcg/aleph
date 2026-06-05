@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "biolinkbert",
+      "status": "production",
       "type": "embedding",
       "description_short": "BioLinkBERT — biomedical link prediction embeddings (768-dim)",
       "description": "BioLinkBERT by Stanford. 110M params. BERT-base model leveraging document link structure (citation links, hyperlinks) for enhanced biomedical text understanding. Produces 768-dimensional dense embeddings that capture inter-document relationships. Outperforms BioBERT on biomedical NER and relation extraction benchmarks. Max sequence length 512 tokens.",

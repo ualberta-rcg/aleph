@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "biomedclip",
+      "status": "production",
       "type": "embed",
       "description_short": "BiomedCLIP biomedical vision-language model",
       "description": "Microsoft BiomedCLIP — CLIP variant pre-trained on 15M PubMed figure-caption pairs. State-of-the-art biomedical image classification and cross-modal retrieval. Shared 512-dim space for images and text. Custom FastAPI server on GPU.",

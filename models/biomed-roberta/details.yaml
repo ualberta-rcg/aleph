@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "biomed-roberta",
+      "status": "production",
       "type": "embedding",
       "description_short": "BioMed-RoBERTa — biomedical text embeddings from Allen AI (768-dim)",
       "description": "BioMed-RoBERTa by Allen AI. 110M params. RoBERTa-base model pre-trained on biomedical text (PubMed abstracts + PMC full text). Produces 768-dimensional dense embeddings for biomedical NLP tasks including NER, relation extraction, and document classification. Max sequence length 512 tokens.",
