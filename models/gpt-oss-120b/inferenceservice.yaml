@@ -30,7 +30,7 @@ spec:
           - |
             set -e
             pip install -q huggingface_hub
-            if [ -f /data/config.json ]; then
+            if [ -f /data/config.json ] && { [ -f /data/tokenizer.json ] || [ -f /data/tokenizer_config.json ]; }; then
                 echo "Model already on PVC, skipping download."
             else
                 echo "Downloading openai/gpt-oss-120b ..."
@@ -68,14 +68,15 @@ spec:
           - --tensor-parallel-size
           - "2"
           - --max-model-len
-          - "131072"
+          - "65536"
           - --gpu-memory-utilization
-          - "0.95"
-          - --kv-cache-dtype
-          - fp8
-          - --enable-prefix-caching
+          - "0.92"
+          # Proven-stable recipe (matches POC cluster 232, L40S, vLLM v0.20.2).
+          # Do NOT add fp8 kv-cache or --enable-prefix-caching: gpt-oss has attention
+          # sinks; on L40S the backend auto-resolves to TRITON_ATTN, and TP>1 +
+          # prefix-caching returns empty responses (vllm#31422); fp8 breaks sinks.
           - --max-num-seqs
-          - "16"
+          - "8"
           - --reasoning-parser
           - openai_gptoss
           - --tool-call-parser
