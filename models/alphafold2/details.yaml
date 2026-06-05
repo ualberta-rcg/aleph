@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alphafold2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "alphafold2",
+      "type": "structure-prediction",
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "alphafold2",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 1000,
+        "max_input_tokens": 1000
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "10-15 minutes (first ever); ~1-2 min warm"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {
+        "num_recycle": 3
+      },
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "AlphaFold2 protein structure prediction (via ColabFold)",
+        "description": "AlphaFold2 (DeepMind) protein structure prediction served via ColabFold (colabfold_batch, alphafold2_ptm). MSA is fetched from the public ColabFold API (api.colabfold.com); AF2 params (~3.8GB) are cached on the PVC. POST a protein sequence (<=1000 aa) to /v1/science/predict and receive a PDB, per-residue pLDDT, mean pLDDT and pTM. HAMi GPU slice (gpumem 24576).",
+        "owned_by": "DeepMind / ColabFold",
+        "source": "sokrypton/ColabFold (alphafold2_ptm)",
+        "source_url": "https://github.com/sokrypton/ColabFold",
+        "license": "Apache-2.0 / MIT (ColabFold)",
+        "parameters": "AF2 (93M weights)",
+        "precision": "fp32",
+        "framework": "jax + colabfold",
+        "domain": "proteomics",
+        "subdomain": "structure-prediction",
+        "tags": [
+          "science",
+          "proteomics",
+          "protein",
+          "structure",
+          "alphafold",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 1000,
+        "input_format": {
+          "model": "alphafold2",
+          "sequence": "protein amino-acid sequence (<=1000 aa)",
+          "num_recycle": "int 1-10 (default 3)",
+          "demo": "bool (use a built-in 100-aa peptide)"
+        },
+        "output_format": {
+          "pdb": "PDB text",
+          "plddt": "[float] per-residue confidence",
+          "mean_plddt": "float",
+          "ptm": "float"
+        }
+      }
+    }

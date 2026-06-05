@@ -1,0 +1,275 @@
+# AlphaFold2 via ColabFold — protein structure prediction
+# Uses ghcr.io/sokrypton/colabfold:1.6.0-cuda12 for GPU inference
+# MSA obtained via public ColabFold API (colabfold.mmseqs.com) — no local DB needed
+# Params (~3.8 GB) downloaded to PVC on first init.
+# API: POST /v1/science/predict {"sequence": "MKTLL...", "num_recycle": 3}
+# Returns: {"pdb": "ATOM ...", "plddt": [...], "mean_plddt": 87.3, ...}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alphafold2-server
+  namespace: models
+data:
+  server.py: |
+    """
+    AlphaFold2 via ColabFold — protein structure prediction.
+
+    Wraps `colabfold_batch` CLI with public MSA API + pre-downloaded AF2 params.
+
+    Endpoints:
+      GET  /health                 → {"status":"ok","model":"alphafold2"}
+      GET  /v1/models              → model card
+      POST /v1/science/predict     → {"sequence":"MKTLL...", "num_recycle":3, "demo":false}
+        Returns: {"pdb":"...", "plddt":[...], "mean_plddt":87.3, "ptm":0.92, "model":"alphafold2"}
+
+    Demo mode (sequence = 20-residue peptide):
+      POST /v1/science/predict {"demo": true}
+    """
+    import os, json, subprocess, tempfile, time, asyncio
+    from pathlib import Path
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    PARAMS_DIR = os.environ.get("PARAMS_DIR", "/data/params")
+    # Use public MSA server; no local DB required
+    MSA_HOST   = os.environ.get("MSA_HOST", "https://api.colabfold.com")
+
+    app = FastAPI()
+    model_ready = False
+
+    def check_ready():
+        global model_ready
+        # Check that params are present
+        p = Path(PARAMS_DIR)
+        if p.exists() and any(p.rglob("*.npz")):
+            model_ready = True
+            print(f"AlphaFold2 params found at {PARAMS_DIR}.", flush=True)
+        else:
+            print(f"Warning: params not found at {PARAMS_DIR}. Will try on first request.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, check_ready)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "model": "alphafold2", "params_ready": model_ready}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "alphafold2", "object": "model", "owned_by": "deepmind",
+             "type": "structure-prediction", "license": "Apache-2.0",
+             "description": "AlphaFold2 protein structure prediction via ColabFold"}
+        ]}
+
+    def _run_colabfold(sequence: str, num_recycle: int = 3) -> dict:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fasta_path = os.path.join(tmpdir, "input.fasta")
+            out_dir    = os.path.join(tmpdir, "output")
+            os.makedirs(out_dir)
+
+            with open(fasta_path, "w") as f:
+                f.write(f">query\n{sequence}\n")
+
+            cmd = [
+                "/data/af2_venv/bin/colabfold_batch",
+                fasta_path, out_dir,
+                "--num-recycle", str(num_recycle),
+                "--data", PARAMS_DIR,
+                "--host-url", MSA_HOST,
+                "--model-type", "alphafold2_ptm",
+                "--num-models", "1",
+                "--zip",
+            ]
+
+            t0 = time.time()
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            elapsed = time.time() - t0
+
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"colabfold_batch failed (exit {result.returncode}):\n"
+                    f"STDOUT: {result.stdout[-1000:]}\nSTDERR: {result.stderr[-2000:]}"
+                )
+
+            # Find PDB output (ranked_0.pdb preferred)
+            pdb_content = ""
+            for fn in sorted(Path(out_dir).rglob("*.pdb")):
+                if "relaxed" not in fn.name:
+                    pdb_content = fn.read_text()
+                    break
+            if not pdb_content:
+                # Try zip
+                import zipfile, glob
+                zips = list(Path(out_dir).rglob("*.zip"))
+                if zips:
+                    with zipfile.ZipFile(zips[0]) as z:
+                        pdb_names = [n for n in z.namelist() if n.endswith(".pdb")]
+                        if pdb_names:
+                            pdb_content = z.read(pdb_names[0]).decode()
+
+            if not pdb_content:
+                raise RuntimeError(f"No PDB output found. stdout={result.stdout[-500:]}")
+
+            # Parse pLDDT from B-factor column
+            plddt = []
+            for line in pdb_content.split("\n"):
+                if line.startswith("ATOM") or line.startswith("HETATM"):
+                    try:
+                        plddt.append(float(line[60:66].strip()))
+                    except Exception:
+                        pass
+
+            # Parse pTM from log
+            ptm = None
+            for line in (result.stdout + result.stderr).split("\n"):
+                if "ptm=" in line.lower() or "pTM=" in line:
+                    try:
+                        ptm = float(line.split("ptm=")[1].split()[0].rstrip(",)"))
+                    except Exception:
+                        pass
+
+            return {
+                "model": "alphafold2",
+                "sequence": sequence,
+                "num_recycle": num_recycle,
+                "pdb": pdb_content[:100000],  # cap 100KB
+                "plddt": plddt[:500],
+                "mean_plddt": float(sum(plddt) / len(plddt)) if plddt else None,
+                "ptm": ptm,
+                "inference_s": round(elapsed, 1),
+            }
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        demo = request.get("demo", False)
+        if demo:
+            sequence = "MKFLILLFNILCLFPVLAADNHGVGPQIALVKFNNTQTAKDIVGFNEEGAPQLSITNATLQAGASNIINQFIENIINSQDYQLKPEEIRQHRESAMKNYRD"
+        else:
+            sequence = request.get("sequence", "").strip().upper()
+            if not sequence:
+                raise HTTPException(400, "sequence required")
+            if len(sequence) > 1000:
+                raise HTTPException(400, "sequence length > 1000 not supported via API")
+            invalid = set(sequence) - set("ACDEFGHIKLMNPQRSTVWY")
+            if invalid:
+                raise HTTPException(400, f"Invalid amino acid characters: {invalid}")
+
+        num_recycle = int(request.get("num_recycle", 3))
+        num_recycle = max(1, min(num_recycle, 10))
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, _run_colabfold, sequence, num_recycle),
+                timeout=580
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(504, "ColabFold prediction timed out after 580s")
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+        return JSONResponse(result)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alphafold2-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: alphafold2
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 1
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.af2-params-ready-v4
+            VENV=/data/af2_venv
+            if [ -f "$SENTINEL" ]; then
+              echo "AF2 venv + params already prepared."
+              exit 0
+            fi
+            apt-get update -qq && apt-get install -y -qq git wget curl
+            echo "Creating venv and installing colabfold..."
+            python3 -m venv "$VENV"
+            "$VENV/bin/pip" install -q -U pip
+            # Install JAX CPU for parameter download (no GPU needed in init)
+            "$VENV/bin/pip" install -q jax jaxlib
+            "$VENV/bin/pip" install -q "colabfold[alphafold]"
+            # Pre-install the GPU jax + web server here (guarded) so warm restarts are fast.
+            "$VENV/bin/pip" install -q "jax[cuda12]"
+            "$VENV/bin/pip" install -q fastapi "uvicorn[standard]"
+            echo "Downloading AlphaFold2 parameters (~3.8 GB)..."
+            mkdir -p /data/params
+            "$VENV/bin/python3" -c "from pathlib import Path; from colabfold.download import download_alphafold_params; download_alphafold_params('alphafold2_ptm', Path('/data/params')); print('AF2 params downloaded.')"
+            touch "$SENTINEL"
+            echo "Setup complete. Params:"
+            ls -lh /data/params/ | head -10
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits:   { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: af2-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/af2_venv/bin/python3", "/app/server.py"]
+        env:
+          - { name: PARAMS_DIR, value: /data/params }
+          - { name: MSA_HOST,   value: "https://api.colabfold.com" }
+          - { name: TF_FORCE_UNIFIED_MEMORY, value: "1" }
+          - { name: XLA_PYTHON_CLIENT_MEM_FRACTION, value: "0.8" }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1" }
+          limits:   { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "24576" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        volumeMounts:
+          - { name: af2-data, mountPath: /data }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: af2-data
+        persistentVolumeClaim:
+          claimName: alphafold2-data
+      - name: server-config
+        configMap:
+          name: alphafold2-server

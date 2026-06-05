@@ -22,7 +22,7 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [x] ablang2 (embedding, CPU, dim=480; ablang2==0.2.1 fix)
 - [x] agront (DNA embedding, GPU 1/gpumem8192, dim=1500; RawDeployment->Knative)
 - [s] aion (BLOCKED: needs real `aion` codec API + astro inputs; 232 server was a stub — see models/aion/CLAUDE.md)
-- [ ] alphafold2
+- [x] alphafold2 (structure-prediction, GPU/gpumem24576; RawDeployment->Knative; demo fold OK)
 - [x] arcface (face/vision, CPU, ONNX, dim=512)
 - [x] biomedbert (embedding, CPU, dim=768; id=biomedbert-110m)
 - [ ] biot5

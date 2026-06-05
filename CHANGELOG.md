@@ -2,6 +2,15 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate alphafold2 (structure prediction, GPU)
+
+### alphafold2 (Wave 1, GPU/HAMi)
+- Ported AlphaFold2-via-ColabFold from 232. RawDeployment+GPU-Operator → Knative
+  scale-to-zero + HAMi `gpumem 24576`; PVC `nfs-client`; moved jax[cuda12]/fastapi install
+  into guarded init so warm restarts are fast.
+- Verified end-to-end: demo fold returned a valid PDB + pLDDT (mean 51.0) in ~163s; MSA
+  fetched from public api.colabfold.com (egress OK). See models/alphafold2/TEST.md.
+
 ## 2026-06-04 — migrate chemberta + clinicalbert (embeddings, CPU)
 
 ### chemberta (Wave 1)
