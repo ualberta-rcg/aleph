@@ -1,0 +1,230 @@
+# DNABERT-S: Species-aware genome foundation model (2024)
+# HuggingFace: zhihan1996/DNABERT-S (MIT)
+# Builds on DNABERT-2 with manifold instance mixup + curriculum contrastive learning
+# Creates species-discriminative DNA embeddings (718K+ monthly downloads)
+# API: POST /v1/embeddings — DNA sequence → species-aware embedding
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dnabert-s-server
+  namespace: models
+data:
+  server.py: |
+    """
+    DNABERT-S: Species-aware DNA embedding model.
+    Produces embeddings that cluster by species — ideal for metagenomics,
+    species identification, and phylogenomics.
+
+    Endpoints:
+      GET  /health            → {"status":"ok","model":"dnabert-s"}
+      GET  /v1/models         → model card
+      POST /v1/embeddings     → {"input":"ATCG...", "model":"dnabert-s"}
+      POST /v1/science/predict → {"sequence":"ATCG...", "task":"embed"}
+    """
+    import os, asyncio
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_ID = os.environ.get("MODEL_ID", "zhihan1996/DNABERT-S")
+    DEVICE = "cpu"
+
+    app = FastAPI()
+    model = None
+    tokenizer = None
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        # Patch torch._prims_common.check_same_device to tolerate meta tensors
+        # during DNABERT-S init (flash_attn_triton registers prims that fail on meta device).
+        import torch._prims_common as _prim_common
+        _orig_check = _prim_common.check_same_device
+        def _patched_check(*tensors, allow_cpu_scalar_tensors=False):
+            if any(getattr(getattr(t, 'device', None), 'type', None) == 'meta' for t in tensors
+                   if hasattr(t, 'device')):
+                return
+            _orig_check(*tensors, allow_cpu_scalar_tensors=allow_cpu_scalar_tensors)
+        _prim_common.check_same_device = _patched_check
+
+        from transformers import AutoTokenizer, AutoConfig, AutoModel
+        DEVICE = "cpu"  # embedding model; GPU gets cudaErrorDevicesUnavailable on L40S
+        print(f"Loading DNABERT-S on {DEVICE}...", flush=True)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(MODEL_ID, trust_remote_code=True)
+        config.use_flash_attn = False
+        model = AutoModel.from_pretrained(MODEL_ID, config=config, trust_remote_code=True,
+                                          low_cpu_mem_usage=False).to(DEVICE).eval()
+
+        _prim_common.check_same_device = _orig_check  # restore
+
+        # bert_layers.py checks `flash_attn_qkvpacked_func is None` to decide attention path.
+        # Setting it to None in the bert_layers module namespace forces the PyTorch CPU fallback.
+        import sys
+        for mod_name in list(sys.modules):
+            if 'bert_layers' in mod_name and 'DNABERT' in mod_name:
+                m = sys.modules[mod_name]
+                if hasattr(m, 'flash_attn_qkvpacked_func'):
+                    m.flash_attn_qkvpacked_func = None
+                    print(f"Forced CPU attention in {mod_name}")
+        print("DNABERT-S ready.", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "dnabert-s"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "dnabert-s", "object": "model", "owned_by": "zhihan1996",
+             "type": "dna-lm", "license": "MIT",
+             "description": "DNABERT-S species-aware DNA embedding; MI-Mix + C2LR contrastive learning; ideal for metagenomics/species classification"}
+        ]}
+
+    def _embed(sequence: str):
+        import torch
+        enc = tokenizer(sequence, return_tensors="pt", max_length=512,
+                        truncation=True, padding=True).to(DEVICE)
+        with torch.no_grad():
+            out = model(**enc)
+        hidden = out.last_hidden_state if hasattr(out, 'last_hidden_state') else out[0]
+        mask = enc.get("attention_mask", None)
+        if mask is not None:
+            mask = mask.unsqueeze(-1).float()
+            emb = (hidden * mask).sum(1) / mask.sum(1)
+        else:
+            emb = hidden.mean(dim=1)
+        return emb[0].cpu().float().tolist()
+
+    @app.post("/v1/embeddings")
+    async def embeddings(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        seq = request.get("input", "").upper().strip()
+        if not seq:
+            raise HTTPException(400, "input required")
+        if len(seq) > 512:
+            raise HTTPException(400, "sequence length > 512")
+        loop = asyncio.get_event_loop()
+        emb = await loop.run_in_executor(None, _embed, seq)
+        return JSONResponse({"object": "list", "data": [
+            {"object": "embedding", "embedding": emb, "index": 0}
+        ], "model": "dnabert-s"})
+
+    @app.post("/v1/science/predict")
+    async def predict(request: dict):
+        if not model:
+            raise HTTPException(503, "Model not loaded yet")
+        seq = request.get("sequence", "").upper().strip()
+        if not seq:
+            raise HTTPException(400, "sequence required")
+        if len(seq) > 512:
+            raise HTTPException(400, "sequence length > 512")
+        loop = asyncio.get_event_loop()
+        emb = await loop.run_in_executor(None, _embed, seq)
+        return JSONResponse({
+            "sequence": seq[:50] + ("..." if len(seq) > 50 else ""),
+            "embedding": emb,
+            "dims": len(emb),
+            "model": "dnabert-s",
+            "note": "Species-aware embedding; similar species cluster together"
+        })
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: dnabert-s
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 180
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip -q
+              /data/venv/bin/pip install -q \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                torch==2.5.1 transformers==4.46.3 sentencepiece einops \
+                fastapi uvicorn huggingface_hub
+              echo "venv created."
+            else
+              echo "venv already exists."
+            fi
+            if [ -f /data/hf-home/hub/models--zhihan1996--DNABERT-S/snapshots/*/config.json ] 2>/dev/null || \
+               find /data/hf-home -name "config.json" 2>/dev/null | grep -q DNABERT-S; then
+              echo "DNABERT-S already cached."
+            else
+              echo "Downloading zhihan1996/DNABERT-S..."
+              HF_HOME=/data/hf-home /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id='zhihan1996/DNABERT-S',
+                local_dir='/data/model',
+                local_dir_use_symlinks=False,
+                token=os.environ.get('HF_TOKEN'),
+            )
+            print('Download finished.')
+            "
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - name: model-data
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_ID, value: /data/model }
+          - { name: HF_HOME, value: /data/hf-home }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: dnabert-s-data
+      - name: server-config
+        configMap:
+          name: dnabert-s-server

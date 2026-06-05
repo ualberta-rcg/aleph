@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dnabert-s-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "dnabert-s",
+      "type": "embedding",
+      "description_short": "Species-aware genome foundation model with contrastive learning",
+      "description": "DNABERT-S from zhihan1996 builds on DNABERT-2 with manifold instance mixup (MI-Mix) and curriculum contrastive learning (C2LR). Creates species-discriminative DNA embeddings ideal for metagenomics, species identification, and phylogenomics. Forced to CPU due to flash attention issues on L40S. No PVC — downloads on every startup.",
+      "context_window": 512,
+      "max_completion_tokens": 0,
+      "endpoints": {
+        "primary": "/v1/embeddings",
+        "science": "/v1/science/predict",
+        "health": "/health"
+      },
+      "owned_by": "zhihan1996",
+      "source": "zhihan1996/DNABERT-S",
+      "source_url": "https://huggingface.co/zhihan1996/DNABERT-S",
+      "license": "MIT",
+      "parameters": "117M",
+      "precision": "float32 (CPU)",
+      "architecture": "BERT-based DNA encoder (MI-Mix + C2LR)",
+      "framework": "transformers + torch",
+      "deployment": {"image": "python:3.11-slim", "gpu": false, "min_replicas": 0, "max_replicas": 1, "cpu_request": "2", "memory_request": "8Gi", "pvc": null, "pvc_size": null, "node_selector": "gpu.present=true", "timeout": 120},
+      "routing": {
+        "k8s_name": "dnabert-s",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "compatibility": {"openai_embeddings": true, "input_fields": ["input"]},
+      "domain": "genomics",
+      "subdomain": "species-aware-embedding",
+      "tags": ["embedding", "science", "genomics", "dna", "metagenomics", "species"],
+      "content_types": ["text"],
+      "languages": ["dna"],
+      "input_map": {"input": "DNA sequence (ACGT, max 512 bp)"},
+      "output_map": {"object": "list", "data": "[{object: embedding, embedding: [float], index: int}]", "model": "dnabert-s"},
+      "tier": 2
+    }
