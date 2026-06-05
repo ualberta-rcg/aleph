@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "borzoi",
+      "status": "production",
       "type": "predict",
       "description_short": "RNA-seq prediction from 524kb genomic sequences (Calico, ~500M)",
       "description": "Borzoi from Calico Research predicts RNA-seq signal from 524,288 bp genomic DNA sequences. Predicts gene expression at base-pair resolution across multiple bins. Based on the Enformer architecture with modifications for RNA-seq prediction. 68K+ HF downloads. CC-BY-4.0 license.",

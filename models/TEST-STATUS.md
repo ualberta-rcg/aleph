@@ -18,7 +18,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
 | astroclip | embed | true | /v1/science/embed | READY | PENDING |  |
 | astropt | embed | true | /v1/science/embed | READY | PENDING |  |
-| astrosage | chat | true | /v1/chat/completions | READY | PENDING |  |
+| astrosage | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic endpoints both work |
 | aurora | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
@@ -33,9 +33,9 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz-1 | structure | true | /v1/science/predict | READY | PENDING |  |
-| borzoi | predict | true | /v1/science/predict | READY | PENDING |  |
+| borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
 | brainlm | embed | true | /v1/embeddings | READY | PENDING |  |
-| caduceus | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
+| caduceus | embedding | true | /v1/embeddings | NOT-READY | FAIL | mamba_ssm/selective_scan_cuda torch-CUDA ABI mismatch |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
 | chemgpt-19m | generate | true | /v1/science/generate | READY | PASS | SELFIES molecule generation |
@@ -60,7 +60,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | dust3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
 | earthpt | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | efficientnet-b0 | classify | false | /v1/vision/classify | READY | FIXED | lite4: fixed preproc+double-softmax+labels; minibus 0.63 |
-| enformer | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
+| enformer | predict | true | /v1/science/predict | NOT-READY | FAIL | isvc never deployed (READY=False 11h); needs recreate |
 | ernierna | embedding | true | /v1/science/embed | NOT-READY | FAIL | isvc never deployed (READY=False 10h); needs recreate/fix |
 | esm1b | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | esm2-150m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |

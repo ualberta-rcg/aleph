@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "enformer",
+      "status": "broken",
       "type": "predict",
       "description_short": "Gene expression prediction from 196kb DNA sequences (DeepMind/EleutherAI)",
       "description": "Enformer predicts gene expression (regulatory track values) from 196,608 bp DNA sequences. Trained by DeepMind on human and mouse genomic data. Predicts 5313 human + 1643 mouse regulatory tracks. Requires pinned transformers<4.38 for enformer-pytorch compatibility. ~500M parameters.",

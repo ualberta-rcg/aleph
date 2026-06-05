@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "astrosage",
+      "status": "production",
       "type": "chat",
       "description_short": "AstroSage-8B, astronomy/astrophysics LLM",
       "description": "AstroSage-8B — Llama-3.1-8B fine-tuned on 250K+ arXiv astronomy papers (2007-2024) and 8.8M QA pairs. Achieves GPT-4o-level performance (80.9%) on astronomy benchmarks. Expert at astrophysics Q&A, observation planning, literature review, and data analysis. Uses custom FastAPI server (not vLLM). 1x shared L40S GPU.",

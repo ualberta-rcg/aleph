@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "caduceus",
+      "status": "broken",
       "type": "embedding",
       "description_short": "Bidirectional Mamba DNA model with 131k context (Cornell/Kuleshov)",
       "description": "Caduceus from the Kuleshov Lab at Cornell is a bidirectional Mamba-based DNA foundation model supporting up to 131k base pair context. Uses reverse complement equivariance for DNA-specific modeling. Requires mamba-ssm and causal-conv1d compiled from source (CUDA). ~45M parameters. Uses PyTorch devel image for compilation.",
