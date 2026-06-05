@@ -1,0 +1,198 @@
+# YOLOv8n object detection (Ultralytics) — ONNX export on first boot
+# API: POST /v1/vision/detect
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: yolov8n-server
+  namespace: models
+data:
+  server.py: |
+    """YOLOv8 object detection server using ONNX."""
+    import os, io, base64, asyncio
+    import numpy as np
+    from PIL import Image
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_NAME = os.environ.get("MODEL_NAME", "yolov8n")
+    MODEL_FILE = os.environ.get("MODEL_FILE", "/data/model/yolov8n.onnx")
+    INPUT_SIZE = int(os.environ.get("INPUT_SIZE", "640"))
+    CONF_THRESH = float(os.environ.get("CONF_THRESH", "0.25"))
+    IOU_THRESH = float(os.environ.get("IOU_THRESH", "0.45"))
+
+    COCO_CLASSES = ['person','bicycle','car','motorcycle','airplane','bus','train','truck','boat',
+        'traffic light','fire hydrant','stop sign','parking meter','bench','bird','cat','dog','horse',
+        'sheep','cow','elephant','bear','zebra','giraffe','backpack','umbrella','handbag','tie',
+        'suitcase','frisbee','skis','snowboard','sports ball','kite','baseball bat','baseball glove',
+        'skateboard','surfboard','tennis racket','bottle','wine glass','cup','fork','knife','spoon',
+        'bowl','banana','apple','sandwich','orange','broccoli','carrot','hot dog','pizza','donut',
+        'cake','chair','couch','potted plant','bed','dining table','toilet','tv','laptop','mouse',
+        'remote','keyboard','cell phone','microwave','oven','toaster','sink','refrigerator','book',
+        'clock','vase','scissors','teddy bear','hair drier','toothbrush']
+
+    app = FastAPI()
+    session = None
+
+    def load():
+        global session
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 4
+        session = ort.InferenceSession(MODEL_FILE, sess_options=opts, providers=["CPUExecutionProvider"])
+        print(f"{MODEL_NAME} loaded", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if session else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "ultralytics", "type": "detect"}]}
+
+    def nms(boxes, scores, iou_thresh):
+        idxs = scores.argsort()[::-1]
+        keep = []
+        while len(idxs) > 0:
+            i = idxs[0]
+            keep.append(i)
+            if len(idxs) == 1: break
+            ious = compute_iou(boxes[i], boxes[idxs[1:]])
+            idxs = idxs[1:][ious < iou_thresh]
+        return keep
+
+    def compute_iou(box, boxes):
+        x1 = np.maximum(box[0], boxes[:, 0])
+        y1 = np.maximum(box[1], boxes[:, 1])
+        x2 = np.minimum(box[2], boxes[:, 2])
+        y2 = np.minimum(box[3], boxes[:, 3])
+        inter = np.maximum(0, x2-x1) * np.maximum(0, y2-y1)
+        area1 = (box[2]-box[0]) * (box[3]-box[1])
+        area2 = (boxes[:, 2]-boxes[:, 0]) * (boxes[:, 3]-boxes[:, 1])
+        return inter / (area1 + area2 - inter + 1e-6)
+
+    def _infer(img_bytes):
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        orig_w, orig_h = img.size
+        img_resized = img.resize((INPUT_SIZE, INPUT_SIZE))
+        arr = np.array(img_resized, dtype=np.float32) / 255.0
+        arr = arr.transpose(2, 0, 1)[np.newaxis]
+        
+        output = session.run(None, {session.get_inputs()[0].name: arr})[0]
+        preds = output[0].T  # [8400, 84]
+        
+        boxes = preds[:, :4]
+        scores = preds[:, 4:].max(axis=1)
+        class_ids = preds[:, 4:].argmax(axis=1)
+        
+        mask = scores > CONF_THRESH
+        boxes, scores, class_ids = boxes[mask], scores[mask], class_ids[mask]
+        
+        # Convert xywh to xyxy
+        x, y, w, h = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+        boxes = np.stack([x - w/2, y - h/2, x + w/2, y + h/2], axis=1)
+        
+        # Scale to original
+        boxes[:, [0, 2]] *= orig_w / INPUT_SIZE
+        boxes[:, [1, 3]] *= orig_h / INPUT_SIZE
+        
+        keep = nms(boxes, scores, IOU_THRESH)
+        results = []
+        for i in keep:
+            results.append({
+                "label": COCO_CLASSES[class_ids[i]] if class_ids[i] < len(COCO_CLASSES) else str(class_ids[i]),
+                "score": float(scores[i]),
+                "box": boxes[i].tolist()
+            })
+        return results
+
+    @app.post("/v1/vision/detect")
+    async def detect(request: dict):
+        if session is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        b64 = request.get("image", "")
+        if "," in b64: b64 = b64.split(",", 1)[1]
+        results = await asyncio.get_event_loop().run_in_executor(None, _infer, base64.b64decode(b64))
+        return {"model": MODEL_NAME, "task": "detect", "detections": results}
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: yolov8n
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 180
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update && apt-get install -y --no-install-recommends libxcb1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+            if [ ! -d /data/venv/bin ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install onnxruntime pillow numpy fastapi uvicorn ultralytics onnx
+              /data/venv/bin/pip uninstall -y opencv-python 2>/dev/null || true
+              /data/venv/bin/pip install opencv-python-headless
+            else
+              echo "venv exists"
+            fi
+            if [ ! -f /data/model/yolov8n.onnx ]; then
+              echo "Exporting YOLOv8n to ONNX..."
+              mkdir -p /data/model
+              /data/venv/bin/python -c "
+            from ultralytics import YOLO
+            import shutil
+            m = YOLO('yolov8n.pt')
+            out = m.export(format='onnx', imgsz=640, simplify=True)
+            shutil.copy2(out, '/data/model/yolov8n.onnx')
+            print('Export finished.')
+            "
+            else
+              echo "Model exists"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_NAME, value: yolov8n }
+          - { name: MODEL_FILE, value: /data/model/yolov8n.onnx }
+        ports: [{ containerPort: 8080, protocol: TCP }]
+        resources:
+          requests: { cpu: "2", memory: 2Gi }
+          limits: { cpu: "4", memory: 4Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 20
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: yolov8n-data }
+      - name: app
+        configMap: { name: yolov8n-server }
