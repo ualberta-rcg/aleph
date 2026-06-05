@@ -25,14 +25,14 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [x] alphafold2 (structure-prediction, GPU/gpumem24576; RawDeployment->Knative; demo fold OK)
 - [x] arcface (face/vision, CPU, ONNX, dim=512)
 - [x] biomedbert (embedding, CPU, dim=768; id=biomedbert-110m)
-- [ ] biot5
-- [ ] birdnet-analyzer
-- [ ] chem-t5
+- [x] biot5 (science-generate, T5, CPU; /v1/science/generate mol2text OK; ~25s greedy gen)
+- [x] birdnet-analyzer (audio-classification, tensorflow-cpu/birdnetlib; /v1/science/identify OK)
+- [x] chem-t5 (science-generate, T5, CPU; /v1/science/generate forward_synthesis OK)
 - [x] chemberta (embedding, CPU, dim=768; id=chemberta-125m)
 - [x] chronos-bolt (forecast, CPU; /v1/forecast OK)
 - [x] clap (audio embedding+classify, CPU, dim=512; logit_scale_a fix)
 - [ ] clay
-- [ ] climatebert
+- [x] climatebert (classification, DistilRoBERTa, CPU, dim=768; detect+netzero+embeddings OK)
 - [x] clinicalbert (embedding, CPU, dim=768; id=clinicalbert-110m)
 - [ ] depth-anything
 - [ ] dino-vit-b8

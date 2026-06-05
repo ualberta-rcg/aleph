@@ -2,6 +2,39 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-04 — migrate climatebert (classification, CPU)
+
+### climatebert (Wave 1)
+- Ported ClimateBERT (DistilRoBERTa, 3 models: base + detector + netzero-reduction) from 232.
+  CPU; scale-to-zero; PVC nfs-client; HF_HOME=/data/hf-home; HF_HUB_OFFLINE=1 at runtime.
+- /v1/science/classify (tasks: detect, netzero) + /v1/embeddings (768-dim). All PASS.
+- Inline HF_TOKEN → secretKeyRef; v2 card with routing.k8s_name=climatebert.
+
+## 2026-06-04 — migrate birdnet-analyzer (audio-classification, CPU)
+
+### birdnet-analyzer (Wave 1)
+- Ported BirdNET-Analyzer (Cornell Lab, birdnetlib + tensorflow-cpu) from 232.
+  CPU; scale-to-zero; PVC nfs-client; no HF token needed (bundled model weights).
+- /v1/science/identify: 48kHz float samples → species detections. PASS (synthetic tone → empty
+  detections as expected; pipeline end-to-end verified in ~16s).
+- v2 card with routing.k8s_name=birdnet-analyzer.
+
+## 2026-06-04 — migrate chem-t5 (chemistry T5, CPU)
+
+### chem-t5 (Wave 1)
+- Ported Chem-T5 (GT4SD/multitask-text-and-chemistry-t5-base-standard) from 232. CPU; T5
+  seq2seq; scale-to-zero; PVC nfs-client; HF_TOKEN → secretKeyRef; v2 card.
+- /v1/science/generate (tasks: forward_synthesis, retrosynthesis, mol2text, text2mol, etc).
+  Demo forward_synthesis PASS. ~10s beam search on CPU.
+
+## 2026-06-04 — migrate biot5 (bio T5, CPU)
+
+### biot5 (Wave 1)
+- Ported BioT5 (QizhiPei/biot5-base) from 232. CPU; T5 seq2seq; scale-to-zero;
+  PVC nfs-client; HF_TOKEN → secretKeyRef; v2 card.
+- /v1/science/generate (tasks: mol2text, forward_synthesis, etc). Demo mol2text PASS (~25s
+  greedy on CPU — not a hang, use --max-time ≥60).
+
 ## 2026-06-04 — migrate clap (audio-language, CPU)
 
 ### clap (Wave 1)

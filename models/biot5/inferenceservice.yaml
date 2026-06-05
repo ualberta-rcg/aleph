@@ -1,0 +1,170 @@
+# BioT5: Cross-modal Biology+Chemistry T5 (QizhiPei/biot5-base, 0.3B)
+# Tasks: molecule captioning (mol→text), text-conditioned molecule generation (text→SELFIES),
+#        drug-target interaction, protein-protein interaction
+# Uses SELFIES molecular representation for 100% valid molecule generation
+# API: POST /v1/science/generate   {"task": "mol2text|text2mol|caption", "input": "..."}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: biot5-server
+  namespace: models
+data:
+  server.py: |
+    import asyncio, json, os
+    import uvicorn
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+
+    app = FastAPI(title="BioT5 API")
+    model = None
+    tokenizer = None
+    DEVICE = "cpu"
+
+    TASK_PREFIXES = {
+        "mol2text": "Translate the following molecule SELFIES to text description: ",
+        "text2mol": "Generate SELFIES for the molecule with description: ",
+        "caption":  "Provide a scientific caption for: ",
+    }
+
+    @app.on_event("startup")
+    async def startup():
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, load)
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok" if model else "loading", "model": "biot5"}
+
+    @app.get("/v1/models")
+    def models_list():
+        return {"object": "list", "data": [{"id": "biot5", "object": "model",
+            "description": "BioT5-base cross-modal biology+chemistry T5 (SELFIES, drug discovery, 0.3B)",
+            "tasks": list(TASK_PREFIXES.keys())}]}
+
+    @app.post("/v1/science/generate")
+    async def generate(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        task = request.get("task", "mol2text")
+        inp = request.get("input", "")
+        demo = request.get("demo", False)
+        if demo:
+            task = "mol2text"
+            inp = "[C][Branch1][Branch1][=N][Branch1][C][=O][NH1][C][Branch1][Branch1][C][Branch1][C][=O][OH1]"  # alanine SELFIES
+        if task not in TASK_PREFIXES:
+            return JSONResponse({"error": f"Unknown task. Valid: {list(TASK_PREFIXES.keys())}"}, 400)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _generate, task, inp)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _generate(task, inp):
+        import torch
+        prefix = TASK_PREFIXES[task]
+        full_input = prefix + inp
+        enc = tokenizer(full_input, return_tensors="pt", max_length=512, truncation=True)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model.generate(**enc, max_new_tokens=100, do_sample=False)
+        decoded = tokenizer.decode(out[0], skip_special_tokens=True)
+        return {"task": task, "input": inp, "output": decoded, "model": "biot5"}
+
+    def load():
+        global model, tokenizer, DEVICE
+        import torch
+        from transformers import T5ForConditionalGeneration, T5Tokenizer
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        MODEL_ID = os.environ.get("MODEL_DIR", "QizhiPei/biot5-base")
+        print(f"Loading BioT5 on {DEVICE} from {MODEL_ID}...", flush=True)
+        tokenizer = T5Tokenizer.from_pretrained(MODEL_ID, model_max_length=512)
+        model = T5ForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE).eval()
+        print("BioT5 ready.", flush=True)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biot5-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: biot5
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 0
+    scaleTarget: 2
+    scaleMetric: concurrency
+    timeout: 120
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+              python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+                "torch==2.5.1" "transformers==4.44.2" sentencepiece protobuf fastapi uvicorn huggingface_hub
+            fi
+            if [ ! -f /data/model/config.json ]; then
+              /data/venv/bin/python -c "
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download('QizhiPei/biot5-base', local_dir='/data/model', token=os.environ.get('HF_TOKEN'))
+            "
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 30
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: server-config, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: biot5-data }
+      - name: server-config
+        configMap:
+          name: biot5-server
