@@ -1,28 +1,30 @@
 # tinyllama — Test Report
 
-Cluster 230, gateway `http://10.43.79.101:80`. Type: chat LLM (CPU llama.cpp). id `tinyllama-1.1b`.
+Cluster 230, gateway ClusterIP `http://10.43.79.101:80`. Type: chat (CPU, llama.cpp GGUF). id `tinyllama-1.1b`.
 
-## Scale-up
-- Cold start: downloads GGUF (TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF, Q4_K_M) to PVC,
-  starts llama-cpp-python server. `3/3 Running`. ~3-4 min cold start.
+## Verified this pass (2026-06-05)
 
-## Endpoint tests (PASS)
-
-### POST /v1/chat/completions
+### POST /v1/chat/completions (OpenAI) — PASS
 ```bash
 curl -s -X POST $GW/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"model":"tinyllama-1.1b","messages":[{"role":"user","content":"Say hi in 3 words:"}],"max_tokens":10}'
+  -d '{"model":"tinyllama-1.1b","messages":[{"role":"user","content":"Say hello in one sentence."}],"max_tokens":40}'
 ```
-→ HTTP 200, `choices[0].message.content="Hi!"`. Latency ~270ms. PASS.
+→ `object=chat.completion`, valid `choices[0].message.content`, usage reported. PASS.
 
-### Catalog
-- `GET /v1/models?all=true` → `tinyllama-1.1b` discovered, type=chat. PASS.
+### POST /v1/messages (Anthropic) — PASS
+```bash
+curl -s -X POST $GW/v1/messages -H 'Content-Type: application/json' \
+  -d '{"model":"tinyllama-1.1b","max_tokens":40,"messages":[{"role":"user","content":"Name one color."}]}'
+```
+→ `type=message`, `content[0].type=text`, `stop_reason`, `usage.input/output_tokens`. PASS.
 
-## Migration fix
-- Removed GPU nodeSelector (`nvidia.com/gpu.product: NVIDIA-L40S-SHARED`).
-- Added `--n_gpu_layers=0` to ensure CPU-only inference.
-- Set `minReplicas: 0` for scale-to-zero.
+## Streaming — KNOWN LIMITATION (gateway-level, cross-cutting)
+- `stream:true` returns 500. Card marks `no_stream:true` / `supports_streaming:false`.
+- Backend is the official `llama_cpp.server` (supports SSE natively); failure is at the
+  gateway↔Knative/Istio SSE proxy path (`httpx.RemoteProtocolError: incomplete chunked read`).
+- Affects ALL chat models, not just tinyllama → tracked as a single gateway fix to be done
+  during the chat-model wave, not per model.
 
 ## Card parity
-id=tinyllama-1.1b, k8s_name=tinyllama, type=chat, gpu=false,
-endpoint /v1/chat/completions (OpenAI-compatible), context=4096.
+id=tinyllama-1.1b, type=chat, gpu=false, scale-to-zero. OpenAI + Anthropic verified.
+Streaming flagged false (accurate until gateway SSE path is fixed).

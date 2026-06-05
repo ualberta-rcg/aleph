@@ -21,7 +21,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | astrosage | chat | true | /v1/chat/completions | READY | PENDING |  |
 | aurora | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
-| bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PENDING |  |
+| bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
 | bge-small |  |  | - | READY | PENDING |  |
 | biobert | embedding | true | /v1/embeddings | READY | PENDING |  |
 | biogpt | generate | true | /v1/completions | READY | PENDING |  |
@@ -157,7 +157,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | timer-xl-1b | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | timer | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
 | timesfm | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
-| tinyllama | chat | false | /v1/chat/completions | READY | PENDING | had TEST.md (pre-loop) |
+| tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
 | totalsegmentator | segment | true | /v1/science/segment | NOT-READY | PENDING |  |
 | ttm | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | uma-m | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
