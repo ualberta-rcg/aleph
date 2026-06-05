@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "biogpt",
+      "status": "production",
       "type": "generate",
       "description_short": "BioGPT — biomedical text generation from Microsoft",
       "description": "BioGPT by Microsoft. 347M params. GPT-2 style autoregressive language model pre-trained on 15M PubMed abstracts. Generates biomedical text, descriptions of drugs/proteins/diseases, and can perform relation extraction. Produces biomedical entity descriptions and answers biomedical questions. Max input length 1024 tokens.",

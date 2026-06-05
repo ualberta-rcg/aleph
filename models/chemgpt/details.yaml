@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "chemgpt-1.2b",
+      "status": "production",
       "type": "generate",
       "description_short": "ChemGPT-1.2B — autoregressive SMILES molecule generation",
       "description": "ChemGPT-1.2B by ncfrey. 1.2B params. GPT-Neo model trained on PubChem SMILES for autoregressive molecule generation and completion. Generates valid drug-like molecules as SMILES strings. Also provides molecular embeddings via hidden state extraction. Ideal for de novo drug design and high-throughput molecular screening. Max sequence length 512 tokens.",

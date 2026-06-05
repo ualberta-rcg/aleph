@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "ernierna",
+      "status": "broken",
       "type": "embedding",
       "description_short": "Structure-aware RNA foundation model from Baidu/multimolecule (~86M)",
       "description": "ERNIE-RNA is a structure-aware RNA foundation model from multimolecule/Baidu. ~86M parameters, pre-trained on RNAcentral with structure-aware objectives. Outperforms RNA-FM on structure prediction tasks. Uses BertTokenizer (WordPiece vocab). AGPL-3.0 license.",

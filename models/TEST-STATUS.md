@@ -24,7 +24,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
 | bge-small |  |  | - | READY | PENDING |  |
 | biobert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
-| biogpt | generate | true | /v1/completions | READY | PENDING |  |
+| biogpt | generate | true | /v1/completions | READY | PASS | coherent biomedical text completion |
 | biolinkbert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biomed-roberta | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biomedbert-large | embedding | true | /v1/science/embed | READY | PASS | 1024-dim (field: text) |
@@ -38,15 +38,15 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | caduceus | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
-| chemgpt-19m | generate | true | /v1/science/generate | READY | PENDING |  |
-| chemgpt | generate | true | /v1/science/generate | READY | PENDING |  |
+| chemgpt-19m | generate | true | /v1/science/generate | READY | PASS | SELFIES molecule generation |
+| chemgpt | generate | true | /v1/science/generate | READY | PASS | id=chemgpt-1.2b; SELFIES molecule generation |
 | chgnet | force-field | true | /v1/science/energy | NOT-READY | PENDING |  |
 | chronos-bolt | forecast | false | /v1/forecast | READY | PASS | quantile forecast on 16-pt series |
 | clap | embedding | false | /v1/embeddings | READY | PASS | text emb 512-dim + zero-shot audio classify (dog 0.73) |
 | clay | embed | false | /v1/science/embed | READY | FIXED | rewrote to Clay v1.5 datacube dict API; cls embedding PASS |
 | climatebert | classification | false | /v1/science/classify | READY | PASS | net-zero 0.9988 |
 | climax | forecast | true | /v1/science/forecast | READY | PENDING |  |
-| clinical-longformer | embedding | true | /v1/science/embed | READY | PENDING |  |
+| clinical-longformer | embedding | true | /v1/science/embed | NOT-READY | FAIL | hangs on CPU (gpu=true but no CUDA use); needs GPU/attention fix |
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
 | command-r-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | croma | segment | true | /v1/embeddings | READY | PENDING |  |
@@ -61,7 +61,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | earthpt | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | efficientnet-b0 | classify | false | /v1/vision/classify | READY | FIXED | lite4: fixed preproc+double-softmax+labels; minibus 0.63 |
 | enformer | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
-| ernierna | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
+| ernierna | embedding | true | /v1/science/embed | NOT-READY | FAIL | isvc never deployed (READY=False 10h); needs recreate/fix |
 | esm1b | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | esm2-150m | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
 | esm2-35m | embedding | true | /v1/embeddings | READY | PENDING |  |

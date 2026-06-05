@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "chemgpt-19m",
+      "status": "production",
       "type": "generate",
       "endpoints": {
         "primary": "/v1/science/generate",

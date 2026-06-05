@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "clinical-longformer",
+      "status": "broken",
       "type": "embedding",
       "description_short": "Clinical-Longformer — long clinical document embeddings (4096 tokens)",
       "description": "Clinical-Longformer by yikuan8. 149M params. Longformer model pre-trained on MIMIC-III clinical notes. Handles long clinical documents up to 4096 tokens, far exceeding standard 512-token BERT models. Superior to ClinicalBERT for long clinical texts like discharge summaries and radiology reports. Produces CLS token embeddings for clinical NLP tasks. Apache 2.0 license.",
