@@ -51,6 +51,7 @@ data:
       "tags": ["vision", "classify", "imagenet", "onnx", "cpu"],
       "content_types": ["image"],
       "tier": "production",
+      "status": "production",
       "input_map": {
         "image": {
           "type": "string",

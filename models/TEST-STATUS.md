@@ -15,7 +15,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | alphafold2 | structure-prediction | true | /v1/science/predict | READY | PENDING | had TEST.md (pre-loop) |
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PENDING |  |
 | ankh | embedding | true | /v1/embeddings | READY | PENDING |  |
-| arcface | face | false | /v1/vision/face | READY | PENDING | had TEST.md (pre-loop) |
+| arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
 | astroclip | embed | true | /v1/science/embed | READY | PENDING |  |
 | astropt | embed | true | /v1/science/embed | READY | PENDING |  |
 | astrosage | chat | true | /v1/chat/completions | READY | PENDING |  |
@@ -52,14 +52,14 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | croma | segment | true | /v1/embeddings | READY | PENDING |  |
 | crysta-llm | chat | true | /v1/science/generate | NOT-READY | PENDING |  |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| depth-anything | depth | false | /v1/vision/depth | READY | PENDING |  |
+| depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
 | diffdock | dock | true | /v1/dock | NOT-READY | PENDING |  |
-| dino-vit-b8 | embed | false | /v1/vision/embed | READY | PENDING | had TEST.md (pre-loop) |
+| dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | image embedding |
 | dnabert-2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-2-117m) |
 | dnabert-s | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-s) |
 | dust3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
 | earthpt | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
-| efficientnet-b0 | classify | false | /v1/vision/classify | READY | PENDING | had TEST.md (pre-loop) |
+| efficientnet-b0 | classify | false | /v1/vision/classify | READY | FIXED | lite4: fixed preproc+double-softmax+labels; minibus 0.63 |
 | enformer | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
 | ernierna | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | esm1b | embedding | true | /v1/embeddings | NOT-READY | PENDING |  |
@@ -97,7 +97,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mace-mh-1 | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | PENDING |  |
 | mace-mp | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
-| maskrcnn | segment | false | /v1/vision/segment | READY | PENDING |  |
+| maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
 | mast3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
 | matscibert | embedding | true | /v1/science/embed | READY | PENDING |  |
 | mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING |  |
@@ -132,7 +132,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwen25-vl-3b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
 | qwen25-vl-7b | chat | ? | /v1/chat/completions | READY | PENDING |  |
 | qwen35-122b | chat | ? | /v1/chat/completions | READY | PENDING |  |
-| retinanet | detect | false | /v1/vision/detect | READY | PENDING |  |
+| retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
 | rnafm | embedding | true | /v1/science/embed | NOT-READY | PENDING |  |
@@ -162,6 +162,6 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ttm | forecast | true | /v1/science/forecast | READY | PENDING |  |
 | uma-m | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | xtts-v2 | tts | true | /v1/audio/speech | READY | PENDING |  |
-| yolov8n | detect | false | /v1/vision/detect | READY | PENDING | had TEST.md (pre-loop) |
-| yolov8s | detect | false | /v1/vision/detect | READY | PENDING | had TEST.md (pre-loop) |
-| zoobot | classify | false | /v1/vision/embed | READY | PENDING |  |
+| yolov8n | detect | false | /v1/vision/detect | READY | PASS | person 0.89 on bus.jpg |
+| yolov8s | detect | false | /v1/vision/detect | READY | PASS | person 0.91 on bus.jpg |
+| zoobot | embedding | false | /v1/vision/embed | READY | PASS | id=zoobot-15m; galaxy embedding |

@@ -30,9 +30,15 @@ data:
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = 4
         session = ort.InferenceSession(MODEL_FILE, sess_options=opts, providers=["CPUExecutionProvider"])
-        labels_file = Path("/data/model/labels.txt")
-        if labels_file.exists():
-            labels = labels_file.read_text().splitlines()
+        import json
+        # ONNX Model Zoo ships labels_map.txt as JSON {"0": "tench", ...}.
+        jm = Path("/data/model/labels_map.txt")
+        txt = Path("/data/model/labels.txt")
+        if jm.exists():
+            m = json.loads(jm.read_text())
+            labels = [m.get(str(i), str(i)) for i in range(len(m))]
+        elif txt.exists():
+            labels = txt.read_text().splitlines()
         print(f"{MODEL_NAME} loaded with {len(labels)} labels", flush=True)
 
     @app.on_event("startup")
@@ -48,11 +54,32 @@ data:
         return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "owned_by": "google", "type": "classify"}]}
 
     def _infer(img_bytes, top_k=5):
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((INPUT_SIZE, INPUT_SIZE))
-        arr = np.array(img, dtype=np.float32) / 255.0
+        # efficientnet-lite4 (ONNX Model Zoo) edgetpu preprocessing: resize with
+        # aspect ratio (scale 87.5), center-crop to 224, then (x-127)/128 -> [-1,1].
+        # Input is NHWC [1,224,224,3] RGB.
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        w, h = img.size
+        scale = 87.5
+        nh = int(100.0 * INPUT_SIZE / scale)
+        nw = int(100.0 * INPUT_SIZE / scale)
+        if h > w:
+            rw, rh = nw, int(nh * h / w)
+        else:
+            rh, rw = nh, int(nw * w / h)
+        img = img.resize((rw, rh), Image.BILINEAR)
+        left = (rw - INPUT_SIZE) // 2
+        top = (rh - INPUT_SIZE) // 2
+        img = img.crop((left, top, left + INPUT_SIZE, top + INPUT_SIZE))
+        arr = np.array(img, dtype=np.float32)
+        arr = (arr - 127.0) / 128.0
         arr = arr[np.newaxis]
-        logits = session.run(None, {session.get_inputs()[0].name: arr})[0][0]
-        probs = np.exp(logits - logits.max()); probs /= probs.sum()
+        out = session.run(None, {session.get_inputs()[0].name: arr})[0][0]
+        # lite4 ONNX already emits softmax probabilities (sum~=1). Only apply
+        # softmax if the output looks like raw logits (negative values / not summing to 1).
+        if out.min() < 0 or abs(float(out.sum()) - 1.0) > 0.05:
+            probs = np.exp(out - out.max()); probs /= probs.sum()
+        else:
+            probs = out
         idx = probs.argsort()[::-1][:top_k]
         return [{"rank": i+1, "class_id": int(j), "label": labels[j] if j < len(labels) else str(j), "score": float(probs[j])} for i, j in enumerate(idx)]
 
@@ -104,6 +131,17 @@ spec:
             "
             else
               echo "Model exists"
+            fi
+            if [ ! -f /data/model/labels_map.txt ]; then
+              echo "Downloading ImageNet labels_map.txt..."
+              /data/venv/bin/python - <<'PYEOF'
+            import urllib.request
+            url="https://raw.githubusercontent.com/onnx/models/main/validated/vision/classification/efficientnet-lite4/dependencies/labels_map.txt"
+            urllib.request.urlretrieve(url, "/data/model/labels_map.txt")
+            import json; print("labels:", len(json.load(open("/data/model/labels_map.txt"))))
+            PYEOF
+            else
+              echo "Labels exist"
             fi
         resources:
           requests: { cpu: "1", memory: 2Gi }
