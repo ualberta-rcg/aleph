@@ -78,8 +78,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
-| geogalactica | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
-| gpt-oss-120b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
+| geogalactica | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x40GB; progress-deadline added; awaiting GPU capacity |
+| gpt-oss-120b | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x45GB MoE; progress-deadline added; awaiting GPU capacity |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | NOT-READY | PENDING |  |
 | granite-geospatial-ocean | classify | true | /v1/science/embed | NOT-READY | PENDING |  |
@@ -101,7 +101,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mattersim | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
-| medgemma-27b-it | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
+| medgemma-27b-it | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x40GB; context trimmed to 8192; awaiting GPU capacity |
 | medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
 | megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
@@ -113,7 +113,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | naturecode-earth | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PASS | 1024-dim DNA |
-| oceangpt-30b | chat | true | /v1/chat/completions | NOT-READY | PENDING |  |
+| oceangpt-30b | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | 2-GPU x40GB; progress-deadline added; awaiting GPU capacity |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | reasoning_content + OpenAI/Anthropic (progress-deadline fix) |
@@ -128,7 +128,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | READY | FIXED | gpumem 12->24GB (vision profiling OOM); chat + vision OK |
 | qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic + vision (image_url) |
-| qwen35-122b | chat | ? | /v1/chat/completions | READY | PENDING |  |
+| qwen35-122b | chat | true | /v1/chat/completions | NOT-READY | BLOCKED | needs whole node (4-GPU); blocked by persistent kandinsky+speaches on rack15-03 |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | READY | PASS | 120-dim RNA (recreated) |
