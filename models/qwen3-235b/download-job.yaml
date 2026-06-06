@@ -40,9 +40,9 @@ spec:
               from huggingface_hub import snapshot_download
               dest = Path("/data")
               dest.mkdir(parents=True, exist_ok=True)
-              print("Downloading tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ (~118 GB) ...", flush=True)
+              print("Downloading QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ (~118 GB) ...", flush=True)
               snapshot_download(
-                  repo_id="tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ",
+                  repo_id="QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
                   local_dir=str(dest),
                   local_dir_use_symlinks=False,
                   token=os.environ["HF_TOKEN"],

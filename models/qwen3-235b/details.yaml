@@ -52,10 +52,10 @@ data:
       "schema_version": 2,
       "catalog": {
         "description_short": "Qwen3 235B A22B MoE (AWQ int4), tools + multilingual (4x L40S)",
-        "description": "Qwen3-235B-A22B-Instruct-2507 - large sparse MoE, 235B total / 22B active params (128 experts, 8 activated per token). Non-thinking instruct variant. Tool/function calling, 100+ languages, 32K native context served at 131K. Deployed AWQ int4 (tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ) on 4x L40S via vLLM. HF recommends temperature 0.7 / top_p 0.8 / top_k 20.",
+        "description": "Qwen3-235B-A22B-Instruct-2507 - large sparse MoE, 235B total / 22B active params (128 experts, 8 activated per token). Non-thinking instruct variant. Tool/function calling, 100+ languages, 32K native context served at 131K. Deployed AWQ int4 (QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ) on 4x L40S via vLLM. HF recommends temperature 0.7 / top_p 0.8 / top_k 20.",
         "owned_by": "Qwen",
-        "source": "tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ",
-        "source_url": "https://huggingface.co/tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ",
+        "source": "QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
+        "source_url": "https://huggingface.co/QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
         "license": "Apache-2.0",
         "parameters": "235B total / 22B active",
         "precision": "awq-int4",
