@@ -46,21 +46,17 @@ data:
         os.environ.setdefault("MODEL_REGISTRY", "/data/model_registry")
         os.makedirs("/data/model_registry", exist_ok=True)
         try:
-            from earth2studio.models.px import FengWu as _
-            from earth2studio.models.px import FourCastNet
-            m = FourCastNet.load_model(FourCastNet.load_default_package())
+            # earth2studio 0.15 exposes FourCastNet v3 as FCN3 (older name FourCastNet
+            # was removed). Weights auto-download from NGC into MODEL_REGISTRY.
+            from earth2studio.models.px import FCN3
+            m = FCN3.load_model(FCN3.load_default_package())
+            m = m.to(DEVICE)
             model = m
-            print("FourCastNet3 ready via earth2studio.", flush=True)
+            print("FourCastNet3 (FCN3) ready via earth2studio.", flush=True)
         except Exception as e:
-            print(f"earth2studio load failed: {e}. Trying direct torch load...", flush=True)
-            try:
-                import torch
-                ckpt = torch.load("/data/fcnv3.ckpt", map_location="cpu", weights_only=False)
-                model = {"_raw": ckpt}
-                print("FourCastNet3 raw ckpt loaded (demo mode).", flush=True)
-            except Exception as e2:
-                print(f"All loads failed: {e2}. Demo mode only.", flush=True)
-                model = {"_demo": True}
+            import traceback; traceback.print_exc()
+            print(f"earth2studio FCN3 load failed: {e}. Demo mode only.", flush=True)
+            model = {"_demo": True}
 
     @app.on_event("startup")
     async def startup():
@@ -102,17 +98,47 @@ data:
                     for s in range(steps)
                 ],
                 "demo": True,
+                "note": "real weights unavailable; demo output",
             }
 
-        # Real inference via earth2studio
-        variables = req.get("variables", {})
-        import torch
+        # Real autoregressive rollout via earth2studio FCN3.
+        # Build an initial condition tensor matching the model's input coords. A real
+        # IC can be supplied as req['ic'] (nested list); otherwise we use zeros to
+        # exercise the model end-to-end. Output grids are summarized (global grids are
+        # ~hundreds of MB of JSON and would exceed the gateway body limit).
+        import torch, numpy as np
+        from collections import OrderedDict
+        ic_coords = model.input_coords()
+        var = list(ic_coords["variable"]); lat = ic_coords["lat"]; lon = ic_coords["lon"]
+        shape = [1, 1, len(var), len(lat), len(lon)]  # batch, time, variable, lat, lon
+        if req.get("ic") is not None:
+            x = torch.tensor(np.asarray(req["ic"], dtype=np.float32)).reshape(shape)
+        else:
+            x = torch.zeros(shape, dtype=torch.float32)
+        x = x.to(DEVICE)
+        coords = OrderedDict([
+            ("batch", np.array([0])), ("time", np.array([np.datetime64("2024-01-01")])),
+            ("variable", np.array(var)), ("lat", lat), ("lon", lon),
+        ])
         results = []
+        it = model.create_iterator(x, coords)
+        next(it)  # first yield is the initial state (lead_time 0)
         for s in range(steps):
-            with torch.no_grad():
-                pass  # earth2studio handles rollout internally
-            results.append({"step": s + 1, "lead_hours": (s + 1) * 6, "variables": {}})
-        return {"model": "fourcastnet3", "forecasts": results}
+            out_x, out_coords = next(it)
+            arr = out_x.detach().float().cpu().numpy().reshape(len(var), len(lat), len(lon))
+            t2m_idx = var.index("t2m") if "t2m" in var else 0
+            t2m = arr[t2m_idx]
+            sy = max(1, t2m.shape[0] // 8); sx = max(1, t2m.shape[1] // 8)
+            results.append({
+                "step": s + 1, "lead_hours": (s + 1) * 6,
+                "variables_count": len(var),
+                "t2m_summary": {"min": float(t2m.min()), "max": float(t2m.max()),
+                                "mean": float(t2m.mean()),
+                                "preview_downsampled": t2m[::sy, ::sx].tolist()},
+            })
+        return {"model": "fourcastnet3", "grid": [len(lat), len(lon)],
+                "variables": len(var), "forecasts": results,
+                "note": "summary only; supply ic + full handling for raw grids"}
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
@@ -139,11 +165,14 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.fourcastnet3-ready-v1
+            SENTINEL=/data/.fourcastnet3-ready-v2
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
             apt-get update -qq && apt-get install -y -qq curl
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
-            pip install -q earth2studio fastapi uvicorn
+            # FCN3 requires earth2studio's 'fcn3' extra (torch_harmonics, makani, etc.)
+            pip install -q "earth2studio[fcn3]" fastapi uvicorn || \
+              pip install -q earth2studio torch_harmonics makani fastapi uvicorn || \
+              pip install -q earth2studio torch_harmonics fastapi uvicorn
             # earth2studio will auto-download FCNv3 weights from NGC on first run
             mkdir -p /data/model_registry
             python3 -c "
@@ -166,12 +195,19 @@ spec:
         args:
           - |
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
-            pip install -q earth2studio fastapi uvicorn
+            # Pin a version that actually ships FCN3 (the [fcn3] extra makes pip
+            # backtrack to ancient 0.8.1). FCN3 just needs torch_harmonics + makani
+            # importable at load; install them directly.
+            pip install -q "earth2studio>=0.15,<0.16" fastapi uvicorn
+            # fcn3 extra deps: makani is NVIDIA-only (GitHub, not PyPI).
+            pip install -q "torch-harmonics>=0.8.0" moviepy "ruamel-yaml>=0.18.14" "scipy>=1.10.0" || true
+            pip install -q "makani @ git+https://github.com/NVIDIA/modulus-makani.git" || \
+              pip install -q "git+https://github.com/NVIDIA/modulus-makani.git" || \
+              echo "makani install failed; FCN3 will fall back to demo mode"
             export MODEL_REGISTRY=/data/model_registry
             python /app/server.py
         env:
           - { name: MODEL_REGISTRY, value: /data/model_registry }
-        env:
           - { name: HF_HOME, value: /tmp }
         ports:
           - containerPort: 8080

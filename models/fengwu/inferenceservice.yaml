@@ -75,17 +75,36 @@ data:
             import traceback; traceback.print_exc()
             return JSONResponse({"error": str(e)}, 500)
 
+    def _summarize(arr, preview=8):
+        # Full global grids (721x1440) serialize to ~hundreds of MB of JSON, which
+        # exceeds the ingress/gateway body limit and resets the connection. Return a
+        # compact summary + a coarse downsampled preview unless full_grid is requested.
+        import numpy as np
+        arr = np.asarray(arr, dtype=np.float32)
+        flat = arr.reshape(-1)
+        ny, nx = arr.shape[-2], arr.shape[-1]
+        sy = max(1, ny // preview); sx = max(1, nx // preview)
+        prev = arr[..., ::sy, ::sx]
+        return {
+            "shape": list(arr.shape),
+            "min": float(flat.min()), "max": float(flat.max()),
+            "mean": float(flat.mean()), "std": float(flat.std()),
+            "preview_downsampled": prev.tolist(),
+        }
+
     def _forecast(req):
         import numpy as np
+        full = bool(req.get("full_grid"))
 
         if req.get("demo"):
-            return {
-                "model": "fengwu-v2",
-                "surface": np.zeros((4, 721, 1440), dtype=np.float32).tolist(),
-                "upper": np.zeros((5, 13, 721, 1440), dtype=np.float32).tolist(),
-                "step_hours": 6,
-                "demo": True,
-            }
+            surf = np.zeros((4, 721, 1440), dtype=np.float32)
+            up   = np.zeros((5, 13, 721, 1440), dtype=np.float32)
+            if full:
+                return {"model": "fengwu-v2", "surface": surf.tolist(),
+                        "upper": up.tolist(), "step_hours": 6, "demo": True}
+            return {"model": "fengwu-v2", "step_hours": 6, "demo": True,
+                    "surface": _summarize(surf), "upper": _summarize(up),
+                    "note": "summary only; pass full_grid=true for raw arrays (large)"}
 
         surface = np.array(req["surface"], dtype=np.float32)   # (4, 721, 1440)
         upper   = np.array(req["upper"],   dtype=np.float32)   # (5, 13, 721, 1440)
@@ -97,12 +116,12 @@ data:
         }
         out_surf, out_upper = session.run(None, inputs)
 
-        return {
-            "model": "fengwu-v2",
-            "surface": out_surf[0].tolist(),
-            "upper": out_upper[0].tolist(),
-            "step_hours": 6,
-        }
+        if full:
+            return {"model": "fengwu-v2", "surface": out_surf[0].tolist(),
+                    "upper": out_upper[0].tolist(), "step_hours": 6}
+        return {"model": "fengwu-v2", "step_hours": 6,
+                "surface": _summarize(out_surf[0]), "upper": _summarize(out_upper[0]),
+                "note": "summary only; pass full_grid=true for raw arrays (large)"}
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)

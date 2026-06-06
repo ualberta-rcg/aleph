@@ -53,12 +53,12 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std); gpumem 45GB + max-model-len 8192; correct answers |
 | depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
-| diffdock | dock | true | /v1/dock | NOT-READY | PENDING |  |
+| diffdock | dock | true | /v1/dock | READY | FIXED | SMILES passed direct (not .smi file); conf regex fixed; 11 poses on 1CRN+aspirin |
 | dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | image embedding |
 | dnabert-2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-2-117m) |
 | dnabert-s | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-s) |
-| dust3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
-| earthpt | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
+| dust3r | 3d | true | /v1/science/reconstruct | READY | FIXED | downsample pointcloud (was 31MB>gateway); bbox+loss; 2 imgs OK |
+| earthpt | embed | true | /v1/science/predict | READY | FIXED | CPU ckpt load + RAM 24Gi (was GPU+host OOM); predicts OK |
 | efficientnet-b0 | classify | false | /v1/vision/classify | READY | FIXED | lite4: fixed preproc+double-softmax+labels; minibus 0.63 |
 | enformer | predict | true | /v1/science/predict | NOT-READY | FAIL | isvc never deployed (READY=False 11h); needs recreate |
 | ernierna | embedding | true | /v1/science/embed | NOT-READY | FAIL | isvc never deployed (READY=False 10h); needs recreate/fix |
@@ -69,7 +69,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | esm2-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein |
 | esmc-300m | embedding | true | /v1/embeddings | READY | PASS | 960-dim (recreated) |
 | esmfold | structure | true | /v1/structure | READY | PASS | folds protein -> PDB |
-| fengwu | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
+| fengwu | forecast | true | /v1/science/forecast | READY | FIXED | summarize grid (was 286MB>gateway); demo+real ONNX OK |
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
@@ -178,11 +178,11 @@ vLLM v0.20.2, HAMi whole-device recipe (nvidia.com/gpu=TP, no gpumem, --disable-
 | glm-z1-32b | zai-org/GLM-Z1-32B-0414 | TP2 | FIXED | dropped deepseek_r1 parser (no <think> special tokens); 8!=40320 |
 | glm-z1-rumination-32b | zai-org/GLM-Z1-Rumination-32B-0414 | TP2 | FIXED | dropped deepseek_r1 parser; agentic finish-call format; Tokyo ok |
 | qwq-32b | Qwen/QwQ-32B | TP2 | PASS | deepseek_r1 parser ok (QwQ has <think>); sqrt144=12 |
-| qwen25-vl-72b | Qwen/Qwen2.5-VL-72B-Instruct | TP4 | PENDING | large VLM; testing |
-| openbiollm-70b | aaditya/Llama3-OpenBioLLM-70B | TP4 | PENDING | tokenizer_class already Fast (no patch needed) |
+| qwen25-vl-72b | Qwen/Qwen2.5-VL-72B-Instruct | TP4 | PASS | vision OK (ID image color); TP4 |
+| openbiollm-70b | aaditya/Llama3-OpenBioLLM-70B | TP4 | PASS | hemoglobin answer correct; tokenizer already Fast |
 | k2-v2 | LLM360/K2-V2 | TP4 | PENDING | ships FP32 ~290GB (not 140GB); --dtype=bfloat16 to fit 4xL40S; Xet stalled -> HF_HUB_DISABLE_XET; still downloading |
-| qwen36-27b | Qwen/Qwen3.6-27B | TP2 | PENDING | novel Gated-DeltaNet arch; vllm:latest |
-| qwen36-35b-a3b | Qwen/Qwen3.6-35B-A3B | TP2 | PENDING | MoE Gated-DeltaNet; vllm:latest |
+| qwen36-27b | Qwen/Qwen3.6-27B | TP2 | PASS | Jupiter+Ganymede; Gated-DeltaNet on vllm:latest |
+| qwen36-35b-a3b | Qwen/Qwen3.6-35B-A3B | TP2 | PASS | s[::-1]; MoE Gated-DeltaNet on vllm:latest |
 | llama-3.3-70b | meta-llama/Llama-3.3-70B-Instruct | - | SKIPPED | gated (403); HF access not granted on token |
 | llama-4-scout | meta-llama/Llama-4-Scout-17B-16E-Instruct | - | SKIPPED | gated (403); HF access not granted on token |
 | qwen3-72b-fp8 | (does not exist) | - | SUBSTITUTED | no dense Qwen3-72B; replaced with qwen3-32b per user |

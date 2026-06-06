@@ -61,11 +61,6 @@ data:
             with open(pdb_path, "w") as f:
                 f.write(protein_pdb)
 
-            # DiffDock accepts .smi files as ligand input
-            lig_path = os.path.join(tmpdir, "ligand.smi")
-            with open(lig_path, "w") as f:
-                f.write(ligand_smiles)
-
             out_dir = os.path.join(tmpdir, "output")
             os.makedirs(out_dir)
 
@@ -87,7 +82,7 @@ data:
             cmd = [
                 py, os.path.join(DIFFDOCK_DIR, "inference.py"),
                 "--protein_path", pdb_path,
-                "--ligand", lig_path,
+                "--ligand", ligand_smiles,
                 "--out_dir", out_dir,
                 "--inference_steps", str(inference_steps),
                 "--samples_per_complex", str(num_poses),
@@ -105,19 +100,39 @@ data:
 
             result = subprocess.run(cmd, capture_output=True, text=True,
                                     timeout=600, cwd=DIFFDOCK_DIR, env=env)
+            # Always surface subprocess output to the pod log for debugging.
+            print("=== DiffDock STDOUT ===\n" + (result.stdout or "")[-3000:], flush=True)
+            print("=== DiffDock STDERR ===\n" + (result.stderr or "")[-3000:], flush=True)
             if result.returncode != 0:
                 raise RuntimeError(
                     f"DiffDock failed (rc={result.returncode}):\n"
                     f"STDOUT:{result.stdout[-2000:]}\nSTDERR:{result.stderr[-2000:]}"
                 )
 
-            # Parse output: rank1_confidence-1.23.sdf
+            # DiffDock-L may write rank*.sdf or plain *.sdf depending on version/conf model.
             sdf_files = sorted(glob.glob(os.path.join(out_dir, "**", "rank*.sdf"), recursive=True))
+            if not sdf_files:
+                sdf_files = sorted(glob.glob(os.path.join(out_dir, "**", "*.sdf"), recursive=True))
+            if not sdf_files:
+                tree = []
+                for root, _, files in os.walk(out_dir):
+                    for fn in files:
+                        tree.append(os.path.relpath(os.path.join(root, fn), out_dir))
+                return {
+                    "model": "diffdock-l", "ligand_smiles": ligand_smiles,
+                    "num_poses": 0, "poses": [],
+                    "warning": "no SDF poses produced",
+                    "output_files": tree[:50],
+                    "stdout_tail": (result.stdout or "")[-1500:],
+                    "stderr_tail": (result.stderr or "")[-1500:],
+                }
             poses = []
             for sdf_file in sdf_files:
                 fname  = os.path.basename(sdf_file)
                 rank_m = re.search(r'rank(\d+)', fname)
-                conf_m = re.search(r'confidence([-\d.]+)', fname)
+                # filenames look like rank1_confidence-3.97.sdf -- avoid grabbing the
+                # trailing dot from the .sdf extension.
+                conf_m = re.search(r'confidence(-?\d+(?:\.\d+)?)', fname)
                 with open(sdf_file) as f:
                     sdf_content = f.read()
                 poses.append({
@@ -164,13 +179,16 @@ spec:
             # Install fastapi/uvicorn to PVC target dir
             # (main container uses rbgcsail/diffdock conda image — inject via PYTHONPATH)
             # Always reinstall server deps to ensure Python 3.9 compatible versions
-            if [ ! -f /data/pylibs39/fastapi/__init__.py ]; then
+            # v2: pin click<8.2 (8.2+ uses 3.10 match-syntax; DiffDock conda env is 3.9)
+            if [ ! -f /data/pylibs39/.deps-v2 ]; then
               echo "Installing server deps for Python 3.9 to /data/pylibs39..."
+              rm -rf /data/pylibs39
               mkdir -p /data/pylibs39
               pip install -q --target /data/pylibs39 \
                 "fastapi==0.103.2" "uvicorn==0.23.2" "anyio<4.0" \
                 "huggingface_hub>=0.19" "starlette==0.27.0" \
-                "pydantic>=1.10,<2.0"
+                "pydantic>=1.10,<2.0" "click<8.2" "typing_extensions<4.13"
+              touch /data/pylibs39/.deps-v2
               echo "Server deps installed."
             else
               echo "Server deps already on PVC."

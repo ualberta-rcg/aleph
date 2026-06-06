@@ -118,21 +118,41 @@ data:
             masks    = scene.get_masks()
             confs    = scene.get_conf()
 
+            # A dense per-pixel point cloud (~15k pts/image) serializes to tens of MB
+            # of JSON and exceeds the gateway body limit. Downsample to <= max_points
+            # per image unless full_cloud is requested. Always report total counts +
+            # bounding box so the result is scientifically usable.
+            import numpy as np
+            full = bool(req.get("full_cloud"))
+            max_points = int(req.get("max_points", 2000))
             results = []
             for i in range(len(imgs)):
                 mask = masks[i].cpu().numpy()
-                pts  = pts3d[i].detach().cpu().numpy()
-                conf = confs[i].detach().cpu().numpy()
+                pts  = pts3d[i].detach().cpu().numpy()[mask]
+                conf = confs[i].detach().cpu().numpy()[mask]
+                n = int(pts.shape[0])
+                bbox = {"min": pts.min(0).tolist(), "max": pts.max(0).tolist()} if n else None
+                if full or n <= max_points:
+                    sub_pts, sub_conf = pts, conf
+                else:
+                    idx = np.linspace(0, n - 1, max_points).astype(int)
+                    sub_pts, sub_conf = pts[idx], conf[idx]
                 results.append({
                     "image_idx": i,
-                    "pts3d": pts[mask].tolist(),
-                    "confidence": conf[mask].tolist(),
+                    "num_points": n,
+                    "returned_points": int(sub_pts.shape[0]),
+                    "bbox": bbox,
+                    "mean_confidence": float(conf.mean()) if n else None,
+                    "pts3d": sub_pts.tolist(),
+                    "confidence": sub_conf.tolist(),
                 })
 
             return {
                 "model": "dust3r",
                 "num_images": len(imgs),
+                "alignment_loss": float(loss),
                 "pointclouds": results,
+                "note": "downsampled; pass full_cloud=true for dense cloud (large)",
             }
         finally:
             import shutil

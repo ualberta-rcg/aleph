@@ -163,11 +163,17 @@ data:
         print(f"Loading EarthPT-700M on {DEVICE}...", flush=True)
         cfg = EarthPTConfig()
         m = EarthPT(cfg)
-        ck = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
-        m.load_state_dict(ck['model'], strict=False)
-        m = m.to(DEVICE).eval()
+        # Load checkpoint on CPU (weights_only=False ckpt may carry optimizer state
+        # in fp32; loading straight to GPU spikes VRAM past the vGPU cap and OOMs).
+        ck = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
+        sd = ck['model'] if isinstance(ck, dict) and 'model' in ck else ck
+        m.load_state_dict(sd, strict=False)
+        m = m.eval()
         if DEVICE == "cuda":
-            m = m.half()
+            m = m.half().to(DEVICE)
+        else:
+            m = m.to(DEVICE)
+        del ck, sd
         model = m
         print("EarthPT-700M ready.", flush=True)
 
@@ -302,8 +308,8 @@ spec:
           - containerPort: 8080
             protocol: TCP
         resources:
-          requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
-          limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
+          limits: { cpu: "4", memory: 24Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "10240" }
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
           initialDelaySeconds: 60
