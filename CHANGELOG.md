@@ -2,6 +2,35 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-06 — science model batch (gateway body-limit + init fixes)
+
+Continued the verification loop on remaining PENDING science models. Key pattern:
+several models returned 30–286 MB JSON grids/point clouds that exceed the ingress/gateway
+body limit (connection reset even when the pod returned 200). Fix: summarize outputs
+(shape/stats/downsampled preview) with opt-in `full_grid` / `full_cloud` flags.
+
+### Verified FIXED
+- earthpt — CPU checkpoint load + 24Gi RAM (was GPU+host OOM on startup)
+- fengwu — summarize 286 MB forecast grid; demo + real ONNX OK
+- dust3r — downsample point cloud to ≤2000 pts + bbox + alignment loss
+- diffdock — pass SMILES string directly to `--ligand` (not `.smi` path); fix confidence
+  regex; 11 ranked poses on crambin (1CRN) + aspirin
+- mast3r — `/v1/science/match` (not reconstruct for 2 images); numpy not tensor fix
+- granite-geospatial-biomass/ocean — add gcc/g++ to init (terratorch→stringzilla compile)
+- pangu-weather — demo + real ONNX; summarized stats (already had stats in handler)
+
+### Verified DEMO (blocked on deps/access)
+- fourcastnet3 — demo OK; real FCN3 needs purpose-built image (makani+torch-harmonics
+  CUDA matrix unresolvable via runtime pip)
+- naturecode-earth — demo OK; weights gated (`naturecodeproject/earth` 403)
+
+### Still PENDING from this batch
+- mattergen (CLI loads; diffusion timeout raised 300→1500s, verify pending)
+- prithvi-eo/wxc, surya, terramind-flood, totalsegmentator (in progress)
+- k2-v2 download ~complete (~287G/290G), deploy+test pending
+
+Tracker: `models/TEST-STATUS.md` updated for all of the above.
+
 ## 2026-06-05 — per-model verification loop (in progress)
 
 Systematic one-by-one verification of every migrated model on 230: bring up via gateway,

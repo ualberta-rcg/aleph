@@ -162,9 +162,10 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/venv/.prithvi-eo-ready-v3
+            SENTINEL=/data/venv/.prithvi-eo-ready-v4
             if [ ! -f "$SENTINEL" ]; then
               echo "Creating venv..."
+              apt-get update -qq && apt-get install -y -qq gcc g++ git
               rm -rf /data/venv
               python3 -m venv /data/venv
               /data/venv/bin/pip install -q -U pip
