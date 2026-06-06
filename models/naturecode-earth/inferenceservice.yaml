@@ -209,7 +209,10 @@ spec:
         args:
           - |
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
-            pip install -q fastapi uvicorn forestfm 2>/dev/null || true
+            # forestfm isn't on PyPI; install it separately so its failure doesn't
+            # take fastapi/uvicorn down with it (atomic pip resolve).
+            pip install -q fastapi uvicorn
+            pip install -q forestfm 2>/dev/null || echo "forestfm unavailable; demo mode"
             python /app/server.py
         ports:
           - containerPort: 8080

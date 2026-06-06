@@ -81,8 +81,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | geogalactica | chat | true | /v1/chat/completions | NOT-READY | FAIL | gated HF repo geobrain-ai/geogalactica (403); needs access approval |
 | gpt-oss-120b | chat | true | /v1/chat/completions | READY | FIXED | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce (HAMi custom-AR stall); CUDA_DISABLE_CONTROL removed (unneeded); reasoning+OpenAI+Anthropic |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
-| granite-geospatial-biomass | classify | true | /v1/science/predict | NOT-READY | PENDING |  |
-| granite-geospatial-ocean | classify | true | /v1/science/embed | NOT-READY | PENDING |  |
+| granite-geospatial-biomass | classify | true | /v1/science/predict | READY | FIXED | add gcc/g++ to init (terratorch->stringzilla build); demo OK |
+| granite-geospatial-ocean | classify | true | /v1/science/embed | READY | FIXED | add gcc/g++ to init; demo embeddings OK; slow cold-start |
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
@@ -95,7 +95,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
 | mace-mp | force-field | true | /v1/science/predict | READY | PASS | water -14.01 eV + forces; mace-mp-0 medium |
 | maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
-| mast3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
+| mast3r | 3d | true | /v1/science/match | READY | FIXED | use /v1/science/match; numpy (not tensor) fix; 473 matches |
 | matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING |  |
 | mattersim | force-field | true | /v1/science/predict | READY | PASS | water -14.07 eV + forces + per-atom |
