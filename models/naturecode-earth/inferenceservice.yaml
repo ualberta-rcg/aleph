@@ -58,11 +58,21 @@ data:
             model = m
             print("Naturecode Earth ready (forestfm).", flush=True)
         except ImportError:
-            # Fallback: raw checkpoint load — expose config and state_dict
-            import torch
-            ckpt = torch.load("/data/model.pt", map_location="cpu", weights_only=False)
-            model = ckpt  # store full checkpoint for demo passthrough
-            print("Naturecode Earth loaded (raw ckpt, demo mode only).", flush=True)
+            # forestfm missing: try raw checkpoint passthrough if weights exist.
+            try:
+                ckpt = torch.load("/data/model.pt", map_location="cpu", weights_only=False)
+                model = ckpt
+                print("Naturecode Earth loaded (raw ckpt, demo mode only).", flush=True)
+            except Exception as e:
+                model = {"_demo": True}
+                print(f"Naturecode weights unavailable ({e}); demo mode only.", flush=True)
+        except FileNotFoundError:
+            # naturecodeproject/earth is gated; without access the weights are absent.
+            model = {"_demo": True}
+            print("Naturecode weights absent (gated repo); demo mode only.", flush=True)
+        except Exception as e:
+            model = {"_demo": True}
+            print(f"Naturecode load failed ({e}); demo mode only.", flush=True)
 
     @app.on_event("startup")
     async def startup():
@@ -211,7 +221,7 @@ spec:
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
             # forestfm isn't on PyPI; install it separately so its failure doesn't
             # take fastapi/uvicorn down with it (atomic pip resolve).
-            pip install -q fastapi uvicorn
+            pip install -q fastapi uvicorn numpy
             pip install -q forestfm 2>/dev/null || echo "forestfm unavailable; demo mode"
             python /app/server.py
         ports:

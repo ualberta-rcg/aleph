@@ -71,7 +71,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | esmfold | structure | true | /v1/structure | READY | PASS | folds protein -> PDB |
 | fengwu | forecast | true | /v1/science/forecast | READY | FIXED | summarize grid (was 286MB>gateway); demo+real ONNX OK |
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
-| fourcastnet3 | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
+| fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image) |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
 | gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8 (progress-deadline fix); correct answers |
@@ -97,7 +97,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
 | mast3r | 3d | true | /v1/science/match | READY | FIXED | use /v1/science/match; numpy (not tensor) fix; 473 matches |
 | matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
-| mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING |  |
+| mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING | CLI loads; raised subprocess timeout 300->1500s (diffusion slow); verify pending |
 | mattersim | force-field | true | /v1/science/predict | READY | PASS | water -14.07 eV + forces + per-atom |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
@@ -110,7 +110,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | molformer | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: smiles) |
 | moment | forecast | true | /v1/forecast | READY | FIXED | output indexing (chan vs horizon); needs 512-len input; 96-step horizon |
 | multilingual-e5-small | embedding | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
-| naturecode-earth | embed | true | /v1/science/predict | NOT-READY | PENDING |  |
+| naturecode-earth | embed | true | /v1/science/predict | READY | DEMO | demo OK (seg probs); weights GATED (naturecodeproject/earth 403); needs HF access |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PASS | 1024-dim DNA |
 | oceangpt-30b | chat | true | /v1/chat/completions | READY | FIXED | 30B-A3B MoE TP2 ~73tok/s; v0.20.2; full GPUs + --disable-custom-all-reduce (no CUDA_DISABLE_CONTROL); OpenAI+Anthropic |

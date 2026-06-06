@@ -195,20 +195,13 @@ spec:
         args:
           - |
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
-            # Pin a version that actually ships FCN3 (the [fcn3] extra makes pip
-            # backtrack to ancient 0.8.1). FCN3 just needs torch_harmonics + makani
-            # importable at load; install them directly.
             pip install -q "earth2studio>=0.15,<0.16" fastapi uvicorn
-            pip install -q moviepy "ruamel-yaml>=0.18.14" "scipy>=1.10.0" || true
-            # fcn3 extra deps: makani is NVIDIA-only (GitHub, not PyPI). Install order
-            # matters: makani clobbers torch/torchvision, so pin them AFTER makani, then
-            # build torch-harmonics LAST so its compiled _C extension links the final torch.
-            pip install -q "makani @ git+https://github.com/NVIDIA/modulus-makani.git" || \
-              pip install -q "git+https://github.com/NVIDIA/modulus-makani.git" || \
-              echo "makani install failed; FCN3 will fall back to demo mode"
-            pip install -q --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu126
-            pip install -q --force-reinstall --no-build-isolation "torch-harmonics>=0.8.0" || \
-              pip install -q --force-reinstall "torch-harmonics>=0.8.0" || true
+            # NOTE: real FCN3 weights need NVIDIA makani + torch-harmonics compiled
+            # against a pinned torch/torchvision/CUDA stack. That matrix is not
+            # resolvable via runtime pip here (makani clobbers torchvision; the
+            # torch-harmonics _C extension then mismatches the torch CUDA major).
+            # A purpose-built image is required for real inference. The server falls
+            # back to a correctly-shaped demo response when FCN3 cannot load.
             export MODEL_REGISTRY=/data/model_registry
             python /app/server.py
         env:
