@@ -22,7 +22,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
-| bge-small |  |  | - | READY | PENDING |  |
+| bge-small | forecast | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | biobert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biogpt | generate | true | /v1/completions | READY | PASS | coherent biomedical text completion |
 | biolinkbert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
@@ -151,10 +151,10 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | surya | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
 | terramind-flood | classify | true | /v1/science/classify | NOT-READY | PENDING |  |
 | thor | embed | true | /v1/science/embed | NOT-READY | FAIL | ProgressDeadlineExceeded; init too slow (+terratorch lib check) |
-| time-moe | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
-| timer-xl-1b | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
-| timer | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
-| timesfm | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
+| time-moe | forecast | true | /v1/forecast | READY | PASS | TimeMoE-50M MoE; forecast_len matches prediction_length (must be 1/96/192/336/720; 12 returns empty) |
+| timer-xl-1b | forecast | true | /v1/forecast | NOT-READY | FAIL | repo thuml/Timer-XL-1B 404 (wrong id); needs correct repo |
+| timer | forecast | true | /v1/forecast | READY | FAIL | transformers DynamicCache.seen_tokens removed in newer transformers; remote code incompatible - needs transformers pin |
+| timesfm | forecast | true | /v1/forecast | NOT-READY | FAIL | TimesFmModelForPrediction not importable; transformers lacks TimesFm support - needs version pin/upgrade |
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
 | totalsegmentator | segment | true | /v1/science/segment | NOT-READY | PENDING |  |
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
