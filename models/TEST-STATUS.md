@@ -180,7 +180,7 @@ vLLM v0.20.2, HAMi whole-device recipe (nvidia.com/gpu=TP, no gpumem, --disable-
 | qwq-32b | Qwen/QwQ-32B | TP2 | PASS | deepseek_r1 parser ok (QwQ has <think>); sqrt144=12 |
 | qwen25-vl-72b | Qwen/Qwen2.5-VL-72B-Instruct | TP4 | PENDING | large VLM; testing |
 | openbiollm-70b | aaditya/Llama3-OpenBioLLM-70B | TP4 | PENDING | tokenizer_class already Fast (no patch needed) |
-| k2-v2 | LLM360/K2-V2 | TP4 | PENDING | downloading (140GB); Llama tokenizer (patch queued) |
+| k2-v2 | LLM360/K2-V2 | TP4 | PENDING | ships FP32 ~290GB (not 140GB); --dtype=bfloat16 to fit 4xL40S; Xet stalled -> HF_HUB_DISABLE_XET; still downloading |
 | qwen36-27b | Qwen/Qwen3.6-27B | TP2 | PENDING | novel Gated-DeltaNet arch; vllm:latest |
 | qwen36-35b-a3b | Qwen/Qwen3.6-35B-A3B | TP2 | PENDING | MoE Gated-DeltaNet; vllm:latest |
 | llama-3.3-70b | meta-llama/Llama-3.3-70B-Instruct | - | SKIPPED | gated (403); HF access not granted on token |

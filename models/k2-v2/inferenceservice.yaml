@@ -29,7 +29,8 @@ spec:
           - --served-model-name=k2-v2
           - --tensor-parallel-size=4
           - --max-model-len=32768
-          - --dtype=auto
+          # K2-V2 ships in FP32 (~290 GB); force bf16 to halve to ~145 GB so it fits 4x L40S (192 GB).
+          - --dtype=bfloat16
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=8
           - --disable-custom-all-reduce
