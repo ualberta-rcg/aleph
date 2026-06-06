@@ -129,11 +129,20 @@ data:
             )
             conf = pred1["desc_conf"][0].detach().cpu()
 
+            # fast_reciprocal_NNs returns numpy arrays (not tensors); coerce safely.
+            import numpy as _np
+            m1 = _np.asarray(matches_im1); m2 = _np.asarray(matches_im2)
+            # cap returned matches to keep the response under the gateway body limit
+            cap = int(req.get("max_matches", 2000))
+            if m1.shape[0] > cap:
+                idx = _np.linspace(0, m1.shape[0] - 1, cap).astype(int)
+                m1, m2 = m1[idx], m2[idx]
             return {
                 "model": "mast3r",
-                "num_matches": len(matches_im1),
-                "matches_image1": matches_im1.cpu().numpy().tolist(),
-                "matches_image2": matches_im2.cpu().numpy().tolist(),
+                "num_matches": int(_np.asarray(matches_im1).shape[0]),
+                "returned_matches": int(m1.shape[0]),
+                "matches_image1": m1.tolist(),
+                "matches_image2": m2.tolist(),
             }
         finally:
             import shutil

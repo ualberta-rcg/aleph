@@ -199,11 +199,16 @@ spec:
             # backtrack to ancient 0.8.1). FCN3 just needs torch_harmonics + makani
             # importable at load; install them directly.
             pip install -q "earth2studio>=0.15,<0.16" fastapi uvicorn
-            # fcn3 extra deps: makani is NVIDIA-only (GitHub, not PyPI).
-            pip install -q "torch-harmonics>=0.8.0" moviepy "ruamel-yaml>=0.18.14" "scipy>=1.10.0" || true
+            pip install -q moviepy "ruamel-yaml>=0.18.14" "scipy>=1.10.0" || true
+            # fcn3 extra deps: makani is NVIDIA-only (GitHub, not PyPI). Install order
+            # matters: makani clobbers torch/torchvision, so pin them AFTER makani, then
+            # build torch-harmonics LAST so its compiled _C extension links the final torch.
             pip install -q "makani @ git+https://github.com/NVIDIA/modulus-makani.git" || \
               pip install -q "git+https://github.com/NVIDIA/modulus-makani.git" || \
               echo "makani install failed; FCN3 will fall back to demo mode"
+            pip install -q --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            pip install -q --force-reinstall --no-build-isolation "torch-harmonics>=0.8.0" || \
+              pip install -q --force-reinstall "torch-harmonics>=0.8.0" || true
             export MODEL_REGISTRY=/data/model_registry
             python /app/server.py
         env:

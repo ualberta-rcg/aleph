@@ -97,7 +97,7 @@ data:
             env["MATTERGEN_CHECKPOINT_DIR"] = os.path.join(MODEL_DIR, "checkpoints")
 
             result = subprocess.run(cmd, capture_output=True, text=True,
-                                    cwd=repo_path, env=env, timeout=300)
+                                    cwd=repo_path, env=env, timeout=1500)
             if result.returncode != 0:
                 raise RuntimeError(f"mattergen-generate failed: {result.stderr[-500:]}")
 
@@ -129,7 +129,7 @@ spec:
     minReplicas: 0
     scaleTarget: 3
     scaleMetric: concurrency
-    timeout: 600
+    timeout: 1500
     nodeSelector:
       gpu: "on"
     initContainers:

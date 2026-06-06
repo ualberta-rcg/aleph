@@ -149,8 +149,10 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.granite-biomass-ready-v1
+            SENTINEL=/data/.granite-biomass-ready-v2
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
+            # terratorch pulls stringzilla which compiles from source -> needs gcc/g++
+            apt-get update -qq && apt-get install -y -qq gcc g++ git
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
             pip install -q terratorch huggingface_hub fastapi uvicorn
             python3 -c "

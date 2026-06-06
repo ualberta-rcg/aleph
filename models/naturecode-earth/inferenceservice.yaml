@@ -180,18 +180,21 @@ spec:
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
             pip install -q huggingface_hub fastapi uvicorn
             pip install -q forestfm 2>/dev/null || echo "forestfm not on PyPI, will use raw load"
+            # naturecodeproject/earth is a GATED repo; download is best-effort so the
+            # service still starts in demo mode if the token lacks access (403).
             python3 -c "
             from huggingface_hub import hf_hub_download
-            import os, shutil
-            path = hf_hub_download(
-                repo_id='naturecodeproject/earth',
-                filename='model.pt',
-                local_dir='/data',
-                local_dir_use_symlinks=False,
-                token=os.environ.get('HF_TOKEN'),
-            )
-            print('Downloaded:', path)
-            "
+            import os
+            try:
+                path = hf_hub_download(
+                    repo_id='naturecodeproject/earth', filename='model.pt',
+                    local_dir='/data', local_dir_use_symlinks=False,
+                    token=os.environ.get('HF_TOKEN'),
+                )
+                print('Downloaded:', path)
+            except Exception as e:
+                print('WARN: gated/unavailable weights, demo mode only:', e)
+            " || true
             touch "$SENTINEL"
             echo "Setup complete."
         resources:
