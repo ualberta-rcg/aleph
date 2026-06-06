@@ -46,7 +46,9 @@ data:
         sys.path.insert(0, SRC_DIR)
         print("Loading Ithaca...", flush=True)
         try:
-            subprocess.run(["pip", "install", "-q", "jax", "jaxlib", "dm-haiku",
+            # jax[cuda12] pulls the CUDA-enabled jaxlib + plugin so Ithaca runs on the
+            # L40S GPU (plain "jax jaxlib" is CPU-only -> ~3+ min/inference).
+            subprocess.run(["pip", "install", "-q", "jax[cuda12]", "dm-haiku",
                             "optax", "numpy", "absl-py"], check=False, capture_output=True)
             subprocess.run(["pip", "install", "-q", "-e", SRC_DIR],
                            check=False, capture_output=True)
@@ -133,16 +135,21 @@ data:
 
         attribution = inf.attribute(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
         restoration = inf.restore(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
-        context     = inf.contextualize(text, ds, rv, fwd, p, alp, rm)
 
         import json
-        return {
+        out = {
             "model": "ithaca",
             "input": text,
             "restoration": json.loads(restoration.json()),
             "attribution": json.loads(attribution.json()),
-            "contextualization": json.loads(context.json()),
         }
+        # contextualize() does a retrieval search over the whole training corpus and is
+        # CPU/IO-bound (~2 min), unlike the GPU restore/attribute steps. Make it opt-in
+        # so the default response (restoration + dating + geo attribution) stays fast.
+        if req.get("contextualize"):
+            context = inf.contextualize(text, ds, rv, fwd, p, alp, rm)
+            out["contextualization"] = json.loads(context.json())
+        return out
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
@@ -194,7 +201,7 @@ spec:
         command: ["bash", "-c"]
         args:
           - |
-            pip install -q jax jaxlib dm-haiku optax fastapi uvicorn
+            pip install -q "jax[cuda12]" dm-haiku optax fastapi uvicorn
             pip install -q -e /data/src/predictingthepast 2>/dev/null || true
             python /app/server.py
         env:

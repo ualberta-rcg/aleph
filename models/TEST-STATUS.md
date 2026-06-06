@@ -85,7 +85,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | granite-geospatial-ocean | classify | true | /v1/science/embed | NOT-READY | PENDING |  |
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
-| ithaca | predict | true | /v1/science/predict | NOT-READY | PENDING |  |
+| ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
 | kandinsky-3 | image | true | /v1/images/generations | NO-ISVC | PENDING |  |
 | labram | embed | false | /v1/science/embed | READY | FAIL | needs 128 canonical channels or ch_names - needs deep fix |
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
