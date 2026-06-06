@@ -105,8 +105,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
 | megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
-| moirai-moe | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
-| moirai | forecast | true | /v1/forecast | NOT-READY | PENDING |  |
+| moirai-moe | forecast | true | /v1/forecast | READY | FAIL | handler bug: MoiraiMoEForecast.forward() missing past_observed_target/past_is_pad args - needs handler fix |
+| moirai | forecast | true | /v1/forecast | READY | PASS | Salesforce Moirai base; values+horizon -> mean/quantiles; sensible forecast |
 | molformer | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: smiles) |
 | moment | forecast | true | /v1/forecast | READY | FIXED | output indexing (chan vs horizon); needs 512-len input; 96-step horizon |
 | multilingual-e5-small | embedding | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
@@ -153,7 +153,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | thor | embed | true | /v1/science/embed | NOT-READY | FAIL | ProgressDeadlineExceeded; init too slow (+terratorch lib check) |
 | time-moe | forecast | true | /v1/forecast | READY | PASS | TimeMoE-50M MoE; forecast_len matches prediction_length (must be 1/96/192/336/720; 12 returns empty) |
 | timer-xl-1b | forecast | true | /v1/forecast | NOT-READY | FAIL | repo thuml/Timer-XL-1B 404 (wrong id); needs correct repo |
-| timer | forecast | true | /v1/forecast | READY | FAIL | transformers DynamicCache.seen_tokens removed in newer transformers; remote code incompatible - needs transformers pin |
+| timer | forecast | true | /v1/forecast | READY | FIXED | pinned transformers==4.40.2 (remote code uses DynamicCache.seen_tokens removed in >=4.41); forecast_len 96 PASS |
 | timesfm | forecast | true | /v1/forecast | NOT-READY | FAIL | TimesFmModelForPrediction not importable; transformers lacks TimesFm support - needs version pin/upgrade |
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
 | totalsegmentator | segment | true | /v1/science/segment | NOT-READY | PENDING |  |

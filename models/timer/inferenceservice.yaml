@@ -160,11 +160,14 @@ spec:
               fi
               /data/venv/bin/pip install -q -U pip
               /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
-              /data/venv/bin/pip install -q transformers huggingface_hub fastapi uvicorn
+              /data/venv/bin/pip install -q "transformers==4.40.2" huggingface_hub fastapi uvicorn
               echo "Venv ready."
             else
               echo "Venv exists."
             fi
+            # Timer remote code uses DynamicCache.seen_tokens (removed in transformers>=4.41).
+            # Enforce the pinned version even on a cached venv.
+            /data/venv/bin/pip install -q "transformers==4.40.2"
 
             if [ ! -d /data/hf_cache/models--thuml--timer-base-84m ]; then
               echo "Downloading Timer-base-84m..."
