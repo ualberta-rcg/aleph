@@ -63,9 +63,11 @@ kubectl create secret generic hf-token -n models \
 # from a login node with sudo SSH access to control plane
 ./deploy.sh
 
-# or pin a tag
-TAG=0.14 ./deploy.sh
+# or pin a CI-built image tag
+GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha> ./deploy.sh
 ```
+
+Gateway image is published to Docker Hub as `rkhoja/aleph` (see `.github/workflows/deploy-gateway.yml`).
 
 ### 4) Run full compatibility tests
 

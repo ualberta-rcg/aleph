@@ -57,33 +57,40 @@ kubectl get deploy -n tyk                                                       
 
 ---
 
-## 1. Gateway image (no registry)
+## 1. Gateway image (Docker Hub)
 
-Build a container image, then import it into **RKE2's** containerd. Source: `gateway/`.
+CI publishes the gateway to **`rkhoja/aleph`** on Docker Hub (workflow:
+`.github/workflows/deploy-gateway.yml`). Tags: moving `latest` and immutable
+`gateway-<shortsha>`.
 
-> **A freshly-provisioned node has NO build tool** (no docker/podman/nerdctl). Install one.
-> We used `podman` (daemonless): `apt-get update && apt-get install -y podman`.
+```bash
+# Default: pull rkhoja/aleph:latest (imagePullPolicy: IfNotPresent in deployment.yaml)
+kubectl apply -f gateway/k8s/deployment.yaml
+
+# Or pin a CI build for reproducibility:
+kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>
+kubectl rollout status deploy/model-gateway -n models
+```
+
+From a login node, `./deploy.sh` ships manifests and applies everything (no local build).
+
+<details>
+<summary>Appendix: local build + containerd import (dev / air-gapped only)</summary>
+
+Build on the control-plane host, then import into **RKE2's** containerd. Source: `gateway/`.
+Requires docker or podman on the CP node. Set `imagePullPolicy: Never` and a local tag
+like `model-gateway:<tag>` only for this path.
 
 ```bash
 cd $DIR/gateway
 podman build -t model-gateway:0.3 .
 podman save model-gateway:0.3 -o /tmp/gw.tar
-
-# CRITICAL: import into RKE2's containerd (NOT the host one) or the pod gets
-# ErrImageNeverPull (imagePullPolicy: Never).
 CTR="ctr --address /run/k3s/containerd/containerd.sock -n k8s.io"
 $CTR images import /tmp/gw.tar
-
-# podman tags as localhost/model-gateway:0.3, but K8s resolves the bare name to
-# docker.io/library/... — retag so the deployment's `image: model-gateway:0.3` matches:
 $CTR images tag localhost/model-gateway:0.3 docker.io/library/model-gateway:0.3
-$CTR images ls | grep model-gateway       # expect docker.io/library/model-gateway:0.3
 ```
 
-> (With Docker instead of podman: `docker build` then `docker save ... | $CTR images import -`
-> — Docker tags as `docker.io/library/...` already, so no retag needed.)
-> With 3 control-plane VMs later: import on all 3, or stand up a registry and switch to
-> `imagePullPolicy: IfNotPresent`.
+</details>
 
 ## 2. Gateway RBAC + Service + Deployment
 
@@ -91,13 +98,13 @@ $CTR images ls | grep model-gateway       # expect docker.io/library/model-gatew
 kubectl create namespace models --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f gateway/k8s/rbac.yaml       # SA + Role: configmaps & inferenceservices get/list/watch
 kubectl apply -f gateway/k8s/service.yaml    # ClusterIP :80 -> :8080
-kubectl apply -f gateway/k8s/deployment.yaml # image model-gateway:0.3, imagePullPolicy: Never
+kubectl apply -f gateway/k8s/deployment.yaml # image rkhoja/aleph:latest, imagePullPolicy: IfNotPresent
 ```
 
 Key deployment choices (in `gateway/k8s/deployment.yaml`):
 - **Pinned to control-plane / non-GPU nodes:** `nodeSelector node-role.kubernetes.io/control-plane: "true"`
   + nodeAffinity `gpu NotIn [on]`. Keeps it off GPU workers; covers all future CP VMs.
-- `imagePullPolicy: Never` (local image). Container name is **`gateway`** (matters for `kubectl set image`).
+- `image: rkhoja/aleph:latest` from Docker Hub (`imagePullPolicy: IfNotPresent`). Container name is **`gateway`** (matters for `kubectl set image`).
 - Istio sidecar via pod label `sidecar.istio.io/inject: "true"`.
 
 The gateway needs `gateway/cards/` applied (next step) before `/readyz` goes green

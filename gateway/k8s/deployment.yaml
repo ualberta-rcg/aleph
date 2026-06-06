@@ -30,13 +30,12 @@ spec:
                   - key: gpu
                     operator: NotIn
                     values: ["on"]
-      # NOTE (no registry yet): imagePullPolicy: Never means model-gateway:<tag>
-      # must be imported into RKE2 containerd on EVERY control-plane VM the pod can
-      # land on. With 3 CP VMs, either import on all 3 or stand up a registry.
+      # Gateway image is published by CI to Docker Hub (rkhoja/aleph). Pin a tag in
+      # deployment.yaml or override at deploy time: GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha>
       containers:
         - name: gateway
-          image: model-gateway:0.13
-          imagePullPolicy: Never
+          image: rkhoja/aleph:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:

@@ -2,6 +2,15 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-06 — gateway: switch cluster 230 to Docker Hub pull
+
+- Deployment now uses `rkhoja/aleph:latest` with `imagePullPolicy: IfNotPresent`
+  (replaces local `model-gateway:<tag>` + `Never` + containerd import).
+- `deploy.sh` / `remote-deploy.sh` no longer build on the control plane; `GATEWAY_IMAGE`
+  env var selects the tag (default `rkhoja/aleph:latest`).
+- RUNBOOK/README/gateway CLAUDE updated: Docker Hub is primary; local build is appendix only.
+- Rolled out on cluster 230; gateway deployment healthy.
+
 ## 2026-06-06 — science model batch (gateway body-limit + init fixes)
 
 Continued the verification loop on remaining PENDING science models. Key pattern:

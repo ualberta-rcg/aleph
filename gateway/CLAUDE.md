@@ -21,25 +21,19 @@ Gateway responsibilities:
 
 ## Versioning and rollout
 
-### CI publish (Docker Hub)
+### CI publish + cluster rollout (Docker Hub — default)
 
 `.github/workflows/deploy-gateway.yml` builds `gateway/Dockerfile` and pushes to
 Docker Hub on `main` pushes that touch `gateway/**`.
 
-- Default image: `rkhoja/aleph`
-- Tags: immutable `gateway-<shortsha>` + moving `latest`
-- Secrets (same names as `warewulf-rke2-hami`): `DOCKER_HUB_USER`, `DOCKER_HUB_TOKEN`
-- Optional: `DOCKER_HUB_REPO` secret or repo Variable to override the image name
+- Image: `rkhoja/aleph` (`latest` + immutable `gateway-<shortsha>`)
+- Deployment: `k8s/deployment.yaml` uses `imagePullPolicy: IfNotPresent`
+- Rollout: `./deploy.sh` or `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:<tag>`
+- Pin CI tags for reproducibility; use `latest` for the newest build.
 
-Manual run: Actions → **Build & Push Gateway Image** → **Run workflow**.
+### Local build (dev / air-gapped fallback only)
 
-### Cluster rollout (local build, no registry)
-
-1. Update code in `app/`.
-2. Build image on control-plane host via deploy flow.
-3. Bump image tag in `k8s/deployment.yaml`.
-4. Roll out and wait for deployment readiness.
-5. Re-run compatibility tests (`scratch/full_test.py`).
+See RUNBOOK.md appendix. Do not use for cluster 230 day-to-day deploys.
 
 ## Behavior guardrails
 
