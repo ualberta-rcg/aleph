@@ -95,8 +95,8 @@ spec:
           - containerPort: 8080
             protocol: TCP
         resources:
-          requests: { cpu: "8", memory: 64Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "40960" }
-          limits: { cpu: "16", memory: 96Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "40960" }
+          requests: { cpu: "8", memory: 64Gi, nvidia.com/gpu: "1" }
+          limits: { cpu: "16", memory: 96Gi, nvidia.com/gpu: "1" }
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
           initialDelaySeconds: 300

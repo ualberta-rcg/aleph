@@ -76,12 +76,10 @@ spec:
             cpu: "2"
             memory: 16Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "45056"
           limits:
             cpu: "8"
             memory: 24Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "45056"
         readinessProbe:
           httpGet:
             path: /v1/models
