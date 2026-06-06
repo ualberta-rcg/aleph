@@ -57,7 +57,7 @@ data:
       "schema_version": 2,
       "catalog": {
         "description_short": "Microsoft Phi-4 Reasoning 14B, chain-of-thought math/science/code",
-        "description": "Microsoft Phi-4-reasoning 14B dense decoder-only Transformer (SFT + RL on chain-of-thought). Native output is Thought then Solution blocks. Verified PASS on cluster 230 (OpenAI + Anthropic). vLLM v0.20.2 with --reasoning-parser=deepseek_r1; whole single L40S (no HAMi gpumem). Gateway promotes reasoning fields to content when the parser leaves content empty, then strips thinking per card.",
+        "description": "Microsoft Phi-4-reasoning 14B dense decoder-only Transformer (SFT + RL on chain-of-thought). Native output: Thought inside redacted_thinking tags, then Solution. Verified PASS on cluster 230 (OpenAI + Anthropic) with adequate max_tokens. vLLM v0.20.2 --reasoning-parser=deepseek_r1; whole single L40S (no HAMi gpumem).",
         "owned_by": "microsoft",
         "source": "microsoft/Phi-4-reasoning",
         "source_url": "https://huggingface.co/microsoft/Phi-4-reasoning",
@@ -73,9 +73,10 @@ data:
         "languages": ["english"],
         "verified": "PASS 2026-06-06",
         "known_quirks": [
-          "deepseek_r1 parser does not fully split Phi-4 Thought/Solution; answer may arrive in reasoning fields",
-          "use max_tokens>=4096 for multi-step reasoning; small budgets can exhaust on chain-of-thought",
-          "HF recommends sampling (temp 0.8, top_k 50, top_p 0.95); greedy decoding discouraged"
+          "max_tokens is one shared budget for Thought+Solution; small budgets exhaust on CoT before Solution appears",
+          "vLLM deepseek_r1 parser splits on redacted_thinking tags; V1 engine may omit them (vllm#18141) leaving content empty",
+          "reasoning_effort/thinking_token_budget are model-specific; Phi-4 is always-on via chat template, not gpt-oss-style effort",
+          "HF recommends sampling (temp 0.8, top_k 50, top_p 0.95) and max_new_tokens up to 32768 for hard problems"
         ]
       }
     }

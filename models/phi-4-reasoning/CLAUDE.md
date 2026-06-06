@@ -18,17 +18,24 @@ Native format: **Thought** block then **Solution** block. 32K context. Whole sin
 ## Gateway integration
 
 - Card `schema_version: 2`; `param_translation.thinking.mode: always_on`
-- `behavior.strips_thinking: true` — gateway promotes reasoning→content when parser
-  leaves `content` empty, then strips duplicate reasoning fields
-- Use `max_tokens` ≥ 4096 for real reasoning tasks; small budgets exhaust on CoT
+- `behavior.strips_thinking: true` — strips `reasoning`/`reasoning_content` after vLLM split
+- Use `max_tokens` ≥ 4096 for real reasoning tasks (Thought + Solution share one budget)
+- Gateway does **not** remap reasoning→content; empty `content` means fix vLLM/parser/budget
 
-## Known mapping quirk (not a serving failure)
+## Why `content` can be empty (not a gateway bug)
 
-vLLM's `deepseek_r1` parser targets DeepSeek-R1 token format; Phi-4 uses Thought/Solution
-sections instead. Parser often fails to split `reasoning_content` vs `content`. Model still
-answers correctly; gateway fill+strip handles the common empty-content case.
+Three separate causes, often confused:
 
-**Future TLC:** try a Phi-specific parser when vLLM adds one, or post-process Solution block.
+1. **Token budget** — `max_tokens` covers both Thought and Solution. A 200–600 token
+   budget can be consumed entirely by chain-of-thought before Solution is emitted.
+2. **Parser split** — Microsoft expects `` … `` then Solution. vLLM
+   `deepseek_r1` parser splits on those tokens into `reasoning` vs `content`. If the
+   model never emits closing tags (known vLLM V1 issue, vllm#18141), both fields are wrong.
+3. **No separate reasoning budget on v0.20.2** — unlike Qwen3/DeepSeek in newer vLLM,
+   Phi-4 does not get `thinking_token_budget`; only total `max_tokens` applies.
+
+**Do not** paper over empty `content` by copying `reasoning` into `content` in the gateway.
+Fix: raise `max_tokens`, ensure parser/tags work, or add Phi-specific vLLM config.
 
 ## Deploy / test
 

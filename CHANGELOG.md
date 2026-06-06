@@ -2,12 +2,12 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
-## 2026-06-06 — phi-4-reasoning card + gateway mapping TLC
+## 2026-06-06 — phi-4-reasoning card refresh (no gateway remap)
 
 - Rewrote `models/phi-4-reasoning/details.yaml` to schema v2 (whole L40S, v0.20.2,
-  `always_on` thinking, verified PASS status, known parser quirks documented).
-- Gateway: `fill_empty_content_from_reasoning()` for reasoning models when vLLM leaves
-  `content` empty but answer is in `reasoning`/`reasoning_content` (Phi-4 + deepseek_r1).
+  `always_on` thinking, verified PASS status, known quirks documented).
+- Reverted `fill_empty_content_from_reasoning()` — empty `content` is a vLLM parser or
+  `max_tokens` budget issue, not something the gateway should paper over.
 
 ## 2026-06-06 — gateway: switch cluster 230 to Docker Hub pull
 
