@@ -33,8 +33,12 @@ spec:
             if [ -f /data/checkpoint.pth ]; then
                 echo "CHGNet weights already on PVC, skipping download."
             else
+                # CederGroupHub/chgnet HF repo was removed (404). The chgnet pip package
+                # ships bundled pretrained weights, and server.py falls back to
+                # CHGNet.load() when /data/checkpoint.pth is absent. So this download is
+                # best-effort and MUST NOT fail init.
                 pip install -q huggingface_hub
-                python3 -u <<'PY'
+                python3 -u <<'PY' || echo "HF download unavailable; server.py will use chgnet bundled weights."
             import os
             from huggingface_hub import hf_hub_download
             print("Downloading CHGNet weights...", flush=True)
@@ -55,7 +59,11 @@ spec:
                 python3 -m venv /data/venv
                 . /data/venv/bin/activate
                 pip install -U pip
-                pip install chgnet fastapi uvicorn
+                # Pin chgnet==0.3.8: chgnet 0.4.x removed the atom_features_type kwarg from
+                # CrystalGraph but the bundled model's graph converter still passes it
+                # ("CrystalGraph.__init__() got an unexpected keyword argument
+                # 'atom_features_type'"). 0.3.8 is the last consistent release (232 predates 0.4.0).
+                pip install "chgnet==0.3.8" fastapi uvicorn
                 echo "Install done."
             fi
         resources:

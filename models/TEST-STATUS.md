@@ -40,7 +40,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
 | chemgpt-19m | generate | true | /v1/science/generate | READY | PASS | SELFIES molecule generation |
 | chemgpt | generate | true | /v1/science/generate | READY | PASS | id=chemgpt-1.2b; SELFIES molecule generation |
-| chgnet | force-field | true | /v1/science/energy | NOT-READY | PENDING |  |
+| chgnet | force-field | true | /v1/science/energy | READY | FIXED | DEEP-FIX: ported server.py was broken (manually built CrystalGraph w/ bad kwarg) -> rewrote to model.predict_structure(); added missing server.py+kustomization (never ported); CederGroupHub/chgnet HF repo removed (404) -> non-fatal, uses chgnet bundled weights; pinned chgnet==0.3.8. water -14.79 eV + forces + stress + magmom |
 | chronos-bolt | forecast | false | /v1/forecast | READY | PASS | quantile forecast on 16-pt series |
 | clap | embedding | false | /v1/embeddings | READY | PASS | text emb 512-dim + zero-shot audio classify (dog 0.73) |
 | clay | embed | false | /v1/science/embed | READY | FIXED | rewrote to Clay v1.5 datacube dict API; cls embedding PASS |
@@ -158,7 +158,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
 | totalsegmentator | segment | true | /v1/science/segment | NOT-READY | PENDING |  |
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
-| uma-m | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
+| uma-m | force-field | true | /v1/science/predict | BLOCKED | FAIL | gated repo facebook/UMA (401) - needs Meta access grant on HF token |
 | xtts-v2 | tts | true | /v1/audio/speech | READY | PASS | text->WAV 155KB audio |
 | yolov8n | detect | false | /v1/vision/detect | READY | PASS | person 0.89 on bus.jpg |
 | yolov8s | detect | false | /v1/vision/detect | READY | PASS | person 0.91 on bus.jpg |
