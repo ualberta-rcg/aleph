@@ -1,0 +1,87 @@
+# zai-org/GLM-Z1-32B-0414 on cluster 230 / HAMi. vLLM v0.20.2, TP2 (whole devices).
+# HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=2, DO NOT set gpumem,
+# and --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL is fast).
+# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 required on L40S (SM89). Scale-to-zero, 15m idle.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: glm-z1-32b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "1800s"
+spec:
+  predictor:
+    minReplicas: 0
+    maxReplicas: 2
+    scaleTarget: 8
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+          - --model=/mnt/models
+          - --served-model-name=glm-z1-32b
+          - --tensor-parallel-size=2
+          - --max-model-len=32768
+          - --dtype=auto
+          - --gpu-memory-utilization=0.92
+          - --max-num-seqs=8
+          - --reasoning-parser=deepseek_r1
+          - --disable-custom-all-reduce
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: VLLM_ATTENTION_BACKEND
+            value: TRITON_ATTN_VLLM_V1
+          - name: OMP_NUM_THREADS
+            value: "1"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "8"
+            memory: 24Gi
+          limits:
+            cpu: "16"
+            memory: 64Gi
+            nvidia.com/gpu: "2"
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 60
+        livenessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 3
+        volumeMounts:
+          - name: model-data
+            mountPath: /mnt/models
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: model-data
+        persistentVolumeClaim:
+          claimName: glm-z1-32b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 12Gi

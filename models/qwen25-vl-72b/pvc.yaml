@@ -1,0 +1,15 @@
+# Qwen2.5-VL-72B large vision-language model for imagery/spectra/microscopy.
+# Weights (~145 GB) persist on NFS (nfs-client) so scale-from-zero cold starts skip
+# re-download. Populated once by download-job.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen25-vl-72b-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 200Gi

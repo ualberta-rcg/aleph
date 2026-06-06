@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen25-coder-32b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "qwen25-coder-32b",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "qwen25-coder-32b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 32768
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": false
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "max_tokens": 8192
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Qwen2.5-Coder-32B coding specialist: code gen, completion, repair.",
+        "description": "Qwen2.5-Coder-32B coding specialist: code gen, completion, repair.",
+        "owned_by": "Qwen",
+        "source": "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "source_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "parameters": "TP2",
+        "tags": [
+          "chat",
+          "llm",
+          "code",
+          "tool-calling"
+        ]
+      }
+    }

@@ -25,3 +25,4 @@ scratch/*.txt
 scratch/*.b64
 scratch/*.jpg
 scratch/*.png
+scratch/*.py

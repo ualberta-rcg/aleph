@@ -1,0 +1,15 @@
+# GLM-4-32B-0414 instruct: strong function calling + agentic workflows.
+# Weights (~65 GB) persist on NFS (nfs-client) so scale-from-zero cold starts skip
+# re-download. Populated once by download-job.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: glm-4-32b-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 100Gi

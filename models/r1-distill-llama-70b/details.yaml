@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: r1-distill-llama-70b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "r1-distill-llama-70b",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "r1-distill-llama-70b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 131072
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "reasoning_model": true
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "max_tokens": 8192
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "DeepSeek-R1 reasoning distilled into Llama-70B. Strong open chain-of-thought.",
+        "description": "DeepSeek-R1 reasoning distilled into Llama-70B. Strong open chain-of-thought.",
+        "owned_by": "DeepSeek",
+        "source": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "parameters": "TP4",
+        "tags": [
+          "chat",
+          "llm",
+          "reasoning",
+          "science"
+        ]
+      }
+    }

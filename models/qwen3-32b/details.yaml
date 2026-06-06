@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen3-32b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "qwen3-32b",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "qwen3-32b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 40960
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": true
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "max_tokens": 8192
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages.",
+        "description": "Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages.",
+        "owned_by": "Qwen",
+        "source": "Qwen/Qwen3-32B",
+        "source_url": "https://huggingface.co/Qwen/Qwen3-32B",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "parameters": "TP2",
+        "tags": [
+          "chat",
+          "llm",
+          "reasoning",
+          "tool-calling",
+          "multilingual"
+        ]
+      }
+    }

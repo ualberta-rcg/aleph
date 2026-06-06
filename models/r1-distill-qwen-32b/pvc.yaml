@@ -1,0 +1,15 @@
+# DeepSeek-R1 reasoning distilled into Qwen-32B. Faster R1-grade reasoning.
+# Weights (~65 GB) persist on NFS (nfs-client) so scale-from-zero cold starts skip
+# re-download. Populated once by download-job.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: r1-distill-qwen-32b-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 100Gi

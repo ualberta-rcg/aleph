@@ -1,0 +1,62 @@
+# One-shot Job: pre-stage aaditya/Llama3-OpenBioLLM-70B weights (~140 GB) onto the PVC.
+# Separate Job (not initContainer) because the download is long; pre-staging keeps the
+# InferenceService cold start to weight-load time. Idempotent via sentinel file.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openbiollm-70b-download
+  namespace: models
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 28800
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: downloader
+          image: python:3.11-slim
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+            - name: HF_HUB_ENABLE_HF_TRANSFER
+              value: "1"
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+              SENTINEL=/data/.openbiollm-70b-ready
+              if [ -f "$SENTINEL" ]; then
+                echo "Weights already present, nothing to do."
+                exit 0
+              fi
+              pip install -q huggingface_hub hf_transfer
+              python3 -u - <<'PY'
+              import os
+              from pathlib import Path
+              from huggingface_hub import snapshot_download
+              dest = Path("/data")
+              dest.mkdir(parents=True, exist_ok=True)
+              print("Downloading aaditya/Llama3-OpenBioLLM-70B (~140 GB) ...", flush=True)
+              snapshot_download(
+                  repo_id="aaditya/Llama3-OpenBioLLM-70B",
+                  local_dir=str(dest),
+                  token=os.environ["HF_TOKEN"],
+                  ignore_patterns=["*.pt", "*.pth", "original/*", "*.gguf"],
+              )
+              print("Download complete.", flush=True)
+              PY
+              touch "$SENTINEL"
+              echo "Done."; ls -lh /data | head -20
+          resources:
+            requests: { cpu: "4", memory: 16Gi }
+            limits: { cpu: "8", memory: 32Gi }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openbiollm-70b-data
