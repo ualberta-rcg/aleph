@@ -64,6 +64,11 @@ spec:
               marker.write_text("ok\n")
               print("Prefetch complete.", flush=True)
               PY
+              # The init container runs as root; the speaches container runs as a non-root
+              # user (ubuntu) and faster-whisper needs to WRITE refs/main on load. Make the
+              # HF cache world-writable so STT model load doesn't hit PermissionError.
+              chmod -R a+rwX /data
+              echo "Cache permissions opened."
           resources:
             requests: { cpu: "2", memory: 4Gi }
             limits: { cpu: "4", memory: 8Gi }

@@ -143,7 +143,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
 | scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper |
 | seisbench | classify | true | /v1/science/detect | READY | PASS | phasenet runs (P/S detection) |
-| speaches | standalone | true | - | NO-ISVC | PENDING |  |
+| speaches | tts+stt | true | /v1/audio/speech, /v1/audio/transcriptions | READY | PASS | DEEP-FIX: chmod HF cache (root init -> non-root container PermissionError on whisper refs). TTS Kokoro-82M (af_heart/am_michael, wav+mp3 ~9s); STT faster-whisper-large-v3 ~6s. Round-trip transcription exact (x2). Always-on Deployment (heavily used) |
 | specter2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id specter2-110m) |
 | splicebert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id splicebert-86m) |
 | stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PASS | PHI entities (PATIENT/DATE/HOSPITAL) |
