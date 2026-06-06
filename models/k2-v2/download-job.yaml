@@ -23,6 +23,8 @@ spec:
                   key: token
             - name: HF_HUB_ENABLE_HF_TRANSFER
               value: "1"
+            - name: HF_HUB_DISABLE_XET
+              value: "1"
           command: ["bash", "-c"]
           args:
             - |
