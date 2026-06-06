@@ -8,6 +8,9 @@ metadata:
   namespace: models
 spec:
   serveConfigV2: |
+    # Run HTTP proxies only on the head node. The default (EveryNode) would place a proxy
+    # actor on the GPU worker, keeping it permanently "busy" and preventing scale-to-zero.
+    proxy_location: HeadOnly
     applications:
     - name: kandinsky
       route_prefix: /
@@ -27,10 +30,25 @@ spec:
           MODEL_DIR: /mnt/models/kandinsky-3
           PYTHONPATH: /home/ray
   rayClusterConfig:
+    # In-tree Ray autoscaler: scales the GPU worker group up on demand and removes idle
+    # GPU worker nodes (releasing the L40S) when the Serve replica scales to zero.
+    enableInTreeAutoscaler: true
+    autoscalerOptions:
+      upscalingMode: Default
+      idleTimeoutSeconds: 60          # remove an idle GPU worker 60s after its actor is gone
+      resources:
+        requests:
+          cpu: "250m"
+          memory: 512Mi
+        limits:
+          cpu: "500m"
+          memory: 1Gi
     headGroupSpec:
       rayStartParams:
         dashboard-host: "0.0.0.0"
-        num-cpus: "0"
+        # Head keeps CPUs so the Serve HTTP proxy + CPU-only APIIngress run HERE on the
+        # non-GPU node. This is what allows the GPU worker group to scale all the way to 0.
+        num-cpus: "2"
       template:
         spec:
           # Head is CPU-only (num-cpus: 0 for scheduling actors); keep it OFF the GPU
@@ -70,9 +88,9 @@ spec:
                 name: kandinsky-3-server
     workerGroupSpecs:
       - groupName: gpu-worker
-        replicas: 1
-        minReplicas: 1   # always-on — 1× L40S permanently held
-        maxReplicas: 1
+        replicas: 0
+        minReplicas: 0   # scale-to-zero: no L40S held while idle
+        maxReplicas: 3   # up to 3 concurrent GPU workers under load
         rayStartParams: {}
         template:
           spec:

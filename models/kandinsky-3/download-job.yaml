@@ -1,0 +1,61 @@
+# One-time job to download Kandinsky-3 weights if not present.
+# Run before deploying the RayService: kubectl apply -f download-job.yaml
+# RayService doesn't support initContainers, so we use a separate Job.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kandinsky-3-download
+  namespace: models
+spec:
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: downloader
+          image: python:3.11-slim
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+          command:
+            - bash
+            - -c
+          args:
+            - |
+              set -e
+              pip install -q huggingface_hub
+              python3 -u <<'PY'
+              import os
+              from pathlib import Path
+              model_dir = Path("/data/kandinsky-3")
+              if (model_dir / "model_index.json").is_file():
+                  print("Kandinsky-3 weights already present, skipping.", flush=True)
+              else:
+                  from huggingface_hub import snapshot_download
+                  model_dir.mkdir(parents=True, exist_ok=True)
+                  print("Downloading kandinsky-community/kandinsky-3 ...", flush=True)
+                  snapshot_download(
+                      repo_id="kandinsky-community/kandinsky-3",
+                      local_dir=str(model_dir),
+                      local_dir_use_symlinks=False,
+                      token=os.environ.get("HF_TOKEN"),
+                  )
+                  print("Download finished.", flush=True)
+              PY
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kandinsky-3-data

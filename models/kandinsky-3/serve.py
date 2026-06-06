@@ -91,7 +91,20 @@ class APIIngress:
     def health(self):
         return {"status": "ok"}
 
-@serve.deployment(ray_actor_options={"num_gpus": 1})
+@serve.deployment(
+    ray_actor_options={"num_gpus": 1},
+    # Autoscale the GPU replica 0 -> N. min_replicas=0 lets the (only) GPU actor be
+    # torn down when idle; combined with the RayCluster in-tree autoscaler this releases
+    # the L40S worker node entirely. The Ray autoscaler provisions a fresh GPU worker on
+    # the next request (cold start = node up + weight load).
+    autoscaling_config={
+        "min_replicas": 0,
+        "max_replicas": 3,
+        "target_ongoing_requests": 1,
+        "upscale_delay_s": 5,
+        "downscale_delay_s": 900,   # 15 min idle before releasing the GPU (cluster convention)
+    },
+)
 class Kandinsky3:
     def __init__(self):
         from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
