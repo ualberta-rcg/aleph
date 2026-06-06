@@ -91,14 +91,14 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
 | leandojo | embed | true | /v1/science/retrieve | READY | PASS | premise retrieval w/ scores |
 | ligandmpnn | design | false | /v1/design | READY | FIXED | checkpoints+args+optional-openfold; 1CRN design near-native PASS |
-| mace-mh-1 | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
+| mace-mh-1 | force-field | true | /v1/science/predict | READY | PASS | water -14.22 eV + forces (omat_pbe head) |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
-| mace-mp | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
+| mace-mp | force-field | true | /v1/science/predict | READY | PASS | water -14.01 eV + forces; mace-mp-0 medium |
 | maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
 | mast3r | 3d | true | /v1/science/reconstruct | NOT-READY | PENDING |  |
 | matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING |  |
-| mattersim | force-field | true | /v1/science/predict | NOT-READY | PENDING |  |
+| mattersim | force-field | true | /v1/science/predict | READY | PASS | water -14.07 eV + forces + per-atom |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
 | medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | 27B dense TP2 ~20tok/s; v0.20.2 (fixed --limit-mm-per-prompt JSON); full GPUs + --disable-custom-all-reduce; correct medical answers |
