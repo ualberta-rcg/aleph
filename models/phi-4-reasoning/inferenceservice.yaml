@@ -67,7 +67,8 @@ spec:
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.90
           - --trust-remote-code
-          - --enable-reasoning
+          # --enable-reasoning removed in vLLM v0.20.2 (reasoning is implied by
+          # --reasoning-parser); keeping it causes "unrecognized arguments".
           - --reasoning-parser=deepseek_r1
         env:
           - name: HF_HUB_CACHE

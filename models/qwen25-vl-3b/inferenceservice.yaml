@@ -67,7 +67,7 @@ spec:
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.90
           - --trust-remote-code
-          - --limit-mm-per-prompt=image=4
+          - '--limit-mm-per-prompt={"image": 4}'
         env:
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache

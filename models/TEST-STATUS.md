@@ -51,7 +51,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | command-r-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
 | crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
-| deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | FIXED | gpumem 20->45GB + max-model-len 8192 (was OOM); OpenAI+Anthropic |
+| deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std); gpumem 45GB + max-model-len 8192; correct answers |
 | depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
 | diffdock | dock | true | /v1/dock | NOT-READY | PENDING |  |
 | dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | image embedding |
@@ -116,7 +116,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | oceangpt-30b | chat | true | /v1/chat/completions | READY | FIXED | 30B-A3B MoE TP2 ~73tok/s; v0.20.2; full GPUs + --disable-custom-all-reduce (no CUDA_DISABLE_CONTROL); OpenAI+Anthropic |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
-| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | reasoning_content + OpenAI/Anthropic (progress-deadline fix) |
+| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std; dropped --enable-reasoning, removed in 0.20.2); correct answers; reasoning_content not separated by deepseek_r1 parser (cosmetic) |
 | presto | classify | false | /v1/embeddings | READY | FAIL | band-layout mismatch - needs correct presto format |
 | prithvi-eo | embed | true | /v1/embed | NOT-READY | PENDING |  |
 | prithvi-wxc | embed | true | /v1/science/forecast | NOT-READY | PENDING |  |
@@ -126,7 +126,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores |
 | protgpt2 | generate | true | /v1/completions | READY | PASS | de novo protein generation (recreated) |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
-| qwen25-vl-3b | chat | true | /v1/chat/completions | READY | FIXED | gpumem 12->24GB (vision profiling OOM); chat + vision OK |
+| qwen25-vl-3b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std; fixed --limit-mm-per-prompt JSON); gpumem 24GB; chat OK |
 | qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic + vision (image_url) |
 | qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | 235B-A22B AWQ-int4 MoE TP4 ~67tok/s; v0.20.2; ported from 232 (tclf90 repo deleted -> QuantTrio); whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce + awq_marlin; correct math + tool-calling (hermes) |
 | qwen35-122b | chat | true | /v1/chat/completions | READY | FIXED | 122B FP8 MoE TP4 ~65tok/s; v0.20.2; whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce; unpinned; reasoning-parser=qwen3; correct answers |
