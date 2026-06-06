@@ -279,8 +279,9 @@ document (`TEST.md`/`CLAUDE.md`), and mark an honest `status` on each card.
 - Added `.github/workflows/deploy-gateway.yml` modeled after the publish pattern in
   `ualberta-rcg/warewulf-rke2-hami`:
   - build on `main` pushes touching `gateway/**`,
-  - push immutable and stable tags,
-  - DockerHub auth via `DOCKER_HUB_USER`, `DOCKER_HUB_TOKEN`, `DOCKER_HUB_REPO`.
+  - push immutable `gateway-<shortsha>` and stable `latest` tags,
+  - default image `rkhoja/aleph` (override via `DOCKER_HUB_REPO` secret/Variable),
+  - DockerHub auth via `DOCKER_HUB_USER`, `DOCKER_HUB_TOKEN`.
 
 ## 2026-06-04 (later) — 3 more sub-GPU science models + cold-start fix
 

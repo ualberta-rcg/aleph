@@ -1,5 +1,11 @@
 name: Build & Push Gateway Image
 
+# Publishes the FastAPI gateway image to Docker Hub (default: rkhoja/aleph).
+# Auth uses the same secret names as ualberta-rcg/warewulf-rke2-hami:
+#   DOCKER_HUB_USER, DOCKER_HUB_TOKEN
+# Optional override for the image name:
+#   DOCKER_HUB_REPO secret or repository Variable (default: rkhoja/aleph)
+
 on:
   push:
     branches:
@@ -14,9 +20,9 @@ on:
         required: false
         default: ''
       STABLE_TAG:
-        description: 'Stable moving tag (default: gateway-latest)'
+        description: 'Stable moving tag (default: latest)'
         required: false
-        default: 'gateway-latest'
+        default: 'latest'
 
 jobs:
   build-and-push:
@@ -27,11 +33,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Resolve image repository
+        id: repo
+        env:
+          SECRET_REPO: ${{ secrets.DOCKER_HUB_REPO }}
+          VAR_REPO: ${{ vars.DOCKER_HUB_REPO }}
+        run: |
+          set -euo pipefail
+          REPO="${SECRET_REPO}"
+          if [ -z "${REPO}" ]; then
+            REPO="${VAR_REPO}"
+          fi
+          if [ -z "${REPO}" ]; then
+            REPO="rkhoja/aleph"
+          fi
+          echo "IMAGE_REPO=${REPO}" >> "$GITHUB_OUTPUT"
+          echo "Using IMAGE_REPO=${REPO}"
+
       - name: Resolve tags
         id: tags
         env:
           INPUT_IMAGE_TAG: ${{ github.event.inputs.IMAGE_TAG }}
           INPUT_STABLE_TAG: ${{ github.event.inputs.STABLE_TAG }}
+          VAR_STABLE_TAG: ${{ vars.STABLE_TAG }}
         run: |
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA::7}"
@@ -43,7 +67,10 @@ jobs:
 
           STABLE_TAG="${INPUT_STABLE_TAG}"
           if [ -z "${STABLE_TAG}" ]; then
-            STABLE_TAG="gateway-latest"
+            STABLE_TAG="${VAR_STABLE_TAG}"
+          fi
+          if [ -z "${STABLE_TAG}" ]; then
+            STABLE_TAG="latest"
           fi
 
           echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
@@ -51,21 +78,21 @@ jobs:
           echo "Using IMAGE_TAG=${IMAGE_TAG}"
           echo "Using STABLE_TAG=${STABLE_TAG}"
 
-      - name: Build Docker image
-        run: |
-          set -euo pipefail
-          docker build \
-            -t "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" \
-            -t "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}" \
-            gateway
-
       - name: Login to DockerHub
         run: |
           set -euo pipefail
           echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USER }}" --password-stdin
 
+      - name: Build Docker image
+        run: |
+          set -euo pipefail
+          docker build \
+            -t "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" \
+            -t "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}" \
+            gateway
+
       - name: Push image to DockerHub
         run: |
           set -euo pipefail
-          docker push "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}"
-          docker push "${{ secrets.DOCKER_HUB_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}"
+          docker push "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}"
+          docker push "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}"

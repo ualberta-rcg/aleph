@@ -21,6 +21,20 @@ Gateway responsibilities:
 
 ## Versioning and rollout
 
+### CI publish (Docker Hub)
+
+`.github/workflows/deploy-gateway.yml` builds `gateway/Dockerfile` and pushes to
+Docker Hub on `main` pushes that touch `gateway/**`.
+
+- Default image: `rkhoja/aleph`
+- Tags: immutable `gateway-<shortsha>` + moving `latest`
+- Secrets (same names as `warewulf-rke2-hami`): `DOCKER_HUB_USER`, `DOCKER_HUB_TOKEN`
+- Optional: `DOCKER_HUB_REPO` secret or repo Variable to override the image name
+
+Manual run: Actions → **Build & Push Gateway Image** → **Run workflow**.
+
+### Cluster rollout (local build, no registry)
+
 1. Update code in `app/`.
 2. Build image on control-plane host via deploy flow.
 3. Bump image tag in `k8s/deployment.yaml`.
