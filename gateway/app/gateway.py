@@ -676,6 +676,22 @@ def _tools_unsupported_error(model_id: str):
         }}, 400)
 
 
+def fill_empty_content_from_reasoning(data: dict) -> dict:
+    """When a reasoning parser fails to split (e.g. Phi-4 + deepseek_r1), the answer
+    may land only in reasoning/reasoning_content with content empty. Promote so
+    strips_thinking and content-only clients still get a reply."""
+    for ch in data.get("choices", []) or []:
+        msg = ch.get("message")
+        if not isinstance(msg, dict) or msg.get("content"):
+            continue
+        for key in ("reasoning_content", "reasoning"):
+            alt = msg.get(key)
+            if alt:
+                msg["content"] = alt
+                break
+    return data
+
+
 def strip_reasoning_obj(data: dict) -> dict:
     """Drop reasoning fields from a non-streaming OpenAI chat response (in place)."""
     for ch in data.get("choices", []) or []:
@@ -877,6 +893,8 @@ async def chat(request: Request):
                         media_type=r.headers.get("content-type", "application/json"))
     try:
         data = r.json()
+        if ((info.get("card", {}) or {}).get("behavior", {}) or {}).get("reasoning_model"):
+            fill_empty_content_from_reasoning(data)
         if _strips_thinking(info):
             strip_reasoning_obj(data)
         data["resources"] = resource_block(info, latency_ms)

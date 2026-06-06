@@ -116,7 +116,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | oceangpt-30b | chat | true | /v1/chat/completions | READY | FIXED | 30B-A3B MoE TP2 ~73tok/s; v0.20.2; full GPUs + --disable-custom-all-reduce (no CUDA_DISABLE_CONTROL); OpenAI+Anthropic |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | READY | FIXED | demo+real ONNX; summarized upper/surface stats (not raw 721x1440 grids) |
-| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std; dropped --enable-reasoning, removed in 0.20.2); correct answers; reasoning_content not separated by deepseek_r1 parser (cosmetic) |
+| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; deepseek_r1 parser mapping quirk — gateway promotes reasoning→content then strips |
 | presto | classify | false | /v1/embeddings | READY | FAIL | band-layout mismatch - needs correct presto format |
 | prithvi-eo | embed | true | /v1/embed | NOT-READY | PENDING |  |
 | prithvi-wxc | embed | true | /v1/science/forecast | NOT-READY | PENDING |  |

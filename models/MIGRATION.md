@@ -131,7 +131,7 @@ Excluded >2 GPU: qwen3-235b (4), qwen35-122b (4).
 - [x] moment (MOMENT time-series, GPU; deployed)
 - [x] naturecode-earth (NatureCode earth obs, GPU; deployed)
 - [x] pangu-weather (Pangu-Weather 3D, GPU 1/gpumem30720; deployed)
-- [x] phi-4-reasoning (Phi-4 reasoning LLM, GPU 1/gpumem40960; deployed)
+- [x] phi-4-reasoning (Phi-4 reasoning LLM, whole L40S v0.20.2; PASS; card schema v2)
 - [x] prithvi-eo (Prithvi EO satellite embed, GPU 1/gpumem16384; deployed)
 - [x] prithvi-wxc (Prithvi WxC weather, GPU 1/gpumem40960; deployed)
 - [x] progen2 (ProGen2 protein LM, GPU 1/gpumem30720; deployed)
