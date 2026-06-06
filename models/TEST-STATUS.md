@@ -163,3 +163,26 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | yolov8n | detect | false | /v1/vision/detect | READY | PASS | person 0.89 on bus.jpg |
 | yolov8s | detect | false | /v1/vision/detect | READY | PASS | person 0.91 on bus.jpg |
 | zoobot | embedding | false | /v1/vision/embed | READY | PASS | id=zoobot-15m; galaxy embedding |
+
+## 2026-06 new LLM batch (15-model request; 13 built, 2 gated Meta skipped)
+
+vLLM v0.20.2, HAMi whole-device recipe (nvidia.com/gpu=TP, no gpumem, --disable-custom-all-reduce), scale-to-zero 15m. Llama-3 BPE models need tokenizer_class patch (AutoTokenizer silently falls back to broken slow LlamaTokenizer -> Ġ/Ċ garbled output; fix: set tokenizer_class=PreTrainedTokenizerFast on PVC).
+
+| Model | Repo | GPU/TP | Test status | Note |
+|---|---|---|---|---|
+| qwen3-32b | Qwen/Qwen3-32B | TP2 | PASS | dense flagship; thinking (qwen3 parser) + tools; 17*23=391 |
+| qwen25-coder-32b | Qwen/Qwen2.5-Coder-32B-Instruct | TP2 | PASS | is_prime() correct/idiomatic |
+| r1-distill-qwen-32b | deepseek-ai/DeepSeek-R1-Distill-Qwen-32B | TP2 | PASS | 12^2=144; deepseek_r1 parser; max-len 65536 (KV fit) |
+| r1-distill-llama-70b | deepseek-ai/DeepSeek-R1-Distill-Llama-70B | TP4 | FIXED | tokenizer_class patch (was Ġ/Ċ garbled); 40km/h correct; max-len 65536 |
+| glm-4-32b | zai-org/GLM-4-32B-0414 | TP2 | PASS | org moved THUDM->zai-org; haiku ok |
+| glm-z1-32b | zai-org/GLM-Z1-32B-0414 | TP2 | FIXED | dropped deepseek_r1 parser (no <think> special tokens); 8!=40320 |
+| glm-z1-rumination-32b | zai-org/GLM-Z1-Rumination-32B-0414 | TP2 | FIXED | dropped deepseek_r1 parser; agentic finish-call format; Tokyo ok |
+| qwq-32b | Qwen/QwQ-32B | TP2 | PASS | deepseek_r1 parser ok (QwQ has <think>); sqrt144=12 |
+| qwen25-vl-72b | Qwen/Qwen2.5-VL-72B-Instruct | TP4 | PENDING | large VLM; testing |
+| openbiollm-70b | aaditya/Llama3-OpenBioLLM-70B | TP4 | PENDING | tokenizer_class already Fast (no patch needed) |
+| k2-v2 | LLM360/K2-V2 | TP4 | PENDING | downloading (140GB); Llama tokenizer (patch queued) |
+| qwen36-27b | Qwen/Qwen3.6-27B | TP2 | PENDING | novel Gated-DeltaNet arch; vllm:latest |
+| qwen36-35b-a3b | Qwen/Qwen3.6-35B-A3B | TP2 | PENDING | MoE Gated-DeltaNet; vllm:latest |
+| llama-3.3-70b | meta-llama/Llama-3.3-70B-Instruct | - | SKIPPED | gated (403); HF access not granted on token |
+| llama-4-scout | meta-llama/Llama-4-Scout-17B-16E-Instruct | - | SKIPPED | gated (403); HF access not granted on token |
+| qwen3-72b-fp8 | (does not exist) | - | SUBSTITUTED | no dense Qwen3-72B; replaced with qwen3-32b per user |
