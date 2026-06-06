@@ -31,7 +31,6 @@ spec:
           - --dtype=auto
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=8
-          - --reasoning-parser=deepseek_r1
           - --disable-custom-all-reduce
           - --port=8080
         env:

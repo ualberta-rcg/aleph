@@ -27,9 +27,9 @@ spec:
           - --model=/mnt/models
           - --served-model-name=r1-distill-qwen-32b
           - --tensor-parallel-size=2
-          - --max-model-len=131072
+          - --max-model-len=65536
           - --dtype=auto
-          - --gpu-memory-utilization=0.92
+          - --gpu-memory-utilization=0.95
           - --max-num-seqs=8
           - --reasoning-parser=deepseek_r1
           - --disable-custom-all-reduce
