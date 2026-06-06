@@ -32,7 +32,7 @@ spec:
   rayClusterConfig:
     # In-tree Ray autoscaler: scales the GPU worker group up on demand and removes idle
     # GPU worker nodes (releasing the L40S) when the Serve replica scales to zero.
-    enableInTreeAutoscaler: true
+    enableInTreeAutoscaling: true
     autoscalerOptions:
       upscalingMode: Default
       idleTimeoutSeconds: 60          # remove an idle GPU worker 60s after its actor is gone

@@ -86,7 +86,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
-| kandinsky-3 | image | true | /v1/images/generations | NO-ISVC | PENDING |  |
+| kandinsky-3 | text-to-image | true | /v1/images/generations | READY | PASS | RayService w/ in-tree autoscaler. Head on non-GPU kubeflow-head-node2 (proxy_location HeadOnly); GPU worker autoscales 0->3. VERIFIED: scale-up 0->1 on request, image gen ~24s (1024) PNG, scale-DOWN releases L40S after idle. Added missing download-job.yaml. 15min idle retention |
 | labram | embed | false | /v1/science/embed | READY | FAIL | needs 128 canonical channels or ch_names - needs deep fix |
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
 | leandojo | embed | true | /v1/science/retrieve | READY | PASS | premise retrieval w/ scores |
