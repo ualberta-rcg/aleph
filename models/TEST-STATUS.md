@@ -128,6 +128,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | READY | FIXED | gpumem 12->24GB (vision profiling OOM); chat + vision OK |
 | qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic + vision (image_url) |
+| qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | 235B-A22B AWQ-int4 MoE TP4 ~67tok/s; v0.20.2; ported from 232 (tclf90 repo deleted -> QuantTrio); whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce + awq_marlin; correct math + tool-calling (hermes) |
 | qwen35-122b | chat | true | /v1/chat/completions | READY | FIXED | 122B FP8 MoE TP4 ~65tok/s; v0.20.2; whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce; unpinned; reasoning-parser=qwen3; correct answers |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
