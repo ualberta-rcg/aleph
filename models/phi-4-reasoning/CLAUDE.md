@@ -17,9 +17,10 @@ Native format: **Thought** block then **Solution** block. 32K context. Whole sin
 
 ## Gateway integration
 
-- Card `schema_version: 2`; `param_translation.thinking.mode: always_on`
+- Card `schema_version: 2`; `param_translation.thinking.mode: budget`
+- Gateway maps effort / `budget_tokens` → `thinking_token_budget` (`0` = skip CoT immediately)
+- ISVC: `--reasoning-config` with Phi `` tag boundaries
 - `behavior.strips_thinking: true` — strips `reasoning`/`reasoning_content` after vLLM split
-- Use `max_tokens` ≥ 4096 for real reasoning tasks (Thought + Solution share one budget)
 - Gateway does **not** remap reasoning→content; empty `content` means fix vLLM/parser/budget
 
 ## Why `content` can be empty (not a gateway bug)

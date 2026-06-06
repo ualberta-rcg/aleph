@@ -70,6 +70,8 @@ spec:
           # --enable-reasoning removed in vLLM v0.20.2 (reasoning is implied by
           # --reasoning-parser); keeping it causes "unrecognized arguments".
           - --reasoning-parser=deepseek_r1
+          - --reasoning-config
+          - '{"reasoning_start_str": "<think>", "reasoning_end_str": "</think>"}'
         env:
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache

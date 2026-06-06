@@ -34,9 +34,25 @@ data:
       },
       "param_translation": {
         "thinking": {
-          "mode": "always_on",
-          "budget_support": false,
-          "note": "Phi-4 always reasons; per-request disable not supported on vLLM"
+          "mode": "budget",
+          "budget_support": true,
+          "answer_reserve": 512,
+          "default_effort": "medium",
+          "disabled_effort": "none",
+          "effort_aliases": {
+            "none": "none", "minimal": "none", "disabled": "none",
+            "low": "low", "medium": "medium", "med": "medium",
+            "high": "high", "xhigh": "xhigh", "max": "max"
+          },
+          "effort_map": {
+            "none":  { "thinking_token_budget": 0 },
+            "low":   { "thinking_token_budget": 1024 },
+            "medium":{ "thinking_token_budget": 4096 },
+            "high":  { "thinking_token_budget": 12288 },
+            "xhigh": { "thinking_token_budget": 24576 },
+            "max":   { "thinking_token_budget": null }
+          },
+          "note": "Emulates Anthropic/OpenAI effort via vLLM thinking_token_budget; 0 = skip CoT"
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
@@ -45,13 +61,13 @@ data:
         "chat": {
           "temperature": 0.8,
           "top_p": 0.95,
-          "max_tokens": 4096,
-          "thinking": { "enabled": true, "mode": "always_on" }
+          "max_tokens": 8192,
+          "thinking": { "enabled": true, "effort": "medium" }
         },
         "meta_tasks": {
-          "title":     { "max_tokens": 80,  "thinking": { "enabled": false } },
-          "tags":      { "max_tokens": 60,  "thinking": { "enabled": false } },
-          "followups": { "max_tokens": 220, "thinking": { "enabled": false } }
+          "title":     { "max_tokens": 80,  "thinking": { "effort": "none" } },
+          "tags":      { "max_tokens": 60,  "thinking": { "effort": "none" } },
+          "followups": { "max_tokens": 220, "thinking": { "effort": "none" } }
         }
       },
       "schema_version": 2,
@@ -75,7 +91,7 @@ data:
         "known_quirks": [
           "max_tokens is one shared budget for Thought+Solution; small budgets exhaust on CoT before Solution appears",
           "vLLM deepseek_r1 parser splits on redacted_thinking tags; V1 engine may omit them (vllm#18141) leaving content empty",
-          "reasoning_effort/thinking_token_budget are model-specific; Phi-4 is always-on via chat template, not gpt-oss-style effort",
+          "Gateway maps effort/budget_tokens to thinking_token_budget (0=skip CoT); requires vLLM reasoning-config on ISVC",
           "HF recommends sampling (temp 0.8, top_k 50, top_p 0.95) and max_new_tokens up to 32768 for hard problems"
         ]
       }

@@ -35,6 +35,12 @@ data:
       "param_translation": {
         "thinking": {
           "mode": "effort",
+          "default_effort": "medium",
+          "effort_aliases": {
+            "none": "low", "minimal": "low", "low": "low",
+            "medium": "medium", "med": "medium",
+            "high": "high", "xhigh": "high", "max": "high"
+          },
           "on":  { "reasoning_effort": "medium" },
           "off": { "reasoning_effort": "low" }
         },

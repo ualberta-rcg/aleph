@@ -456,31 +456,78 @@ def detect_meta_task(body: dict) -> str | None:
     return None
 
 
-# OpenAI's reasoning_effort value set (none/minimal/low/medium/high/xhigh) and
-# Anthropic's adaptive effort (low/medium/high/xhigh/max) both get folded onto the
-# 3 levels our backends actually support (gpt-oss: low/medium/high). We never error
-# on an unknown level; reasoning is stripped from the response either way.
-_EFFORT_ALIASES = {
-    "none": "low", "minimal": "low", "low": "low",
-    "medium": "medium", "med": "medium",
-    "high": "high", "xhigh": "high", "max": "high",
-}
-
-
-def normalize_effort(v) -> str | None:
-    """Map any OpenAI/Anthropic effort token to low|medium|high (None if unrecognized)."""
+def _raw_effort(v) -> str | None:
+    """Pull effort string from OpenAI reasoning_effort (str or {effort:...} object)."""
     if v is None:
         return None
-    if isinstance(v, dict):            # OpenAI object form: {"effort": "...", "summary": "..."}
+    if isinstance(v, dict):
         v = v.get("effort")
-    return _EFFORT_ALIASES.get(str(v).lower()) if v is not None else None
+    return str(v).lower() if v is not None else None
 
 
-def apply_thinking(card: dict, body: dict, enabled: bool) -> dict:
+def resolve_effort(card: dict, raw: str | None) -> str | None:
+    """Map a client effort token to a card effort_map key via card effort_aliases."""
+    if raw is None:
+        return None
+    pt = (card.get("param_translation", {}) or {}).get("thinking", {}) or {}
+    key = str(raw).lower()
+    aliases = pt.get("effort_aliases") or {}
+    if key in aliases:
+        return aliases[key]
+    effort_map = pt.get("effort_map") or {}
+    if key in effort_map:
+        return key
+    return pt.get("default_effort")
+
+
+def _effort_budget(pt: dict, effort: str) -> int | None:
+    """Look up thinking_token_budget for an effort level (None = uncapped)."""
+    entry = (pt.get("effort_map", {}) or {}).get(effort)
+    if entry is None:
+        entry = (pt.get("effort_map", {}) or {}).get("medium")
+    if entry is None:
+        return None
+    if isinstance(entry, dict):
+        return entry.get("thinking_token_budget")
+    if isinstance(entry, int):
+        return entry
+    return None
+
+
+def apply_thinking(
+    card: dict,
+    body: dict,
+    enabled: bool,
+    *,
+    effort: str | None = None,
+    budget_tokens: int | None = None,
+) -> dict:
     """Translate a desired thinking on/off into the model's dialect via the card."""
     pt = (card.get("param_translation", {}) or {}).get("thinking", {}) or {}
     mode = pt.get("mode", "none")
     if mode in ("none", "always_on"):
+        return body
+    if mode == "budget":
+        answer_reserve = pt.get("answer_reserve", 512)
+        if not enabled:
+            effort = pt.get("disabled_effort", "none")
+        if budget_tokens is not None:
+            body["thinking_token_budget"] = budget_tokens
+        else:
+            if effort is None:
+                chat_def = (card.get("defaults", {}) or {}).get("chat", {}) or {}
+                effort = (chat_def.get("thinking", {}) or {}).get("effort", "medium")
+            budget = _effort_budget(pt, effort)
+            if budget is not None:
+                body["thinking_token_budget"] = budget
+        budget = body.get("thinking_token_budget")
+        # Budget 0 forces immediate Solution; don't inflate max_tokens for meta caps.
+        if isinstance(budget, int) and budget > 0:
+            cap = (card.get("limits", {}) or {}).get("max_completion_tokens")
+            floor = budget + answer_reserve
+            mt = body.get("max_tokens")
+            if not isinstance(mt, int) or mt < floor:
+                body["max_tokens"] = min(floor, cap) if isinstance(cap, int) and cap > 0 else floor
         return body
     if mode == "toggle":
         inject = pt.get("on" if enabled else "off", {}) or {}
@@ -497,14 +544,24 @@ def apply_thinking(card: dict, body: dict, enabled: bool) -> dict:
     return body
 
 
-def prepare_chat(info: dict, body: dict) -> dict:
+def prepare_chat(
+    info: dict,
+    body: dict,
+    *,
+    think_enabled: bool | None = None,
+    think_effort: str | None = None,
+    think_budget: int | None = None,
+) -> dict:
     card = info["card"]
+    pt = (card.get("param_translation", {}) or {}).get("thinking", {}) or {}
+    pt_mode = pt.get("mode", "none")
     body = apply_defaults(card, body)
 
     meta = detect_meta_task(body)
     thinking_enabled = True
     chat_defaults = (card.get("defaults", {}) or {}).get("chat", {}) or {}
     thinking_enabled = (chat_defaults.get("thinking", {}) or {}).get("enabled", True)
+    meta_effort = None
 
     if meta:
         meta_cfg = ((card.get("defaults", {}) or {}).get("meta_tasks", {}) or {}).get(meta, {})
@@ -512,33 +569,54 @@ def prepare_chat(info: dict, body: dict) -> dict:
             cur = body.get("max_tokens")
             cap = meta_cfg["max_tokens"]
             body["max_tokens"] = min(cur, cap) if isinstance(cur, int) else cap
-        thinking_enabled = (meta_cfg.get("thinking", {}) or {}).get("enabled", False)
+        meta_think = meta_cfg.get("thinking", {}) or {}
+        meta_effort = meta_think.get("effort")
+        thinking_enabled = meta_think.get("enabled", False)
 
-    # Reasoning models spend the token budget on (now-stripped) reasoning before the
-    # final answer. If the caller gave a small budget, reasoning eats it and leaves an
-    # empty reply. So for reasoning models, auto-skip thinking when the budget is too
-    # small to fit reasoning + an answer -- unless the caller explicitly asked for an
-    # effort/thinking level (then honor their choice). Default/large budgets reason
-    # normally. This honors max_tokens exactly and never returns empties.
-    # Normalize OpenAI reasoning_effort (none/minimal/low/medium/high/xhigh, or the
-    # {"effort":..} object form) onto the backend's low/medium/high. Unknown values
-    # are dropped so we fall back to the card default instead of erroring upstream.
-    if "reasoning_effort" in body:
-        norm = normalize_effort(body.get("reasoning_effort"))
-        if norm is None:
-            body.pop("reasoning_effort", None)
-        else:
-            body["reasoning_effort"] = norm
+    if think_enabled is not None:
+        thinking_enabled = think_enabled
 
-    THINK_MIN_BUDGET = 4096
-    explicit_think = "reasoning_effort" in body or "chat_template_kwargs" in body
-    if (thinking_enabled and not explicit_think
-            and (card.get("behavior", {}) or {}).get("reasoning_model")):
-        mt = body.get("max_tokens")
-        if isinstance(mt, int) and mt < THINK_MIN_BUDGET:
-            thinking_enabled = False
+    effort = think_effort
+    budget_tokens = think_budget
 
-    body = apply_thinking(card, body, thinking_enabled)
+    if pt_mode == "budget":
+        if effort is None and meta_effort:
+            effort = resolve_effort(card, meta_effort)
+        if "reasoning_effort" in body:
+            effort = resolve_effort(card, _raw_effort(body.get("reasoning_effort")))
+        elif effort is not None:
+            effort = resolve_effort(card, effort)
+        body.pop("reasoning_effort", None)
+        if budget_tokens is None and isinstance(body.get("thinking_token_budget"), int):
+            budget_tokens = body["thinking_token_budget"]
+        if not thinking_enabled and effort is None:
+            effort = pt.get("disabled_effort", "none")
+        body = apply_thinking(
+            card, body, thinking_enabled, effort=effort, budget_tokens=budget_tokens,
+        )
+    else:
+        # Reasoning models spend the token budget on (now-stripped) reasoning before the
+        # final answer. If the caller gave a small budget, reasoning eats it and leaves an
+        # empty reply. So for reasoning models, auto-skip thinking when the budget is too
+        # small to fit reasoning + an answer -- unless the caller explicitly asked for an
+        # effort/thinking level (then honor their choice). Default/large budgets reason
+        # normally. This honors max_tokens exactly and never returns empties.
+        if "reasoning_effort" in body:
+            resolved = resolve_effort(card, _raw_effort(body.get("reasoning_effort")))
+            if resolved is None:
+                body.pop("reasoning_effort", None)
+            else:
+                body["reasoning_effort"] = resolved
+
+        THINK_MIN_BUDGET = 4096
+        explicit_think = "reasoning_effort" in body or "chat_template_kwargs" in body
+        if (thinking_enabled and not explicit_think
+                and (card.get("behavior", {}) or {}).get("reasoning_model")):
+            mt = body.get("max_tokens")
+            if isinstance(mt, int) and mt < THINK_MIN_BUDGET:
+                thinking_enabled = False
+
+        body = apply_thinking(card, body, thinking_enabled)
 
     # Hard cap to the card's max_completion_tokens.
     cap = (card.get("limits", {}) or {}).get("max_completion_tokens")
@@ -914,18 +992,24 @@ async def anthropic_messages(request: Request):
     if cold is not None:
         return cold
 
-    oai = anth.to_openai(a_body)
-    oai = prepare_chat(info, oai)
-    # Honor the client's requested thinking level. Anthropic budget_tokens / effort
-    # map to the model's native effort (gpt-oss: low/medium/high); inject it before
-    # apply_thinking so the caller's level wins over the card default. Non-reasoning
-    # cards (mode "none") simply answer without erroring.
-    enabled, effort = anth.desired_thinking(a_body)
+    enabled, effort, budget = anth.desired_thinking(a_body)
     pt_mode = ((info["card"].get("param_translation", {}) or {})
                .get("thinking", {}) or {}).get("mode", "none")
-    if enabled and effort and pt_mode == "effort":
-        oai["reasoning_effort"] = effort
-    oai = apply_thinking(info["card"], oai, enabled)
+    oai = anth.to_openai(a_body)
+    if pt_mode == "budget":
+        oai = prepare_chat(
+            info, oai, think_enabled=enabled, think_effort=effort, think_budget=budget,
+        )
+    else:
+        oai = prepare_chat(info, oai)
+        # Honor the client's requested thinking level. Anthropic budget_tokens / effort
+        # map to the model's native effort (gpt-oss: low/medium/high); inject it before
+        # apply_thinking so the caller's level wins over the card default.
+        if enabled and effort and pt_mode == "effort":
+            resolved = resolve_effort(info["card"], effort)
+            if resolved:
+                oai["reasoning_effort"] = resolved
+        oai = apply_thinking(info["card"], oai, enabled)
     stream = bool(a_body.get("stream"))
     url = upstream_url("/v1/chat/completions")
     headers = upstream_headers(info)

@@ -115,41 +115,28 @@ def to_openai(body: dict) -> dict:
     return out
 
 
-def desired_thinking(body: dict) -> tuple[bool, str | None]:
-    """Return (enabled, effort) the client asked for, if any.
+def desired_thinking(body: dict) -> tuple[bool, str | None, int | None]:
+    """Extract raw Anthropic thinking hints — no per-model effort mapping.
 
-    Anthropic exposes thinking three ways across model generations:
-      * adaptive (current):  thinking:{type:"adaptive"} + output_config:{effort:...}
-                             effort = low|medium|high|xhigh|max
-      * extended (legacy):   thinking:{type:"enabled", budget_tokens:N}  (deprecated)
-      * named effort:        output_config:{effort:...} on its own
-    Our reasoning backends (gpt-oss) have three native levels, so effort tokens and
-    token budgets are folded onto low/medium/high; the requested level is honored
-    downstream instead of collapsing to the card default.
+    Returns (enabled, raw_effort, budget_tokens). Effort strings are passed through
+    as sent by the client; the model card's effort_aliases / effort_map resolve them.
     """
-    _ALIAS = {"none": "low", "minimal": "low", "low": "low", "medium": "medium",
-              "med": "medium", "high": "high", "xhigh": "high", "max": "high"}
-
-    # output_config.effort (adaptive + named-effort forms). Per the spec, effort lives
-    # in a separate output_config object, not inside `thinking`.
     oc = body.get("output_config") or {}
     if oc.get("effort") is not None:
-        return True, _ALIAS.get(str(oc["effort"]).lower(), "medium")
+        return True, str(oc["effort"]).lower(), None
 
     th = body.get("thinking") or {}
     ttype = th.get("type")
-    # adaptive with no explicit effort -> on at the model's default depth.
     if ttype == "adaptive":
-        return True, "medium"
+        return True, None, None
     if ttype == "enabled":
         bt = th.get("budget_tokens")
         if isinstance(bt, int):
-            eff = "low" if bt <= 2048 else ("medium" if bt <= 8192 else "high")
-            return True, eff
-        return True, "medium"
+            return True, None, bt
+        return True, None, None
     if ttype == "disabled":
-        return False, None
-    return False, None
+        return False, None, None
+    return False, None, None
 
 
 # ── response: OpenAI -> Anthropic ────────────────────────────────────────────────

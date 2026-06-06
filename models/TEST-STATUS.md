@@ -97,7 +97,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
 | mast3r | 3d | true | /v1/science/match | READY | FIXED | use /v1/science/match; numpy (not tensor) fix; 473 matches |
 | matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
-| mattergen | generate | true | /v1/science/generate | NOT-READY | PENDING | CLI loads; raised subprocess timeout 300->1500s (diffusion slow); verify pending |
+| mattergen | generate | true | /v1/science/generate | NO-ISVC | FAIL | Knative rejects ISVC: timeoutSeconds 1500 > max 600; predictor never created; gateway 404 |
 | mattersim | force-field | true | /v1/science/predict | READY | PASS | water -14.07 eV + forces + per-atom |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
@@ -116,10 +116,10 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | oceangpt-30b | chat | true | /v1/chat/completions | READY | FIXED | 30B-A3B MoE TP2 ~73tok/s; v0.20.2; full GPUs + --disable-custom-all-reduce (no CUDA_DISABLE_CONTROL); OpenAI+Anthropic |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | READY | FIXED | demo+real ONNX; summarized upper/surface stats (not raw 721x1440 grids) |
-| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; use max_tokens>=4096; empty content = budget or parser split, not gateway remap |
+| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; gateway budget mode maps effort→thinking_token_budget (0=skip CoT); OpenAI+Anthropic verified 2026-06-06 |
 | presto | classify | false | /v1/embeddings | READY | FAIL | band-layout mismatch - needs correct presto format |
-| prithvi-eo | embed | true | /v1/embed | NOT-READY | PENDING |  |
-| prithvi-wxc | embed | true | /v1/science/forecast | NOT-READY | PENDING |  |
+| prithvi-eo | embed | true | /v1/embed | NOT-READY | FAIL | ISVC BlockedByFailedLoad; revision ProgressDeadlineExceeded; never scales (terratorch init) |
+| prithvi-wxc | embed | true | /v1/science/forecast | READY | PASS | demo forecast OK after unstop+cold-start (~6min); real MERRA-2 state not exercised |
 | progen2 | generate | true | /v1/completions | NOT-READY | FAIL | ProgressDeadlineExceeded; init download too slow, needs progress-deadline bump |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
 | prostt5 | translate | true | /v1/translate | READY | PASS | AA->3Di structural alphabet (recreated) |
@@ -148,15 +148,15 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | splicebert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id splicebert-86m) |
 | stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PASS | PHI entities (PATIENT/DATE/HOSPITAL) |
 | sundial | forecast | false | /v1/science/forecast | READY | FIXED | fixed input shape + pinned transformers 4.40.2; forecast+quantiles PASS |
-| surya | forecast | true | /v1/science/forecast | NOT-READY | PENDING |  |
-| terramind-flood | classify | true | /v1/science/classify | NOT-READY | PENDING |  |
+| surya | forecast | true | /v1/science/forecast | READY | PASS | demo forecast+flare_risk via gateway 2026-06-06; id=surya-366m |
+| terramind-flood | classify | true | /v1/science/classify | NOT-READY | FAIL | revision ProgressDeadlineExceeded; initial scale never achieved |
 | thor | embed | true | /v1/science/embed | NOT-READY | FAIL | ProgressDeadlineExceeded; init too slow (+terratorch lib check) |
 | time-moe | forecast | true | /v1/forecast | READY | PASS | TimeMoE-50M MoE; forecast_len matches prediction_length (must be 1/96/192/336/720; 12 returns empty) |
 | timer-xl-1b | forecast | true | /v1/forecast | NOT-READY | FAIL | repo thuml/Timer-XL-1B 404 (wrong id); needs correct repo |
 | timer | forecast | true | /v1/forecast | READY | FIXED | pinned transformers==4.40.2 (remote code uses DynamicCache.seen_tokens removed in >=4.41); forecast_len 96 PASS |
 | timesfm | forecast | true | /v1/forecast | NOT-READY | FAIL | TimesFmModelForPrediction not importable; transformers lacks TimesFm support - needs version pin/upgrade |
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
-| totalsegmentator | segment | true | /v1/science/segment | NOT-READY | PENDING |  |
+| totalsegmentator | segment | true | /v1/science/segment | READY | FAIL | pod runs; POST 16³ CT → 500 `operator torchvision::nms does not exist` (torch/torchvision ABI) |
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
 | uma-m | force-field | true | /v1/science/predict | BLOCKED | FAIL | gated repo facebook/UMA (401) - needs Meta access grant on HF token |
 | xtts-v2 | tts | true | /v1/audio/speech | READY | PASS | text->WAV 155KB audio |
