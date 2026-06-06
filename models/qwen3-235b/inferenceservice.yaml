@@ -1,0 +1,108 @@
+# Qwen3-235B-A22B-Instruct-2507-AWQ — large MoE, 235B total / 22B active, int4 AWQ ~118 GB.
+# Ported from POC (232) to cluster 230 / HAMi. 4x L40S tensor parallel.
+#
+# Changes vs POC (232):
+#   - Runtime: kserve/huggingfaceserver -> raw vLLM (vllm/vllm-openai:v0.20.2), matching
+#     the rest of 230's LLM fleet.
+#   - nodeSelector: gpu: "on" only (unpinned). Takes 4 whole cards (a whole GPU node).
+#   - HAMi TP>=2 recipe: request whole devices via `nvidia.com/gpu: "4"` and DO NOT set
+#     nvidia.com/gpumem (gpumem -> vGPU mode). Plus --disable-custom-all-reduce because
+#     L40S here are NODE topology (PCIe via CPU, no NVLink P2P): vLLM custom all-reduce
+#     hangs at engine init; NCCL fallback is correct + fast.
+#   - VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 (L40S/SM89: FlashAttention-3 unavailable).
+#   - --quantization awq_marlin for the fast AWQ kernel on SM89.
+#   - minReplicas: 0 (Knative scale-to-zero) so the 4-GPU node frees when idle.
+#   - weights pre-staged on PVC by download-job.yaml (mounted RO at /mnt/models).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen3-235b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "30m"
+    serving.knative.dev/progress-deadline: "3000s"
+spec:
+  predictor:
+    minReplicas: 0
+    maxReplicas: 1
+    scaleTarget: 4
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+          - --model=/mnt/models
+          - --served-model-name=qwen3-235b
+          - --tensor-parallel-size=4
+          - --quantization=awq_marlin
+          - --max-model-len=131072
+          - --dtype=float16
+          - --gpu-memory-utilization=0.90
+          - --max-num-seqs=4
+          - --enable-auto-tool-choice
+          - --tool-call-parser=hermes
+          # TP=4 on HAMi/L40S: custom all-reduce hangs at init (no NVLink P2P).
+          # Disable -> NCCL native speed.
+          - --disable-custom-all-reduce
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: VLLM_ATTENTION_BACKEND          # REQUIRED on L40S (SM89)
+            value: TRITON_ATTN_VLLM_V1
+          - name: OMP_NUM_THREADS
+            value: "1"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "8"
+            memory: 64Gi
+          limits:
+            cpu: "16"
+            memory: 128Gi
+            nvidia.com/gpu: "4"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 80
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 3
+        volumeMounts:
+          - name: qwen3-data
+            mountPath: /mnt/models
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: qwen3-data
+        persistentVolumeClaim:
+          claimName: qwen3-235b-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi

@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen3-235b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "qwen3-235b",
+      "type": "chat",
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
+      "routing": {
+        "k8s_name": "qwen3-235b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 121000, "context_window": 131072 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "30m",
+        "cold_start_estimate": "~6 minutes (118 GB AWQ int4, 4x L40S)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 0.7, "top_p": 0.8, "max_tokens": 16384 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
+      },
+      "custom_params": {
+        "schema": {
+          "top_k": { "type": "integer", "default": 20 }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Qwen3 235B A22B MoE (AWQ int4), tools + multilingual (4x L40S)",
+        "description": "Qwen3-235B-A22B-Instruct-2507 - large sparse MoE, 235B total / 22B active params (128 experts, 8 activated per token). Non-thinking instruct variant. Tool/function calling, 100+ languages, 32K native context served at 131K. Deployed AWQ int4 (tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ) on 4x L40S via vLLM. HF recommends temperature 0.7 / top_p 0.8 / top_k 20.",
+        "owned_by": "Qwen",
+        "source": "tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ",
+        "source_url": "https://huggingface.co/tclf90/Qwen3-235B-A22B-Instruct-2507-AWQ",
+        "license": "Apache-2.0",
+        "parameters": "235B total / 22B active",
+        "precision": "awq-int4",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "tags": ["chat", "llm", "moe", "awq", "tool-calling", "multilingual", "large"]
+      }
+    }
