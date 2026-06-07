@@ -60,8 +60,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | dust3r | 3d | true | /v1/science/reconstruct | READY | FIXED | downsample pointcloud (was 31MB>gateway); bbox+loss; 2 imgs OK |
 | earthpt | embed | true | /v1/science/predict | READY | FIXED | CPU ckpt load + RAM 24Gi (was GPU+host OOM); predicts OK |
 | efficientnet-b0 | classify | false | /v1/vision/classify | READY | FIXED | lite4: fixed preproc+double-softmax+labels; minibus 0.63 |
-| enformer | predict | true | /v1/science/predict | NOT-READY | FAIL | isvc never deployed (READY=False 11h); needs recreate |
-| ernierna | embedding | true | /v1/science/embed | NOT-READY | FAIL | isvc never deployed (READY=False 10h); needs recreate/fix |
+| enformer | predict | true | /v1/science/predict | READY | FIXED | dict output fix (`isinstance(out, dict)`), transformers<4.52, GPU torch, Python 3.12; human_shape [896,5313] PASS |
+| ernierna | embedding | true | /v1/science/embed | READY | FIXED | GPU torch cu126 reinstall, nodeSelector gpu=on, progress-deadline 600s; 768-dim RNA embeddings PASS |
 | esm1b | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein (recreated) |
 | esm2-150m | embedding | true | /v1/embeddings | READY | PASS | 640-dim protein (recreated) |
 | esm2-35m | embedding | true | /v1/embeddings | READY | PASS | 480-dim protein |
@@ -105,7 +105,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
 | megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
-| moirai-moe | forecast | true | /v1/forecast | READY | FAIL | handler bug: MoiraiMoEForecast.forward() missing past_observed_target/past_is_pad args - needs handler fix |
+| moirai-moe-1-0-r-base | forecast | true | /v1/forecast | READY | FIXED | replaced moirai-moe; rewrote to official uni2ts create_predictor() + GluonTS API; 19 quantile levels PASS |
 | moirai | forecast | true | /v1/forecast | READY | PASS | Salesforce Moirai base; values+horizon -> mean/quantiles; sensible forecast |
 | molformer | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: smiles) |
 | moment | forecast | true | /v1/forecast | READY | FIXED | output indexing (chan vs horizon); needs 512-len input; 96-step horizon |
@@ -152,11 +152,11 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | terramind-flood | classify | true | /v1/science/classify | NOT-READY | FAIL | revision ProgressDeadlineExceeded; initial scale never achieved |
 | thor | embed | true | /v1/science/embed | NOT-READY | FAIL | ProgressDeadlineExceeded; init too slow (+terratorch lib check) |
 | time-moe | forecast | true | /v1/forecast | READY | PASS | TimeMoE-50M MoE; forecast_len matches prediction_length (must be 1/96/192/336/720; 12 returns empty) |
-| timer-xl-1b | forecast | true | /v1/forecast | NOT-READY | FAIL | repo thuml/Timer-XL-1B 404 (wrong id); needs correct repo |
+| timer-s1 | forecast | true | /v1/forecast | READY | FIXED | replaced timer-xl-1b (gated 403); Timer-S1 bf16 dtype cast, 32Gi init RAM; 9 quantile forecasts PASS |
 | timer | forecast | true | /v1/forecast | READY | FIXED | pinned transformers==4.40.2 (remote code uses DynamicCache.seen_tokens removed in >=4.41); forecast_len 96 PASS |
 | timesfm | forecast | true | /v1/forecast | NOT-READY | FAIL | TimesFmModelForPrediction not importable; transformers lacks TimesFm support - needs version pin/upgrade |
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
-| totalsegmentator | segment | true | /v1/science/segment | READY | FAIL | pod runs; POST 16³ CT → 500 `operator torchvision::nms does not exist` (torch/torchvision ABI) |
+| totalsegmentator | segment | true | /v1/science/segment | READY | FIXED | force-reinstall torch+torchvision cu126 after TotalSegmentator (ABI fix); 200 PASS |
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
 | uma-m | force-field | true | /v1/science/predict | BLOCKED | FAIL | gated repo facebook/UMA (401) - needs Meta access grant on HF token |
 | xtts-v2 | tts | true | /v1/audio/speech | READY | PASS | text->WAV 155KB audio |

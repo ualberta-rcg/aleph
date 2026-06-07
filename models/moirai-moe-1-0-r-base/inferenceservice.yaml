@@ -1,20 +1,20 @@
 # Moirai-MoE: Mixture-of-Experts universal time series forecasting from Salesforce
-# 175K downloads, CC BY-NC-4.0
+# Salesforce/moirai-moe-1.0-R-base, 935M params (MoE), CC BY-NC-4.0
 # API: POST /v1/forecast
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: moirai-moe-server
+  name: moirai-moe-1-0-r-base-server
   namespace: models
 data:
   server.py: |
     """
     Moirai-MoE: Universal time series forecasting with Mixture-of-Experts
-    Salesforce Research, 2024. Outperforms base Moirai on diverse datasets.
+    Salesforce Research, 2024. 935M params MoE, stronger than base Moirai.
     API: POST /v1/forecast
     Input: {"time_series": [1.0, 2.0, ...], "prediction_length": 24, "freq": "H"}
-    Returns: {"forecast": {"mean": [...], "quantiles": {...}}, "model": "moirai-moe"}
+    Returns: {"forecast": {"mean": [...], "quantiles": {...}}, "model": "moirai-moe-1.0-R-base"}
     """
     import os, asyncio
     from fastapi import FastAPI
@@ -39,7 +39,7 @@ data:
             module=model,
             prediction_length=24,
             context_length=200,
-            patch_size="auto",
+            patch_size=16,
             num_samples=100,
             target_dim=1,
             feat_dynamic_real_dim=0,
@@ -55,12 +55,12 @@ data:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok" if pipeline else "loading", "model": "moirai-moe"}
+        return {"status": "ok" if pipeline else "loading", "model": "moirai-moe-1.0-R-base"}
 
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [
-            {"id": "moirai-moe", "object": "model", "owned_by": "salesforce",
+            {"id": "moirai-moe-1.0-R-base", "object": "model", "owned_by": "salesforce",
              "type": "time-series-forecasting"}
         ]}
 
@@ -77,24 +77,26 @@ data:
             return JSONResponse({"error": str(e)}, 500)
 
     def _forecast(req):
-        import torch
         import numpy as np
-        from einops import rearrange
+        from gluonts.dataset.pandas import PandasDataset
+        import pandas as pd
 
         ts = req.get("time_series", [])
         pred_len = req.get("prediction_length", 24)
-        freq = req.get("freq", "H")
 
         if not ts:
             return JSONResponse({"error": "time_series required"}, 400)
 
+        values = list(ts)
+
         # Rebuild pipeline with requested prediction_length
         from uni2ts.model.moirai_moe import MoiraiMoEForecast
+        ctx_len = min(len(values), 512)
         p = MoiraiMoEForecast(
             module=pipeline.module,
             prediction_length=pred_len,
-            context_length=min(len(ts), 512),
-            patch_size="auto",
+            context_length=ctx_len,
+            patch_size=16,
             num_samples=100,
             target_dim=1,
             feat_dynamic_real_dim=0,
@@ -103,36 +105,29 @@ data:
         if DEVICE == "cuda":
             p = p.to(DEVICE)
 
-        context = torch.tensor(ts, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
-        context = context.to(DEVICE)
+        # Use GluonTS PandasDataset + create_predictor (the official API)
+        df = pd.DataFrame({"target": values})
+        df.index = pd.date_range(start="2024-01-01", periods=len(values), freq="h")
+        ds = PandasDataset(dict(df), target="target")
 
-        observed_mask = (~torch.isnan(context)).to(DEVICE)
-        # MoiraiMoEForecast expects (past_target, past_observed_target, past_is_pad, ...)
-        past_is_pad = torch.zeros(context.shape[:-1], dtype=torch.bool).to(DEVICE)
-        with torch.no_grad():
-            try:
-                forecast = p(context, observed_mask, past_is_pad)
-            except TypeError:
-                try:
-                    forecast = p(context, observed_mask=observed_mask)
-                except TypeError:
-                    forecast = p(context)
+        forecasts = list(p.create_predictor(batch_size=1).predict(ds))
 
-        samples = forecast.samples.cpu().numpy()  # (num_samples, pred_len, 1)
-        samples = samples.squeeze(-1)  # (num_samples, pred_len)
+        if not forecasts:
+            return JSONResponse({"error": "no forecast generated"}, 500)
 
-        return {
-            "model": "moirai-moe",
+        forecast = forecasts[0]
+        result = {
+            "model": "moirai-moe-1.0-R-base",
+            "input_length": len(values),
             "prediction_length": pred_len,
             "forecast": {
-                "mean": samples.mean(axis=0).tolist(),
-                "quantiles": {
-                    "0.1": np.quantile(samples, 0.1, axis=0).tolist(),
-                    "0.5": np.quantile(samples, 0.5, axis=0).tolist(),
-                    "0.9": np.quantile(samples, 0.9, axis=0).tolist(),
-                },
-            }
+                "mean": forecast.mean.tolist(),
+                "quantile_10": forecast.quantile(0.1).tolist(),
+                "quantile_50": forecast.quantile(0.5).tolist(),
+                "quantile_90": forecast.quantile(0.9).tolist(),
+            },
         }
+        return result
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
@@ -140,7 +135,7 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: moirai-moe-data
+  name: moirai-moe-1-0-r-base-data
   namespace: models
 spec:
   accessModes: ["ReadWriteOnce"]
@@ -152,10 +147,11 @@ spec:
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
-  name: moirai-moe
+  name: moirai-moe-1-0-r-base
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     minReplicas: 0
@@ -187,8 +183,8 @@ spec:
             fi
 
             if [ ! -d /data/hf_cache/models--Salesforce--moirai-moe-1.0-R-base ]; then
-              echo "Pre-downloading Moirai-MoE..."
-              /data/venv/bin/python -c "
+              echo "Downloading Moirai-MoE weights..."
+              HF_HOME=/data/hf_cache /data/venv/bin/python -c "
             from uni2ts.model.moirai_moe import MoiraiMoEModule
             MoiraiMoEModule.from_pretrained('Salesforce/moirai-moe-1.0-R-base')
             print('Moirai-MoE cached.')
@@ -228,6 +224,6 @@ spec:
           - { name: app, mountPath: /app }
     volumes:
       - name: model-data
-        persistentVolumeClaim: { claimName: moirai-moe-data }
+        persistentVolumeClaim: { claimName: moirai-moe-1-0-r-base-data }
       - name: app
-        configMap: { name: moirai-moe-server }
+        configMap: { name: moirai-moe-1-0-r-base-server }

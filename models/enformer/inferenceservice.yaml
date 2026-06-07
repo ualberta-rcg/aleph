@@ -82,16 +82,18 @@ data:
             tensor = torch.tensor(arr, dtype=torch.float32).unsqueeze(0).to(DEVICE)
             with torch.no_grad():
                 out = model(tensor)
-            # out contains human and mouse predictions
+            # out is a dict: {'human': tensor, 'mouse': tensor}
             result = {}
-            if hasattr(out, 'human'):
-                preds = out.human[0].cpu().numpy()
+            if isinstance(out, dict) and 'human' in out:
+                preds = out['human'][0].cpu().numpy()
                 if return_tracks:
                     preds = preds[:, return_tracks]
-                result['human_predictions'] = preds.tolist()
+                # Summarize to avoid huge payloads (896x5313 = ~4.7M values)
                 result['human_shape'] = list(preds.shape)
-            if hasattr(out, 'mouse') and organism == 'mouse':
-                preds_m = out.mouse[0].cpu().numpy()
+                result['human_mean'] = float(preds.mean())
+                result['human_sample'] = preds[0, :10].tolist()
+            if isinstance(out, dict) and 'mouse' in out and organism == 'mouse':
+                preds_m = out['mouse'][0].cpu().numpy()
                 result['mouse_predictions'] = preds_m.tolist()
             result['model'] = 'enformer'
             result['sequence_length'] = len(sequence)
@@ -110,6 +112,7 @@ metadata:
   namespace: models
 spec:
   accessModes: [ReadWriteOnce]
+  storageClassName: nfs-client
   resources:
     requests:
       storage: 10Gi
@@ -121,30 +124,31 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     minReplicas: 0
     scaleTarget: 2
     scaleMetric: concurrency
     timeout: 595
+    nodeSelector:
+      gpu: "on"
     initContainers:
       - name: setup
-        image: python:3.11-slim
+        image: python:3.12-slim
         command: ["bash", "-c"]
         args:
           - |
             set -e
-            # Check venv with transformers<4.38 (enformer-pytorch compat)
-            if [ ! -d /data/venv/bin ] || ! /data/venv/bin/python -c 'import enformer_pytorch, fastapi; import transformers; v=transformers.__version__; assert v.startswith("4.3") and int(v.split(".")[1])<38' 2>/dev/null; then
-              echo "Creating venv with pinned transformers..."
-              python3 -m venv /data/venv
+            SENTINEL=/data/venv/.enformer-ready-v3
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv --clear
               /data/venv/bin/pip install -U pip --quiet
-              /data/venv/bin/pip install --quiet \
-                --extra-index-url https://download.pytorch.org/whl/cpu \
-                torch \
-                "transformers>=4.28,<4.38" \
-                enformer-pytorch huggingface_hub einops \
-                fastapi uvicorn
+              /data/venv/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install --quiet "transformers<4.52" enformer-pytorch huggingface_hub einops fastapi uvicorn
+              touch "$SENTINEL"
+              echo "Venv ready"
             else
               echo "Venv exists"
             fi
@@ -167,7 +171,7 @@ spec:
           - { name: model-data, mountPath: /data }
     containers:
       - name: kserve-container
-        image: python:3.11-slim
+        image: python:3.12-slim
         command: ["/data/venv/bin/python", "/app/server.py"]
         env:
           - { name: MODEL_DIR, value: /data/model }

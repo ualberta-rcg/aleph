@@ -1,0 +1,232 @@
+# Timer-S1: Billion-scale time-series foundation model (MoE, 8.3B total / 0.75B active)
+# thuml/Timer-S1, Apache 2.0, Tsinghua THUML 2026
+# Quantile forecasts (9 quantiles). Successor to Timer-XL-1B (gated/gone).
+# API: POST /v1/forecast {time_series: [...], prediction_length: 96}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timer-s1-server
+  namespace: models
+data:
+  server.py: |
+    """
+    Timer-S1: Billion-scale time series foundation model (MoE, 8.3B/0.75B active).
+    Tsinghua / THUML, 2026. Zero-shot quantile forecasting.
+    Apache 2.0. HF: thuml/Timer-S1
+
+    API: POST /v1/forecast
+    Input:  {"time_series": [v1, v2, ...], "prediction_length": 96}
+            time_series: list of floats (univariate). Min 96 values recommended.
+            prediction_length: how many future steps to predict (default 96, max 256)
+    Returns: {"forecast": {"mean": [...], "quantiles": {...}}, "model": "timer-s1",
+              "input_length": N, "prediction_length": N}
+    """
+    import os, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    app = FastAPI()
+    model = None
+    DEVICE = "cpu"
+    MODEL_ID = "thuml/Timer-S1"
+    QUANTILE_LABELS = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"]
+
+    def load():
+        global model, DEVICE
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Timer-S1 on {DEVICE}...", flush=True)
+        from transformers import AutoModelForCausalLM
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_ID,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16 if DEVICE == "cuda" else torch.float32,
+        )
+        # Disable KV cache to reduce VRAM: no efficiency loss when forecast_length <= 256
+        model.config.use_cache = False
+        model = model.to(DEVICE).eval()
+        print(f"Timer-S1 ready on {DEVICE} (use_cache=False, bf16)", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model else "loading", "model": "timer-s1"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [
+            {"id": "timer-s1", "object": "model", "owned_by": "thuml",
+             "type": "time-series-forecasting"}
+        ]}
+
+    @app.post("/v1/forecast")
+    async def forecast(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, _forecast, request)
+            return result
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    def _forecast(req):
+        import torch
+        import numpy as np
+
+        ts = req.get("time_series", [])
+        pred_len = req.get("prediction_length", 96)
+        if not ts:
+            raise ValueError("time_series required")
+        # Cap prediction length (Timer-S1 max 256 recommended)
+        pred_len = min(pred_len, 256)
+
+        ts_arr = np.array(ts, dtype=np.float32)
+
+        # Pad to minimum 96 if needed
+        if len(ts_arr) < 96:
+            pad = np.full(96 - len(ts_arr), ts_arr[0] if len(ts_arr) > 0 else 0.0, dtype=np.float32)
+            ts_arr = np.concatenate([pad, ts_arr])
+
+        # Use last 2880 steps (recommended for single L40S with use_cache=False)
+        # Must be multiple of input_token_len (16)
+        max_lookback = 2880
+        lookback = min(len(ts_arr), max_lookback)
+        # Round down to multiple of 16
+        lookback = (lookback // 16) * 16
+        if lookback < 96:
+            lookback = 96
+        ts_input = ts_arr[-lookback:]
+
+        tensor = torch.tensor(ts_input, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+        # Cast to model's dtype (bf16 on GPU) to avoid dtype mismatch in embed_layer
+        tensor = tensor.to(model.dtype if hasattr(model, 'dtype') else torch.float32)
+
+        with torch.no_grad():
+            # revin=True handles Reversible Instance Normalization internally
+            output = model.generate(inputs=tensor, max_new_tokens=pred_len, revin=True)
+
+        # output shape: (batch, 9, forecast_length) — 9 quantile forecasts
+        output_np = output[0].cpu().float().numpy()  # (9, pred_len)
+        median = output_np[4].tolist()  # index 4 = 0.5 quantile (median)
+
+        quantiles = {}
+        for i, label in enumerate(QUANTILE_LABELS):
+            quantiles[label] = output_np[i].tolist()
+
+        return {
+            "model": "timer-s1",
+            "input_length": len(ts),
+            "prediction_length": pred_len,
+            "forecast": {
+                "mean": median,
+                "quantiles": quantiles,
+            },
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timer-s1-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 25Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: timer-s1
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline: "1800s"
+spec:
+  predictor:
+    minReplicas: 0
+    maxReplicas: 1
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/venv/.timer-s1-ready-v2
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Creating venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q "transformers~=4.57.1" accelerate huggingface_hub fastapi uvicorn
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists, skipping."
+            fi
+
+            if [ ! -d /data/hf_cache/models--thuml--Timer-S1 ]; then
+              echo "Downloading Timer-S1 weights (~16.6 GB)..."
+              HF_HOME=/data/hf_cache /data/venv/bin/python -c "
+            from transformers import AutoModelForCausalLM
+            AutoModelForCausalLM.from_pretrained('thuml/Timer-S1', trust_remote_code=True)
+            print('Timer-S1 cached.')
+            "
+            else
+              echo "Timer-S1 already cached."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 16Gi }
+          limits: { cpu: "4", memory: 32Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: HF_HOME, value: "/data/hf_cache" }
+          - { name: HF_HUB_OFFLINE, value: "1" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "40960" }
+          limits: { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "40960" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          failureThreshold: 30
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: timer-s1-data }
+      - name: app
+        configMap: { name: timer-s1-server }

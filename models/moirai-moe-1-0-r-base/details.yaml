@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moirai-moe-1-0-r-base-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "moirai-moe-1.0-R-base",
+      "type": "forecast",
+      "endpoints": {
+        "primary": "/v1/forecast",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "moirai-moe-1-0-r-base",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "max_replicas": 5,
+        "idle_retention": "15m"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false
+      },
+      "defaults": {
+        "forecast": {
+          "prediction_length": 24
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Moirai-MoE: 935M-param Mixture-of-Experts universal time-series forecasting (Salesforce).",
+        "description": "Moirai-MoE from Salesforce Research (2024) is a 935M parameter Mixture-of-Experts transformer for zero-shot time series forecasting. Outperforms base Moirai on diverse datasets. Uses GluonTS pipeline for prediction with quantile outputs. CC BY-NC-4.0.",
+        "owned_by": "salesforce",
+        "source": "Salesforce/moirai-moe-1.0-R-base",
+        "source_url": "https://huggingface.co/Salesforce/moirai-moe-1.0-R-base",
+        "framework": "uni2ts (MoiraiMoEForecast) + GluonTS",
+        "domain": "time-series",
+        "subdomain": "forecasting",
+        "parameters": "935M (MoE)",
+        "tags": ["science", "timeseries", "forecast", "moe", "zero-shot", "quantile", "gpu", "salesforce"]
+      },
+      "input_map": {
+        "time_series": "array of numeric values",
+        "prediction_length": "future steps to forecast (default 24)"
+      },
+      "output_map": {
+        "forecast.mean": "mean prediction array",
+        "forecast.quantile_10": "10th percentile forecast",
+        "forecast.quantile_50": "median forecast",
+        "forecast.quantile_90": "90th percentile forecast",
+        "model": "moirai-moe-1.0-R-base",
+        "prediction_length": "forecast horizon"
+      }
+    }

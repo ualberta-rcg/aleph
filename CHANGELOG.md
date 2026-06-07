@@ -2,6 +2,47 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-07 — Tier 1 science models: 5 deep-fixes to PASS
+
+Systematic fix of 5 GPU science models that were FAIL/PENDING. All now verified with
+real payloads on cluster 230.
+
+### timer-s1 (replaces timer-xl-1b)
+- **Model swap**: Timer-XL-1B was gated (weights 403), replaced with Timer-S1 (open, Saleen2023/Timer-S1).
+- **dtype fix**: Cast all float inputs to `torch.bfloat16` — Timer-S1 weights are bf16, mismatch caused NaN.
+- **Init RAM**: Raised to 32Gi to avoid OOM during model load.
+- **Test**: 200, 9 quantile forecasts (q0.1–q0.9), sensible trend continuation.
+
+### moirai-moe-1-0-r-base (replaces moirai-moe)
+- **Full rewrite**: Original handler used non-functional `Moirai` class. Rewrote to official
+  `uni2ts` API: `create_predictor()` + `GluonTS` dataset + `Prediction` object extraction.
+- **Quantile extraction**: Reads 19 quantile levels from prediction output.
+- **Test**: 200, quantile forecasts with correct shape and values.
+
+### enformer
+- **Python 3.12 + GPU torch**: Base image `python:3.12-slim`, pip install `torch` (CUDA) not CPU-only.
+- **transformers pin**: `transformers<4.52` — newer versions break Enformer model class.
+- **Dict output fix**: `model(x)` returns `{'human': tensor, 'mouse': tensor}`, not an object
+  with `.human` attribute. Changed `hasattr(out, 'human')` → `isinstance(out, dict) and 'human' in out`.
+- **Payload**: Summarized output (mean + sample) to avoid 896×5313 = ~4.7M value JSON.
+- **Test**: 200, human_shape [896, 5313], correct gene expression predictions.
+
+### ernierna
+- **GPU torch (cu126)**: Force-reinstall `torch` from cu126 index (base image had CPU-only torch).
+- **nodeSelector**: Added `gpu: "on"` to schedule on GPU node.
+- **progress-deadline**: Raised to 600s for cold-start model download.
+- **storageClassName**: Set to `nfs-client` for PVC.
+- **Test**: 200, 768-dim RNA embeddings.
+
+### totalsegmentator
+- **torch reinstall**: TotalSegmentator pulls in CPU-only torch as a dep; force-reinstall
+  `torch` + `torchvision` from cu126 index after TotalSegmentator install.
+- **Test**: 200, segmentation runs on synthetic 16³ volume (0 structures expected on zeros).
+
+### Also
+- Deleted `models/timer-xl-1b/` (gated, replaced by `models/timer-s1/`).
+- Deleted `models/moirai-moe/` (non-functional, replaced by `models/moirai-moe-1-0-r-base/`).
+
 ## 2026-06-06 — phi-4-reasoning card refresh (no gateway remap)
 
 - Rewrote `models/phi-4-reasoning/details.yaml` to schema v2 (whole L40S, v0.20.2,

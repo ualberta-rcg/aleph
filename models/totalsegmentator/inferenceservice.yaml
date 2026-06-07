@@ -117,6 +117,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     minReplicas: 0
@@ -133,15 +134,17 @@ spec:
           - |
             set -e
 
-            if [ ! -d /data/venv ] || ! /data/venv/bin/python -c 'import totalsegmentator' 2>/dev/null; then
+            SENTINEL=/data/venv/.totalseg-ready-v2
+            if [ ! -f "$SENTINEL" ]; then
               echo "Creating venv..."
               rm -rf /data/venv
               python3 -m venv /data/venv
               /data/venv/bin/pip install -q -U pip
-              /data/venv/bin/pip install -q \
-                "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
-              /data/venv/bin/pip install -q \
-                TotalSegmentator nibabel fastapi uvicorn
+              /data/venv/bin/pip install -q TotalSegmentator nibabel fastapi uvicorn
+              # Reinstall torch+torchvision from cu126 to ensure matched ABI
+              /data/venv/bin/pip install -q --force-reinstall \
+                torch torchvision --index-url https://download.pytorch.org/whl/cu126
+              touch "$SENTINEL"
               echo "Venv ready."
             else
               echo "Venv exists."

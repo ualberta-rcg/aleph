@@ -76,6 +76,7 @@ metadata:
   namespace: models
 spec:
   accessModes: [ReadWriteOnce]
+  storageClassName: nfs-client
   resources:
     requests:
       storage: 5Gi
@@ -87,11 +88,13 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     minReplicas: 0
     scaleTarget: 1
     scaleMetric: concurrency
+    timeout: 120
     nodeSelector:
       gpu: "on"
     volumes:
@@ -131,7 +134,7 @@ spec:
               echo "Creating venv..."
               python -m venv $VENV --clear
               $VENV/bin/pip install --quiet --upgrade pip
-              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cu126
               $VENV/bin/pip install --quiet multimolecule transformers sentencepiece huggingface_hub fastapi uvicorn
               echo "Venv ready"
             else
