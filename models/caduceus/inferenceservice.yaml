@@ -141,13 +141,12 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.caduceus-ready-v6
+            SENTINEL=/data/.caduceus-ready-v7
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
             VENV=/data/cad_env_v6
             echo "Creating venv at $VENV..."
             python3 -m venv $VENV
-            $VENV/bin/pip install -q -U pip
-            $VENV/bin/pip install -q packaging
+            $VENV/bin/pip install -q -U pip setuptools wheel packaging ninja cmake
             echo "Installing torch 2.2.0 (CUDA 12.1) — pinned for mamba-ssm compat..."
             $VENV/bin/pip install -q torch==2.2.0 --index-url https://download.pytorch.org/whl/cu121
             echo "Installing causal-conv1d + mamba-ssm (pinned, --no-build-isolation)..."
