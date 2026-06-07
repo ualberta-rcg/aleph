@@ -101,6 +101,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline-seconds: "600"
 spec:
   predictor:
     minReplicas: 0
@@ -119,22 +120,26 @@ spec:
         args:
           - |
             set -e
+            SENTINEL=/data/.progen2-ready-v2
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
             if [ ! -d /data/venv/bin ]; then
               echo "Creating venv..."
               python3 -m venv /data/venv
-              /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install -q -U pip
             fi
             echo "Installing dependencies..."
             /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
-            /data/venv/bin/pip install -q 'transformers<4.45' fastapi uvicorn
-            
-            echo "Pre-downloading ProGen2..."
-            /data/venv/bin/python -c "
+            /data/venv/bin/pip install -q 'transformers<4.45' fastapi uvicorn huggingface_hub
+
+            echo "Pre-downloading ProGen2 (~13 GB)..."
+            HF_HOME=/data/hf_cache /data/venv/bin/python -c "
             from transformers import AutoTokenizer, AutoModelForCausalLM
             AutoTokenizer.from_pretrained('hugohrban/progen2-xlarge', trust_remote_code=True)
             AutoModelForCausalLM.from_pretrained('hugohrban/progen2-xlarge', trust_remote_code=True)
             print('ProGen2 cached')
             "
+            touch "$SENTINEL"
+            echo "Setup complete."
         resources:
           requests: { cpu: "2", memory: 16Gi }
           limits: { cpu: "4", memory: 32Gi }

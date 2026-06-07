@@ -10,7 +10,7 @@ data:
   server.py: |
     """
     TimesFM 2.0: Google's time-series foundation model (google/timesfm-2.0-500m-pytorch).
-    Zero-shot forecasting via HuggingFace Transformers. GPU slice with CPU fallback.
+    Uses HuggingFace Transformers TimesFmModelForPrediction (v2.0/500M).
     API: POST /v1/forecast — returns point forecasts + quantiles.
     """
     import os, asyncio
@@ -18,7 +18,7 @@ data:
     from fastapi.responses import JSONResponse
     import uvicorn
 
-    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    MODEL_ID = "google/timesfm-2.0-500m-pytorch"
 
     app = FastAPI()
     model = None
@@ -29,8 +29,10 @@ data:
         import torch
         from transformers import TimesFmModelForPrediction
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Loading TimesFM 2.0 via transformers on {DEVICE}...", flush=True)
-        model = TimesFmModelForPrediction.from_pretrained(MODEL_DIR)
+        print(f"Loading TimesFM 2.0 on {DEVICE}...", flush=True)
+        model = TimesFmModelForPrediction.from_pretrained(
+            MODEL_ID, attn_implementation="sdpa"
+        )
         model = model.to(torch.float32).to(DEVICE).eval()
         print(f"TimesFM 2.0 ready on {DEVICE}", flush=True)
 
@@ -59,56 +61,49 @@ data:
             return JSONResponse({"error": "'values' field required"}, 400)
 
         horizon = request.get("horizon", 12)
-        quantile_levels = request.get("quantile_levels", [0.1, 0.5, 0.9])
 
         loop = asyncio.get_event_loop()
         try:
-            result = await loop.run_in_executor(None, _predict, values, horizon, quantile_levels)
+            result = await loop.run_in_executor(None, _predict, values, horizon)
             return result
         except Exception as e:
             import traceback; traceback.print_exc()
             return JSONResponse({"error": str(e)}, 500)
 
-    def _predict(values, horizon, quantile_levels):
+    def _predict(values, horizon):
         import torch
         import numpy as np
 
-        # TimesFM patch_length=32, needs padded input
+        # TimesFM patch_length=32, pad if needed
         patch_len = 32
         if len(values) < patch_len:
-            # Pad with mean value to minimum patch size
             mean_val = sum(values) / len(values)
             padded = [mean_val] * (patch_len - len(values)) + list(values)
         else:
             padded = list(values)
-        
+
         past_values = [torch.tensor(padded, dtype=torch.float32).to(DEVICE)]
-        
+        freq = torch.tensor([0], dtype=torch.long).to(DEVICE)  # 0=low freq
+
         with torch.no_grad():
-            outputs = model(past_values=past_values, forecast_context_len=min(len(padded), 2048))
-        
+            outputs = model(past_values=past_values, freq=freq, return_dict=True)
+
         mean_preds = outputs.mean_predictions[0].cpu().numpy()[:horizon].tolist()
-        
+
         result = {
             "model": "timesfm-500m",
             "horizon": horizon,
             "mean": mean_preds,
-            "median": mean_preds,
-            "quantiles": {}
+            "mean_sample": mean_preds[:5],
         }
-        
+
         if hasattr(outputs, 'full_predictions') and outputs.full_predictions is not None:
             full = outputs.full_predictions[0].cpu().numpy()
-            for q in quantile_levels:
-                idx = int(q * full.shape[0])
-                result["quantiles"][str(q)] = full[idx, :horizon].tolist()
-        else:
-            arr = np.array(mean_preds)
-            for q in quantile_levels:
-                delta = arr * 0.1 * abs(q - 0.5) * 2
-                result["quantiles"][str(q)] = (arr + delta * (1 if q > 0.5 else -1)).tolist()
+            # full shape: (num_quantiles, horizon) or (horizon, num_quantiles)
+            result["quantile_shape"] = list(full.shape)
+            result["quantile_sample"] = full[:, :horizon].tolist() if full.ndim == 2 else full[:horizon].tolist()
 
-        result["samples"] = len(mean_preds)
+        result["input_len"] = len(padded)
         return result
 
     if __name__ == "__main__":
@@ -121,6 +116,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline-seconds: "600"
 spec:
   predictor:
     minReplicas: 0
@@ -133,45 +129,30 @@ spec:
       - name: setup
         image: python:3.11-slim
         env:
-          - name: HF_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: hf-token
-                key: token
+          - { name: HF_HOME, value: "/data/hf_cache" }
         command: ["bash", "-c"]
         args:
           - |
             set -e
+            SENTINEL=/data/.timesfm-ready-v3
+            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
             if [ ! -d /data/venv/bin ]; then
               echo "Creating venv..."
               python3 -m venv /data/venv
-              /data/venv/bin/pip install -U pip
-            else
-              echo "venv exists"
+              /data/venv/bin/pip install -q -U pip
             fi
-            # Always ensure correct packages are installed
             echo "Installing dependencies..."
-            /data/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu121
-            /data/venv/bin/pip install -q transformers numpy fastapi uvicorn huggingface_hub
-            
-            # Download TimesFM 2.0 via transformers-compatible checkpoint
-            if [ ! -f /data/model/config.json ]; then
-              echo "Downloading TimesFM 2.0 weights..."
-              /data/venv/bin/python -c "
+            /data/venv/bin/pip install -q 'torch>=2.5' --index-url https://download.pytorch.org/whl/cu126
+            /data/venv/bin/pip install -q 'transformers>=4.51,<4.53' numpy fastapi uvicorn huggingface_hub
+            echo "Downloading TimesFM 2.0 weights..."
+            HF_HOME=/data/hf_cache /data/venv/bin/python -c "
             from huggingface_hub import snapshot_download
-            import os
-            from pathlib import Path
-            Path('/data/model').mkdir(parents=True, exist_ok=True)
-            snapshot_download(
-                repo_id='google/timesfm-2.0-500m-pytorch',
-                local_dir='/data/model',
-                local_dir_use_symlinks=False,
-                token=os.environ.get('HF_TOKEN'),
-            )
+            snapshot_download('google/timesfm-2.0-500m-pytorch', local_dir='/data/model',
+                local_dir_use_symlinks=False)
+            print('Weights downloaded.')
             "
-            else
-              echo "Weights exist"
-            fi
+            touch "$SENTINEL"
+            echo "Setup complete."
         resources:
           requests: { cpu: "2", memory: 8Gi }
           limits: { cpu: "4", memory: 16Gi }

@@ -23,13 +23,14 @@ data:
 
     def load():
         global model, tokenizer, DEVICE
-        from transformers import AutoTokenizer, AutoModelForMaskedLM
+        # AutoModel (not AutoModelForMaskedLM) — we want embeddings, not MLM
+        # Caduceus-PS uses RCPS: output dim is 2*d_model = 512
+        from transformers import AutoTokenizer, AutoModel
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Loading Caduceus on {DEVICE}...", flush=True)
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
-        model = AutoModelForMaskedLM.from_pretrained(MODEL_ID, trust_remote_code=True,
-            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32)
-        model = model.to(DEVICE).eval()
+        model = AutoModel.from_pretrained(MODEL_ID, trust_remote_code=True)
+        model = model.to(DEVICE).eval()  # float32 — SSMs are precision-sensitive
         print(f"Caduceus ready on {DEVICE}", flush=True)
 
     @app.on_event("startup")
@@ -70,17 +71,26 @@ data:
     def _embed(sequences):
         enc = tokenizer(sequences, return_tensors="pt", padding=True, truncation=True, max_length=8192)
         enc = {k: v.to(DEVICE) for k, v in enc.items()}
-        
+
         with torch.no_grad():
-            out = model(**enc, output_hidden_states=True)
-        
-        hidden = out.hidden_states[-1]
-        # Caduceus tokenizer has no attention_mask; mean-pool over all positions
+            out = model(**enc)
+
+        # Caduceus-PS RCPS: last_hidden_state shape (B, L, 512) = 2*d_model
+        # First 256 dims = forward, last 256 = reverse complement
+        hidden = out.last_hidden_state
+        d_model = 256
+        hidden_fwd = hidden[..., :d_model]
+        hidden_rc = hidden[..., d_model:]
+        # RC-invariant: average forward and flipped reverse complement
+        hidden_rc_flipped = hidden_rc.flip(dims=[1, 2])
+        hidden_avg = (hidden_fwd + hidden_rc_flipped) / 2
+
+        # Mean-pool over sequence length
         if "attention_mask" in enc:
             mask = enc["attention_mask"].unsqueeze(-1).float()
-            emb = (hidden * mask).sum(1) / mask.sum(1)
+            emb = (hidden_avg * mask).sum(1) / mask.sum(1)
         else:
-            emb = hidden.mean(dim=1)
+            emb = hidden_avg.mean(dim=1)
         emb = emb.cpu().float().numpy()
         
         data = [{"object": "embedding", "index": i, "embedding": e.tolist()}
@@ -110,6 +120,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline-seconds: "600"
 spec:
   predictor:
     minReplicas: 0
@@ -130,15 +141,20 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.caduceus-ready-v3
+            SENTINEL=/data/.caduceus-ready-v6
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
-            echo "Creating conda venv at /data/caduceus_env..."
-            conda run python -m venv /data/caduceus_env --system-site-packages
-            /data/caduceus_env/bin/pip install -q 'transformers>=4.38' fastapi uvicorn huggingface_hub
-            echo "Compiling causal-conv1d and mamba-ssm from source (may take 15-20 min)..."
-            TORCH_CUDA_ARCH_LIST=8.9 /data/caduceus_env/bin/pip install -q --no-build-isolation causal-conv1d mamba-ssm
+            VENV=/data/cad_env_v6
+            echo "Creating venv at $VENV..."
+            python3 -m venv $VENV
+            $VENV/bin/pip install -q -U pip
+            $VENV/bin/pip install -q packaging
+            echo "Installing torch 2.2.0 (CUDA 12.1) — pinned for mamba-ssm compat..."
+            $VENV/bin/pip install -q torch==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+            echo "Installing causal-conv1d + mamba-ssm (pinned, --no-build-isolation)..."
+            TORCH_CUDA_ARCH_LIST=8.9 $VENV/bin/pip install -q --no-build-isolation causal-conv1d==1.2.0.post2 mamba-ssm==1.2.0.post1
+            $VENV/bin/pip install -q 'transformers==4.38.1' fastapi uvicorn huggingface_hub einops
             echo "Downloading Caduceus weights..."
-            HF_HOME=/data/hf_cache /data/caduceus_env/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16'); print('weights done')"
+            HF_HOME=/data/hf_cache $VENV/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16'); print('weights done')"
             touch "$SENTINEL"
             echo "Setup complete."
         resources:
@@ -155,8 +171,7 @@ spec:
         command: ["bash", "-c"]
         args:
           - |
-            /data/caduceus_env/bin/pip install -q 'transformers>=4.38,<4.48' 2>&1 | tail -3
-            exec /data/caduceus_env/bin/python /app/server.py
+            exec /data/cad_env_v6/bin/python /app/server.py
         ports:
           - containerPort: 8080
             protocol: TCP

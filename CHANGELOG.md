@@ -2,6 +2,24 @@
 
 Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
 
+## 2026-06-07 — Tier 2 science models: 2 PASS, 3 blocked by Knative timeout
+
+### Verified PASS
+- **progen2** — added sentinel + progress-deadline 600s annotation; 6.4B protein generation works
+  (`MRENAQKALEIKRTRVIAEDL` from seed `M`).
+- **timesfm** — pinned `transformers>=4.51,<4.53` + `torch>=2.5 cu126`; `TimesFmModelForPrediction`
+  (v2.0 500M) loads and forecasts; 128 quantile levels, sensible trend continuation.
+
+### Blocked (Knative progress-deadline 600s cap)
+- **caduceus** — torch 2.2.0 + mamba-ssm 1.2.0 pinned, AutoModel for RCPS embeddings, new venv path.
+  Init compiles mamba CUDA kernels (~20 min) → exceeds Knative 600s deadline.
+  Fix: bump Knative `progress-deadline` max in `config-deployment` ConfigMap.
+- **prithvi-eo** — rewrote to BACKBONE_REGISTRY API, added GDAL system deps, forward_features.
+  Init installs terratorch + deps (~12 min) → exceeds 600s deadline. Same Knative fix needed.
+- **boltz-1** — PVC venv, YAML input, `--checkpoint` path fix, `--no_kernels`. SIGSEGV (rc=-11)
+  during `boltz predict` after MSA step. Likely cuEquivariance/CUDA kernel crash on L40S.
+  Deferred — needs deeper CUDA debugging or different boltz version.
+
 ## 2026-06-07 — Tier 1 science models: 5 deep-fixes to PASS
 
 Systematic fix of 5 GPU science models that were FAIL/PENDING. All now verified with

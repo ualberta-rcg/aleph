@@ -32,10 +32,10 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomedclip | embed | true | /v1/embeddings | READY | PASS | text_embeddings (texts/images) |
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
-| boltz-1 | structure | true | /v1/science/predict | READY | FAIL | torch runtime error during folding; needs deep-fix |
+| boltz-1 | structure | true | /v1/science/predict | READY | FAIL | SIGSEGV (rc=-11) during boltz predict; --no_kernels + --checkpoint path fix; cuEquivariance/CUDA issue on L40S; deferred |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
 | brainlm | embed | true | /v1/embeddings | READY | FAIL | ViT-MAE API unpack error; needs fMRI patch fix |
-| caduceus | embedding | true | /v1/embeddings | NOT-READY | FAIL | mamba_ssm/selective_scan_cuda torch-CUDA ABI mismatch |
+| caduceus | embedding | true | /v1/embeddings | NOT-READY | FAIL | torch 2.2.0+mamba-ssm 1.2.0 pinned, AutoModel, RCPS embeddings; init > 600s Knative deadline (mamba compile ~20min); needs Knative config bump |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
 | chemgpt-19m | generate | true | /v1/science/generate | READY | PASS | SELFIES molecule generation |
@@ -118,9 +118,9 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | pangu-weather | forecast | true | /v1/science/forecast | READY | FIXED | demo+real ONNX; summarized upper/surface stats (not raw 721x1440 grids) |
 | phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; gateway budget mode maps effort→thinking_token_budget (0=skip CoT); OpenAI+Anthropic verified 2026-06-06 |
 | presto | classify | false | /v1/embeddings | READY | FAIL | band-layout mismatch - needs correct presto format |
-| prithvi-eo | embed | true | /v1/embed | NOT-READY | FAIL | ISVC BlockedByFailedLoad; revision ProgressDeadlineExceeded; never scales (terratorch init) |
+| prithvi-eo | embed | true | /v1/embed | NOT-READY | FAIL | BACKBONE_REGISTRY API + GDAL system deps; terratorch install > 600s Knative deadline; needs Knative config bump |
 | prithvi-wxc | embed | true | /v1/science/forecast | READY | PASS | demo forecast OK after unstop+cold-start (~6min); real MERRA-2 state not exercised |
-| progen2 | generate | true | /v1/completions | NOT-READY | FAIL | ProgressDeadlineExceeded; init download too slow, needs progress-deadline bump |
+| progen2 | generate | true | /v1/completions | READY | FIXED | sentinel + progress-deadline 600s; 6.4B protein generation PASS |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
 | prostt5 | translate | true | /v1/translate | READY | PASS | AA->3Di structural alphabet (recreated) |
 | proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores |
@@ -154,7 +154,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | time-moe | forecast | true | /v1/forecast | READY | PASS | TimeMoE-50M MoE; forecast_len matches prediction_length (must be 1/96/192/336/720; 12 returns empty) |
 | timer-s1 | forecast | true | /v1/forecast | READY | FIXED | replaced timer-xl-1b (gated 403); Timer-S1 bf16 dtype cast, 32Gi init RAM; 9 quantile forecasts PASS |
 | timer | forecast | true | /v1/forecast | READY | FIXED | pinned transformers==4.40.2 (remote code uses DynamicCache.seen_tokens removed in >=4.41); forecast_len 96 PASS |
-| timesfm | forecast | true | /v1/forecast | NOT-READY | FAIL | TimesFmModelForPrediction not importable; transformers lacks TimesFm support - needs version pin/upgrade |
+| timesfm | forecast | true | /v1/forecast | READY | FIXED | transformers>=4.51,<4.53 + torch>=2.5 cu126; TimesFmModelForPrediction (v2.0 500M) PASS; 128 quantile levels |
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
 | totalsegmentator | segment | true | /v1/science/segment | READY | FIXED | force-reinstall torch+torchvision cu126 after TotalSegmentator (ABI fix); 200 PASS |
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
