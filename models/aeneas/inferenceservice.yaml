@@ -69,10 +69,19 @@ data:
             predictor_state.update({
                 "params": params, "forward": forward, "alphabet": alphabet,
                 "vocab_char_size": ckpt["model_config"]["vocab_char_size"],
-                "region_map": ckpt["region_map"],
+                "region_map": ckpt.get("region_map"),
                 "dataset": dataset, "retrieval": retrieval,
                 "inference": inference,
             })
+            # JAX warmup: compile the model with a dummy forward pass
+            print("JAX warmup (compiling XLA)...", flush=True)
+            import numpy as np
+            dummy_text = "<" + "dis manibus" + "#" * (768 - 12)
+            dummy_char = np.array([[alphabet.char2idx.get(c, 2) for c in dummy_text]], dtype=np.int32)
+            import jax
+            rng = jax.random.PRNGKey(0)
+            _ = forward(params, text_char=dummy_char, rngs={'dropout': rng}, is_training=False)
+            print("JAX warmup done.", flush=True)
             predictor = predictor_state
             print("Aeneas ready.", flush=True)
         except Exception as e:
@@ -136,19 +145,27 @@ data:
 
         attribution = inf.attribute(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
         restoration = inf.restore(text, forward=fwd, params=p, alphabet=alp, vocab_char_size=vcs)
-        context     = inf.contextualize(text, ds, rv, fwd, p, alp, rm)
+        # Contextualize is optional — needs large retrieval dataset
+        context = None
+        if req.get("contextualize") and ds is not None and rv is not None:
+            try:
+                context = inf.contextualize(text, ds, rv, fwd, p, alp, rm)
+            except Exception as e:
+                context = {"error": str(e)}
 
         import json
         attr_d = json.loads(attribution.json())
         rest_d = json.loads(restoration.json())
-        ctx_d  = json.loads(context.json())
-        return {
+        result = {
             "model": "aeneas",
             "input": text,
             "restoration": rest_d,
             "attribution": attr_d,
-            "contextualization": ctx_d,
         }
+        if context is not None:
+            ctx_d = json.loads(context.json()) if hasattr(context, 'json') else context
+            result["contextualization"] = ctx_d
+        return result
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
@@ -160,6 +177,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline-seconds: "600"
 spec:
   predictor:
     minReplicas: 0
