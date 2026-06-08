@@ -9,7 +9,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | Model | Type | GPU | Primary endpoint | Cluster state | Test status | Note |
 |---|---|---|---|---|---|---|
 | ablang2 | embedding | false | /v1/embeddings | READY | FIXED | embeddings+batch PASS; /v1/restore was broken, fixed (heavy/light pairs), now PASS |
-| aeneas | structure | true | /v1/science/predict | READY | FAIL | input alphabet lacks [/# gap chars + JAX activator timeout; needs research |
+| aeneas | structure | true | /v1/science/predict | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (restoration+dating); real inference slow (JAX) |
 | agront | embedding | true | /v1/embeddings | READY | PASS | 1500-dim DNA |
 | aion | embed | false | /v1/science/embed | READY | FIXED | rewrote to real AION CodecManager API; legacy_image + photometry -> 768-dim; was non-functional |
 | alphafold2 | structure-prediction | true | /v1/science/predict | READY | PASS | demo folds seq -> PDB |
@@ -17,7 +17,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
 | astroclip | embed | true | /v1/science/embed | READY | FAIL | AstroCLIP lib not installed; demo-only stub |
-| astropt | embed | true | /v1/science/embed | READY | FAIL | patchify preprocessing wrong (needs 32x32x3 tokens) |
+| astropt | embed | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim galaxy embeddings; needs >=32x32 image input |
 | astrosage | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic endpoints both work |
 | aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
@@ -34,7 +34,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz | structure | true | /v1/science/predict | NOT-READY | FAIL | Boltz-2 NIM container pulling; SIGSEGV with pip-installed boltz on L40S; trying NVIDIA NIM with TensorRT backend |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
-| brainlm | embed | true | /v1/embeddings | READY | FAIL | ViT-MAE API unpack error; needs fMRI patch fix |
+| brainlm | embed | true | /v1/embeddings | READY | FIXED | wake-up test PASS 2026-06-08: 1280-dim fMRI embeddings via ViTMAE CLS token; slow model load (~10min) |
 | caduceus | embedding | true | /v1/embeddings | READY | FIXED | torch 2.2.0+mamba-ssm 1.2.0 pinned, numpy<2, AutoModel RCPS 256-dim; PVC venv cached; mamba compile ~20min first deploy, 5sec after |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
@@ -46,7 +46,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | clay | embed | false | /v1/science/embed | READY | FIXED | rewrote to Clay v1.5 datacube dict API; cls embedding PASS |
 | climatebert | classification | false | /v1/science/classify | READY | PASS | net-zero 0.9988 |
 | climax | forecast | true | /v1/science/forecast | READY | PASS | needs valid ERA5 var names (e.g. 2m_temperature) |
-| clinical-longformer | embedding | true | /v1/science/embed | NOT-READY | FAIL | hangs on CPU (gpu=true but no CUDA use); needs GPU/attention fix |
+| clinical-longformer | embedding | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim embeddings; slow on CPU (~2min inference) |
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
 | command-r-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
@@ -72,13 +72,13 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | fengwu | forecast | true | /v1/science/forecast | READY | FIXED | summarize grid (was 286MB>gateway); demo+real ONNX OK |
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image) |
-| galileo | classify | false | /v1/embeddings | READY | FAIL | numpy fixed; model loads as raw state_dict - needs deep fix |
+| galileo | classify | false | /v1/embeddings | READY | FAIL | galileo pip package import conflicts with cloned repo; server stuck at model loading |
 | gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8 (progress-deadline fix); correct answers |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
-| geogalactica | chat | true | /v1/chat/completions | NOT-READY | FAIL | gated HF repo geobrain-ai/geogalactica (403); needs access approval |
+| geogalactica | chat | true | /v1/chat/completions | NOT-READY | FAIL | vLLM engine core init failed (30B TP=2); needs investigation |
 | gpt-oss-120b | chat | true | /v1/chat/completions | READY | FIXED | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce (HAMi custom-AR stall); CUDA_DISABLE_CONTROL removed (unneeded); reasoning+OpenAI+Anthropic |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | READY | FIXED | add gcc/g++ to init (terratorch->stringzilla build); demo OK |
@@ -87,7 +87,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
 | kandinsky-3 | text-to-image | true | /v1/images/generations | READY | PASS | RayService w/ in-tree autoscaler. Head on non-GPU kubeflow-head-node2 (proxy_location HeadOnly); GPU worker autoscales 0->3. VERIFIED: scale-up 0->1 on request, image gen ~24s (1024) PNG, scale-DOWN releases L40S after idle. Added missing download-job.yaml. 15min idle retention |
-| labram | embed | false | /v1/science/embed | READY | FAIL | needs 128 canonical channels or ch_names - needs deep fix |
+| labram | embed | false | /v1/science/embed | READY | FAIL | ModuleNotFoundError: no models module; server stuck at model loading |
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
 | leandojo | embed | true | /v1/science/retrieve | READY | PASS | premise retrieval w/ scores |
 | ligandmpnn | design | false | /v1/design | READY | FIXED | checkpoints+args+optional-openfold; 1CRN design near-native PASS |
@@ -149,8 +149,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PASS | PHI entities (PATIENT/DATE/HOSPITAL) |
 | sundial | forecast | false | /v1/science/forecast | READY | FIXED | fixed input shape + pinned transformers 4.40.2; forecast+quantiles PASS |
 | surya | forecast | true | /v1/science/forecast | READY | PASS | demo forecast+flare_risk via gateway 2026-06-06; id=surya-366m |
-| terramind-flood | classify | true | /v1/science/classify | NOT-READY | FAIL | revision ProgressDeadlineExceeded; initial scale never achieved |
-| thor | embed | true | /v1/science/embed | NOT-READY | FAIL | ProgressDeadlineExceeded; init too slow (+terratorch lib check) |
+| terramind-flood | classify | true | /v1/science/classify | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (flood mask); added gcc to init for stringzilla compile |
+| thor | embed | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (768-dim); added gcc to init for stringzilla compile |
 | time-moe | forecast | true | /v1/forecast | READY | PASS | TimeMoE-50M MoE; forecast_len matches prediction_length (must be 1/96/192/336/720; 12 returns empty) |
 | timer-s1 | forecast | true | /v1/forecast | READY | FIXED | replaced timer-xl-1b (gated 403); Timer-S1 bf16 dtype cast, 32Gi init RAM; 9 quantile forecasts PASS |
 | timer | forecast | true | /v1/forecast | READY | FIXED | pinned transformers==4.40.2 (remote code uses DynamicCache.seen_tokens removed in >=4.41); forecast_len 96 PASS |

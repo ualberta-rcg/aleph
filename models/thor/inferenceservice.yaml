@@ -165,9 +165,9 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.thor-ready-v1
+            SENTINEL=/data/.thor-ready-v2
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
-            apt-get update -qq && apt-get install -y -qq git
+            apt-get update -qq && apt-get install -y -qq gcc g++ git > /dev/null 2>&1
             pip install -q torch --index-url https://download.pytorch.org/whl/cu126
             pip install -q terratorch huggingface_hub fastapi uvicorn
             pip install -q thor-terratorch-ext 2>/dev/null || {
