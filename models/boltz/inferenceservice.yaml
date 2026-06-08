@@ -4,6 +4,7 @@
 # API: POST /biology/mit/boltz2/predict
 #      Input: {"polymers": [{"id":"A","molecule_type":"protein","sequence":"MKTAY..."}]}
 #      Returns: structure + confidence + optional affinity
+# Note: NIM v1.7.0 has a confidence_score KeyError — patched at startup below
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -33,6 +34,20 @@ spec:
       - name: kserve-container
         image: nvcr.io/nim/mit/boltz2:latest
         imagePullPolicy: IfNotPresent
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            # Patch NIM v1.7.0 bug: model.predict_step doesn't return 'confidence_score'
+            PIPELINE=/opt/nim/lib/boltz_assist/boltz_pipeline.py
+            if grep -q 'pred_data\["confidence_score"\]' "$PIPELINE" 2>/dev/null; then
+              echo "Patching confidence_score bug in NIM pipeline..."
+              sed -i 's/conf = pred_data\["confidence_score"\]/conf = pred_data.get("confidence_score", 0.0)/' "$PIPELINE"
+              echo "Patch applied."
+            else
+              echo "Patch already applied or not needed."
+            fi
+            # Start the NIM server
+            exec /opt/nim/start_server.sh
         ports:
           - containerPort: 8000
             protocol: TCP
@@ -42,6 +57,8 @@ spec:
               secretKeyRef:
                 name: ngc-api-key
                 key: NGC_API_KEY
+        securityContext:
+          runAsUser: 0
         resources:
           requests:
             cpu: "4"
