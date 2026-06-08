@@ -12,7 +12,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | aeneas | structure | true | /v1/science/predict | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (restoration+dating); real inference slow (JAX) |
 | agront | embedding | true | /v1/embeddings | READY | PASS | 1500-dim DNA |
 | aion | embed | false | /v1/science/embed | READY | FIXED | rewrote to real AION CodecManager API; legacy_image + photometry -> 768-dim; was non-functional |
-| alphafold2 | structure-prediction | true | /v1/science/predict | READY | PASS | demo folds seq -> PDB |
+| alphafold2 | structure-prediction | true | /v1/science/predict | READY | PASS | demo folds seq -> PDB. **NIM available:** `nvcr.io/nim/deepmind/alphafold2` (build.nvidia.com/deepmind/alphafold2) |
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
@@ -20,7 +20,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | astropt | embed | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim galaxy embeddings; needs >=32x32 image input |
 | astrosage | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic endpoints both work |
 | aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
-| bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card |
+| bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card. **NIM available:** `nvcr.io/nim/baai/bge-m3` (build.nvidia.com/baai/bge-m3) |
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
 | bge-small | forecast | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | biobert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
@@ -32,8 +32,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomedclip | embed | true | /v1/embeddings | READY | PASS | text_embeddings (texts/images) |
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
-| boltz-1 | structure | true | /v1/science/predict | READY | PASS | Boltz-1 NIM container; protein structure prediction; Ready on cluster |
-| boltz-2 | structure | true | /v1/science/predict | READY | PASS | Boltz-2 NIM container (default); protein structure prediction; Ready on cluster |
+| boltz-1 | structure | true | /v1/science/predict | READY | PASS | Boltz-1 NIM container; protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (--checkpoint boltz1) |
+| boltz-2 | structure | true | /v1/science/predict | READY | PASS | Boltz-2 NIM container (default); protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (build.nvidia.com/mit/boltz-2) |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
 | brainlm | embed | true | /v1/embeddings | READY | FIXED | wake-up test PASS 2026-06-08: 1280-dim fMRI embeddings via ViTMAE CLS token; slow model load (~10min) |
 | caduceus | embedding | true | /v1/embeddings | READY | FIXED | torch 2.2.0+mamba-ssm 1.2.0 pinned, numpy<2, AutoModel RCPS 256-dim; PVC venv cached; mamba compile ~20min first deploy, 5sec after |
@@ -54,7 +54,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std); gpumem 45GB + max-model-len 8192; correct answers |
 | depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
-| diffdock | dock | true | /v1/dock | READY | FIXED | SMILES passed direct (not .smi file); conf regex fixed; 11 poses on 1CRN+aspirin |
+| diffdock | dock | true | /v1/dock | READY | FIXED | SMILES passed direct (not .smi file); conf regex fixed; 11 poses on 1CRN+aspirin. **NIM available:** `nvcr.io/nim/mit/diffdock` (build.nvidia.com/mit/diffdock) |
 | dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | image embedding |
 | dnabert-2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-2-117m) |
 | dnabert-s | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-s) |
@@ -67,19 +67,22 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | esm2-150m | embedding | true | /v1/embeddings | READY | PASS | 640-dim protein (recreated) |
 | esm2-35m | embedding | true | /v1/embeddings | READY | PASS | 480-dim protein |
 | esm2-3b | embedding | true | /v1/embeddings | READY | PASS | 2560-dim protein (recreate cleared) |
-| esm2-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein |
+| esm2-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein. **NIM available:** `nvcr.io/nim/meta/esm2-650m` (build.nvidia.com/meta/esm2-650m) |
 | esmc-300m | embedding | true | /v1/embeddings | READY | PASS | 960-dim (recreated) |
-| esmfold | structure | true | /v1/structure | READY | PASS | folds protein -> PDB |
+| esmfold | structure | true | /v1/structure | READY | PASS | folds protein -> PDB. **NIM available:** `nvcr.io/nim/meta/esmfold` (build.nvidia.com/meta/esmfold) |
 | fengwu | forecast | true | /v1/science/forecast | READY | FIXED | summarize grid (was 286MB>gateway); demo+real ONNX OK |
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
-| fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image) |
+| fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image). **NIM available (FCN2):** `nvcr.io/nim/nvidia/fourcastnet` (build.nvidia.com/nvidia/fourcastnet, L40S-tested) |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | galileo pip package import conflicts with cloned repo; server stuck at model loading |
 | gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
-| gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8 (progress-deadline fix); correct answers |
+| gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8 (progress-deadline fix); correct answers. **NIM available:** `nvcr.io/nim/google/gemma-4-31b-it` (build.nvidia.com/google/gemma-4-31b-it) |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
 | geogalactica | chat | true | /v1/chat/completions | NOT-READY | FAIL | HF access granted; vLLM engine core init failed (30B TP=2 on 2xL40S); needs investigation |
+| glm-4-32b | chat | true | /v1/chat/completions | READY | PASS | org moved THUDM->zai-org; haiku ok. **NIM available:** `nvcr.io/nim/zai-org/glm-51` (GLM-5.1, build.nvidia.com/z-ai/glm-5.1) |
+| glm-z1-32b | chat | true | /v1/chat/completions | READY | FIXED | dropped deepseek_r1 parser (no <think/> special tokens); 8!=40320 |
+| glm-z1-rumination-32b | chat | true | /v1/chat/completions | READY | FIXED | dropped deepseek_r1 parser; agentic finish-call format; Tokyo ok |
 | gpt-oss-120b | chat | true | /v1/chat/completions | READY | FIXED | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce (HAMi custom-AR stall); CUDA_DISABLE_CONTROL removed (unneeded); reasoning+OpenAI+Anthropic |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | READY | FIXED | add gcc/g++ to init (terratorch->stringzilla build); demo OK |
@@ -87,6 +90,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
+| k2-v2 | chat | true | /v1/chat/completions | READY | PENDING | ships FP32 ~290GB; --dtype=bfloat16 to fit 4xL40S; Xet stalled -> HF_HUB_DISABLE_XET; vLLM v0.20.2 TP4 whole-device |
 | kandinsky-3 | text-to-image | true | /v1/images/generations | READY | PASS | RayService w/ in-tree autoscaler. Head on non-GPU kubeflow-head-node2 (proxy_location HeadOnly); GPU worker autoscales 0->3. VERIFIED: scale-up 0->1 on request, image gen ~24s (1024) PNG, scale-DOWN releases L40S after idle. Added missing download-job.yaml. 15min idle retention |
 | labram | embed | false | /v1/science/embed | READY | FAIL | ModuleNotFoundError: no models module; server stuck at model loading |
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
@@ -115,6 +119,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PASS | 1024-dim DNA |
 | oceangpt-30b | chat | true | /v1/chat/completions | READY | FIXED | 30B-A3B MoE TP2 ~73tok/s; v0.20.2; full GPUs + --disable-custom-all-reduce (no CUDA_DISABLE_CONTROL); OpenAI+Anthropic |
+| openbiollm-70b | chat | true | /v1/chat/completions | READY | PASS | hemoglobin answer correct; tokenizer already Fast; vLLM v0.20.2 TP4 whole-device |
+| openfold-3 | structure | true | /v1/science/predict | READY | PASS | OpenFold-3 NIM container. **NIM:** `nvcr.io/nim/openfold/openfold3` (build.nvidia.com/openfold/openfold3) |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | READY | FIXED | demo+real ONNX; summarized upper/surface stats (not raw 721x1440 grids) |
 | phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; gateway budget mode maps effort→thinking_token_budget (0=skip CoT); OpenAI+Anthropic verified 2026-06-06 |
@@ -124,13 +130,21 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | progen2 | generate | true | /v1/completions | READY | FIXED | sentinel + progress-deadline 600s; 6.4B protein generation PASS |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
 | prostt5 | translate | true | /v1/translate | READY | PASS | AA->3Di structural alphabet (recreated) |
-| proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores |
+| proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores. **NIM available:** `nvcr.io/nim/ipd/proteinmpnn` (build.nvidia.com/ipd/proteinmpnn) |
 | protgpt2 | generate | true | /v1/completions | READY | PASS | de novo protein generation (recreated) |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
+| qwen25-coder-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; is_prime() correct/idiomatic |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std; fixed --limit-mm-per-prompt JSON); gpumem 24GB; chat OK |
 | qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic + vision (image_url) |
-| qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | 235B-A22B AWQ-int4 MoE TP4 ~67tok/s; v0.20.2; ported from 232 (tclf90 repo deleted -> QuantTrio); whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce + awq_marlin; correct math + tool-calling (hermes) |
+| qwen25-vl-72b | chat | true | /v1/chat/completions | READY | PASS | vision OK (ID image color); TP4; vLLM v0.20.2 whole-device |
+| qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | 235B-A22B AWQ-int4 MoE TP4 ~67tok/s; v0.20.2; ported from 232 (tclf90 repo deleted -> QuantTrio); whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce + awq_marlin; correct math + tool-calling (hermes). **NIM available:** `nvcr.io/nim/qwen/qwen3-235b-a22b` (build.nvidia.com/qwen/qwen3-235b-a22b) |
+| qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; dense flagship; thinking (qwen3 parser) + tools; 17*23=391 |
 | qwen35-122b | chat | true | /v1/chat/completions | READY | FIXED | 122B FP8 MoE TP4 ~65tok/s; v0.20.2; whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce; unpinned; reasoning-parser=qwen3; correct answers |
+| qwen36-27b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; Jupiter+Ganymede; Gated-DeltaNet on vllm:latest |
+| qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; s[::-1]; MoE Gated-DeltaNet on vllm:latest |
+| qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; deepseek_r1 parser ok (QwQ has <think/>); sqrt144=12. **NIM available:** `nvcr.io/nim/qwen/qwq-32b` (build.nvidia.com/qwen/qwq-32b) |
+| r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | FIXED | vLLM v0.20.2 TP4 whole-device; tokenizer_class patch (was Ġ/Ċ garbled); 40km/h correct; max-len 65536 |
+| r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 12^2=144; deepseek_r1 parser; max-len 65536 (KV fit) |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | READY | PASS | 120-dim RNA (recreated) |
@@ -165,25 +179,22 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | yolov8s | detect | false | /v1/vision/detect | READY | PASS | person 0.91 on bus.jpg |
 | zoobot | embedding | false | /v1/vision/embed | READY | PASS | id=zoobot-15m; galaxy embedding |
 
-## 2026-06 new LLM batch (15-model request; 13 built, 2 gated Meta skipped)
+## NIM-eligible models not yet deployed
 
-vLLM v0.20.2, HAMi whole-device recipe (nvidia.com/gpu=TP, no gpumem, --disable-custom-all-reduce), scale-to-zero 15m. Llama-3 BPE models need tokenizer_class patch (AutoTokenizer silently falls back to broken slow LlamaTokenizer -> Ġ/Ċ garbled output; fix: set tokenizer_class=PreTrainedTokenizerFast on PVC).
+These NIM containers exist on build.nvidia.com but are not yet on the cluster. Could be added as drop-in InferenceServices:
 
-| Model | Repo | GPU/TP | Test status | Note |
-|---|---|---|---|---|
-| qwen3-32b | Qwen/Qwen3-32B | TP2 | PASS | dense flagship; thinking (qwen3 parser) + tools; 17*23=391 |
-| qwen25-coder-32b | Qwen/Qwen2.5-Coder-32B-Instruct | TP2 | PASS | is_prime() correct/idiomatic |
-| r1-distill-qwen-32b | deepseek-ai/DeepSeek-R1-Distill-Qwen-32B | TP2 | PASS | 12^2=144; deepseek_r1 parser; max-len 65536 (KV fit) |
-| r1-distill-llama-70b | deepseek-ai/DeepSeek-R1-Distill-Llama-70B | TP4 | FIXED | tokenizer_class patch (was Ġ/Ċ garbled); 40km/h correct; max-len 65536 |
-| glm-4-32b | zai-org/GLM-4-32B-0414 | TP2 | PASS | org moved THUDM->zai-org; haiku ok |
-| glm-z1-32b | zai-org/GLM-Z1-32B-0414 | TP2 | FIXED | dropped deepseek_r1 parser (no <think> special tokens); 8!=40320 |
-| glm-z1-rumination-32b | zai-org/GLM-Z1-Rumination-32B-0414 | TP2 | FIXED | dropped deepseek_r1 parser; agentic finish-call format; Tokyo ok |
-| qwq-32b | Qwen/QwQ-32B | TP2 | PASS | deepseek_r1 parser ok (QwQ has <think>); sqrt144=12 |
-| qwen25-vl-72b | Qwen/Qwen2.5-VL-72B-Instruct | TP4 | PASS | vision OK (ID image color); TP4 |
-| openbiollm-70b | aaditya/Llama3-OpenBioLLM-70B | TP4 | PASS | hemoglobin answer correct; tokenizer already Fast |
-| k2-v2 | LLM360/K2-V2 | TP4 | PENDING | ships FP32 ~290GB (not 140GB); --dtype=bfloat16 to fit 4xL40S; Xet stalled -> HF_HUB_DISABLE_XET; still downloading |
-| qwen36-27b | Qwen/Qwen3.6-27B | TP2 | PASS | Jupiter+Ganymede; Gated-DeltaNet on vllm:latest |
-| qwen36-35b-a3b | Qwen/Qwen3.6-35B-A3B | TP2 | PASS | s[::-1]; MoE Gated-DeltaNet on vllm:latest |
-| llama-3.3-70b | meta-llama/Llama-3.3-70B-Instruct | - | SKIPPED | gated (403); HF access not granted on token |
-| llama-4-scout | meta-llama/Llama-4-Scout-17B-16E-Instruct | - | SKIPPED | gated (403); HF access not granted on token |
-| qwen3-72b-fp8 | (does not exist) | - | SUBSTITUTED | no dense Qwen3-72B; replaced with qwen3-32b per user |
+| NIM | Image | Category | Link |
+|---|---|---|---|
+| rfdiffusion | nvcr.io/nim/ipd/rfdiffusion | protein design | build.nvidia.com/ipd/rfdiffusion |
+| evo2-40b | nvcr.io/nim/arc/evo2-40b | biology/genomics | build.nvidia.com/arc/evo2-40b |
+| molmim | nvcr.io/nim/nvidia/molmim | chemistry | build.nvidia.com/nvidia/molmim |
+| genmol | nvcr.io/nim/nvidia/genmol | molecular generation | build.nvidia.com/nvidia/genmol |
+| deepseek-v3.2 | nvcr.io/nim/deepseek-ai/deepseek-v3.2 | LLM | build.nvidia.com/deepseek-ai/deepseek-v3.2 |
+| mistral-small-4 | nvcr.io/nim/mistralai/mistral-small-4-119b-2603 | LLM | build.nvidia.com/mistralai/mistral-small-4-119b-2603 |
+
+## Skipped models (gated Meta, no HF access)
+
+| Model | Repo | Reason |
+|---|---|---|
+| llama-3.3-70b | meta-llama/Llama-3.3-70B-Instruct | gated (403); HF access not granted on token |
+| llama-4-scout | meta-llama/Llama-4-Scout-17B-16E-Instruct | gated (403); HF access not granted on token |
