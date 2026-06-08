@@ -151,7 +151,7 @@ spec:
             $VENV/bin/pip install -q torch==2.2.0 --index-url https://download.pytorch.org/whl/cu121
             echo "Installing causal-conv1d + mamba-ssm (pinned, --no-build-isolation)..."
             TORCH_CUDA_ARCH_LIST=8.9 $VENV/bin/pip install -q --no-build-isolation causal-conv1d==1.2.0.post2 mamba-ssm==1.2.0.post1
-            $VENV/bin/pip install -q 'transformers==4.38.1' fastapi uvicorn huggingface_hub einops
+            $VENV/bin/pip install -q 'transformers==4.38.1' 'numpy<2' fastapi uvicorn huggingface_hub einops
             echo "Downloading Caduceus weights..."
             HF_HOME=/data/hf_cache $VENV/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16'); print('weights done')"
             touch "$SENTINEL"
@@ -170,6 +170,7 @@ spec:
         command: ["bash", "-c"]
         args:
           - |
+            /data/cad_env_v6/bin/pip install -q 'numpy<2' 2>&1 | tail -1
             exec /data/cad_env_v6/bin/python /app/server.py
         ports:
           - containerPort: 8080
