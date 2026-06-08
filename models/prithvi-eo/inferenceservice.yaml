@@ -155,7 +155,11 @@ spec:
     containers:
       - name: kserve-container
         image: python:3.11-slim
-        command: ["/data/venv/bin/python", "/app/server.py"]
+        command: ["bash", "-c"]
+        args:
+          - |
+            apt-get update -qq && apt-get install -y -qq libexpat1 2>&1 | tail -1
+            exec /data/venv/bin/python /app/server.py
         env:
           - { name: HF_HOME, value: "/data/hf_cache" }
         ports:

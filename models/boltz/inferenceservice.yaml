@@ -1,0 +1,78 @@
+# Boltz-2: Biomolecular structure prediction + binding affinity (MIT license)
+# NVIDIA NIM container — pre-built with TensorRT, no pip compile needed
+# Repo: github.com/jwohlwend/boltz | NIM: nvcr.io/nim/mit/boltz2
+# API: POST /biology/mit/boltz2/predict
+#      Input: {"polymers": [{"id":"A","molecule_type":"protein","sequence":"MKTAY..."}]}
+#      Returns: structure + confidence + optional affinity
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: boltz-nim-cache
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: boltz
+  namespace: models
+  annotations:
+    serving.knative.dev/progress-deadline-seconds: "600"
+spec:
+  predictor:
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nim/mit/boltz2:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+        readinessProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - name: nim-cache
+            mountPath: /opt/nim/.cache
+    imagePullSecrets:
+      - name: ngc-registry-secret
+    volumes:
+      - name: nim-cache
+        persistentVolumeClaim:
+          claimName: boltz-nim-cache

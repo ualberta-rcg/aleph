@@ -48,16 +48,15 @@ data:
         if not sequence:
             return JSONResponse({"error": "sequence required (or set demo:true)"}, 400)
         entity_type = request.get("type", "protein")
-        use_msa_server = request.get("use_msa_server", True)
         loop = asyncio.get_event_loop()
         try:
-            result = await loop.run_in_executor(None, _predict, sequence, entity_type, use_msa_server)
+            result = await loop.run_in_executor(None, _predict, sequence, entity_type)
             return result
         except Exception as e:
             import traceback; traceback.print_exc()
             return JSONResponse({"error": str(e)}, 500)
 
-    def _predict(sequence, entity_type, use_msa_server):
+    def _predict(sequence, entity_type):
         import yaml
         with tempfile.TemporaryDirectory() as tmpdir:
             # Write YAML input (preferred over deprecated FASTA)
@@ -75,7 +74,6 @@ data:
                 "/data/venv/bin/boltz", "predict", yaml_path,
                 "--out_dir", out_dir,
                 "--cache", "/data/boltz_cache",
-                "--checkpoint", "/data/boltz_cache/boltz1.ckpt",
                 "--devices", "1",
                 "--accelerator", "gpu",
                 "--output_format", "pdb",
@@ -83,8 +81,8 @@ data:
                 "--sampling_steps", "200",
                 "--no_kernels",
             ]
-            if use_msa_server:
-                cmd += ["--use_msa_server"]
+            # MSA server disabled — network-dependent, can cause hangs/crashes
+            # use_msa_server defaults to False
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
