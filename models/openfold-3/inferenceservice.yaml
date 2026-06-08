@@ -74,9 +74,15 @@ spec:
         volumeMounts:
           - name: nim-cache
             mountPath: /opt/nim/.cache
+          - name: shm
+            mountPath: /dev/shm
     imagePullSecrets:
       - name: ngc-registry-secret
     volumes:
       - name: nim-cache
         persistentVolumeClaim:
           claimName: openfold-3-nim-cache
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
