@@ -158,11 +158,18 @@ data:
         latlons = req.get("latlons", [[0.0, 0.0]] * pixels.shape[0])
 
         x = torch.tensor(pixels)
-        m = torch.tensor(months, dtype=torch.long).unsqueeze(0).expand(pixels.shape[0], -1)
+        # Per-band mask: True = observed, False = missing
+        mask = torch.ones_like(x, dtype=torch.bool)
+        month = torch.tensor(months, dtype=torch.long).unsqueeze(0).expand(pixels.shape[0], -1)
         ll = torch.tensor(latlons, dtype=torch.float32)
+        # DynamicWorld land cover classes: 9 = no data / unknown
+        dw = torch.full((pixels.shape[0], pixels.shape[1]), 9, dtype=torch.long)
 
         with torch.inference_mode():
-            embs = model(x, m, ll)
+            embs = model(x=x, mask=mask, latlons=ll, month=month, dynamic_world=dw)
+
+        if isinstance(embs, tuple):
+            embs = embs[0]
 
         return {
             "object": "list",
