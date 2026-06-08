@@ -1,0 +1,82 @@
+# OpenFold-3: Biomolecular complex structure prediction (protein/DNA/RNA/ligand)
+# NVIDIA NIM container — pre-built, Apache 2.0 license
+# Repo: github.com/aqlaboratory/openfold | NIM: nvcr.io/nim/openfold/openfold3
+# API: POST /biology/openfold/openfold3/predict
+#      Input: {"inputs": [{"input_id": "X", "molecules": [
+#               {"type": "protein", "id": "A", "sequence": "MKTAY..."},
+#               {"type": "dna", "id": "B", "sequence": "AGGAAC..."}]}]}
+#      Returns: PDB structure + confidence scores
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openfold-3-nim-cache
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: openfold-3
+  namespace: models
+  annotations:
+    serving.knative.dev/progress-deadline-seconds: "600"
+spec:
+  predictor:
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nim/openfold/openfold3:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+        readinessProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - name: nim-cache
+            mountPath: /opt/nim/.cache
+    imagePullSecrets:
+      - name: ngc-registry-secret
+    volumes:
+      - name: nim-cache
+        persistentVolumeClaim:
+          claimName: openfold-3-nim-cache

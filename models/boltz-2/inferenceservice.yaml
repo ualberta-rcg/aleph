@@ -9,7 +9,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: boltz-nim-cache
+  name: boltz-2-nim-cache
   namespace: models
 spec:
   accessModes: [ReadWriteMany]
@@ -21,7 +21,7 @@ spec:
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
-  name: boltz
+  name: boltz-2
   namespace: models
   annotations:
     serving.knative.dev/progress-deadline-seconds: "600"
@@ -41,7 +41,7 @@ spec:
             PIPELINE=/opt/nim/lib/boltz_assist/boltz_pipeline.py
             if grep -q 'pred_data\["confidence_score"\]' "$PIPELINE" 2>/dev/null; then
               echo "Patching confidence_score bug in NIM pipeline..."
-              sed -i 's/conf = pred_data\["confidence_score"\]/conf = pred_data.get("confidence_score", 0.0)/' "$PIPELINE"
+              sed -i 's/conf = pred_data\["confidence_score"\]/conf = pred_data.get("confidence_score", [0.0])/' "$PIPELINE"
               echo "Patch applied."
             else
               echo "Patch already applied or not needed."
@@ -69,7 +69,7 @@ spec:
             cpu: "8"
             memory: 32Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "20480"
+            nvidia.com/gpemem: "20480"
         readinessProbe:
           httpGet:
             path: /v1/health/ready
@@ -92,4 +92,4 @@ spec:
     volumes:
       - name: nim-cache
         persistentVolumeClaim:
-          claimName: boltz-nim-cache
+          claimName: boltz-2-nim-cache
