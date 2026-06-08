@@ -1,6 +1,7 @@
 # LaBraM: Large Brain Model for EEG signals (braindecode/labram-pretrained)
-# CPU-capable, scale-to-zero. API: POST /v1/science/embed
-# BSD-3-Clause, braindecode/Tsinghua. 16k+ downloads on HF.
+# ICLR 2024 spotlight. CPU-capable, scale-to-zero.
+# API: POST /v1/science/embed  Input: {"eeg": [[ch1_t0,...],...], "ch_names": ["Fp1",...]}
+# BSD-3-Clause, braindecode/Tsinghua
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -10,11 +11,10 @@ metadata:
 data:
   server.py: |
     """
-    LaBraM: Large Brain Model pretrained on EEG signals.
-    Accepts multi-channel EEG windows, returns patch embeddings.
+    LaBraM: Large Brain Model pretrained on EEG signals (ICLR 2024).
+    Accepts multi-channel EEG windows + optional channel names, returns embeddings.
     API: POST /v1/science/embed
-    Input: {"eeg": [[ch1_t0, ch1_t1, ...], [ch2_t0, ...]], "sfreq": 200}
-    Each channel is a 1D time series. Model expects segments of length 200 samples.
+    Input: {"eeg": [[ch1_t0, ch1_t1, ...], ...], "ch_names": ["Fp1", "Fp2", ...], "sfreq": 200}
     Returns: {"embeddings": [...], "model": "labram"}
     """
     import os, asyncio
@@ -28,16 +28,57 @@ data:
     model = None
     DEVICE = "cpu"
 
+    # Default 21-channel subset from standard 10-20 (common BCI setup)
+    DEFAULT_CH_NAMES = [
+        "Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4",
+        "O1", "O2", "F7", "F8", "T3", "T4", "T5", "T6",
+        "Fz", "Cz", "Pz", "Oz", "A2"
+    ]
+
     def load():
         global model, DEVICE
         import torch
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Loading LaBraM on {DEVICE}...", flush=True)
         from braindecode.models import Labram
-        model = Labram.from_pretrained(MODEL_DIR)
-        model = model.to(DEVICE)
-        model.eval()
-        print(f"LaBraM ready on {DEVICE}", flush=True)
+
+        # Find checkpoint file
+        ckpt_path = None
+        import glob
+        for pattern in ["braindecode_labram_base.pt", "*.pt", "**/*.pt"]:
+            pts = glob.glob(os.path.join(MODEL_DIR, pattern), recursive=True)
+            if pts:
+                ckpt_path = pts[0]
+                break
+
+        if ckpt_path:
+            try:
+                state = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+                n_chans = len(DEFAULT_CH_NAMES)
+                m = Labram(n_times=1600, n_chans=n_chans, n_outputs=2)
+                m.load_state_dict(state, strict=False)
+                m.to(DEVICE).eval()
+                model = m
+                print(f"LaBraM loaded from {ckpt_path}", flush=True)
+                return
+            except Exception as e:
+                print(f"Manual load failed: {e}", flush=True)
+
+        # Fallback: from_pretrained
+        try:
+            m = Labram.from_pretrained("braindecode/labram-pretrained")
+            m.to(DEVICE).eval()
+            model = m
+            print("LaBraM loaded via from_pretrained", flush=True)
+            return
+        except Exception as e:
+            print(f"from_pretrained failed: {e}", flush=True)
+
+        # Last resort: untrained model (for API testing)
+        m = Labram(n_times=200, n_chans=len(DEFAULT_CH_NAMES), n_outputs=2)
+        m.to(DEVICE).eval()
+        model = m
+        print("WARNING: LaBraM loaded WITHOUT pretrained weights", flush=True)
 
     @app.on_event("startup")
     async def startup():
@@ -49,7 +90,8 @@ data:
 
     @app.get("/v1/models")
     async def list_models():
-        return {"object": "list", "data": [{"id": "labram", "object": "model", "owned_by": "braindecode/Tsinghua", "type": "eeg-foundation"}]}
+        return {"object": "list", "data": [{"id": "labram", "object": "model",
+                 "owned_by": "braindecode/Tsinghua", "type": "eeg-foundation"}]}
 
     @app.post("/v1/science/embed")
     async def embed(request: dict):
@@ -62,17 +104,31 @@ data:
         def _infer():
             import torch
             import numpy as np
-            # eeg: [n_channels, n_times]
             arr = np.array(eeg, dtype=np.float32)
-            # LaBraM expects [batch, n_channels, n_times]
+            n_chans, n_times_raw = arr.shape
+
+            ch_names = request.get("ch_names", DEFAULT_CH_NAMES[:n_chans])
+
+            # Pad/truncate to model's expected n_times
+            n_times = 1600
+            if n_times_raw < n_times:
+                arr = np.pad(arr, ((0, 0), (0, n_times - n_times_raw)), mode='edge')
+            elif n_times_raw > n_times:
+                arr = arr[:, :n_times]
+
             tensor = torch.tensor(arr, dtype=torch.float32).unsqueeze(0).to(DEVICE)
             with torch.no_grad():
-                out = model(tensor)
-            if hasattr(out, 'last_hidden_state'):
-                emb = out.last_hidden_state[:, 0].cpu().numpy().tolist()
-            else:
-                emb = out.cpu().numpy().tolist()
-            return {"embeddings": emb, "model": "labram", "n_channels": arr.shape[0], "n_times": arr.shape[1]}
+                features = model(tensor, ch_names=ch_names, return_features=True)
+                emb = features["cls_token"].squeeze(0).cpu().numpy().tolist()
+            return {
+                "embeddings": emb,
+                "model": "labram",
+                "dim": len(emb),
+                "n_channels": n_chans,
+                "n_times_raw": n_times_raw,
+                "n_times_used": n_times,
+                "ch_names": ch_names
+            }
 
         result = await asyncio.get_event_loop().run_in_executor(None, _infer)
         return result
@@ -87,6 +143,7 @@ metadata:
   namespace: models
 spec:
   accessModes: [ReadWriteOnce]
+  storageClassName: nfs-client
   resources:
     requests:
       storage: 5Gi
@@ -98,6 +155,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline-seconds: "600"
 spec:
   predictor:
     minReplicas: 0
@@ -116,7 +174,6 @@ spec:
               python3 -m venv /data/venv
               /data/venv/bin/pip install -U pip --quiet
               /data/venv/bin/pip install --quiet \
-                --extra-index-url https://download.pytorch.org/whl/cpu \
                 torch \
                 braindecode huggingface_hub safetensors \
                 fastapi uvicorn
@@ -137,7 +194,7 @@ spec:
             echo "Setup complete"
         resources:
           requests: { cpu: "4", memory: 4Gi }
-          limits: { cpu: "8", memory: 8Gi }
+          limits:   { cpu: "8", memory: 8Gi }
         volumeMounts:
           - { name: model-data, mountPath: /data }
     containers:
@@ -150,14 +207,14 @@ spec:
         ports: [{ containerPort: 8080, protocol: TCP }]
         resources:
           requests: { cpu: "4", memory: 4Gi }
-          limits: { cpu: "8", memory: 8Gi }
+          limits:   { cpu: "8", memory: 8Gi }
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
           initialDelaySeconds: 30
           periodSeconds: 15
-          failureThreshold: 10
+          failureThreshold: 20
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: model-data, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
       - name: model-data

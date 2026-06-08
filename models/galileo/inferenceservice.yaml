@@ -35,31 +35,66 @@ data:
 
         import sys
         sys.path.insert(0, os.path.join(MODEL_DIR, "repo"))
+        sys.path.insert(0, os.path.join(MODEL_DIR, "repo", "src"))
 
-        # Try loading the base encoder (same API as presto-like NASA models)
-        ckpt_base = os.path.join(MODEL_DIR, "models/base/encoder.pt")
+        # Method 1: Use galileo package's load_pretrained
+        try:
+            from galileo import Galileo as GalileoModel
+            print("Galileo package imported, loading pretrained...", flush=True)
+            m = GalileoModel.load_pretrained()
+            m.eval()
+            model = m
+            print("Galileo loaded via package.", flush=True)
+            return
+        except Exception as e:
+            print(f"Package load failed ({e}), trying manual load...", flush=True)
+
+        # Method 2: Construct model from config + weights
+        import json, glob
+        ckpt_base = os.path.join(MODEL_DIR, "models", "base", "encoder.pt")
         if not os.path.exists(ckpt_base):
-            # Fall back to other available checkpoint
-            import glob
             pts = glob.glob(os.path.join(MODEL_DIR, "**", "encoder.pt"), recursive=True)
             ckpt_base = pts[0] if pts else None
 
-        if ckpt_base:
-            try:
-                from galileo import Galileo as GalileoModel
-                m = GalileoModel.load_pretrained(os.path.dirname(ckpt_base))
-                m.eval()
-                model = m
-                print("Galileo loaded.", flush=True)
+        if ckpt_base and os.path.exists(ckpt_base):
+            state = torch.load(ckpt_base, map_location="cpu", weights_only=False)
+            # If it's a full model (has forward), use directly
+            if hasattr(state, 'forward') and callable(state.forward):
+                state.eval()
+                model = state
+                print("Galileo loaded (full model from ckpt).", flush=True)
                 return
-            except Exception as e:
-                print(f"Warning: {e}", flush=True)
-
-        # Fallback: load as raw PyTorch
-        print("Loading Galileo as raw checkpoint...", flush=True)
-        state = torch.load(ckpt_base, map_location="cpu", weights_only=False)
-        model = state
-        print("Galileo loaded (raw).", flush=True)
+            # If it's a state_dict, need to build model architecture
+            if isinstance(state, dict):
+                print("Got state_dict, building model architecture...", flush=True)
+                # Import the model class from the repo
+                try:
+                    # Try importing from the cloned repo
+                    repo_init = os.path.join(MODEL_DIR, "repo", "src", "galileo", "__init__.py")
+                    if not os.path.exists(repo_init):
+                        repo_init = os.path.join(MODEL_DIR, "repo", "galileo", "__init__.py")
+                    spec_dir = os.path.dirname(repo_init)
+                    if spec_dir not in sys.path:
+                        sys.path.insert(0, os.path.dirname(spec_dir))
+                    from galileo.encoder import GalileoEncoder
+                    from galileo.config import GalileoConfig
+                    # Find config
+                    config_path = os.path.join(os.path.dirname(ckpt_base), "..", "config.json")
+                    if os.path.exists(config_path):
+                        with open(config_path) as f:
+                            cfg = GalileoConfig(**json.load(f))
+                    else:
+                        cfg = GalileoConfig()  # defaults
+                    m = GalileoEncoder(cfg)
+                    m.load_state_dict(state, strict=False)
+                    m.eval()
+                    model = m
+                    print("Galileo loaded (manual architecture).", flush=True)
+                    return
+                except Exception as e2:
+                    print(f"Manual architecture failed: {e2}", flush=True)
+            print(f"WARNING: Could not build model from {ckpt_base}", flush=True)
+        model = None
 
     @app.on_event("startup")
     async def startup():
@@ -124,6 +159,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline-seconds: "600"
 spec:
   predictor:
     minReplicas: 0
@@ -153,7 +189,7 @@ spec:
               /data/venv/bin/pip install -q \
                 "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
               /data/venv/bin/pip install -q \
-                numpy einops fastapi uvicorn huggingface_hub
+                numpy einops fastapi uvicorn huggingface_hub galileo
               echo "Venv ready."
             else
               echo "Venv exists."

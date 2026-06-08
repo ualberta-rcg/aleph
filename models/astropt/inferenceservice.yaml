@@ -33,20 +33,36 @@ data:
 
     app = FastAPI()
     model = None
+    galproc = None
     DEVICE = "cpu"
     MODEL_DIR = "/data"
 
     def load():
-        global model, DEVICE
+        global model, DEVICE, galproc
         import torch
+        from torchvision import transforms
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Loading AstroPT 095M on {DEVICE}...", flush=True)
         # Use the official load_astropt API — handles modality_registry, GPT config, etc.
         # HF_HOME=/tmp so it caches downloads there (writable)
         from astropt.model_utils import load_astropt
+        from astropt.local_datasets import GalaxyImageDataset
         m = load_astropt("Smith42/astroPT_v2.0", path="astropt/095M")
         m = m.to(DEVICE).eval()
         model = m
+        # Preprocessor: handles patchification (patch_size from modality_registry),
+        # per-patch normalisation, and spiral ordering.
+        def normalise(x):
+            std, mean = torch.std_mean(x, dim=1, keepdim=True)
+            return (x - mean) / (std + 1e-8)
+        def data_transforms():
+            return transforms.Compose([transforms.Lambda(normalise)])
+        galproc = GalaxyImageDataset(
+            None,
+            spiral=True,
+            transform={"images": data_transforms()},
+            modality_registry=model.modality_registry,
+        )
         print("AstroPT 095M ready.", flush=True)
 
     @app.on_event("startup")
@@ -78,8 +94,6 @@ data:
 
     def _embed(req):
         import torch, numpy as np
-        from torchvision import transforms
-        from functools import partial
 
         if req.get("demo"):
             return {
@@ -97,19 +111,15 @@ data:
         if img_np.ndim == 3 and img_np.shape[-1] == 3:
             # (H, W, 3) → (3, H, W)
             img_np = img_np.transpose(2, 0, 1)
-        tensor = torch.tensor(img_np, dtype=torch.float)
+        raw_galaxy = torch.tensor(img_np, dtype=torch.float)
 
-        # Normalize per-channel as astropt expects
-        def normalise(x):
-            std, mean = torch.std_mean(x, dim=1, keepdim=True)
-            return (x - mean) / (std + 1e-8)
-
-        transform = transforms.Compose([transforms.Lambda(normalise)])
-        tensor = transform(tensor.unsqueeze(0)).squeeze(0)  # (3, H, W)
-
-        positions = torch.arange(0, tensor.shape[0] * tensor.shape[1] // 16, dtype=torch.long)
+        # Use GalaxyImageDataset.process_galaxy for correct patchification:
+        # einops rearrange with patch_size from model's modality_registry,
+        # per-patch normalisation, and spiral ordering (spiral=True).
+        galaxy = galproc.process_galaxy(raw_galaxy)
+        positions = torch.arange(0, len(galaxy), dtype=torch.long)
         batch = {
-            "images": tensor.unsqueeze(0).to(DEVICE),
+            "images": galaxy.unsqueeze(0).to(DEVICE),
             "images_positions": positions.unsqueeze(0).to(DEVICE),
         }
 
@@ -157,7 +167,7 @@ spec:
             SENTINEL=/data/.astropt-ready-v1
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
             pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
-            pip install -q astropt huggingface_hub fastapi uvicorn
+            pip install -q astropt huggingface_hub fastapi uvicorn einops
             python3 -c "
             import os
             from huggingface_hub import snapshot_download
@@ -183,7 +193,7 @@ spec:
         args:
           - |
             pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
-            pip install -q astropt fastapi uvicorn
+            pip install -q astropt fastapi uvicorn einops
             python /app/server.py
         env:
           - { name: HF_HOME, value: /tmp }

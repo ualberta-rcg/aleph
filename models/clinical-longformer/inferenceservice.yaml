@@ -131,7 +131,7 @@ spec:
             if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi" 2>/dev/null; then
               python -m venv $VENV --clear
               $VENV/bin/pip install --quiet --upgrade pip
-              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cu126
               $VENV/bin/pip install --quiet transformers huggingface_hub fastapi uvicorn
               echo "Venv ready"
             else

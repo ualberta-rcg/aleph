@@ -97,13 +97,30 @@ data:
         if fmri is None:
             raise ValueError("fmri required: [n_rois=424, n_timepoints] time-series")
 
-        x = torch.tensor(np.array(fmri, dtype=np.float32)).to(DEVICE)
-        if x.dim() == 2:
-            x = x.unsqueeze(0)  # [1, n_rois, timepoints]
+        arr = np.array(fmri, dtype=np.float32)
+        if arr.ndim == 2:
+            arr = arr[np.newaxis]  # [1, n_rois, timepoints]
 
-        # Reshape for ViT: treat ROIs as sequence, each ROI as a "patch" feature
-        # ViT-MAE expects [batch, channels, H, W] or sequence format
-        # BrainLM uses ROI dimension as sequence
+        # BrainLM HF model is ViTMAEForPreTraining expecting [batch, 3, 434, 434] images.
+        # Convert fMRI [batch, 424_rois, timepoints] -> [batch, 3, 434, 434] image:
+        #   - Pad 424 -> 434 (add 10 zero rows for missing ROIs)
+        #   - Use timepoints as width, pad/truncate to 434
+        #   - Replicate across 3 channels (or zeros for unused channels)
+        batch, n_rois, n_tp = arr.shape
+        img_size = 434
+        img = np.zeros((batch, 3, img_size, img_size), dtype=np.float32)
+        roi_pad = min(n_rois, img_size)
+        tp_pad = min(n_tp, img_size)
+        # Channel 0: fMRI signal (ROIs × timepoints)
+        img[:, 0, :roi_pad, :tp_pad] = arr[:, :roi_pad, :tp_pad]
+        # Channel 1: spatial derivative (differences between adjacent ROIs)
+        if roi_pad > 1:
+            img[:, 1, :roi_pad-1, :tp_pad] = np.diff(arr[:, :roi_pad, :tp_pad], axis=1)
+        # Channel 2: temporal derivative (differences between adjacent timepoints)
+        if tp_pad > 1:
+            img[:, 2, :roi_pad, :tp_pad-1] = np.diff(arr[:, :roi_pad, :tp_pad], axis=2)
+
+        x = torch.tensor(img).to(DEVICE)
         with torch.inference_mode():
             outputs = model.vit(pixel_values=x, noise=None)
             embeddings = outputs.last_hidden_state[:, 0, :]  # CLS token
@@ -125,6 +142,7 @@ metadata:
   namespace: models
   annotations:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    serving.knative.dev/progress-deadline-seconds: "600"
 spec:
   predictor:
     minReplicas: 0
