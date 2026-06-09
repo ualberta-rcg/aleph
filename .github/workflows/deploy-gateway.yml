@@ -83,6 +83,21 @@ jobs:
           set -euo pipefail
           echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USER }}" --password-stdin
 
+      - name: Debug checkout
+        run: |
+          echo "=== GITHUB_SHA ==="
+          echo "${GITHUB_SHA}"
+          echo "=== gateway/app/gateway.py lines ==="
+          wc -l gateway/app/gateway.py
+          echo "=== gateway/app/gateway.py md5 ==="
+          md5sum gateway/app/gateway.py
+          echo "=== grep anthropic_unsupported ==="
+          grep -c 'anthropic_unsupported' gateway/app/gateway.py || echo "NOT FOUND"
+          echo "=== lines 988-1002 (anthropic handler) ==="
+          sed -n '988,1002p' gateway/app/gateway.py
+          echo "=== git log ==="
+          git log --oneline -3
+
       - name: Build Docker image
         run: |
           set -euo pipefail
