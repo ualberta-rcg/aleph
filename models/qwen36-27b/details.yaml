@@ -21,41 +21,64 @@ data:
         "upstream_model_id": null
       },
       "limits": {
-        "context_window": 32768
+        "context_window": 131072,
+        "max_completion_tokens": 32768
       },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
+        "cold_start_estimate": "4-5 minutes",
         "idle_retention": "15m"
       },
       "behavior": {
-        "supports_vision": false,
-        "supports_tools": false,
+        "supports_vision": true,
+        "supports_tools": true,
         "supports_system_prompt": true,
-        "reasoning_model": false
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "toggle",
+          "on": {},
+          "off": {
+            "chat_template_kwargs": {"enable_thinking": false}
+          },
+          "note": "Qwen3.6 thinks by default in vLLM (--reasoning-parser=qwen3). 'on' is empty so client params pass through. 'off' disables thinking."
+        }
       },
       "defaults": {
         "chat": {
           "temperature": 0.7,
-          "max_tokens": 8192
+          "max_tokens": 32768,
+          "thinking": {"enabled": true}
+        },
+        "meta_tasks": {
+          "title": {"max_tokens": 80, "thinking": {"enabled": false}},
+          "tags": {"max_tokens": 60, "thinking": {"enabled": false}},
+          "followups": {"max_tokens": 220, "thinking": {"enabled": false}}
         }
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Qwen3.6-27B dense, novel Gated-DeltaNet hybrid arch (needs newer vLLM).",
-        "description": "Qwen3.6-27B dense, novel Gated-DeltaNet hybrid arch (needs newer vLLM).",
+        "description_short": "Qwen3.6-27B: Gated-DeltaNet hybrid, thinking mode, tool calling, vision, 131K context.",
+        "description": "Qwen3.6-27B dense model with novel Gated-DeltaNet hybrid architecture. Supports thinking/reasoning mode (on by default), agentic tool calling (qwen3_coder parser), vision (images + video), and 131K context window. Requires vLLM >= 0.19.0.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen3.6-27B",
         "source_url": "https://huggingface.co/Qwen/Qwen3.6-27B",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",
-        "parameters": "TP2",
+        "parameters": "27B dense, TP2",
         "tags": [
           "chat",
           "llm",
+          "reasoning",
+          "tool-calling",
+          "vision",
+          "multimodal",
           "novel-arch",
-          "multimodal"
+          "agentic"
         ]
       }
     }
