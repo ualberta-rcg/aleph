@@ -150,6 +150,8 @@ See `phi-4-reasoning/details.yaml` for the full `param_translation.thinking` blo
 
 For models with a custom FastAPI/Flask server (not vLLM). Biology, chemistry, weather, physics, etc.
 
+### Shell (copy and fill in)
+
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -208,19 +210,8 @@ data:
       "subdomain": "CHANGEME (molecular-docking, forecasting, etc.)",
       "tags": ["science", "CHANGEME-domain-tags", "gpu"],
       "content_types": ["application/json"],
-      "input_map": {
-        "CHANGEME-param": {
-          "type": "string",
-          "required": true,
-          "description": "What this input is"
-        }
-      },
-      "output_map": {
-        "CHANGEME-field": {
-          "type": "CHANGEME",
-          "description": "What this output means"
-        }
-      },
+      "input_map": {SEE INPUT_MAP PATTERNS BELOW},
+      "output_map": {SEE OUTPUT_MAP PATTERNS BELOW},
       "server_config": {
         "port": 8080,
         "health_path": "/health",
@@ -235,6 +226,183 @@ data:
 - `type` should match the gateway endpoint pattern: `predict`, `forecast`, `dock`, `embed`, `segment`, `classify`, `design`, `generate`, `detect`, `translate`, `3d`, `depth`, `tts`, `audio-classification`, etc.
 - `gpu_type` is `"L40S"` for whole-device or `"L40S-SHARED"` for HAMi vGPU split.
 - `venv: true` if the init container builds a Python venv on PVC (common for science models with complex deps).
+
+### input_map / output_map patterns
+
+Science models have wildly different I/O. **The input_map must document exactly what the server's POST body expects**, and output_map must document what it returns. There is no single schema — match the pattern to the model's actual FastAPI server code.
+
+Here are the 5 real patterns used on this cluster. Pick the one that matches your model:
+
+#### Pattern 1 — Typed params with required/optional (most common)
+
+Used by: diffdock, ligandmpnn, seisbench, esmfold, most prediction models.
+
+```json
+"input_map": {
+  "protein_pdb": {
+    "type": "string",
+    "required": true,
+    "description": "Protein structure in PDB format"
+  },
+  "ligand_smiles": {
+    "type": "string",
+    "required": true,
+    "description": "Ligand as SMILES string (e.g. CC(=O)Oc1ccccc1C(=O)O)"
+  },
+  "num_poses": {
+    "type": "integer",
+    "required": false,
+    "default": 10,
+    "description": "Number of docked poses to generate"
+  },
+  "inference_steps": {
+    "type": "integer",
+    "required": false,
+    "default": 20,
+    "description": "Number of diffusion inference steps"
+  }
+},
+"output_map": {
+  "model": {"type": "string", "description": "Model name"},
+  "poses": {"type": "array", "description": "Ranked poses with rank, confidence, and SDF content"}
+}
+```
+
+#### Pattern 2 — Nested objects with description strings (weather/climate)
+
+Used by: aurora, graphcast, pangu-weather, climax, neuralgcm.
+
+```json
+"input_map": {
+  "surf_vars": {
+    "2t": "2m temperature (K), shape [lat, lon]",
+    "10u": "10m u-wind (m/s), shape [lat, lon]",
+    "msl": "mean sea-level pressure (Pa), shape [lat, lon]"
+  },
+  "atmos_vars": {
+    "t": "temperature at pressure levels, shape [level, lat, lon]",
+    "z": "geopotential at pressure levels, shape [level, lat, lon]"
+  },
+  "lat": "[90, ..., -90] float array",
+  "lon": "[0, ..., 359.75] float array",
+  "time": "ISO datetime string e.g. 2024-01-01T00:00:00",
+  "atmos_levels": "[50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]"
+},
+"output_map": {
+  "surf_vars": "same structure as input, 6h ahead",
+  "atmos_vars": "same structure as input, 6h ahead",
+  "step": "6h"
+}
+```
+
+#### Pattern 3 — Crystal/material structure (chemistry, physics)
+
+Used by: chgnet, mace-mp, mace-mp-0, mace-mh-1, mattersim.
+
+```json
+"input_map": {
+  "structure": {
+    "elements": "array of element symbols e.g. [\"Li\", \"Fe\", \"P\", \"O\"]",
+    "positions": "array of [x,y,z] positions in Angstroms",
+    "cell": "3x3 cell vectors",
+    "pbc": "[bool, bool, bool] periodic boundary conditions"
+  }
+},
+"output_map": {
+  "energy_eV": "total potential energy in eV",
+  "forces_eV_A": "per-atom forces in eV/Angstrom",
+  "stress_eV_A3": "Voigt stress tensor"
+}
+```
+
+For structure prediction/relaxation, add a second input mode:
+
+```json
+"input_map": {
+  "predict": {
+    "structure": "same as above, single-point energy prediction"
+  },
+  "relax": {
+    "structure": "same as above, runs geometry optimization",
+    "fmax": "force convergence threshold in eV/A (default: 0.1)",
+    "steps": "max relaxation steps (default: 300)"
+  }
+}
+```
+
+#### Pattern 4 — Binary/image inputs (vision, 3D reconstruction)
+
+Used by: dust3r, mast3r, medsam, totalsegmentator, depth-anything.
+
+```json
+"input_map": {
+  "images": "array of 2+ base64-encoded JPEG/PNG images",
+  "output_format": "\"pointcloud\" (default) or \"depth\""
+},
+"output_map": {
+  "pointclouds": [
+    {"pts3d": "[[x,y,z], ...]", "confidence": "[float, ...]"}
+  ],
+  "model": "dust3r"
+}
+```
+
+For medical segmentation (totalsegmentator, medsam):
+
+```json
+"input_map": {
+  "ct_array": "3D numpy array shape [D, H, W] in Hounsfield Unit values",
+  "spacing": "voxel spacing in mm [z, y, x] (default: [1.5, 1.5, 1.5])",
+  "fast": "boolean, use fast mode (default: true)"
+},
+"output_map": {
+  "segmentation": "3D label array with integer labels for 117 structures",
+  "structures": "list of anatomical structure names found"
+}
+```
+
+#### Pattern 5 — Text/sequence input (restoration, classification, generation)
+
+Used by: ithaca, climberbert, finbert, scgpt, most text-based science models.
+
+```json
+"input_map": {
+  "text": {
+    "type": "string",
+    "required": true,
+    "description": "Ancient Greek text with ? for missing characters (50-750 chars, uppercase)"
+  },
+  "demo": {
+    "type": "boolean",
+    "required": false,
+    "default": true,
+    "description": "Use demo input instead of custom text"
+  }
+},
+"output_map": {
+  "restoration": "restored text with predictions for gaps",
+  "date": "attributed date range (mean ± std)",
+  "location": "attributed geographic region"
+}
+```
+
+### server_config patterns for science models
+
+Science models often have more complex server configs than LLMs. Add what applies:
+
+```json
+"server_config": {
+  "port": 8080,
+  "health_path": "/health",
+  "model_path": "/data/model",
+  "checkpoint": "CHANGEME.ckpt (if model loads a specific checkpoint file)",
+  "inference_backend": "subprocess / torch / onnx / jax (how inference runs)",
+  "venv_path": "/data/venv (if using PVC-cached venv)",
+  "pip_note": "any special pip install steps done by init container",
+  "dependencies": "key Python packages and versions",
+  "esm2_cache": "/data/hf_cache (if model uses ESM-2 embeddings)"
+}
+```
 
 ---
 
