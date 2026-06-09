@@ -33,7 +33,7 @@ The gateway speaks four API formats depending on the endpoint:
 
 ### OpenAI vs Anthropic field mapping
 
-The gateway translates between OpenAI and Anthropic formats in `anthropic_xlate.py`. Here are the key differences:
+The gateway translates between OpenAI and Anthropic formats inline in `gateway.py` (functions prefixed `anth_`). Here are the key differences:
 
 | Concept | OpenAI (`/v1/chat/completions`) | Anthropic (`/v1/messages`) | Translation |
 |---|---|---|---|
@@ -170,8 +170,7 @@ sudo ssh root@172.26.92.230 "kubectl rollout restart deploy/model-gateway -n mod
 
 | File | Purpose |
 |---|---|
-| `app/gateway.py` | Main FastAPI app: discovery, routing, endpoints, scale-to-zero |
-| `app/anthropic_xlate.py` | Anthropic ↔ OpenAI request/response translation |
+| `app/gateway.py` | Main FastAPI app: discovery, routing, endpoints, Anthropic translation, scale-to-zero |
 | `cards/*.yaml` | Gateway-side model cards (most live in per-model dirs) |
 | `k8s/deployment.yaml` | Gateway Deployment (runs on control-plane, no GPUs) |
 | `k8s/rbac.yaml` | ServiceAccount + RBAC for ConfigMap/ISVC reads |
@@ -184,7 +183,7 @@ sudo ssh root@172.26.92.230 "kubectl rollout restart deploy/model-gateway -n mod
 
 LiteLLM normalizes 100+ LLM provider APIs into one interface. We considered it but decided against it:
 
-1. **We already translate** — `anthropic_xlate.py` handles Anthropic↔OpenAI, which is the only translation we need
+1. **We already translate** — the Anthropic↔OpenAI translation is built into `gateway.py`, which is the only translation we need
 2. **LiteLLM doesn't do K8s** — It can't discover models from ConfigMaps, handle scale-to-zero, apply per-card thinking defaults, gate tool support, or track resource usage
 3. **All models are on-cluster** — LiteLLM shines when routing to cloud APIs (Bedrock, Azure, Vertex). Our models run locally via vLLM or custom servers
 4. **Extra hop** — Adding LiteLLM means client → gateway → LiteLLM → vLLM. More latency, more failure modes

@@ -17,8 +17,7 @@ Full architecture and API docs: see `gateway/README.md`
 
 ## Key files
 
-- `app/gateway.py` — primary request handling and forwarding
-- `app/anthropic_xlate.py` — Anthropic <-> OpenAI translation layer
+- `app/gateway.py` — primary request handling, forwarding, and Anthropic<->OpenAI translation (single-file)
 - `cards/*.yaml` — gateway-facing model card metadata (most live in per-model dirs)
 - `k8s/deployment.yaml` — gateway Deployment (runs on control-plane, no GPUs)
 - `tyk/*.json` + `tyk/tyk-keys.sh` — Tyk API definitions and key helpers
