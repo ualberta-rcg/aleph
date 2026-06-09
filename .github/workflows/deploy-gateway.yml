@@ -86,7 +86,7 @@ jobs:
       - name: Build Docker image
         run: |
           set -euo pipefail
-          docker build \
+          docker build --no-cache \
             -t "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" \
             -t "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}" \
             gateway
