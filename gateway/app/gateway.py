@@ -981,13 +981,6 @@ async def anthropic_messages(request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
-    if not info["ready"]:
-        return JSONResponse(
-            {"error": {"message": f"model '{model_id}' not ready",
-                       "code": "model_not_ready"}}, 503)
-    if a_body.get("tools") and not _supports_tools(info):
-        _METRICS["requests_error"] += 1
-        return _tools_unsupported_error(model_id)
     if info["type"] not in ("chat",):
         _METRICS["requests_error"] += 1
         return JSONResponse(
@@ -998,6 +991,13 @@ async def anthropic_messages(request: Request):
                 "type": "invalid_request_error",
                 "code": "anthropic_unsupported",
             }}, 400)
+    if not info["ready"]:
+        return JSONResponse(
+            {"error": {"message": f"model '{model_id}' not ready",
+                       "code": "model_not_ready"}}, 503)
+    if a_body.get("tools") and not _supports_tools(info):
+        _METRICS["requests_error"] += 1
+        return _tools_unsupported_error(model_id)
     cold = await cold_start_guard(info)
     if cold is not None:
         return cold
