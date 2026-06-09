@@ -39,19 +39,24 @@ data:
       },
       "param_translation": {
         "thinking": {
-          "mode": "toggle",
-          "on": {},
-          "off": {
-            "chat_template_kwargs": {"enable_thinking": false}
+          "mode": "effort",
+          "default_effort": "medium",
+          "effort_aliases": {
+            "none": "none", "minimal": "none", "disabled": "none",
+            "low": "none",
+            "medium": "medium", "med": "medium",
+            "high": "high", "xhigh": "high", "max": "high"
           },
-          "note": "Qwen3.6 thinks by default in vLLM (--reasoning-parser=qwen3). 'on' is empty so client params pass through. 'off' disables thinking."
+          "on":  {"chat_template_kwargs": {"enable_thinking": true}},
+          "off": {"chat_template_kwargs": {"enable_thinking": false}},
+          "note": "Qwen3.6 thinking is binary. Maps reasoning_effort: none/low -> off, medium/high/max -> on."
         }
       },
       "defaults": {
         "chat": {
           "temperature": 0.7,
           "max_tokens": 32768,
-          "thinking": {"enabled": true}
+          "thinking": {"enabled": true, "effort": "medium"}
         },
         "meta_tasks": {
           "title": {"max_tokens": 80, "thinking": {"enabled": false}},
