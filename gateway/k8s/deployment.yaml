@@ -34,7 +34,7 @@ spec:
       # deployment.yaml or override at deploy time: GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha>
       containers:
         - name: gateway
-          image: rkhoja/aleph:gateway-2499cb0
+          image: rkhoja/aleph:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
