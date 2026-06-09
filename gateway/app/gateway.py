@@ -988,6 +988,16 @@ async def anthropic_messages(request: Request):
     if a_body.get("tools") and not _supports_tools(info):
         _METRICS["requests_error"] += 1
         return _tools_unsupported_error(model_id)
+    if info["type"] not in ("chat",):
+        _METRICS["requests_error"] += 1
+        return JSONResponse(
+            {"error": {
+                "message": (f"model '{model_id}' does not support the Anthropic Messages API "
+                            f"(type={info['type']}). Use /v1/chat/completions or a model-specific "
+                            f"endpoint instead."),
+                "type": "invalid_request_error",
+                "code": "anthropic_unsupported",
+            }}, 400)
     cold = await cold_start_guard(info)
     if cold is not None:
         return cold

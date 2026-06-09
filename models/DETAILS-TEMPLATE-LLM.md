@@ -83,6 +83,34 @@ data:
         "needs_json_fixing": false,
         "strips_thinking": false
       },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "limits": {
+        "context_window": CHANGEME,
+        "max_completion_tokens": CHANGEME
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "cold_start_estimate": "CHANGEME (e.g. 2-5 minutes)"
+      },
+      "defaults": {
+        "chat": {
+          "temperature": CHANGEME,
+          "max_tokens": CHANGEME,
+          "thinking": {"enabled": true, "effort": "medium"}
+        },
+        "meta_tasks": {
+          "title": {"max_tokens": 80, "thinking": {"effort": "none"}},
+          "tags": {"max_tokens": 60, "thinking": {"effort": "none"}},
+          "followups": {"max_tokens": 220, "thinking": {"effort": "none"}}
+        }
+      },
       "domain": "nlp",
       "subdomain": "large-language-model",
       "tags": ["chat", "llm", "CHANGEME-extra-tags"],
@@ -143,6 +171,50 @@ See `phi-4-reasoning/details.yaml` for the full `param_translation.thinking` blo
 **Always set `"shared_memory": "16Gi"` for TP≥2.**
 
 **Whole-device GPU (TP≥2)** — do NOT use `nvidia.com/gpumem`. Use `nvidia.com/gpu: "N"`.
+
+**Reasoning model (thinking/effort mapping)** — add `param_translation.thinking` block:
+```json
+"param_translation": {
+  "thinking": {
+    "mode": "budget",
+    "budget_support": true,
+    "answer_reserve": 512,
+    "default_effort": "medium",
+    "disabled_effort": "none",
+    "effort_aliases": {
+      "none": "none", "minimal": "none", "disabled": "none",
+      "low": "low", "medium": "medium", "med": "medium",
+      "high": "high", "xhigh": "xhigh", "max": "max"
+    },
+    "effort_map": {
+      "none":  {"thinking_token_budget": 0},
+      "low":   {"thinking_token_budget": 1024},
+      "medium":{"thinking_token_budget": 4096},
+      "high":  {"thinking_token_budget": 12288},
+      "xhigh": {"thinking_token_budget": 24576},
+      "max":   {"thinking_token_budget": null}
+    },
+    "note": "Maps effort levels to vLLM thinking_token_budget"
+  }
+}
+```
+
+The `mode` can be `"budget"` (vLLM thinking_token_budget), `"effort"` (direct reasoning_effort passthrough), `"toggle"` (inject params on/off), or `"none"` (no thinking support). See `phi-4-reasoning/details.yaml` for a full working example.
+
+### Field mapping: behavior vs compatibility
+
+**Important:** The gateway reads `behavior.*` (not `compatibility.*`) for feature gating. Both sections exist in some cards — here's which to use:
+
+| Gateway reads this | Some cards use this instead | What to do |
+|---|---|---|
+| `behavior.supports_tools` | `compatibility.supports_tools` | Use `behavior` |
+| `behavior.strips_thinking` | `compatibility.strips_thinking` | Use `behavior` |
+| `behavior.reasoning_model` | `compatibility.reasoning_model` | Use `behavior` |
+| `behavior.supports_vision` | `compatibility.supports_vision` | Use `behavior` |
+| `limits.context_window` | `context_window` (top-level) | Gateway reads `limits` first, falls back to top-level |
+| `limits.max_completion_tokens` | `max_completion_tokens` (top-level) | Gateway reads `limits` first, falls back to top-level |
+
+When in doubt, include **both** — the gateway handles both paths. But `behavior` is the canonical gateway-facing location.
 
 ---
 
