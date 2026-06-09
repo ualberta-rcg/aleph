@@ -106,6 +106,15 @@ jobs:
             -t "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.STABLE_TAG }}" \
             gateway
 
+      - name: Verify image contents
+        run: |
+          echo "=== Image gateway.py lines ==="
+          docker run --rm "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" wc -l /app/gateway.py
+          echo "=== Image gateway.py md5 ==="
+          docker run --rm "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" md5sum /app/gateway.py
+          echo "=== Image grep anthropic_unsupported ==="
+          docker run --rm "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" grep -c anthropic_unsupported /app/gateway.py || echo "NOT FOUND"
+
       - name: Push image to DockerHub
         run: |
           set -euo pipefail
