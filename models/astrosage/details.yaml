@@ -9,80 +9,66 @@ data:
   details.json: |
     {
       "id": "astrosage",
-      "status": "production",
       "type": "chat",
-      "description_short": "AstroSage-8B, astronomy/astrophysics LLM",
-      "description": "AstroSage-8B — Llama-3.1-8B fine-tuned on 250K+ arXiv astronomy papers (2007-2024) and 8.8M QA pairs. Achieves GPT-4o-level performance (80.9%) on astronomy benchmarks. Expert at astrophysics Q&A, observation planning, literature review, and data analysis. Uses custom FastAPI server (not vLLM). 1x shared L40S GPU.",
-      "context_window": 8192,
-      "max_completion_tokens": 8192,
       "endpoints": {
         "primary": "/v1/chat/completions",
         "health": "/health"
       },
-      "owned_by": "astroMLab",
-      "source": "AstroMLab/AstroSage-8B",
-      "source_url": "https://huggingface.co/AstroMLab/AstroSage-8B",
-      "license": "Llama-3.1-Community-License",
-      "parameters": "8B",
-      "parameter_count": 8000000000,
-      "precision": "bfloat16",
-      "architecture": "llama-3.1",
-      "framework": "transformers-custom",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 1,
-        "startup_seconds": 300,
-        "container_image": "python:3.11-slim",
-        "served_model_name": "astrosage",
-        "node": "rack15-03 (shared GPU)",
-        "timeout": 300
-      },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "astrosage",
         "serialize": false,
-        "no_stream": false,
-        "deployment_mode": "Knative"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": {
+        "context_window": 8192,
+        "max_completion_tokens": 8000
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "cold_start_estimate": "2-4 minutes (custom server, 8B transformers)",
+        "idle_retention": "15m"
+      },
+      "behavior": {
         "supports_vision": false,
-        "supports_video": false,
         "supports_tools": false,
         "supports_system_prompt": true,
+        "supports_streaming": false,
         "reasoning_model": false,
-        "needs_json_fixing": false,
         "strips_thinking": false
       },
-      "domain": "science",
-      "subdomain": "astronomy",
-      "tags": ["science", "astronomy", "astrophysics", "chat", "llm", "gpu"],
-      "content_types": ["text"],
-      "languages": ["english"],
-      "tier": "production",
-      "input_map": {
-        "messages": {
-          "type": "array",
-          "items": {"role": "string", "content": "string"},
-          "required": true,
-          "description": "Chat messages in OpenAI format."
-        },
-        "max_tokens": {"type": "integer", "default": 512, "max": 8192, "description": "Maximum tokens to generate"},
-        "temperature": {"type": "float", "default": 0.7}
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "max_tokens": 512
+        }
       },
-      "output_map": {
-        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
-        "usage": {}
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "AstroSage-8B astronomy LLM. Beats GPT-4o on astro benchmarks (80.9%).",
+        "description": "AstroSage-Llama-3.1-8B is an 8B parameter astronomy/astrophysics LLM from AstroMLab. Based on Meta-Llama-3.1-8B, fine-tuned via continued pre-training on 250K+ arXiv astronomy papers (2007-2024, 3.3B tokens) and supervised fine-tuning on 8.8M QA pairs (2B tokens). Model merged with Meta-Llama-3.1-8B-Instruct (75/25 split). Achieves 80.9% on astronomy benchmarks, surpassing GPT-4o (80.4%). Trained on ORNL Frontier supercomputer. Custom FastAPI server using transformers library (not vLLM). No streaming support. English only. Llama 3.1 Community License.",
+        "owned_by": "astroMLab",
+        "source": "AstroMLab/AstroSage-8B",
+        "source_url": "https://huggingface.co/AstroMLab/AstroSage-8B",
+        "framework": "transformers-custom",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "parameters": "8B",
+        "tags": [
+          "chat",
+          "llm",
+          "astronomy",
+          "astrophysics",
+          "science"
+        ]
       },
       "server_config": {
-        "cli_args": [],
-        "model_path": "/data/model",
-        "weight_files": ["*.safetensors"],
-        "venv": "/data/venv",
-        "server_file": "/app/server.py",
-        "framework": "transformers (AutoModelForCausalLM + text-generation pipeline)",
-        "custom_server": true
+        "note": "Custom FastAPI server (server.py ConfigMap) using transformers AutoModelForCausalLM + text-generation pipeline. NOT vLLM. Shared GPU via HAMi vGPU slice (nvidia.com/gpumem: 16384). Venv on PVC (/data/venv). No streaming support (no_stream: true in card). Health endpoint: /health. Also has /v1/models endpoint."
       }
     }
