@@ -21,41 +21,56 @@ data:
         "upstream_model_id": null
       },
       "limits": {
-        "context_window": 8192
+        "context_window": 8192,
+        "max_completion_tokens": 8000
       },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
+        "cold_start_estimate": "3-5 minutes (TP4, 70B)",
         "idle_retention": "15m"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": false,
         "supports_system_prompt": true,
-        "reasoning_model": false
+        "supports_streaming": true,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
       "defaults": {
         "chat": {
-          "temperature": 0.7,
-          "max_tokens": 8192
+          "temperature": 0.3,
+          "max_tokens": 4096
+        }
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
         }
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Llama3-OpenBioLLM-70B biomedical fine-tune. Strong on bio benchmarks.",
-        "description": "Llama3-OpenBioLLM-70B biomedical fine-tune. Strong on bio benchmarks.",
+        "description_short": "Llama3-OpenBioLLM-70B biomedical fine-tune. SOTA on 9 medical benchmarks (86% avg).",
+        "description": "Llama3-OpenBioLLM-70B is a 70B parameter biomedical domain model fine-tuned from Meta-Llama-3-70B-Instruct using DPO and QLoRA (r=128, alpha=256). Trained on a custom medical instruction dataset on 8x H100 GPUs. Achieves 86.06% average across 9 biomedical benchmarks (MedQA, PubMedQA, Clinical KG, Medical Genetics, etc.), outperforming GPT-4 and Med-PaLM-2. Excels at clinical entity recognition, medical text summarization, biomarker extraction, disease classification, and PII de-identification. Uses Llama-3 instruct chat template. No reasoning mode, no tool calling, no vision. Context: 8192 tokens.",
         "owned_by": "Saama",
         "source": "aaditya/Llama3-OpenBioLLM-70B",
         "source_url": "https://huggingface.co/aaditya/Llama3-OpenBioLLM-70B",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",
-        "parameters": "TP4",
+        "parameters": "70B",
         "tags": [
           "chat",
           "llm",
           "biomedical",
-          "science"
+          "medical",
+          "science",
+          "dpo",
+          "qlora"
         ]
+      },
+      "server_config": {
+        "note": "vLLM v0.20.2, TP4 (4x L40S). --disable-custom-all-reduce for L40S NODE topology. VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 required for SM89. No --reasoning-parser or --tool-call-parser. Recommended temperature 0.0 for less verbosity (card default 0.3 for flexibility)."
       }
     }
