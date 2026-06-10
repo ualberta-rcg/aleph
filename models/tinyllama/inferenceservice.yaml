@@ -55,8 +55,8 @@ spec:
             mountPath: /mnt/models
     containers:
       - name: kserve-container
-        image: ghcr.io/abetlen/llama-cpp-python@sha256:8528cd3c39357e4138a4fd80f17449b6617206e56f0397016c5cb536f89a87d8
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/abetlen/llama-cpp-python:latest
+        imagePullPolicy: Always
         workingDir: /
         command:
           - python3

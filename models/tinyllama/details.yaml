@@ -10,74 +10,61 @@ data:
     {
       "id": "tinyllama-1.1b",
       "type": "chat",
-      "description_short": "TinyLlama 1.1B GGUF Q4_K_M, CPU inference via llama.cpp",
-      "description": "TinyLlama 1.1B Chat v1.0 quantized to GGUF Q4_K_M (0.67 GB). Pretrained on 3 trillion tokens, fine-tuned with Zephyr recipe (UltraChat + DPO on UltraFeedback). Same architecture and tokenizer as Llama 2. Runs on CPU via llama-cpp-python server. Single-threaded, no streaming. Good for quick tests and simple tasks.",
-      "context_window": 4096,
-      "max_completion_tokens": 1800,
       "endpoints": {
         "primary": "/v1/chat/completions",
         "health": "/v1/models"
       },
-      "owned_by": "TinyLlama",
-      "source": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
-      "source_url": "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
-      "original_source": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-      "license": "Apache-2.0",
-      "parameters": "1.1B",
-      "parameter_count": 1100000000,
-      "precision": "gguf-q4-km",
-      "architecture": "llama",
-      "framework": "llama.cpp",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "min_replicas": 1,
-        "max_replicas": 1,
-        "startup_seconds": 30,
-        "container_image": "ghcr.io/abetlen/llama-cpp-python@sha256:8528cd3c39357e4138a4fd80f17449b6617206e56f0397016c5cb536f89a87d8",
-        "always_on": true,
-        "node_selector": "NVIDIA-L40S-SHARED",
-        "timeout": 600
-      },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "tinyllama",
         "serialize": true,
         "no_stream": true,
-        "k8s_name": "tinyllama",
-        "served_model_alias": "tinyllama-1.1b"
+        "upstream_model_id": "tinyllama-1.1b"
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": {
+        "context_window": 4096,
+        "max_completion_tokens": 1800
+      },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "cold_start_estimate": "30 seconds",
+        "idle_retention": "always-on"
+      },
+      "behavior": {
         "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
         "reasoning_model": false,
+        "strips_thinking": false,
+        "supports_streaming": false,
         "needs_json_fixing": true
       },
-      "domain": "nlp",
-      "subdomain": "small-language-model",
-      "tags": ["chat", "llm", "cpu", "small", "gguf"],
-      "content_types": ["text"],
-      "languages": ["en"],
-      "tier": "production",
-      "input_map": {
-        "messages": {
-          "type": "array",
-          "items": {"role": "string", "content": "string"},
-          "required": true,
-          "description": "Chat messages in OpenAI format. Uses Zephyr prompt template."
-        },
-        "max_tokens": {"type": "integer", "default": 512, "max": 1800, "description": "Max tokens to generate (leave room for prompt in 4096 context)"},
-        "temperature": {"type": "float", "default": 0.7, "description": "HF recommends 0.7"},
-        "repeat_penalty": {"type": "float", "default": 1.1, "description": "HF recommends 1.1"}
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "max_tokens": 512
+        }
       },
-      "output_map": {
-        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
-        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "TinyLlama 1.1B GGUF Q4_K_M, CPU inference via llama.cpp",
+        "description": "TinyLlama 1.1B Chat v1.0 quantized to GGUF Q4_K_M (0.67 GB). Pretrained on 3 trillion tokens, fine-tuned with Zephyr recipe (UltraChat + DPO on UltraFeedback). Same architecture and tokenizer as Llama 2. Runs on CPU via llama-cpp-python server. No streaming support. Good for quick tests and simple tasks.",
+        "owned_by": "TinyLlama",
+        "source": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+        "source_url": "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+        "original_source": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "framework": "llama.cpp",
+        "domain": "nlp",
+        "subdomain": "small-language-model",
+        "parameters": "1.1B",
+        "tags": ["chat", "llm", "cpu", "small", "gguf"]
       },
       "server_config": {
         "inference_backend": "llama.cpp",
-        "cli_args": ["--model=/mnt/models/cpu-models/tinyllama/model.gguf", "--host=0.0.0.0", "--port=8080", "--n_ctx=4096", "--n_threads=8", "--n_threads_batch=8", "--model_alias=tinyllama-1.1b"],
+        "container_image": "ghcr.io/abetlen/llama-cpp-python@sha256:8528cd3c39357e4138a4fd80f17449b6617206e56f0397016c5cb536f89a87d8",
         "gguf_quantization": "Q4_K_M",
         "gguf_file_size": "0.67 GB",
-        "prompt_template": "zephyr"
+        "prompt_template": "zephyr",
+        "note": "CPU-only inference. llama-cpp-python server does not support streaming. No reasoning, no tools, no vision."
       }
     }
