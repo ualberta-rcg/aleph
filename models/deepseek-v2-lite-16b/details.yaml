@@ -9,78 +9,54 @@ data:
   details.json: |
     {
       "id": "deepseek-v2-lite-16b",
-      "status": "production",
       "type": "chat",
-      "description_short": "DeepSeek V2 Lite 16B MoE (2.4B active), MLA attention",
-      "description": "DeepSeek V2 Lite 16B MoE Chat — 15.7B total params, 2.4B active per token. Uses innovative Multi-head Latent Attention (MLA) for efficient KV cache compression and DeepSeekMoE (2 shared + 64 routed experts, 6 activated). Strong reasoning, 24K context. 1x L40S GPU.",
-      "context_window": 24000,
-      "max_completion_tokens": 8000,
       "endpoints": {
         "primary": "/v1/chat/completions",
         "health": "/v1/models"
       },
-      "owned_by": "deepseek-ai",
-      "source": "deepseek-ai/DeepSeek-V2-Lite-Chat",
-      "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite-Chat",
-      "license": "MIT (code), Model License (weights)",
-      "parameters": "16B MoE (2.4B active)",
-      "parameter_count": 15700000000,
-      "precision": "bfloat16",
-      "architecture": "deepseek-v2-moe",
-      "framework": "vllm",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S",
-        "min_replicas": 1,
-        "max_replicas": 1,
-        "startup_seconds": 180,
-        "container_image": "vllm/vllm-openai:v0.7.2",
-        "served_model_name": "deepseek-v2-lite-16b",
-        "node": "any-L40S",
-        "timeout": 600
-      },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "deepseek-v2-lite-16b",
         "serialize": false,
         "no_stream": false,
-        "deployment_mode": "Knative"
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": true,
+      "limits": {
+        "context_window": 8192,
+        "max_completion_tokens": 8000
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "cold_start_estimate": "2-3 minutes",
+        "idle_retention": "15m"
+      },
+      "behavior": {
         "supports_vision": false,
-        "supports_video": false,
         "supports_tools": false,
         "supports_system_prompt": true,
         "reasoning_model": false,
-        "needs_json_fixing": false,
         "strips_thinking": false
       },
-      "domain": "nlp",
-      "subdomain": "large-language-model",
-      "tags": ["chat", "llm", "code", "reasoning", "moe"],
-      "content_types": ["text"],
-      "languages": ["english", "chinese"],
-      "tier": "production",
-      "input_map": {
-        "messages": {
-          "type": "array",
-          "items": {"role": "string", "content": "string"},
-          "required": true,
-          "description": "Chat messages in OpenAI format."
-        },
-        "max_tokens": {"type": "integer", "default": 4096, "max": 8000, "description": "Maximum tokens to generate"},
-        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
-        "temperature": {"type": "float", "default": 0.3}
+      "defaults": {
+        "chat": {
+          "temperature": 0.3,
+          "max_tokens": 4096
+        }
       },
-      "output_map": {
-        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
-        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "DeepSeek V2 Lite 16B MoE (2.4B active), MLA attention",
+        "description": "DeepSeek V2 Lite 16B MoE Chat. 15.7B total params, 2.4B active per token. Uses Multi-head Latent Attention (MLA) for efficient KV cache compression and DeepSeekMoE (2 shared + 64 routed experts, 6 activated). Strong bilingual (EN/ZH) chat. No reasoning mode, no tool calling.",
+        "owned_by": "deepseek-ai",
+        "source": "deepseek-ai/DeepSeek-V2-Lite-Chat",
+        "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite-Chat",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "parameters": "16B MoE (2.4B active)",
+        "tags": ["chat", "llm", "code", "moe", "bilingual"]
       },
       "server_config": {
-        "cli_args": ["--model=/data", "--served-model-name=deepseek-v2-lite-16b", "--port=8080", "--tensor-parallel-size=1", "--max-model-len=32768", "--dtype=bfloat16", "--gpu-memory-utilization=0.90", "--trust-remote-code", "--enforce-eager"],
-        "model_path": "/data",
-        "weight_files": ["*.safetensors"],
-        "shared_memory": "16Gi"
+        "note": "Uses --enforce-eager (DeepSeek V2 MLA attention requires it). No --reasoning-parser or --tool-call-parser (not a reasoning model, no tool support). vLLM v0.20.2."
       }
     }

@@ -5,9 +5,11 @@ metadata:
   namespace: models
   annotations:
     serving.knative.dev/progress-deadline: "2400s"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/initial-scale: "0"
 spec:
   predictor:
-    minReplicas: 1
+    minReplicas: 0
     timeout: 600
     nodeSelector:
       gpu: "on"
@@ -62,7 +64,6 @@ spec:
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.90
           - --trust-remote-code
-          - --enforce-eager
         env:
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache
