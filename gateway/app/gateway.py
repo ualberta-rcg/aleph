@@ -1050,6 +1050,14 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+        # Ensure no_stream models never get stream=true upstream
+        if info.get("no_stream"):
+            try:
+                b = json.loads(body)
+                b["stream"] = False
+                body = json.dumps(b).encode()
+            except Exception:
+                pass
         r = await c.post(url, content=body, headers=headers)
     return Response(
         content=r.content,
@@ -1187,6 +1195,8 @@ async def chat(request: Request):
     if stream and not info.get("no_stream"):
         return await _forward(info, "/v1/chat/completions", json.dumps(parsed).encode(), True)
 
+    # no_stream card or non-streaming request: force stream=false upstream
+    parsed["stream"] = False
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
         r = await c.post(upstream_url("/v1/chat/completions"),
@@ -1307,7 +1317,7 @@ async def anthropic_messages(request: Request):
             gen(), media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    oai.pop("stream", None)
+    oai["stream"] = False
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
         r = await c.post(url, content=json.dumps(oai).encode(), headers=headers)
