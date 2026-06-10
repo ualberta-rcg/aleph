@@ -50,28 +50,7 @@ data:
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: dict):
-        """Gateway compatibility wrapper — extracts last user message as prompt."""
-        if model is None:
-            return JSONResponse({"error": "model loading"}, 503)
-        messages = request.get("messages", [])
-        prompt = ""
-        for m in reversed(messages):
-            if m.get("role") == "user":
-                prompt = m.get("content", "")
-                break
-        max_tokens = request.get("max_tokens", 256)
-        temperature = request.get("temperature", 1.0)
-
-        loop = asyncio.get_event_loop()
-        try:
-            result = await loop.run_in_executor(None, _generate, prompt, max_tokens, temperature)
-            text = result["choices"][0]["text"]
-            return {"id": result["id"], "object": "chat.completion", "model": "progen2",
-                    "choices": [{"index": 0, "message": {"role": "assistant", "content": text},
-                                 "finish_reason": "length"}]}
-        except Exception as e:
-            import traceback; traceback.print_exc()
-            return JSONResponse({"error": str(e)}, 500)
+        return JSONResponse({"error": "progen2 is a completions-only model, not a chat model. Use /v1/completions with a 'prompt' field containing amino acid sequences."}, 400)
 
     @app.post("/v1/completions")
     async def completions(request: dict):
