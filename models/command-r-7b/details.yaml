@@ -20,9 +20,9 @@ data:
       },
       "limits": { "max_completion_tokens": 8192, "context_window": 65536 },
       "scaling": {
-        "scale_to_zero": false,
-        "min_replicas": 1,
-        "idle_retention": "always-on",
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
         "cold_start_estimate": "30-60 seconds"
       },
       "behavior": {
