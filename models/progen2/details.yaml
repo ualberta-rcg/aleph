@@ -9,63 +9,66 @@ data:
   details.json: |
     {
       "id": "progen2",
-      "status": "broken",
-      "type": "chat",
-      "description_short": "ProGen2-XLarge (6.4B) protein sequence generation model from Salesforce Research.",
-      "description": "ProGen2-XLarge is a 6.4B parameter protein language model from Salesforce Research (hugohrban/progen2-xlarge). It generates novel protein sequences via autoregressive language modeling. Given a partial amino acid sequence or prompt, it produces plausible protein sequence completions. Uses HuggingFace AutoModelForCausalLM with trust_remote_code. BSD-3 license. GPU-accelerated with float16.",
-      "context_window": 2048,
-      "max_completion_tokens": 1024,
+      "type": "completions",
       "endpoints": {
         "primary": "/v1/completions",
         "health": "/health"
       },
-      "owned_by": "Salesforce",
-      "source": "hugohrban/progen2-xlarge",
-      "source_url": "https://huggingface.co/hugohrban/progen2-xlarge",
-      "license": "BSD-3-Clause",
-      "parameters": "6.4B",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "ProGen2 (decoder-only protein language model)",
-      "framework": "transformers (AutoModelForCausalLM) + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 120,
-        "pvc": "progen2-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "progen2",
-        "api_name": "progen2",
-        "gateway_type": "chat"
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 2048,
+        "max_completion_tokens": 1024
       },
-      "domain": "biology",
-      "subdomain": "protein-generation",
-      "tags": ["science", "biology", "protein", "generate", "llm", "gpu", "salesforce"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "input_map": {
-        "prompt": "partial amino acid sequence e.g. \"MKTIIAL\"",
-        "max_tokens": "maximum tokens to generate",
-        "temperature": "sampling temperature",
-        "num_sequences": "number of sequences to generate"
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "cold_start_estimate": "2-3 minutes (custom server, 6.4B transformers)",
+        "idle_retention": "15m"
       },
-      "output_map": {
-        "sequences": "generated protein sequences",
-        "model": "progen2"
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "supports_streaming": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 1.0,
+          "max_tokens": 256
+        }
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "ProGen2-XLarge 6.4B protein sequence generation. Give it amino acids, get proteins.",
+        "description": "ProGen2-XLarge is a 6.4B parameter protein language model from Salesforce Research (Nijkamp et al.). It generates novel protein sequences via autoregressive language modeling trained on ~1 trillion amino acids from UniRef and BFD databases. Given a partial amino acid sequence (e.g. 'MKTIIAL'), it produces plausible protein sequence completions with next-token probabilities. NOT a natural language model — operates on amino acid tokens only. Custom FastAPI server using transformers AutoModelForCausalLM with trust_remote_code. No chat template, no tools, no vision. BSD-3 license.",
+        "owned_by": "Salesforce",
+        "source": "hugohrban/progen2-xlarge",
+        "source_url": "https://huggingface.co/hugohrban/progen2-xlarge",
+        "framework": "transformers-custom",
+        "domain": "biology",
+        "subdomain": "protein-generation",
+        "parameters": "6.4B",
+        "tags": [
+          "science",
+          "biology",
+          "protein",
+          "generation",
+          "salesforce"
+        ]
       },
       "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "hf_model_id": "hugohrban/progen2-xlarge"
+        "note": "Custom FastAPI server (server.py ConfigMap). Uses transformers AutoModelForCausalLM with trust_remote_code. NOT vLLM. HAMi vGPU slice nvidia.com/gpumem: 30720 (30GB). Venv on PVC. transformers<4.45 pinned for compatibility with ProGen2 custom code. No streaming. Health at /health."
       }
     }
