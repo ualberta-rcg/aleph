@@ -39,7 +39,7 @@ data:
         "strips_thinking": false
       },
       "defaults": {
-        "chat": {
+        "completions": {
           "temperature": 1.0,
           "max_tokens": 256
         }
@@ -52,7 +52,7 @@ data:
       "schema_version": 2,
       "catalog": {
         "description_short": "ProGen2-XLarge 6.4B protein sequence generation. Give it amino acids, get proteins.",
-        "description": "ProGen2-XLarge is a 6.4B parameter protein language model from Salesforce Research (Nijkamp et al.). It generates novel protein sequences via autoregressive language modeling trained on ~1 trillion amino acids from UniRef and BFD databases. Given a partial amino acid sequence (e.g. 'MKTIIAL'), it produces plausible protein sequence completions with next-token probabilities. NOT a natural language model — operates on amino acid tokens only. Custom FastAPI server using transformers AutoModelForCausalLM with trust_remote_code. No chat template, no tools, no vision. BSD-3 license.",
+        "description": "ProGen2-XLarge is a 6.4B parameter protein language model from Salesforce Research (Nijkamp et al.). It generates novel protein sequences via autoregressive language modeling trained on ~1 trillion amino acids from UniRef and BFD databases. NOT a natural language model — operates on amino acid tokens only. Completions-only API (no chat). Custom FastAPI server using transformers AutoModelForCausalLM with trust_remote_code. BSD-3 license.\n\nINPUT: Amino acid sequence using single-letter codes (A,C,D,E,F,G,H,I,K,L,M,N,P,Q,R,S,T,V,W,Y). Example: 'MKTIIAL' (methionine-lysine-threonine...).\n\nOUTPUT: Continued amino acid sequence. Example: 'MKTIIALFVLAAAGMAAAQPITLSGSLAAG...'\n\nAPI: POST /v1/completions with {prompt: '<amino_acids>', max_tokens: 100, temperature: 1.0}. Higher temperature = more diverse/creative sequences. Lower temperature = more conservative predictions. max_tokens controls sequence length (1 token = 1 amino acid).\n\nNo chat, no tools, no vision, no streaming, no system prompts.",
         "owned_by": "Salesforce",
         "source": "hugohrban/progen2-xlarge",
         "source_url": "https://huggingface.co/hugohrban/progen2-xlarge",
