@@ -8,7 +8,7 @@ metadata:
 data:
   details.json: |
     {
-      "id": "tinyllama-1.1b",
+      "id": "tinyllama",
       "type": "chat",
       "endpoints": {
         "primary": "/v1/chat/completions",
