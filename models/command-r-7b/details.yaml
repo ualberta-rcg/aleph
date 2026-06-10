@@ -29,6 +29,7 @@ data:
         "supports_vision": false,
         "supports_tools": false,
         "supports_system_prompt": true,
+        "reasoning_model": false,
         "strips_thinking": false
       },
       "param_translation": {
