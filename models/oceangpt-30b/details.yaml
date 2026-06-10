@@ -9,80 +9,69 @@ data:
   details.json: |
     {
       "id": "oceangpt-30b",
-      "status": "production",
       "type": "chat",
-      "description_short": "OceanGPT 30B MoE, ocean science (marine biology, oceanography)",
-      "description": "OceanGPT 30B A3B MoE instruction-tuned. Based on Qwen3 MoE architecture. 30.5B total params (128 experts), ~3B active per token. Trained on marine biology, oceanography, climate, and fisheries data in English and Chinese. 128-expert weights (~61GB) require 2x L40S with tensor parallel. Includes VRAM guard startup script.",
-      "context_window": 8192,
-      "max_completion_tokens": 8000,
       "endpoints": {
         "primary": "/v1/chat/completions",
         "health": "/v1/models"
       },
-      "owned_by": "zjunlp",
-      "source": "zjunlp/OceanGPT-basic-30B-A3B-Instruct",
-      "source_url": "https://huggingface.co/zjunlp/OceanGPT-basic-30B-A3B-Instruct",
-      "license": "Apache-2.0",
-      "parameters": "30.5B MoE (3B active)",
-      "parameter_count": 30500000000,
-      "precision": "bfloat16",
-      "architecture": "qwen3-moe",
-      "framework": "vllm",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 2,
-        "gpu_type": "L40S",
-        "min_replicas": 0,
-        "max_replicas": 1,
-        "startup_seconds": 300,
-        "container_image": "vllm/vllm-openai:v0.8.4",
-        "served_model_name": "oceangpt-30b",
-        "node": "any-L40S",
-        "timeout": 300
-      },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "oceangpt-30b",
         "serialize": false,
         "no_stream": false,
-        "deployment_mode": "Knative"
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": true,
+      "limits": {
+        "context_window": 65536,
+        "max_completion_tokens": 64000
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "cold_start_estimate": "2-4 minutes (TP2, MoE 30B)",
+        "idle_retention": "15m"
+      },
+      "behavior": {
         "supports_vision": false,
-        "supports_video": false,
-        "supports_tools": false,
+        "supports_tools": true,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": false,
-        "needs_json_fixing": false,
         "strips_thinking": false
       },
-      "domain": "science",
-      "subdomain": "ocean-science",
-      "tags": ["chat", "llm", "ocean", "marine", "science", "moe"],
-      "content_types": ["text"],
-      "languages": ["english", "chinese"],
-      "tier": "production",
-      "input_map": {
-        "messages": {
-          "type": "array",
-          "items": {"role": "string", "content": "string"},
-          "required": true,
-          "description": "Chat messages in OpenAI format."
-        },
-        "max_tokens": {"type": "integer", "default": 4096, "max": 8000, "description": "Maximum tokens to generate"},
-        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
-        "temperature": {"type": "float", "default": 0.7}
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "max_tokens": 4096
+        }
       },
-      "output_map": {
-        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
-        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "OceanGPT 30B MoE ocean science model. 128 experts, 8 active, bilingual EN/ZH.",
+        "description": "OceanGPT-basic-30B-A3B-Instruct is a 30.5B parameter MoE model based on Qwen3 MoE architecture, fine-tuned for ocean science (marine biology, oceanography, climate, fisheries). 128 experts with 8 active per token (~3B active params). Trained on Huawei Ascend 910B. Bilingual English and Chinese. Chat template includes full tool calling support (Qwen3/hermes XML format). Context: 262K native, limited to 64K on 2x L40S with 4.2x KV headroom. No reasoning mode, no vision.",
+        "owned_by": "zjunlp",
+        "source": "zjunlp/OceanGPT-basic-30B-A3B-Instruct",
+        "source_url": "https://huggingface.co/zjunlp/OceanGPT-basic-30B-A3B-Instruct",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "parameters": "30.5B MoE (3B active)",
+        "tags": [
+          "chat",
+          "llm",
+          "ocean",
+          "marine",
+          "science",
+          "moe",
+          "bilingual",
+          "tools"
+        ]
       },
       "server_config": {
-        "cli_args": ["vllm serve /data", "--served-model-name=oceangpt-30b", "--port 8080", "--tensor-parallel-size 2", "--max-model-len 8192", "--dtype bfloat16", "--gpu-memory-utilization 0.90", "--trust-remote-code"],
-        "model_path": "/data",
-        "weight_files": ["*.safetensors"],
-        "shared_memory": "16Gi",
-        "vram_guard": true,
-        "vram_guard_need_mb": 25000
+        "note": "vLLM v0.20.2, TP2 (2x L40S). --disable-custom-all-reduce for L40S. --trust-remote-code for Qwen3 MoE. --tool-call-parser hermes + --enable-auto-tool-choice for tool calling. max-model-len=65536 (64K) with 4.2x KV headroom on 2x L40S. VRAM guard script checks 25GB free before starting."
       }
     }

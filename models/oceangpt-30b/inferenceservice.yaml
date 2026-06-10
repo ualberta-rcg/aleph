@@ -15,7 +15,7 @@ spec:
     minReplicas: 0
     scaleTarget: 3
     scaleMetric: concurrency
-    timeout: 300
+    timeout: 600
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -68,33 +68,18 @@ spec:
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
-        command:
-          - bash
-          - -c
+        command: ["vllm", "serve", "/data"]
         args:
-          - |
-            # VRAM guard: need ~25GB free per GPU (experts split across 2 GPUs).
-            NEED_MB=25000
-            for i in $(seq 1 6); do
-              FREE_MB=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
-              echo "[VRAM-GUARD] attempt $i: free=${FREE_MB}MB need=${NEED_MB}MB"
-              if [ -n "$FREE_MB" ] && [ "$FREE_MB" -ge "$NEED_MB" ]; then
-                echo "[VRAM-GUARD] enough VRAM, starting vLLM (2-GPU tensor parallel)"
-                exec vllm serve /data \
-                  --served-model-name=oceangpt-30b \
-                  --port 8080 \
-                  --tensor-parallel-size 2 \
-                  --max-model-len 8192 \
-                  --dtype bfloat16 \
-                  --gpu-memory-utilization 0.90 \
-                  --trust-remote-code \
-                  --disable-custom-all-reduce
-              fi
-              echo "[VRAM-GUARD] not enough VRAM, retrying in 10s..."
-              sleep 10
-            done
-            echo "[VRAM-GUARD] giving up after 6 attempts, exiting to reschedule"
-            exit 1
+          - --served-model-name=oceangpt-30b
+          - --port=8080
+          - --tensor-parallel-size=2
+          - --max-model-len=65536
+          - --dtype=bfloat16
+          - --gpu-memory-utilization=0.90
+          - --trust-remote-code
+          - --disable-custom-all-reduce
+          - --tool-call-parser=hermes
+          - --enable-auto-tool-choice
         env:
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache
