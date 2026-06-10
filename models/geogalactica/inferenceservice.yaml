@@ -1,20 +1,20 @@
-# GeoGalactica: Geoscience Large Language Model (30B)
-# geobrain-ai/geogalactica — Apache 2.0, 30B params (~60GB weights)
-# Further pre-trained Galactica on 65B geoscience tokens + 1M instruction pairs
-# Architecture: OPT-style decoder-only, 48 layers, 56 heads, hidden=7168
-# API: POST /v1/chat/completions (OpenAI-compatible vLLM)
----
+# GeoGalactica: 30B geoscience LLM (geobrain-ai/geogalactica)
+# Galactica/OPT architecture: 48 layers, 56 heads, hidden=7168, max_position=2048
+# ~60GB weights need 2x L40S with tensor parallel. Context capped at 2048 (OPT hard limit).
+# Gated model on HF — requires HF_TOKEN secret for download.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: geogalactica
   namespace: models
   annotations:
-    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "1800s"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/initial-scale: "0"
     serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
     minReplicas: 0
+    maxReplicas: 1
     scaleTarget: 3
     scaleMetric: concurrency
     timeout: 300
@@ -33,65 +33,97 @@ spec:
         args:
           - |
             set -e
-            if [ -f "/data/config.json" ]; then
+            if [ -f "/data/config.json" ] && [ -f "/data/tokenizer_config.json" ]; then
               echo "GeoGalactica weights already on PVC, skipping download."
               exit 0
             fi
             pip install -q huggingface_hub
-            HF_TOKEN="$HF_TOKEN" python3 -c "import os; from huggingface_hub import snapshot_download; print('Downloading geobrain-ai/geogalactica (~60GB)...', flush=True); snapshot_download(repo_id='geobrain-ai/geogalactica', local_dir='/data', local_dir_use_symlinks=False, token=os.environ.get('HF_TOKEN')); print('Download finished.', flush=True)"
+            python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            print("Downloading geobrain-ai/geogalactica (~60GB)...", flush=True)
+            snapshot_download(
+                repo_id="geobrain-ai/geogalactica",
+                local_dir="/data",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
         resources:
-          requests: { cpu: "4", memory: 16Gi }
-          limits: { cpu: "8", memory: 32Gi }
+          requests:
+            cpu: "4"
+            memory: 16Gi
+          limits:
+            cpu: "8"
+            memory: 32Gi
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - name: model-data
+            mountPath: /data
     containers:
       - name: kserve-container
-        image: vllm/vllm-openai:v0.8.4
-        command: ["bash", "-c"]
+        image: vllm/vllm-openai:v0.20.2
+        command: ["vllm", "serve", "/data"]
         args:
-          - |
-            # VRAM guard: need ~25GB free per GPU (30B model split across 2 GPUs)
-            NEED_MB=25000
-            for i in $(seq 1 8); do
-              FREE_MB=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
-              echo "[VRAM-GUARD] attempt $i: free=${FREE_MB}MB need=${NEED_MB}MB"
-              if [ -n "$FREE_MB" ] && [ "$FREE_MB" -ge "$NEED_MB" ]; then
-                echo "[VRAM-GUARD] enough VRAM, starting vLLM (2-GPU tensor parallel)"
-                exec vllm serve /data \
-                  --served-model-name=geogalactica \
-                  --port 8080 \
-                  --tensor-parallel-size 2 \
-                  --max-model-len 2048 \
-                  --dtype bfloat16 \
-                  --gpu-memory-utilization 0.90 \
-                  --trust-remote-code
-              fi
-              echo "[VRAM-GUARD] not enough VRAM, retrying in 15s..."
-              sleep 15
-            done
-            echo "[VRAM-GUARD] giving up, exiting to reschedule"
-            exit 1
+          - --served-model-name=geogalactica
+          - --port=8080
+          - --tensor-parallel-size=2
+          - --max-model-len=2048
+          - --dtype=bfloat16
+          - --gpu-memory-utilization=0.90
+          - --trust-remote-code
+          - --disable-custom-all-reduce
+          - --chat-template=/data/chat_template.jinja
         env:
-          - { name: HF_HUB_CACHE, value: /tmp/hf-cache }
-          - { name: VLLM_WORKER_MULTIPROC_METHOD, value: spawn }
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
         ports:
           - containerPort: 8080
             protocol: TCP
         resources:
-          requests: { cpu: "8", memory: 32Gi, nvidia.com/gpu: "2", nvidia.com/gpumem: "40960" }
-          limits: { cpu: "16", memory: 64Gi, nvidia.com/gpu: "2", nvidia.com/gpumem: "40960" }
+          requests:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "2"
+          limits:
+            cpu: "16"
+            memory: 64Gi
+            nvidia.com/gpu: "2"
         readinessProbe:
-          httpGet: { path: /v1/models, port: 8080 }
-          initialDelaySeconds: 300
-          periodSeconds: 30
-          failureThreshold: 30
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         startupProbe:
-          httpGet: { path: /v1/models, port: 8080 }
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 60
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
           initialDelaySeconds: 300
           periodSeconds: 30
-          failureThreshold: 60
+          timeoutSeconds: 10
+          failureThreshold: 3
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - name: model-data
+            mountPath: /data
+          - name: shm
+            mountPath: /dev/shm
     volumes:
       - name: model-data
-        persistentVolumeClaim: { claimName: geogalactica-data }
+        persistentVolumeClaim:
+          claimName: geogalactica-data
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

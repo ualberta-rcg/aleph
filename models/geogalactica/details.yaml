@@ -10,66 +10,66 @@ data:
     {
       "id": "geogalactica",
       "type": "chat",
-      "description_short": "GeoGalactica 30B geoscience LLM — OPT-style decoder-only fine-tuned on 65B geoscience tokens.",
-      "description": "GeoGalactica is a 30B parameter geoscience large language model from geobrain-ai. Built on the Galactica architecture (OPT-style decoder-only, 48 layers, 56 heads, hidden=7168), it was further pre-trained on 65 billion geoscience tokens and 1M instruction pairs. Expert at geoscience Q&A, geological analysis, mineralogy, and earth science reasoning. Uses vLLM for inference with 2-GPU tensor parallelism. Apache 2.0 license.",
-      "context_window": 2048,
-      "max_completion_tokens": 2048,
       "endpoints": {
         "primary": "/v1/chat/completions",
-        "health": "/health"
-      },
-      "owned_by": "geobrain-ai",
-      "source": "geobrain-ai/geogalactica",
-      "source_url": "https://huggingface.co/geobrain-ai/geogalactica",
-      "license": "Apache-2.0",
-      "parameters": "30B",
-      "precision": "bfloat16",
-      "architecture": "OPT-style decoder-only (48 layers, 56 heads, hidden=7168)",
-      "framework": "vLLM (v0.8.4)",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 2,
-        "gpu_type": "L40S (full)",
-        "cpu_request": "8",
-        "memory_request": "32Gi",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "timeout": 300,
-        "pvc": "geogalactica-data",
-        "image": "vllm/vllm-openai:v0.8.4",
-        "tensor_parallel": 2,
-        "max_model_len": 2048,
-        "gpu_memory_utilization": 0.90
+        "health": "/v1/models"
       },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "geogalactica",
-        "api_name": "geogalactica",
-        "gateway_type": "chat"
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": true,
-        "streaming": true
+      "limits": {
+        "context_window": 2048,
+        "max_completion_tokens": 2000
       },
-      "domain": "earth-science",
-      "subdomain": "geoscience-llm",
-      "tags": ["science", "geoscience", "chat", "llm", "earth-science", "geology", "gpu", "vllm"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "input_map": {
-        "messages": "[{role, content}] in OpenAI format",
-        "max_tokens": "int (max 2048)",
-        "stream": "bool"
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "cold_start_estimate": "2-4 minutes (TP2, 30B OPT)",
+        "idle_retention": "15m"
       },
-      "output_map": {
-        "choices": "standard OpenAI chat completion format",
-        "usage": "token counts"
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "supports_streaming": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "max_tokens": 1024
+        }
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "GeoGalactica 30B geoscience LLM. Further pre-trained Galactica on 65B geo tokens.",
+        "description": "GeoGalactica is a 30B parameter geoscience LLM from Shanghai Jiao Tong University / GeoBRAIN.ai. Built on the Galactica architecture (OPT-style decoder-only, 48 layers, 56 heads, hidden=7168), further pre-trained on 65 billion geoscience tokens and supervised fine-tuned on 1M instruction pairs. Largest language model for the geoscience domain at time of publication. Expert at geoscience Q&A, geological analysis, mineralogy, and earth science reasoning. Very short context (2048 tokens) due to OPT architecture. English only. No tool calling, no vision, no reasoning mode. Apache 2.0 license.",
+        "owned_by": "geobrain-ai",
+        "source": "geobrain-ai/geogalactica",
+        "source_url": "https://huggingface.co/geobrain-ai/geogalactica",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "parameters": "30B",
+        "tags": [
+          "chat",
+          "llm",
+          "geoscience",
+          "geology",
+          "earth-science",
+          "science"
+        ]
       },
       "server_config": {
-        "port": 8080,
-        "health_path": "/v1/models",
-        "served_model_name": "geogalactica",
-        "vram_guard": true,
-        "vram_required_mb": 25000
+        "note": "vLLM v0.20.2, TP2 (2x L40S). --trust-remote-code for Galactica/OPT architecture. max-model-len=2048 (hard limit from OPT positional embeddings, cannot extend). Context is very short — not suitable for long documents."
       }
     }
