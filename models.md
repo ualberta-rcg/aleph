@@ -85,7 +85,7 @@ Deployment status, capabilities, and operational notes for each model in the Ale
 | `graphcast` | Forecast | Ray Serve | READY | PASS | `/v1/science/predict` |
 | `hyenadna` | Embedding | pytorch | READY | PASS | `/v1/embeddings` |
 | `ithaca` | Predict | JAX + FastAPI | READY | FIXED | `/v1/science/predict` |
-| `k2-v2` | Chat | vLLM | READY | PENDING | `/v1/chat/completions` |
+
 | `kandinsky-3` | Image | Ray Serve | READY | PASS | `/v1/images/generations` |
 | `labram` | Embed | braindecode + PyTorch | READY | FAIL | `/v1/science/embed` |
 | `lag-llama` | Forecast | lag-llama + GluonTS + PyTorch | READY | FIXED | `/v1/science/forecast` |
@@ -133,7 +133,7 @@ Deployment status, capabilities, and operational notes for each model in the Ale
 | `qwen25-vl-7b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `qwen3-235b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `qwen3-32b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
-| `qwen35-122b` | Chat | vLLM | READY | FIXED | `/v1/chat/completions` |
+| `qwen35-122b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `qwen36-27b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `qwen36-35b-a3b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `qwq-32b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
@@ -2845,40 +2845,6 @@ Best for Ithaca — ancient Greek inscription restoration, dating, and geolocati
 
 - DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo)
 
-## `k2-v2`
-
-**LLM360 K2-V2 70B: fully open (weights + data + code + evals). Citable.**
-
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
-
-**Status:** READY **Test:** PENDING **Type:** Chat **Runtime:** vLLM  
-**Primary endpoint:** `/v1/chat/completions` **Model path:** `models/k2-v2/`
-
-**Context window:** 32,768 tokens
-
-### Overview
-
-| Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `k2-v2` | `LLM360/K2-V2` | TP4 | — | — | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
-
-### Capabilities
-
-| Capability | Supported | Notes |
-| --- | ---: | --- |
-| Chat completions | yes | OpenAI + Anthropic routes |
-| Streaming | yes | — |
-
-### Serving
-
-| Engine | GPU | Allocation | Scale | Cold start |
-| --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | 1–3 min |
-
-### Notes
-
-- ships FP32 ~290GB (not 140GB); --dtype=bfloat16 to fit 4xL40S; Xet stalled -> HF_HUB_DISABLE_XET; still downloading
-
 ## `kandinsky-3`
 
 **Kandinsky 3 text-to-image and image-to-image generation**
@@ -4212,38 +4178,56 @@ Best for biomedical embeddings. Not chat, generation, or unrelated modalities.
 
 ## `qwen25-coder-32b`
 
-**Qwen2.5-Coder-32B coding specialist: code gen, completion, repair.**
+**Qwen2.5-Coder-32B-Instruct — code generation, reasoning & repair specialist with tool calling.**
 
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
+State-of-the-art open-source codeLLM matching GPT-4o on coding benchmarks. Trained on 5.5T tokens of source code, text-code grounding, and synthetic data.
 
-**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen25-coder-32b/`
 
-**Context window:** 32,768 tokens
+**Context window:** 32,768 tokens (131K native with YaRN) **Max output:** 32,768 tokens
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwen25-coder-32b` | `Qwen/Qwen2.5-Coder-32B-Instruct` | TP2 | — | — | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwen25-coder-32b` | `Qwen/Qwen2.5-Coder-32B-Instruct` | 32.5B dense | fp16 | Apache-2.0 | nlp | code generation, code reasoning, code fixing, code agents | vision tasks, reasoning/thinking mode |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Tool calling | yes | function_call support |
-| Streaming | yes | — |
+| Tool calling | yes | hermes parser (`--tool-call-parser=hermes`) |
+| Streaming | yes | SSE chunked |
+| System prompt | yes | — |
+| Reasoning/thinking | no | Non-reasoning model, no thinking blocks |
+| Vision | no | Text-only, correctly rejected with 400 |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | 1–3 min |
+| vLLM v0.20.2 | 2× L40S (48 GB) | whole-device (`nvidia.com/gpu: "2"`) | scale-to-zero 15m | ~90s |
 
-### Notes
+### Sampling Recommendations
 
-- is_prime() correct/idiomatic
+| Use case | temperature | top_p | top_k |
+| --- | --- | --- | --- |
+| Code generation | 0.2 | 0.8 | 20 |
+| General chat | 0.7 | 0.8 | 20 |
+
+### Test Results (2026-06-11)
+
+**22/22 passed, 3 expected failures, 0 failed**
+
+- ✅ Basic chat, streaming, temp/top_p/top_k, stop sequences, system prompt
+- ✅ Code generation (produces valid Python with `def` keyword)
+- ✅ Tool calling (hermes parser active)
+- ✅ max_tokens=32k accepted
+- ✅ No reasoning content (correct for non-reasoning model)
+- ✅ Anthropic /v1/messages (all endpoints)
+- ✅ Vision correctly rejected (400), catalog correct
 
 ## `qwen25-vl-3b`
 
@@ -4357,7 +4341,7 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 **Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen3-235b/`
 
-**Context window:** 131,072 bp **Max output:** 121,000 tokens
+**Context window:** 131,072 bp **Max output:** 32,768 tokens
 
 ### Overview
 
@@ -4370,54 +4354,65 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Tool calling | yes | function_call support |
+| Tool calling | yes | hermes parser |
 | Streaming | yes | — |
+| Vision | no | text-only model |
+| Reasoning/thinking | no | non-thinking Instruct-2507 variant |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | ~6 minutes (118 GB AWQ int4, 4x L40S) |
+| vLLM v0.20.2 | 4× L40S | whole-device (nvidia.com/gpu:4) | scale-to-zero 30m | ~4 minutes (116 GB AWQ int4 over NFS) |
 
 ### Notes
 
-- 235B-A22B AWQ-int4 MoE TP4 ~67tok/s; v0.20.2; ported from 232 (tclf90 repo deleted -> QuantTrio); whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce + awq_marlin; correct math + tool-calling (hermes)
+- 235B-A22B AWQ-int4 MoE (128 experts, 8 activated, 22B active); non-thinking Instruct-2507 variant — no reasoning mode, no `<think` blocks
+- v0.20.2; ported from 232 (tclf90 repo deleted -> QuantTrio); whole node (4 GPUs) + --disable-custom-all-reduce + awq_marlin
+- Tool calling via hermes parser; no vision; HF recommends temp=0.7/top_p=0.8/top_k=20
+- 21/21 gateway test ✅ 2026-06-11; vision correctly rejected
+- Cannot run simultaneously with other TP4 models (takes all GPUs on a node)
 
 ## `qwen3-32b`
 
-**Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages.**
+**Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages, 40K context.**
 
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
+Best for reasoning-intensive chat, agentic tool-calling workflows, multilingual dialogue. Not vision tasks, embedding-only workloads.
 
-**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS (23/25 ✅) **Type:** Chat **Runtime:** vLLM v0.20.2
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen3-32b/`
 
-**Context window:** 40,960 tokens
+**Context window:** 40,960 tokens **Max completion:** 32,768 tokens
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwen3-32b` | `Qwen/Qwen3-32B` | TP2 | — | — | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwen3-32b` | `Qwen/Qwen3-32B` | 32.8B dense, TP2 | bf16 auto | Apache-2.0 | nlp | reasoning chat, tool calling, multilingual | vision, embedding-only |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Reasoning | yes | configurable effort |
-| Tool calling | yes | function_call support |
-| Streaming | yes | — |
+| Reasoning | yes | effort mode (binary enable_thinking via chat_template_kwargs) |
+| Tool calling | yes | hermes parser + enable-auto-tool-choice |
+| Streaming | yes | SSE chunks |
+| Vision | no | correctly rejected by gateway (400) |
+| System prompt | yes | — |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | 1–3 min |
+| vLLM v0.20.2 | 2× L40S | whole-device (nvidia.com/gpu:2) | scale-to-zero 15m | 3–4 min |
 
 ### Notes
 
-- dense flagship; thinking (qwen3 parser) + tools; 17*23=391
+- 32.8B dense (64 layers, GQA 64Q/8KV); vLLM reasoning-parser=qwen3, tool-call-parser=hermes
+- Thinking: binary enable_thinking switch, on by default. Best sampling: ON → temp=0.6/topP=0.95; OFF → temp=0.7/topP=0.8/topK=20
+- Gateway maps reasoning_effort: none/low → off, medium/high/max → on
+- 23/25 gateway test passed 2026-06-11 (2 expected failures: embed guard, bad model guard)
 
 ## `qwen35-122b`
 
@@ -4425,35 +4420,39 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 
 Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
 
-**Status:** READY **Test:** FIXED **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen35-122b/`
 
-**Context window:** 131,072 bp **Max output:** 32,768 tokens
+**Context window:** 131,072 tokens **Max output:** 32,768 tokens
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwen35-122b` | `Qwen/Qwen3.5-122B-A10B-FP8` | 122B total / 10B active | fp8 | Apache-2.0 | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwen35-122b` | `Qwen/Qwen3.5-122B-A10B-FP8` | 122B total / 10B active | fp8 | Apache-2.0 | nlp | reasoning, tool-calling, instruction-following | vision, embedding-only, batch offline |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Reasoning | yes | configurable effort |
-| Tool calling | yes | function_call support |
+| Reasoning | yes | toggle mode via `enable_thinking` (qwen3 parser) |
+| Tool calling | yes | qwen3_coder parser, native tool support |
 | Streaming | yes | — |
+| Vision | no | language-model-only (vision encoder disabled) |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | ~5 minutes (122 GB FP8, 4x L40S) |
+| vLLM v0.20.2 | 4× L40S | whole-device (nvidia.com/gpu:4) | scale-to-zero 30m | ~5 min |
 
 ### Notes
 
-- 122B FP8 MoE TP4 ~65tok/s; v0.20.2; whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce; unpinned; reasoning-parser=qwen3; correct answers
+- 122B FP8 MoE (256 experts, 8 routed + 1 shared), 10B active params, ~65 tok/s
+- Thinking toggle mode: `chat_template_kwargs.enable_thinking` binary on/off
+- TRITON_ATTN_VLLM_V1 required on L40S (SM89); disable-custom-all-reduce for TP4 on HAMi
+- 23/23 gateway test ✅ 2026-06-11
 
 ## `qwen36-27b`
 
@@ -4525,38 +4524,52 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 
 ## `qwq-32b`
 
-**Qwen QwQ-32B reasoning model. Strong STEM, distinct style from R1 distills.**
+**QwQ-32B — Qwen's dedicated reasoning model with always-on chain-of-thought and tool calling (2x L40S).**
 
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
+Best for reasoning-intensive tasks: math, STEM, multi-step problem solving. Not for vision tasks, embedding workloads.
 
-**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwq-32b/`
 
-**Context window:** 32,768 tokens
+**Context window:** 32,768 tokens **Max output:** 32,768 tokens
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwq-32b` | `Qwen/QwQ-32B` | TP2 | — | — | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwq-32b` | `Qwen/QwQ-32B` | 32.5B dense | fp16 | Apache-2.0 | nlp | reasoning, STEM, tool calling | vision, embeddings |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Reasoning | yes | configurable effort |
+| Reasoning | yes | always-on CoT (deepseek_r1 parser, no toggle) |
+| Tool calling | yes | hermes parser |
 | Streaming | yes | — |
+| Vision | no | correctly rejected (400) |
+| System prompt | yes | — |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | 1–3 min |
+| vLLM v0.20.2 | 2x L40S | whole-device (TP2) | scale-to-zero 15m | ~2 min |
+
+### Sampling (HF recommended)
+
+- `temperature=0.6`, `top_p=0.95`, `top_k=20-40`
+- Do NOT use greedy decoding (causes endless repetitions)
+- `presence_penalty` 0-2 to reduce repetition
 
 ### Notes
 
-- deepseek_r1 parser ok (QwQ has <think>); sqrt144=12
+- Always-on reasoning — no thinking toggle. Model always generates `<think/>` blocks.
+- deepseek_r1 parser handles thinking content in API responses.
+- 131K native context, deployed at 32K (TP2 memory constraint).
+- 21/21 gateway test passed 2026-06-11.
+- **NIM available:** `nvcr.io/nim/qwen/qwq-32b`
+
 
 ## `r1-distill-llama-70b`
 

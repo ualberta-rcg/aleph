@@ -10,52 +10,59 @@ data:
     {
       "id": "qwen25-coder-32b",
       "type": "chat",
-      "endpoints": {
-        "primary": "/v1/chat/completions",
-        "health": "/v1/models"
-      },
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
         "k8s_name": "qwen25-coder-32b",
         "serialize": false,
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": {
-        "context_window": 32768
-      },
+      "limits": { "max_completion_tokens": 32768, "context_window": 32768 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "idle_retention": "15m"
+        "idle_retention": "15m",
+        "cold_start_estimate": "~3 minutes (64 GB FP16, 2x L40S)"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": true,
         "supports_system_prompt": true,
-        "reasoning_model": false
+        "supports_streaming": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": {
-          "temperature": 0.7,
-          "max_tokens": 8192
+        "chat": { "temperature": 0.7, "top_p": 0.8, "max_tokens": 8192 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
         }
+      },
+      "custom_params": {
+        "schema": {
+          "top_k": { "type": "integer", "default": 20 }
+        },
+        "passthrough": true
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Qwen2.5-Coder-32B coding specialist: code gen, completion, repair.",
-        "description": "Qwen2.5-Coder-32B coding specialist: code gen, completion, repair.",
+        "description_short": "Qwen2.5-Coder-32B — code generation, reasoning & repair specialist with tools (2x L40S)",
+        "description": "Qwen2.5-Coder-32B-Instruct is a code-specialist LLM. 32.5B dense, GQA (40Q/8KV), 131K native context deployed at 32K. State-of-the-art open-source codeLLM matching GPT-4o on coding benchmarks. Supports tool/function calling via hermes parser. Trained on 5.5T tokens of source code, text-code grounding, and synthetic data. Ideal for code generation, code reasoning, code fixing, and code agents.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen2.5-Coder-32B-Instruct",
         "source_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct",
+        "license": "Apache-2.0",
+        "parameters": "32.5B dense",
+        "precision": "fp16",
         "framework": "vllm",
         "domain": "nlp",
-        "subdomain": "large-language-model",
-        "parameters": "TP2",
-        "tags": [
-          "chat",
-          "llm",
-          "code",
-          "tool-calling"
-        ]
+        "subdomain": "code-language-model",
+        "tags": ["chat", "llm", "code", "tool-calling", "code-generation", "code-reasoning"]
       }
     }

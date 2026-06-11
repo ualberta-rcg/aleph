@@ -90,7 +90,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
-| k2-v2 | chat | true | /v1/chat/completions | READY | PENDING | ships FP32 ~290GB; --dtype=bfloat16 to fit 4xL40S; Xet stalled -> HF_HUB_DISABLE_XET; vLLM v0.20.2 TP4 whole-device |
+
 | kandinsky-3 | text-to-image | true | /v1/images/generations | READY | PASS | RayService w/ in-tree autoscaler. Head on non-GPU kubeflow-head-node2 (proxy_location HeadOnly); GPU worker autoscales 0->3. VERIFIED: scale-up 0->1 on request, image gen ~24s (1024) PNG, scale-DOWN releases L40S after idle. Added missing download-job.yaml. 15min idle retention |
 | labram | embed | false | /v1/science/embed | READY | FAIL | ModuleNotFoundError: no models module; server stuck at model loading |
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
@@ -133,16 +133,16 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores. **NIM available:** `nvcr.io/nim/ipd/proteinmpnn` (build.nvidia.com/ipd/proteinmpnn) |
 | protgpt2 | generate | true | /v1/completions | READY | PASS | de novo protein generation (recreated) |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
-| qwen25-coder-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; is_prime() correct/idiomatic |
+| qwen25-coder-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense code specialist; no reasoning parser; tools (hermes parser); 131K native ctx deployed at 32K; 22/22 gateway test ✅ 2026-06-11; cold start ~90s; vision correctly rejected |
 | qwen25-vl-3b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std; fixed --limit-mm-per-prompt JSON); gpumem 24GB; chat OK |
 | qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic + vision (image_url) |
 | qwen25-vl-72b | chat | true | /v1/chat/completions | READY | PASS | vision OK (ID image color); TP4; vLLM v0.20.2 whole-device |
-| qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | 235B-A22B AWQ-int4 MoE TP4 ~67tok/s; v0.20.2; ported from 232 (tclf90 repo deleted -> QuantTrio); whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce + awq_marlin; correct math + tool-calling (hermes). **NIM available:** `nvcr.io/nim/qwen/qwen3-235b-a22b` (build.nvidia.com/qwen/qwen3-235b-a22b) |
-| qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; dense flagship; thinking (qwen3 parser) + tools; 17*23=391 |
-| qwen35-122b | chat | true | /v1/chat/completions | READY | FIXED | 122B FP8 MoE TP4 ~65tok/s; v0.20.2; whole node (4 GPUs, no gpumem) + --disable-custom-all-reduce; unpinned; reasoning-parser=qwen3; correct answers |
+| qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 235B-A22B AWQ int4 MoE (22B active, 128 experts); non-thinking Instruct-2507 variant; tools (hermes parser); no reasoning parser (non-thinking); awq_marlin quantization; 131K ctx; 21/21 gateway test ✅ 2026-06-11; vision correctly rejected; ~4min cold start; **NIM available:** `nvcr.io/nim/qwen/qwen3-235b-a22b` |
+| qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.8B dense; thinking (qwen3 parser, effort mode) + tools (hermes); 23/25 gateway test ✅ 2026-06-11; vision correctly rejected |
+| qwen35-122b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 122B FP8 MoE (10B active); thinking toggle (qwen3 parser) + tools (qwen3_coder); language-model-only (vision disabled); 131K ctx; 23/23 gateway test ✅ 2026-06-11; vision correctly rejected |
 | qwen36-27b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; Jupiter+Ganymede; Gated-DeltaNet on vllm:latest |
 | qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; s[::-1]; MoE Gated-DeltaNet on vllm:latest |
-| qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; deepseek_r1 parser ok (QwQ has <think/>); sqrt144=12. **NIM available:** `nvcr.io/nim/qwen/qwq-32b` (build.nvidia.com/qwen/qwq-32b) |
+| qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; always-on reasoning (deepseek_r1 parser, no thinking toggle); tools (hermes parser); 32K ctx; 21/21 gateway test ✅ 2026-06-11; reasoning_content present; vision correctly rejected; ~2min cold start; **NIM available:** `nvcr.io/nim/qwen/qwq-32b` |
 | r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | FIXED | vLLM v0.20.2 TP4 whole-device; tokenizer_class patch (was Ġ/Ċ garbled); 40km/h correct; max-len 65536 |
 | r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 12^2=144; deepseek_r1 parser; max-len 65536 (KV fit) |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
