@@ -28,8 +28,9 @@ data:
         "supports_vision": false,
         "supports_tools": true,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": true,
-        "strips_thinking": true
+        "strips_thinking": false
       },
       "param_translation": {
         "thinking": {
@@ -41,7 +42,7 @@ data:
         "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": { "temperature": 1.0, "top_p": 0.95, "max_tokens": 16384 },
+        "chat": { "temperature": 1.0, "top_p": 0.95, "max_tokens": 32768, "thinking": { "enabled": true } },
         "meta_tasks": {
           "title":     { "max_tokens": 80,  "thinking": { "enabled": false } },
           "tags":      { "max_tokens": 60,  "thinking": { "enabled": false } },
