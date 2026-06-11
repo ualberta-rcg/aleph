@@ -1,6 +1,7 @@
 # Qwen2.5-VL-3B: Vision-language model (Qwen/Qwen2.5-VL-3B-Instruct)
 # Dedicated PVC with init container download; 1x time-sliced L40S GPU via vLLM.
-# 32K native context (128K max positions, sliding_window=32768 disabled).
+# 64K deployed context (128K max positions, sliding_window=32768 disabled).
+# KV cache at 64K ≈ 2.3 GB, well within 24GB slice (~15.6 GB free after weights).
 # API: POST /v1/chat/completions (OpenAI-style with image support)
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -64,7 +65,7 @@ spec:
           - --model=/data
           - --served-model-name=qwen25-vl-3b
           - --port=8080
-          - --max-model-len=32768
+          - --max-model-len=65536
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.90
           - --trust-remote-code

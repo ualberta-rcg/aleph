@@ -17,7 +17,7 @@ data:
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": { "max_completion_tokens": 32768, "context_window": 32768 },
+      "limits": { "max_completion_tokens": 32768, "context_window": 65536 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
@@ -54,7 +54,7 @@ data:
       "schema_version": 2,
       "catalog": {
         "description_short": "Qwen2.5-VL-72B — large vision-language model for images, video & visual grounding (4x L40S)",
-        "description": "Qwen2.5-VL-72B-Instruct is a large vision-language model. 72.2B dense, GQA (64Q/8KV), 32K native context (131K with YaRN, not recommended for VL tasks). Supports dynamic-resolution images, video up to 1+ hour, and up to 20 images per prompt. Visual grounding for GUI agents. No structured tool/function calling. Deployed in BF16 on 4x L40S with TP4.",
+        "description": "Qwen2.5-VL-72B-Instruct is a large vision-language model. 72.2B dense, GQA (64Q/8KV), 128K max positions, 64K deployed context. Supports dynamic-resolution images, video up to 1+ hour, and up to 20 images per prompt. Visual grounding for GUI agents. No structured tool/function calling. Deployed in BF16 on 4x L40S with TP4.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen2.5-VL-72B-Instruct",
         "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-72B-Instruct",

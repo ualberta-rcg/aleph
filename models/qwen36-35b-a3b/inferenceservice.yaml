@@ -2,6 +2,7 @@
 # HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=2, DO NOT set gpumem,
 # and --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL is fast).
 # VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 required on L40S (SM89). Scale-to-zero, 15m idle.
+# 64K context: hybrid linear+softmax attention keeps KV manageable on 2x L40S.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -28,7 +29,7 @@ spec:
           - --model=/mnt/models
           - --served-model-name=qwen36-35b-a3b
           - --tensor-parallel-size=2
-          - --max-model-len=32768
+          - --max-model-len=65536
           - --dtype=auto
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=8
