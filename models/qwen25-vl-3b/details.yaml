@@ -17,12 +17,12 @@ data:
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": { "max_completion_tokens": 2048, "context_window": 4096 },
+      "limits": { "max_completion_tokens": 4096, "context_window": 32768 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "~2 minutes (6 GB BF16, 1x L40S slice)"
+        "cold_start_estimate": "~2 minutes (6 GB BF16, 1x L40S slice, 32K ctx)"
       },
       "behavior": {
         "supports_vision": true,
@@ -38,7 +38,7 @@ data:
         "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": { "temperature": 0.2, "top_p": 0.9, "max_tokens": 2048 },
+        "chat": { "temperature": 0.2, "top_p": 0.9, "max_tokens": 4096 },
         "meta_tasks": {
           "title":     { "max_tokens": 80 },
           "tags":      { "max_tokens": 60 },
@@ -47,8 +47,8 @@ data:
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Qwen2.5-VL-3B — compact vision-language for images, video, OCR & docs (1x GPU slice)",
-        "description": "Qwen2.5-VL-3B-Instruct is a compact vision-language model. 3B dense + ViT (36 layers, GQA 16Q/2KV), 32K native context deployed at 4K. Supports dynamic-resolution images, video up to 1+ hour, up to 20 images per prompt, OCR, chart/document parsing, and visual grounding. No tool/function calling. Fits on a single HAMi GPU slice (24 GB).",
+        "description_short": "Qwen2.5-VL-3B — compact vision-language for images, video, OCR & docs, 32K ctx (1x GPU slice)",
+        "description": "Qwen2.5-VL-3B-Instruct is a compact vision-language model. 3B dense + ViT (36 layers, GQA 16Q/2KV), 32K native context (128K max positions). Supports dynamic-resolution images, video up to 1+ hour, up to 20 images per prompt, OCR, chart/document parsing, and visual grounding. No tool/function calling. Fits on a single HAMi GPU slice (24 GB).",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen2.5-VL-3B-Instruct",
         "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct",
