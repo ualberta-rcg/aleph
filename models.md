@@ -4265,37 +4265,55 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 
 ## `qwen25-vl-72b`
 
-**Qwen2.5-VL-72B large vision-language model for imagery/spectra/microscopy.**
+**Qwen2.5-VL-72B-Instruct — large vision-language model for images, video & visual grounding.**
 
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
+72.2B dense VLM with dynamic-resolution images, video up to 1+ hour, and up to 5 images per prompt.
 
-**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen25-vl-72b/`
 
-**Context window:** 32,768 tokens
+**Context window:** 32,768 tokens (131K with YaRN, not recommended for VL tasks) **Max output:** 32,768 tokens
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwen25-vl-72b` | `Qwen/Qwen2.5-VL-72B-Instruct` | TP4 | — | — | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwen25-vl-72b` | `Qwen/Qwen2.5-VL-72B-Instruct` | 72.2B dense | bf16 | Qwen License | nlp | image analysis, video understanding, visual grounding | tool calling, reasoning/thinking mode |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Streaming | yes | — |
+| Vision | yes | dynamic resolution, video, up to 5 images/prompt |
+| Streaming | yes | SSE chunked |
+| System prompt | yes | — |
+| Tool calling | no | visual grounding only, no structured function calling |
+| Reasoning/thinking | no | Non-reasoning model |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | 1–3 min |
+| vLLM v0.20.2 | 4× L40S (48 GB) | whole-device (`nvidia.com/gpu: "4"`) | scale-to-zero 15m | ~285s |
 
-### Notes
+### Sampling Recommendations
 
-- vision OK (ID image color); TP4
+| Use case | temperature | top_p | repetition_penalty |
+| --- | --- | --- | --- |
+| Vision analysis (deterministic) | 0.1 | 0.001 | 1.05 |
+| General chat | 0.7 | 0.8 | 1.0 |
+
+### Test Results (2026-06-11)
+
+**22/22 passed, 2 expected failures, 0 failed**
+
+- ✅ Basic chat, streaming, temp/top_p/top_k, stop sequences, system prompt
+- ✅ Vision (OAI image_url) — correctly describes images and colors
+- ✅ Vision (ANT image block) — correctly describes image content
+- ✅ No reasoning content (correct for non-reasoning model)
+- ✅ Anthropic /v1/messages (all endpoints including vision)
+- ✅ Catalog: vision=True, tools=False, reasoning=False, ctx=32768, max_out=32768
 
 ## `qwen25-vl-7b`
 

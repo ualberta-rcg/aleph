@@ -10,52 +10,60 @@ data:
     {
       "id": "qwen25-vl-72b",
       "type": "chat",
-      "endpoints": {
-        "primary": "/v1/chat/completions",
-        "health": "/v1/models"
-      },
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
         "k8s_name": "qwen25-vl-72b",
         "serialize": false,
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": {
-        "context_window": 32768
-      },
+      "limits": { "max_completion_tokens": 32768, "context_window": 32768 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "idle_retention": "15m"
+        "idle_retention": "15m",
+        "cold_start_estimate": "~4 minutes (144 GB BF16, 4x L40S)"
       },
       "behavior": {
         "supports_vision": true,
         "supports_tools": false,
         "supports_system_prompt": true,
-        "reasoning_model": false
+        "supports_streaming": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": {
-          "temperature": 0.7,
-          "max_tokens": 8192
+        "chat": { "temperature": 0.7, "top_p": 0.8, "max_tokens": 8192 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
         }
+      },
+      "custom_params": {
+        "schema": {
+          "top_k": { "type": "integer", "default": 20 },
+          "repetition_penalty": { "type": "number", "default": 1.05 }
+        },
+        "passthrough": true
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Qwen2.5-VL-72B large vision-language model for imagery/spectra/microscopy.",
-        "description": "Qwen2.5-VL-72B large vision-language model for imagery/spectra/microscopy.",
+        "description_short": "Qwen2.5-VL-72B — large vision-language model for images, video & visual grounding (4x L40S)",
+        "description": "Qwen2.5-VL-72B-Instruct is a large vision-language model. 72.2B dense, GQA (64Q/8KV), 32K native context (131K with YaRN, not recommended for VL tasks). Supports dynamic-resolution images, video up to 1+ hour, and up to 5 images per prompt. Visual grounding for GUI agents. No structured tool/function calling. Deployed in BF16 on 4x L40S with TP4.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen2.5-VL-72B-Instruct",
         "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-72B-Instruct",
+        "license": "Qwen License",
+        "parameters": "72.2B dense",
+        "precision": "bf16",
         "framework": "vllm",
         "domain": "nlp",
-        "subdomain": "large-language-model",
-        "parameters": "TP4",
-        "tags": [
-          "chat",
-          "vlm",
-          "vision",
-          "multimodal"
-        ]
+        "subdomain": "vision-language-model",
+        "tags": ["chat", "vlm", "vision", "multimodal", "video", "visual-grounding"]
       }
     }
