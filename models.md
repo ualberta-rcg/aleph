@@ -4526,37 +4526,46 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 
 ## `qwen36-35b-a3b`
 
-**Qwen3.6-35B-A3B MoE (3B active), Gated-DeltaNet hybrid (needs newer vLLM).**
+**Qwen3.6-35B-A3B — hybrid Gated-DeltaNet MoE (3B active), thinking + tools + vision (2× L40S).**
 
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
+Best for efficient multimodal chat with reasoning, tool calling, and vision. Hybrid architecture (30 Gated DeltaNet + 10 softmax attention layers) with 256 experts (8+1 routed). 3B active params per token — very fast for a 35B model. Not for embedding-only workloads.
 
-**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM v0.20.2
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen36-35b-a3b/`
 
-**Context window:** 32,768 tokens
+**Context window:** 32,768 tokens **Max output:** 32,768 tokens
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwen36-35b-a3b` | `Qwen/Qwen3.6-35B-A3B` | TP2 | — | — | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwen36-35b-a3b` | `Qwen/Qwen3.6-35B-A3B` | 35B MoE (3B active) | bf16 | Apache-2.0 | nlp | reasoning, tool calling, vision, multimodal chat | embedding-only, batch offline |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
+| Reasoning | yes | qwen3 parser, effort mode (NOT on by default — needs `enable_thinking=true`) |
+| Tool calling | yes | qwen3_coder parser |
+| Vision | yes | ViT encoder, images + video |
 | Streaming | yes | — |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | 1–3 min |
+| vLLM v0.20.2, TP2 | 2× L40S (whole-device) | nvidia.com/gpu: "2" | scale-to-zero, 15m idle | ~285s (~5 min) |
 
 ### Notes
 
-- s[::-1]; MoE Gated-DeltaNet on vllm:latest
+- Hybrid architecture: 30 Gated DeltaNet (linear attention) + 10 full softmax attention layers
+- 256 experts, 8+1 routed per token (3B active of 35B total)
+- Thinking NOT on by default — requires `chat_template_kwargs: {enable_thinking: true}`
+- 256K native context, deployed at 32K due to TP2 memory constraints
+- TRITON_ATTN_VLLM_V1 required on L40S (SM89)
+- 21/21 gateway test ✅ 2026-06-11
+- Card was completely rewritten — original said no vision/tools/reasoning; all three confirmed working
 
 ## `qwq-32b`
 
