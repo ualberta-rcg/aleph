@@ -32,7 +32,7 @@ spec:
           - --dtype=auto
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=8
-          - '--limit-mm-per-prompt={"image": 5}'
+          - '--limit-mm-per-prompt={"image": 20, "video": 1}'
           - --disable-custom-all-reduce
           - --port=8080
         env:

@@ -48,7 +48,7 @@ data:
       "schema_version": 2,
       "catalog": {
         "description_short": "Qwen2.5-VL-3B — compact vision-language for images, video, OCR & docs (1x GPU slice)",
-        "description": "Qwen2.5-VL-3B-Instruct is a compact vision-language model. 3B dense + ViT (36 layers, GQA 16Q/2KV), 32K native context deployed at 4K. Supports dynamic-resolution images, video up to 1+ hour, OCR, chart/document parsing, and visual grounding. No tool/function calling. Fits on a single HAMi GPU slice (24 GB).",
+        "description": "Qwen2.5-VL-3B-Instruct is a compact vision-language model. 3B dense + ViT (36 layers, GQA 16Q/2KV), 32K native context deployed at 4K. Supports dynamic-resolution images, video up to 1+ hour, up to 20 images per prompt, OCR, chart/document parsing, and visual grounding. No tool/function calling. Fits on a single HAMi GPU slice (24 GB).",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen2.5-VL-3B-Instruct",
         "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct",

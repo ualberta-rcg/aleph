@@ -35,6 +35,7 @@ spec:
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
+          - '--limit-mm-per-prompt={"image": 20, "video": 1}'
           - --disable-custom-all-reduce
           - --port=8080
         env:
