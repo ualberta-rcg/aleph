@@ -4231,37 +4231,45 @@ State-of-the-art open-source codeLLM matching GPT-4o on coding benchmarks. Train
 
 ## `qwen25-vl-3b`
 
-**Qwen2.5-VL 3B, vision-language (images + video)**
+**Qwen2.5-VL-3B-Instruct — compact vision-language for images, video, OCR & docs.**
 
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
+3B dense + ViT, dynamic resolution images, video, OCR, chart/document parsing. Fits on a single HAMi GPU slice.
 
-**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen25-vl-3b/`
 
-**Context window:** 4,096 tokens (served; card 8,192) **Max output:** 2,048 tokens
+**Context window:** 4,096 tokens **Max output:** 2,048 tokens
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwen25-vl-3b` | `Qwen/Qwen2.5-VL-3B-Instruct` | 3B | bfloat16 | Apache-2.0 | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwen25-vl-3b` | `Qwen/Qwen2.5-VL-3B-Instruct` | 3B (+ ViT) | bfloat16 | Apache-2.0 | nlp | image analysis, OCR, document parsing | tool calling, reasoning, long context |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Streaming | yes | — |
+| Vision | yes | dynamic resolution, video, up to 4 images/prompt |
+| Streaming | yes | SSE chunked |
+| Tool calling | no | visual grounding only |
+| Reasoning/thinking | no | Non-reasoning model |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | ~120s |
+| vLLM v0.20.2 | 1× GPU | HAMi vGPU slice (24 GB gpumem) | scale-to-zero | ~120s |
 
-### Notes
+### Test Results (2026-06-11)
 
-- v0.20.2 (std; fixed --limit-mm-per-prompt JSON); gpumem 24GB; chat OK
+**18/18 passed, 2 expected failures, 0 failed**
+
+- ✅ Basic chat, streaming, temp/top_p, stop sequences, system prompt
+- ✅ Vision (OAI + ANT) — correctly describes images and identifies content
+- ✅ No reasoning content (correct)
+- ✅ Catalog: vision=True, tools=False, reasoning=False, ctx=4096, max_out=2048
 
 ## `qwen25-vl-72b`
 

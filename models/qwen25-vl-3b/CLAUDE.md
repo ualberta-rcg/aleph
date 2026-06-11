@@ -1,90 +1,68 @@
-# Qwen2.5-VL 3B — Model Context
+# Qwen2.5-VL-3B Model Card
 
-## What This Model Does
+## Identity
+- **Model**: Qwen/Qwen2.5-VL-3B-Instruct (3B dense + ViT, vision-language)
+- **Type**: Chat (vision + text, no tools, no thinking)
+- **Framework**: vLLM v0.20.2, tensor-parallel 1
+- **Source**: https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct
 
-Qwen2.5-VL 3B Instruct — a compact vision-language model for image and video understanding. Processes images at dynamic resolution, supports OCR, chart reading, document parsing, visual localization (bounding boxes/points), structured output, and agentic computer/phone use. Uses dynamic FPS sampling for video and mRoPE for temporal understanding. 1x shared L40S GPU.
+## Capabilities
+- **Vision**: ✅ Dynamic resolution images, video, OCR, chart/document parsing, object grounding
+- **Tool Calling**: ❌ No tool/function calling
+- **Thinking/Reasoning**: ❌ No — not a reasoning model
+- **Context**: 32K native, deployed at 4096 (conservative for small model on shared GPU)
+- **Architecture**: Qwen2.5-based, 3B dense (36 layers, GQA 16Q/2KV) + ViT (32 layers)
+- **Video**: Up to 1+ hour, temporal grounding, dynamic FPS
 
-## Source Repo
-
-**HuggingFace**: [Qwen/Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
-
-Key recommendations from source:
-- **Transformers**: Requires latest transformers (built from source) for `qwen2_5_vl` architecture
-- **Flash attention**: HF recommends enabling `flash_attention_2` for better performance
-- **Image resolution**: Configurable via `min_pixels` and `max_pixels` (default 4-16384 tokens per image)
-- **Context length**: 32768 native, YaRN can extend further
-- **License**: Apache-2.0
-
-## How The Server Works
-
-- **Pattern**: vLLM binary (Knative mode)
-- **Container**: `vllm/vllm-openai:v0.8.4`
-- **Weights**: Pre-downloaded to PVC by init container
-- **Startup**: ~1-2 minutes cold start (3B BF16 weights, ~6GB)
-- **Health**: vLLM's built-in `/v1/models` endpoint
-- **Shared memory**: 4Gi emptyDir at `/dev/shm`
-- **GPU**: Shared L40S on rack15-03 (time-sliced)
-- **No tensor-parallel-size specified**: Defaults to 1, correct for single GPU
-
-## What We Configured vs Source Recommendations
-
-- **max-model-len=4096**: Very conservative vs 32K native. Limited by shared GPU.
-- **limit-mm-per-prompt=image=4**: Limits to 4 images per request. Reasonable for shared GPU.
-- **Missing --enforce-eager**: Not set, which is good — allows flash attention.
-
-## Gateway Integration
-
-- **ISVC name**: `qwen25-vl-3b` (matches API id, no ISVC_NAME_MAP entry)
-- **MODEL_TYPE**: chat (not in MODEL_TYPES dict — defaults to chat)
-- **CONTEXT_WINDOW**: 8192
-- **MODEL_MAX_TOKENS**: 2048
-- **REASONING_MODELS**: not listed
-- **KSERVE_CUSTOM_MODELS**: yes — uses `/v1/` prefix
-- **GPU_MODELS**: yes
-
-## Deploy / Update / Test
-
-```bash
-# Deploy
-kubectl apply -k models/qwen25-vl-3b/
-
-# Check status
-kubectl get pods -n models -l serving.kserve.io/inferenceservice=qwen25-vl-3b
-
-# Logs
-kubectl logs -n models -l serving.kserve.io/inferenceservice=qwen25-vl-3b -c kserve-container -f
-
-# Test (internal — text only)
-curl http://qwen25-vl-3b-predictor.models.svc.cluster.local:8080/v1/chat/completions \
-  -d '{"model":"qwen25-vl-3b","messages":[{"role":"user","content":"Describe a sunset"}],"max_tokens":100}'
-
-# Test (public — with image)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"qwen25-vl-3b","messages":[{"role":"user","content":[{"type":"text","text":"What is in this image?"},{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}]}],"max_tokens":100}'
+## vLLM Args
+```
+--model=/data
+--served-model-name=qwen25-vl-3b
+--port=8080
+--max-model-len=4096
+--dtype=bfloat16
+--gpu-memory-utilization=0.90
+--trust-remote-code
+--limit-mm-per-prompt={"image": 4}
 ```
 
-## Known Issues / Optimization Opportunities
+Env: `HF_HUB_CACHE=/tmp/hf-cache`
 
-1. **Very small context (4096 vs 32K native)**: The model natively supports 32K context. 4096 is extremely conservative and limits multi-image and document understanding use cases.
+## Recommended Sampling
+- Deterministic: near-greedy, `repetition_penalty=1.05`
+- General chat: `temperature=0.2`, `top_p=0.9`
 
-2. **Very small max_tokens (2048)**: Gateway caps output at 2048 tokens. For OCR/document extraction tasks, this may truncate results.
+## Resources
+- **GPU**: 1× GPU (HAMi vGPU slice, 24 GB gpumem)
+- **CPU**: 2 req / 4 limit
+- **Memory**: 12Gi req / 16Gi limit
+- **SHM**: 4Gi (emptyDir Memory)
+- **Cold start**: ~2 minutes (6 GB BF16 + ViT over NFS + vLLM init)
+- **Fits on any GPU node** — single GPU, can coexist with other workloads
 
-3. **No video limit**: --limit-mm-per-prompt only covers images, not video. A video could generate many visual tokens and OOM.
+## Special Notes
+- **Vision model** — images, video, OCR, chart/document parsing, visual localization
+- **No tool calling** — visual grounding only, not structured function calling
+- **Non-reasoning** — no thinking/reasoning mode
+- **max-model-len=4096** — conservative 4K context (32K native but 4K conserves VRAM for vision)
+- **limit-mm-per-prompt** allows 4 images per request
+- **gpumem=24576** — 24 GB HAMi VRAM slice (model ~6 GB + ViT + KV cache)
+- **init container** downloads weights from HF on first deploy
+- **Apache-2.0** license
 
-4. **Missing --max-num-seqs**: Not set. On shared GPU, concurrent requests could cause VRAM contention.
+## Test Results (2026-06-11)
+**18/18 passed, 2 expected failures, 0 failed**
 
-5. **minReplicas=0**: Scale-to-zero enabled. Good for shared GPU.
-
-6. **vLLM v0.8.4 pinned**: Good.
+All OpenAI and Anthropic endpoints working:
+- ✅ Basic chat, streaming, temp/top_p, stop sequences, system prompt
+- ✅ Vision (OAI image_url) — correctly describes images and colors
+- ✅ Vision (ANT image block) — correctly identifies logo
+- ✅ No reasoning content (correct)
+- ✅ Resources block with vram_mib
+- ✅ Catalog: vision=True, tools=False, reasoning=False, ctx=4096, max_out=2048
+- Cold start: ~120s
 
 ## Files
-
-| File | Purpose |
-|------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ISVC spec: vLLM container + PVC mount + shared memory |
-| `kustomization.yaml` | Kustomize resources |
-| `pvc.yaml` | Dedicated PVC (qwen-vl-3b-data) |
-
-**IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
+- `details.yaml` — ConfigMap (v2 card, supports_vision=true, supports_tools=false)
+- `inferenceservice.yaml` — KServe ISVC (vLLM v0.20.2, TP1, gpumem 24GB, init container)
+- `test.py` — 20-check gateway test with vision

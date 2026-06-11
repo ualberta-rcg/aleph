@@ -9,77 +9,55 @@ data:
   details.json: |
     {
       "id": "qwen25-vl-3b",
-      "status": "production",
       "type": "chat",
-      "description_short": "Qwen2.5-VL 3B, vision-language (images + video)",
-      "description": "Qwen2.5-VL 3B Instruct — compact vision-language model. Processes images (dynamic resolution, OCR, charts, document parsing) and video (1hr+). Supports visual localization (bounding boxes, points), structured output, and agentic computer/phone use. Dynamic resolution with mRoPE. 1x shared L40S GPU.",
-      "context_window": 8192,
-      "max_completion_tokens": 2048,
-      "endpoints": {
-        "primary": "/v1/chat/completions",
-        "health": "/v1/models"
-      },
-      "owned_by": "Qwen",
-      "source": "Qwen/Qwen2.5-VL-3B-Instruct",
-      "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct",
-      "license": "Apache-2.0",
-      "parameters": "3B",
-      "parameter_count": 3000000000,
-      "precision": "bfloat16",
-      "architecture": "qwen2.5-vl",
-      "framework": "vllm",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 1,
-        "startup_seconds": 120,
-        "container_image": "vllm/vllm-openai:v0.8.4",
-        "served_model_name": "qwen25-vl-3b",
-        "node": "rack15-03 (shared GPU)",
-        "timeout": 150
-      },
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "qwen25-vl-3b",
         "serialize": false,
         "no_stream": false,
-        "deployment_mode": "Knative"
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": true,
+      "limits": { "max_completion_tokens": 2048, "context_window": 4096 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "~2 minutes (6 GB BF16, 1x L40S slice)"
+      },
+      "behavior": {
         "supports_vision": true,
         "supports_video": true,
         "supports_tools": false,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": false,
-        "needs_json_fixing": false,
         "strips_thinking": false
       },
-      "domain": "nlp",
-      "subdomain": "vision-language",
-      "tags": ["chat", "llm", "vision", "multimodal", "ocr"],
-      "content_types": ["text", "image"],
-      "languages": ["multilingual"],
-      "tier": "production",
-      "input_map": {
-        "messages": {
-          "type": "array",
-          "items": {"role": "string", "content": "string|array"},
-          "required": true,
-          "description": "Chat messages in OpenAI format. Content can include image_url objects."
-        },
-        "max_tokens": {"type": "integer", "default": 2048, "max": 2048, "description": "Maximum tokens to generate"},
-        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"}
+      "param_translation": {
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
-      "output_map": {
-        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
-        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      "defaults": {
+        "chat": { "temperature": 0.2, "top_p": 0.9, "max_tokens": 2048 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
       },
-      "server_config": {
-        "cli_args": ["--model=/data", "--served-model-name=qwen25-vl-3b", "--port=8080", "--max-model-len=4096", "--dtype=bfloat16", "--gpu-memory-utilization=0.90", "--trust-remote-code", "--limit-mm-per-prompt=image=4"],
-        "model_path": "/data",
-        "weight_files": ["*.safetensors"],
-        "shared_memory": "4Gi"
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Qwen2.5-VL-3B — compact vision-language for images, video, OCR & docs (1x GPU slice)",
+        "description": "Qwen2.5-VL-3B-Instruct is a compact vision-language model. 3B dense + ViT (36 layers, GQA 16Q/2KV), 32K native context deployed at 4K. Supports dynamic-resolution images, video up to 1+ hour, OCR, chart/document parsing, and visual grounding. No tool/function calling. Fits on a single HAMi GPU slice (24 GB).",
+        "owned_by": "Qwen",
+        "source": "Qwen/Qwen2.5-VL-3B-Instruct",
+        "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct",
+        "license": "Apache-2.0",
+        "parameters": "3B (+ ViT)",
+        "precision": "bfloat16",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "vision-language",
+        "tags": ["chat", "llm", "vision", "video", "multimodal", "ocr"]
       }
     }
