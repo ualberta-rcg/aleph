@@ -10,52 +10,59 @@ data:
     {
       "id": "qwq-32b",
       "type": "chat",
-      "endpoints": {
-        "primary": "/v1/chat/completions",
-        "health": "/v1/models"
-      },
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
         "k8s_name": "qwq-32b",
         "serialize": false,
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": {
-        "context_window": 32768
-      },
+      "limits": { "max_completion_tokens": 32768, "context_window": 32768 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "idle_retention": "15m"
+        "idle_retention": "15m",
+        "cold_start_estimate": "~3 minutes (64 GB FP16, 2x L40S)"
       },
       "behavior": {
         "supports_vision": false,
-        "supports_tools": false,
+        "supports_tools": true,
         "supports_system_prompt": true,
-        "reasoning_model": true
+        "supports_streaming": true,
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": {
-          "temperature": 0.7,
-          "max_tokens": 8192
+        "chat": { "temperature": 0.6, "top_p": 0.95, "max_tokens": 32768 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
         }
+      },
+      "custom_params": {
+        "schema": {
+          "top_k": { "type": "integer", "default": 40 }
+        },
+        "passthrough": true
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Qwen QwQ-32B reasoning model. Strong STEM, distinct style from R1 distills.",
-        "description": "Qwen QwQ-32B reasoning model. Strong STEM, distinct style from R1 distills.",
+        "description_short": "QwQ-32B reasoning model — always-on CoT thinking, tools, strong STEM (2x L40S)",
+        "description": "QwQ-32B is Qwen's dedicated reasoning model. Always-on chain-of-thought with <think/> blocks (deepseek_r1 parser). Based on Qwen2.5 architecture, 32.5B dense params, GQA (40Q/8KV), 131K native context deployed at 32K. Supports tool/function calling via hermes parser. HF recommends temperature 0.6 / top_p 0.95 / top_k 20-40. Always reasons — no thinking toggle needed.",
         "owned_by": "Qwen",
         "source": "Qwen/QwQ-32B",
         "source_url": "https://huggingface.co/Qwen/QwQ-32B",
+        "license": "Apache-2.0",
+        "parameters": "32.5B dense",
+        "precision": "fp16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",
-        "parameters": "TP2",
-        "tags": [
-          "chat",
-          "llm",
-          "reasoning",
-          "stem"
-        ]
+        "tags": ["chat", "llm", "reasoning", "tool-calling", "stem"]
       }
     }
