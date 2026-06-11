@@ -18,7 +18,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
 | astroclip | embed | true | /v1/science/embed | READY | FAIL | AstroCLIP lib not installed; demo-only stub |
 | astropt | embed | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim galaxy embeddings; needs >=32x32 image input |
-| astrosage | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic endpoints both work |
+| astrosage | chat | true | /v1/chat/completions | READY | PASS | 14/14 ✅ via gateway; custom transformers server (not vLLM); 8B Llama-3.1; vGPU slice 16GB; no_stream; vision gating added (gateway-9ade05f) |
 | aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card. **NIM available:** `nvcr.io/nim/baai/bge-m3` (build.nvidia.com/baai/bge-m3) |
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
