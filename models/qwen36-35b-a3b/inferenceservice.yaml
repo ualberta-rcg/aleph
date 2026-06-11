@@ -22,7 +22,7 @@ spec:
       gpu: "on"
     containers:
       - name: kserve-container
-        image: vllm/vllm-openai:latest
+        image: vllm/vllm-openai:v0.20.2
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
           - --model=/mnt/models
@@ -32,6 +32,9 @@ spec:
           - --dtype=auto
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=8
+          - --reasoning-parser=qwen3
+          - --enable-auto-tool-choice
+          - --tool-call-parser=qwen3_coder
           - --disable-custom-all-reduce
           - --port=8080
         env:
