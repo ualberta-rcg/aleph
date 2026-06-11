@@ -30,6 +30,7 @@ data:
         "supports_video": true,
         "supports_tools": true,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": false,
         "strips_thinking": false
       },

@@ -4317,11 +4317,11 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 
 ## `qwen25-vl-7b`
 
-**Qwen2.5-VL 7B vision-language: images, video, OCR, charts, docs (multimodal)**
+**Qwen2.5-VL-7B-Instruct — compact vision-language model with tool calling, images + video.**
 
-Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
+7B dense + ViT, dynamic resolution images, video up to 1+ hour, OCR, chart/document parsing. Fits on a single HAMi GPU slice.
 
-**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM  
+**Status:** READY **Test:** PASS **Type:** Chat **Runtime:** vLLM
 **Primary endpoint:** `/v1/chat/completions` **Model path:** `models/qwen25-vl-7b/`
 
 **Context window:** 65,536 tokens **Max output:** 16,384 tokens
@@ -4330,25 +4330,35 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `qwen25-vl-7b` | `Qwen/Qwen2.5-VL-7B-Instruct` | 7B (+ ViT) | bfloat16 | Apache-2.0 | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `qwen25-vl-7b` | `Qwen/Qwen2.5-VL-7B-Instruct` | 7B (+ ViT) | bfloat16 | Apache-2.0 | nlp | image analysis, video, OCR, visual grounding | reasoning/thinking mode |
 
 ### Capabilities
 
 | Capability | Supported | Notes |
 | --- | ---: | --- |
 | Chat completions | yes | OpenAI + Anthropic routes |
-| Tool calling | yes | function_call support |
-| Streaming | yes | — |
+| Vision | yes | dynamic resolution, video, up to 20 images/prompt |
+| Tool calling | yes | hermes parser (forced, conservative on tool_choice='auto') |
+| Streaming | yes | SSE chunked |
+| System prompt | yes | — |
+| Reasoning/thinking | no | Non-reasoning model |
 
 ### Serving
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| vLLM | yes | HAMi GPU slice | scale-to-zero | 2-3 minutes |
+| vLLM v0.20.2 | 1× GPU | HAMi vGPU slice (32 GB gpumem) | scale-to-zero | ~120s |
 
-### Notes
+### Test Results (2026-06-11)
 
-- OpenAI + Anthropic + vision (image_url)
+**22/22 passed, 2 expected failures, 0 failed**
+
+- ✅ Basic chat, streaming, temp/top_p, stop sequences, system prompt
+- ✅ Vision (OAI + ANT) — correctly describes images and colors
+- ✅ Tool calling (hermes parser active, conservative on auto)
+- ✅ max_tokens=16k accepted, resources block with vram_mib
+- ✅ No reasoning content (correct)
+- ✅ Catalog: vision=True, tools=True, reasoning=False, ctx=65536, max_out=16384
 
 ## `qwen3-235b`
 
