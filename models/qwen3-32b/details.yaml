@@ -21,42 +21,68 @@ data:
         "upstream_model_id": null
       },
       "limits": {
-        "context_window": 40960
+        "context_window": 40960,
+        "max_completion_tokens": 32768
       },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
+        "cold_start_estimate": "3-4 minutes",
         "idle_retention": "15m"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": true,
         "supports_system_prompt": true,
-        "reasoning_model": true
+        "supports_streaming": true,
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "effort",
+          "default_effort": "medium",
+          "effort_aliases": {
+            "none": "none", "minimal": "none", "disabled": "none",
+            "low": "none",
+            "medium": "medium", "med": "medium",
+            "high": "high", "xhigh": "high", "max": "high"
+          },
+          "on":  {"chat_template_kwargs": {"enable_thinking": true}},
+          "off": {"chat_template_kwargs": {"enable_thinking": false}},
+          "note": "Qwen3-32B thinking is binary. Maps reasoning_effort: none/low -> off, medium/high/max -> on."
+        }
       },
       "defaults": {
         "chat": {
           "temperature": 0.7,
-          "max_tokens": 8192
+          "max_tokens": 32768,
+          "thinking": {"enabled": true, "effort": "medium"}
+        },
+        "meta_tasks": {
+          "title": {"max_tokens": 80, "thinking": {"enabled": false}},
+          "tags": {"max_tokens": 60, "thinking": {"enabled": false}},
+          "followups": {"max_tokens": 220, "thinking": {"enabled": false}}
         }
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages.",
-        "description": "Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages.",
+        "description_short": "Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages, 40K context.",
+        "description": "Qwen3-32B dense model (32.8B params, 64 layers, GQA). Supports thinking/reasoning mode (binary enable_thinking switch, on by default), agentic tool calling (hermes parser), and 100+ languages. Native context 32K, extended to 131K with YaRN. Best sampling: thinking mode → temp=0.6/topP=0.95; non-thinking → temp=0.7/topP=0.8/topK=20. Requires vLLM >= 0.8.5 with --reasoning-parser=qwen3.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen3-32B",
         "source_url": "https://huggingface.co/Qwen/Qwen3-32B",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",
-        "parameters": "TP2",
+        "parameters": "32.8B dense, TP2",
         "tags": [
           "chat",
           "llm",
           "reasoning",
           "tool-calling",
-          "multilingual"
+          "multilingual",
+          "agentic"
         ]
       }
     }
