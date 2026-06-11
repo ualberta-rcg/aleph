@@ -50,6 +50,26 @@ data:
         }
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string"},
+          "required": true,
+          "description": "Chat messages in OpenAI format (system/user/assistant)"
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 8000, "description": "Maximum tokens to generate"},
+        "temperature": {"type": "float", "default": 0.3, "min": 0.0, "max": 2.0, "description": "Sampling temperature (0.0 recommended for less verbosity)"},
+        "top_p": {"type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "description": "Nucleus sampling probability"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "frequency_penalty": {"type": "float", "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty for repetition"}
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model identifier"},
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}, "description": "Generated chat completions"},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
       "catalog": {
         "description_short": "Llama3-OpenBioLLM-70B biomedical fine-tune. SOTA on 9 medical benchmarks (86% avg).",
         "description": "Llama3-OpenBioLLM-70B is a 70B parameter biomedical domain model fine-tuned from Meta-Llama-3-70B-Instruct using DPO and QLoRA (r=128, alpha=256). Trained on a custom medical instruction dataset on 8x H100 GPUs. Achieves 86.06% average across 9 biomedical benchmarks (MedQA, PubMedQA, Clinical KG, Medical Genetics, etc.), outperforming GPT-4 and Med-PaLM-2. Excels at clinical entity recognition, medical text summarization, biomarker extraction, disease classification, and PII de-identification. Uses Llama-3 instruct chat template. No reasoning mode, no tool calling, no vision. Context: 8192 tokens.",

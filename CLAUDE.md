@@ -162,6 +162,52 @@ Every code/config change must be reflected in `CHANGELOG.md` **before** creating
 - Do **not** commit if code changed but `CHANGELOG.md` was not updated.
 - Small exceptions (typos/comments-only) are allowed, but should be explicitly noted in the commit message.
 
+## Card Templates (v2 Schema — one standard)
+
+`models/DETAILS-TEMPLATE-LLM.md` is the single source of truth for card format. All 3 templates use the **v2 compact schema** tested against the gateway.
+
+**v2 schema structure** (gateway reads only these top-level keys):
+`id`, `type`, `endpoints`, `routing`, `limits`, `scaling`, `behavior`, `param_translation`, `defaults`, `custom_params`, `schema_version`, `input_map`, `output_map`, `catalog`
+
+Everything else (`owned_by`, `license`, `tags`, `description`, `deployment`, `server_config`, etc.) goes inside `catalog` — the gateway ignores it but the UI/catalog uses it.
+
+**Do NOT use `compatibility` or `deployment` blocks.** The gateway reads `behavior.*` only.
+
+| Template | Use for |
+|---|---|
+| **A — vLLM chat LLM** | Chat models (gemma, qwen, deepseek, etc.) + completions-only (progen2) + reasoning (phi-4) |
+| **B — Custom science server** | FastAPI science models (diffdock, aurora, esmfold, etc.) — 5 I/O patterns documented |
+| **C — Embedding/rerank/audio/classification** | Non-LLM standard-endpoint models (bge, scibert, birdnet, etc.) |
+
+All templates include `input_map`/`output_map` (documentation-only, gateway does not read them).
+
+### Thinking/reasoning
+- Use `param_translation.thinking` with `"mode": "budget"` to map effort → `thinking_token_budget`
+- Always include `"disabled_effort": "none"` so thinking can be turned off
+- `"mode": "none"` for non-reasoning models (default)
+
+### OpenWebUI compat
+- `defaults.meta_tasks` with title/tags/followups controls OpenWebUI auto-generation
+- `defaults.chat` sets default temperature/max_tokens
+
+### Anthropic endpoint
+- Only `type: "chat"` models get Anthropic `/v1/messages` translation (gateway gates on type)
+- `type: "completions"` or science types → 400 on Anthropic endpoint
+
+### LLM Model Progress
+
+Phase 1 complete (v2 schema + tested through gateway + input_map/output_map):
+1. ✅ tinyllama (14/14)
+2. ✅ command-r-7b (16/16)
+3. ✅ deepseek-v2-lite-16b (14/14)
+4. ✅ openbiollm-70b (14/14)
+5. ✅ oceangpt-30b (14/14, tools)
+6. ✅ geogalactica (14/14)
+7. ✅ astrosage (14/14, no_stream)
+8. ✅ progen2 (8/10, completions-only)
+
+Remaining LLMs still on v1 schema — see `models.md` for full list.
+
 ## Working Conventions
 
 - This repo is the source of truth; clone is at `/scratch/rahimk/repos/aleph` on the login node.
@@ -171,3 +217,34 @@ Every code/config change must be reflected in `CHANGELOG.md` **before** creating
   sudo ssh root@172.26.92.230 "export PATH=\$PATH:/var/lib/rancher/rke2/bin; export KUBECONFIG=/etc/rancher/rke2/rke2.yaml; kubectl get nodes"
   ```
 - For multi-command work, SSH in interactively or chain with `&&`
+
+## Scaling Models Up/Down
+
+KServe ISVCs use a `serving.kserve.io/stop: "true"` annotation to fully stop a model (no pods, no revision). **Just setting `minReplicas` is not enough** — Knative honors the stop annotation and will keep the ISVC in `Stopped` state even with `minReplicas: 1`.
+
+### Wake a stopped model
+```bash
+# Remove the stop annotation (this is the key step)
+kubectl annotate isvc <model> -n models serving.kserve.io/stop- --overwrite
+# Set minReplicas to spin up the pod
+kubectl patch isvc <model> -n models --type merge -p '{"spec":{"predictor":{"minReplicas":1}}}'
+```
+
+### Stop a model (spin down completely)
+```bash
+# Scale to zero AND add stop annotation
+kubectl patch isvc <model> -n models --type merge -p '{"spec":{"predictor":{"minReplicas":0}}}'
+kubectl annotate isvc <model> -n models serving.kserve.io/stop=true --overwrite
+```
+
+### Check readiness
+```bash
+kubectl get isvc <model> -n models -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+```
+
+### Test pattern (per model)
+1. Remove stop annotation → set minReplicas=1
+2. Wait for `Ready=True`
+3. Run test barrage via gateway (inside gateway pod or from head node via ClusterIP)
+4. Set minReplicas=0 → add stop annotation
+5. Move to next model

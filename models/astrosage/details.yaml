@@ -50,6 +50,26 @@ data:
         }
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string"},
+          "required": true,
+          "description": "Chat messages in OpenAI format (system/user/assistant)"
+        },
+        "max_tokens": {"type": "integer", "default": 512, "max": 8000, "description": "Maximum tokens to generate"},
+        "temperature": {"type": "float", "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature"},
+        "top_p": {"type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "description": "Nucleus sampling probability"},
+        "stream": {"type": "boolean", "default": false, "description": "Accepted but ignored (no_stream: true in gateway forces non-streaming response)"},
+        "frequency_penalty": {"type": "float", "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty for repetition"}
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model identifier"},
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}, "description": "Generated chat completions"},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
       "catalog": {
         "description_short": "AstroSage-8B astronomy LLM. Beats GPT-4o on astro benchmarks (80.9%).",
         "description": "AstroSage-Llama-3.1-8B is an 8B parameter astronomy/astrophysics LLM from AstroMLab. Based on Meta-Llama-3.1-8B, fine-tuned via continued pre-training on 250K+ arXiv astronomy papers (2007-2024, 3.3B tokens) and supervised fine-tuning on 8.8M QA pairs (2B tokens). Model merged with Meta-Llama-3.1-8B-Instruct (75/25 split). Achieves 80.9% on astronomy benchmarks, surpassing GPT-4o (80.4%). Trained on ORNL Frontier supercomputer. Custom FastAPI server using transformers library (not vLLM). No streaming support. English only. Llama 3.1 Community License.",

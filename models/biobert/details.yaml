@@ -47,6 +47,36 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "Biomedical text string or list of strings (max 512 tokens)"
+        }
+      },
+      "output_map": {
+        "object": {
+          "type": "string",
+          "description": "Object type (list)"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "object": "string",
+            "index": "int",
+            "embedding": "[float x 768]"
+          },
+          "description": "Embedding results (768-dim, mean-pooled)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name"
+        },
+        "usage": {
+          "type": "object",
+          "description": "Token usage stats"
+        }
+      },
       "catalog": {
         "description_short": "BioBERT base (v1.",
         "description": "BioBERT base (v1.1), BERT pre-trained on PubMed abstracts + PMC full text. Produces 768-dim biomedical text embeddings for NER, relation extraction and search. Served on a HAMi sub-GPU slice.",

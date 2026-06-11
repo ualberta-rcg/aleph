@@ -1,0 +1,86 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  annotations:
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: 15m
+  name: tinyllama-1-1b
+  namespace: models
+spec:
+  predictor:
+    containers:
+    - args:
+      - --model=/mnt/models/cpu-models/tinyllama/model.gguf
+      - --host=0.0.0.0
+      - --port=8080
+      - --n_ctx=4096
+      - --n_gpu_layers=0
+      - --n_threads=8
+      - --n_threads_batch=8
+      - --model_alias=tinyllama-1-1b
+      command:
+      - python3
+      - -m
+      - llama_cpp.server
+      env: []
+      image: ghcr.io/abetlen/llama-cpp-python:latest
+      imagePullPolicy: Always
+      livenessProbe:
+        failureThreshold: 3
+        httpGet:
+          path: /v1/models
+          port: 8080
+        initialDelaySeconds: 120
+        periodSeconds: 30
+        timeoutSeconds: 10
+      name: kserve-container
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      readinessProbe:
+        failureThreshold: 20
+        httpGet:
+          path: /v1/models
+          port: 8080
+        initialDelaySeconds: 30
+        periodSeconds: 15
+      resources:
+        limits:
+          cpu: '8'
+          memory: 4Gi
+        requests:
+          cpu: '4'
+          memory: 3Gi
+      volumeMounts:
+      - mountPath: /mnt/models
+        name: tinyllama-1-1b-models
+        readOnly: true
+      workingDir: /
+    initContainers:
+    - args:
+      - "set -e\npip install -q huggingface_hub\npython3 -u <<'PY'\nimport os, shutil\nfrom pathlib import Path\ndest = Path(\"/mnt/models/cpu-models/tinyllama/model.gguf\")\ndest.parent.mkdir(parents=True, exist_ok=True)\nif dest.exists() and dest.stat().st_size > 1_000_000:\n    print(\"TinyLlama GGUF already present, skipping download.\", flush=True)\nelse:\n    from huggingface_hub import hf_hub_download\n    p = hf_hub_download(\n        repo_id=\"TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF\",\n        filename=\"tinyllama-1-1b-chat-v1.0.Q4_K_M.gguf\",\n        local_dir=str(dest.parent),\n        token=os.environ.get(\"HF_TOKEN\"),\n    )\n    if p != str(dest):\n        shutil.move(p, str(dest))\n    print(\"Download complete:\", dest, flush=True)\nPY\n"
+      command:
+      - bash
+      - -c
+      env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            key: token
+            name: hf-token
+      image: python:3.11-slim
+      name: hf-fetch
+      resources:
+        requests:
+          cpu: '1'
+          memory: 2Gi
+      volumeMounts:
+      - mountPath: /mnt/models
+        name: tinyllama-1-1b-models
+    minReplicas: 0
+    scaleMetric: concurrency
+    scaleTarget: 2
+    timeout: 600
+    volumes:
+    - name: tinyllama-1-1b-models
+      persistentVolumeClaim:
+        claimName: tinyllama-1-1b-models

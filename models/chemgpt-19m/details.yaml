@@ -47,6 +47,52 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "smiles": {
+          "type": "string",
+          "required": false,
+          "default": "C",
+          "description": "SMILES prefix to continue (e.g. 'CC', 'C1=CC=CC=C1')"
+        },
+        "num_return_sequences": {
+          "type": "int",
+          "required": false,
+          "default": 5,
+          "min": 1,
+          "max": 20,
+          "description": "Number of molecule sequences to generate"
+        },
+        "max_length": {
+          "type": "int",
+          "required": false,
+          "default": 256,
+          "min": 1,
+          "max": 2048,
+          "description": "Maximum SMILES length to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7,
+          "min": 0.1,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        }
+      },
+      "output_map": {
+        "model": {
+          "type": "string",
+          "description": "Model name (chemgpt-19m)"
+        },
+        "sequences": {
+          "type": "array",
+          "description": "Generated SMILES strings (may be invalid \u2014 tiny model)"
+        },
+        "num_sequences": {
+          "type": "int",
+          "description": "Number of sequences returned"
+        }
+      },
       "catalog": {
         "description_short": "ChemGPT-19M, a lightweight GPT-Neo style model trained on SMILES for de-novo molecule generation.",
         "description": "ChemGPT-19M, a lightweight GPT-Neo style model trained on SMILES for de-novo molecule generation. Given a SMILES prefix it samples novel molecules. Tiny (~19M params). Served on a HAMi sub-GPU slice.",

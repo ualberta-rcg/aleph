@@ -50,8 +50,44 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "task": {
+          "type": "string",
+          "required": false,
+          "default": "mol2text",
+          "enum": [
+            "mol2text",
+            "text2mol",
+            "caption"
+          ],
+          "description": "Task to perform: mol2text=molecule\u2192caption, text2mol=text\u2192SELFIES molecule, caption=scientific captioning"
+        },
+        "input": {
+          "type": "string",
+          "required": true,
+          "description": "SELFIES string (for mol2text) or text description (for text2mol/caption)"
+        }
+      },
+      "output_map": {
+        "model": {
+          "type": "string",
+          "description": "Model name (biot5)"
+        },
+        "task": {
+          "type": "string",
+          "description": "Task performed"
+        },
+        "output": {
+          "type": "string",
+          "description": "Generated text (caption) or SELFIES string (molecule)"
+        },
+        "input": {
+          "type": "string",
+          "description": "Echo of input"
+        }
+      },
       "catalog": {
-        "description_short": "BioT5 — cross-modal biology+chemistry T5 (SELFIES)",
+        "description_short": "BioT5 \u2014 cross-modal biology+chemistry T5 (SELFIES)",
         "description": "BioT5-base (QizhiPei/biot5-base, 0.3B): cross-modal biology+chemistry T5. Tasks via /v1/science/generate: molecule captioning (mol2text), text-conditioned molecule generation (text2mol, SELFIES), and scientific captioning. Uses SELFIES for valid molecule generation. CPU.",
         "owned_by": "QizhiPei",
         "source": "QizhiPei/biot5-base",

@@ -47,6 +47,36 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string",
+          "required": true,
+          "description": "Bacterial DNA sequence string (ACGT alphabet, max 1024 tokens)"
+        }
+      },
+      "output_map": {
+        "object": {
+          "type": "string",
+          "description": "Always 'list' (OpenAI embeddings format)"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "object": "string",
+            "index": "int",
+            "embedding": "[float]"
+          },
+          "description": "Embedding results; each entry has a 384-dim float vector (mean-pooled)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name used for the request"
+        },
+        "usage": {
+          "type": "object",
+          "description": "Token usage stats (prompt_tokens, total_tokens)"
+        }
+      },
       "catalog": {
         "description_short": "ProkBERT-mini, a compact prokaryotic DNA language model for bacterial/phage genomics.",
         "description": "ProkBERT-mini, a compact prokaryotic DNA language model for bacterial/phage genomics. Embeds nucleotide sequences into 384-dim vectors. Tiny (~20M params). Served on a HAMi sub-GPU slice.",

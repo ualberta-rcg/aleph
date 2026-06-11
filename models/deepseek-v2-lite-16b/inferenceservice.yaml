@@ -60,7 +60,7 @@ spec:
           - --served-model-name=deepseek-v2-lite-16b
           - --port=8080
           - --tensor-parallel-size=1
-          - --max-model-len=8192
+          - --max-model-len=131072
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.90
           - --trust-remote-code

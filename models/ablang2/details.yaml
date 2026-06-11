@@ -47,6 +47,41 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string | array[string]",
+          "required": true,
+          "description": "Antibody amino-acid sequence string or list of strings (1-letter codes, max 512 residues per sequence). Used with /v1/embeddings endpoint."
+        },
+        "restore": {
+          "type": "object",
+          "required": false,
+          "description": "For /v1/restore endpoint: antibody sequence string with masked positions (use '#' for masked residues). Returns the full restored sequence with predicted amino acids at masked positions."
+        }
+      },
+      "output_map": {
+        "object": {
+          "type": "string",
+          "description": "Always 'list' (OpenAI embeddings format)"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "object": "string",
+            "index": "int",
+            "embedding": "[float]"
+          },
+          "description": "Embedding results; each entry has a 480-dim float vector (mean-pooled over residues)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name used for the request"
+        },
+        "usage": {
+          "type": "object",
+          "description": "Token usage stats (prompt_tokens, total_tokens)"
+        }
+      },
       "catalog": {
         "description_short": "Antibody language model (embeddings + CDR restore)",
         "description": "AbLang-2 from Oxford Protein Informatics Group (OxPIG): an antibody-specific protein language model. Produces mean-pooled per-sequence embeddings for antibody heavy/light chains and can restore masked positions (e.g. CDR regions) via /v1/restore. Trained on paired sequences from OAS; weights hosted on Zenodo. CPU-only (48M params).",

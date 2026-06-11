@@ -50,6 +50,28 @@ data:
         }
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string"},
+          "required": true,
+          "description": "Chat messages in OpenAI format (system/user/assistant/tool). Bilingual EN/ZH."
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 64000, "description": "Maximum tokens to generate"},
+        "temperature": {"type": "float", "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature"},
+        "top_p": {"type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "description": "Nucleus sampling probability"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "tools": {"type": "array", "description": "OpenAI-format tool definitions for function calling (hermes parser)"},
+        "tool_choice": {"type": "string", "description": "Tool choice mode: auto, none, or specific tool name"},
+        "frequency_penalty": {"type": "float", "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty for repetition"}
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model identifier"},
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}, "description": "Generated chat completions, may include tool_calls when tools are provided"},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
       "catalog": {
         "description_short": "OceanGPT 30B MoE ocean science model. 128 experts, 8 active, bilingual EN/ZH.",
         "description": "OceanGPT-basic-30B-A3B-Instruct is a 30.5B parameter MoE model based on Qwen3 MoE architecture, fine-tuned for ocean science (marine biology, oceanography, climate, fisheries). 128 experts with 8 active per token (~3B active params). Trained on Huawei Ascend 910B. Bilingual English and Chinese. Chat template includes full tool calling support (Qwen3/hermes XML format). Context: 262K native, limited to 64K on 2x L40S with 4.2x KV headroom. No reasoning mode, no vision.",

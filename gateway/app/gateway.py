@@ -986,6 +986,32 @@ def _supports_tools(info: dict) -> bool:
     return bool(((info.get("card", {}) or {}).get("behavior", {}) or {}).get("supports_tools"))
 
 
+def _supports_vision(info: dict) -> bool:
+    return bool(((info.get("card", {}) or {}).get("behavior", {}) or {}).get("supports_vision"))
+
+
+def _has_vision_content_openai(messages: list) -> bool:
+    """Check if OpenAI-format messages contain image_url blocks."""
+    for msg in (messages or []):
+        content = msg.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "image_url":
+                    return True
+    return False
+
+
+def _has_vision_content_anthropic(messages: list) -> bool:
+    """Check if Anthropic-format messages contain image blocks."""
+    for msg in (messages or []):
+        content = msg.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "image":
+                    return True
+    return False
+
+
 def _tools_unsupported_error(model_id: str):
     """Clean 400 when a client sends tools to a model whose card has no tool support,
     instead of leaking the upstream engine's raw 'enable-auto-tool-choice' 400."""
@@ -995,6 +1021,17 @@ def _tools_unsupported_error(model_id: str):
                         "Retry without the 'tools' parameter."),
             "type": "invalid_request_error",
             "code": "tools_unsupported",
+        }}, 400)
+
+
+def _vision_unsupported_error(model_id: str):
+    """Clean 400 when a client sends image content to a model whose card has no vision support."""
+    return JSONResponse(
+        {"error": {
+            "message": (f"model '{model_id}' does not support vision/image input. "
+                        "Retry with text-only messages."),
+            "type": "invalid_request_error",
+            "code": "vision_unsupported",
         }}, 400)
 
 
@@ -1187,6 +1224,9 @@ async def chat(request: Request):
     if parsed.get("tools") and not _supports_tools(info):
         _METRICS["requests_error"] += 1
         return _tools_unsupported_error(model_id)
+    if _has_vision_content_openai(parsed.get("messages")) and not _supports_vision(info):
+        _METRICS["requests_error"] += 1
+        return _vision_unsupported_error(model_id)
     cold = await cold_start_guard(info)
     if cold is not None:
         return cold
@@ -1252,6 +1292,11 @@ async def anthropic_messages(request: Request):
     if a_body.get("tools") and not _supports_tools(info):
         _METRICS["requests_error"] += 1
         return _tools_unsupported_error(model_id)
+    if _has_vision_content_anthropic(
+        [m for m in (a_body.get("messages") or []) if isinstance(m, dict)]
+    ) and not _supports_vision(info):
+        _METRICS["requests_error"] += 1
+        return _vision_unsupported_error(model_id)
     cold = await cold_start_guard(info)
     if cold is not None:
         return cold

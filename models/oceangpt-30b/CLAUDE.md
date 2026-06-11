@@ -1,92 +1,78 @@
-# OceanGPT 30B — Model Context
+# oceangpt-30b
 
-## What This Model Does
+**Type**: Chat LLM (30B MoE, vLLM, 2x GPU)
+**Model**: zjunlp/OceanGPT-basic-30B-A3B-Instruct
+**Endpoint**: POST /v1/chat/completions (OpenAI-compatible)
+**Runtime**: vLLM v0.20.2 on 2x L40S (TP=2)
 
-OceanGPT 30B A3B MoE — a domain-specific ocean science LLM based on Qwen3 MoE architecture. 30.5B total params (128 experts, ~3B active per token). Trained on marine biology, oceanography, climate, and fisheries data in English and Chinese. 2x L40S GPUs. Includes a VRAM guard startup script that retries if GPU memory is insufficient.
+## Naming
+- Card id: `oceangpt-30b`
+- ISVC name: `oceangpt-30b`
+- PVC: `oceangpt-30b-data`
+- served-model-name: `oceangpt-30b`
+- All names match — no `upstream_model_id` mapping needed.
 
-## Source Repo
+## Key details
+- 30.5B total params (3B active), Qwen3 MoE architecture (128 experts, 8 active per token).
+- Ocean/marine science domain. Bilingual EN/ZH.
+- Trained on marine biology, oceanography, climate, fisheries data.
+- System prompt: "你是海洋知识专家" (marine knowledge expert).
+- vLLM v0.20.2, TP=2 (uses 2 of 4 L40S), whole-device GPUs (no gpumem).
+- `--disable-custom-all-reduce` — L40S PCIe topology, no NVLink/P2P.
+- `--trust-remote-code` — required for Qwen3 MoE architecture.
+- **Tools: SUPPORTED** (`--tool-call-parser=hermes` + `--enable-auto-tool-choice`). Works on both OpenAI and Anthropic endpoints.
+- Streaming: Yes (SSE on both OpenAI and Anthropic).
+- Vision: NOT supported (rejected with 400).
+- System prompts: supported.
+- Multi-turn: supported.
+- Reasoning: NOT supported (not a reasoning model).
+- scale_to_zero: true, 15m idle retention.
 
-**HuggingFace**: [zjunlp/OceanGPT-basic-30B-A3B-Instruct](https://huggingface.co/zjunlp/OceanGPT-basic-30B-A3B-Instruct)
-
-Key recommendations from source:
-- **Framework**: Transformers with `device_map="auto"` and `torch_dtype="auto"`
-- **No specific vLLM guidance provided** — community deploys with standard vLLM MoE settings
-- **Max new tokens**: Example uses 4096
-- **License**: Academic use — not a product, may have hallucination issues
-- **Based on Qwen3 MoE**: Architecture is Qwen3, needs `--trust-remote-code`
-
-## How The Server Works
-
-- **Pattern**: vLLM binary via bash wrapper with VRAM guard (Knative mode)
-- **Container**: `vllm/vllm-openai:v0.8.4`
-- **Startup**: Bash script checks VRAM availability before starting vLLM; retries 6 times with 10s sleep
-- **Weights**: Pre-downloaded to PVC by init container
-- **Health**: vLLM's built-in `/v1/models` endpoint
-- **Shared memory**: 16Gi emptyDir at `/dev/shm`
-- **VLLM_WORKER_MULTIPROC_METHOD**: spawn
-
-## What We Configured vs Source Recommendations
-
-- **max-model-len=8192**: Very conservative. Qwen3 MoE supports much longer contexts. Limited due to 128-expert weights (~61GB) on 2x L40S.
-- **tensor-parallel-size=2**: Correct for 2 GPUs with 128 experts.
-- **gpu-memory-utilization=0.90**: Standard.
-- **VRAM guard**: Startup script requires 25GB free per GPU before starting. Prevents crashes on shared nodes.
-
-## Gateway Integration
-
-- **ISVC name**: `oceangpt-30b` (matches API id, no ISVC_NAME_MAP entry)
-- **MODEL_TYPE**: chat
-- **CONTEXT_WINDOW**: 8192
-- **MODEL_MAX_TOKENS**: 8000
-- **REASONING_MODELS**: not listed
-- **KSERVE_CUSTOM_MODELS**: yes — uses `/v1/` prefix
-- **GPU_MODELS**: yes
-
-## Deploy / Update / Test
-
-```bash
-# Deploy
-kubectl apply -k models/oceangpt-30b/
-
-# Check status
-kubectl get pods -n models -l serving.kserve.io/inferenceservice=oceangpt-30b
-
-# Logs
-kubectl logs -n models -l serving.kserve.io/inferenceservice=oceangpt-30b -c kserve-container -f
-
-# Test (internal)
-curl http://oceangpt-30b-predictor.models.svc.cluster.local:8080/v1/chat/completions \
-  -d '{"model":"oceangpt-30b","messages":[{"role":"user","content":"What causes ocean currents?"}],"max_tokens":200}'
-
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"oceangpt-30b","messages":[{"role":"user","content":"What causes ocean currents?"}],"max_tokens":200}'
+## ISVC spec (ground truth)
+```
+image: vllm/vllm-openai:v0.20.2
+command: vllm serve /data
+args:
+  --served-model-name=oceangpt-30b
+  --port=8080
+  --tensor-parallel-size=2
+  --max-model-len=65536
+  --dtype=bfloat16
+  --gpu-memory-utilization=0.90
+  --trust-remote-code
+  --disable-custom-all-reduce
+  --tool-call-parser=hermes
+  --enable-auto-tool-choice
+resources:
+  limits: cpu=16, memory=48Gi, nvidia.com/gpu=2
+  requests: cpu=8, memory=32Gi, nvidia.com/gpu=2
+nodeSelector: gpu=on
+volumes: oceangpt-30b-data (PVC), shm (16Gi emptyDir)
 ```
 
-## Known Issues / Optimization Opportunities
+## Context / VRAM
+- **max-model-len: 65536 (64K)** — model supports 262K native, limited to 64K on 2x L40S.
+- Context window: 65536. max_completion_tokens: 64000. Default max_tokens: 4096.
+- gpu-memory-utilization: 0.90 (~86.4GB of 96GB across 2x L40S).
+- 4.2x KV headroom at 64K context on TP2.
 
-1. **Very small context window (8192)**: Qwen3 MoE supports 32K+ natively. The 128-expert weights (~61GB) on 2x L40S limit KV cache room, but 8192 is very conservative. Could likely increase to 16384-32768.
+## v2 Schema
+- Card updated to v2 compact schema with `input_map`/`output_map`.
+- `catalog` block for display metadata.
+- `behavior` only (no `compatibility`).
+- `param_translation.thinking.mode: "none"` (non-reasoning).
 
-2. **VRAM guard adds startup delay**: The startup script retries 6 times with 10s sleep. On dedicated nodes, this is unnecessary. On shared nodes, it prevents crashes but adds up to 60s delay.
-
-3. **Data volume read-write**: The PVC is mounted read-write (no `readOnly: true`), unlike most other models. This is needed for vLLM to write temp files but risks accidental weight corruption.
-
-4. **Missing --max-num-seqs**: Not set. For a MoE model on 2 GPUs, should limit concurrent requests.
-
-5. **Hallucination risk**: Source explicitly warns about hallucination issues. Ocean science answers should be verified.
-
-6. **Missing --enable-reasoning**: Qwen3-based model supports thinking mode but reasoning is not enabled. May improve answer quality for complex ocean science questions.
-
-7. **minReplicas=0**: Scale-to-zero enabled. Cold start ~5 minutes.
+## Validation
+- 2026-06-10: 14/14 tests passed (standardized test.py through gateway)
+- OpenAI: basic chat, system prompt (Chinese), high temp, low temp, short max_tokens, streaming (SSE), tools (`get_sea_temperature` tool_calls), vision rejected, reasoning effort (ignored)
+- Anthropic: basic, system, streaming, tools (`get_sea_temperature` tool_use), vision rejected
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ISVC spec: vLLM with VRAM guard + PVC mount + shared memory |
-| `kustomization.yaml` | Kustomize resources |
-| `pvc.yaml` | Dedicated PVC (oceangpt-30b-data) |
-
-**IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
+| `details.yaml` | ConfigMap with model metadata (v2 schema) |
+| `inferenceservice.yaml` | ISVC spec: vLLM TP2 + PVC mount |
+| `pvc.yaml` | PVC (oceangpt-30b-data) |
+| `test.py` | Gateway test script (14 checks) |
+| `CLAUDE.md` | This file |

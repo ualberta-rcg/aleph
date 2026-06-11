@@ -50,8 +50,46 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "task": {
+          "type": "string",
+          "required": false,
+          "default": "forward_synthesis",
+          "enum": [
+            "forward_synthesis",
+            "retrosynthesis",
+            "caption",
+            "generate",
+            "paragraph_to_actions"
+          ],
+          "description": "Chemistry task: forward_synthesis=predict product from reactants, retrosynthesis=predict reactants from product, caption=SMILES\u2192text, generate=text\u2192SMILES, paragraph_to_actions=extract reaction actions"
+        },
+        "input": {
+          "type": "string",
+          "required": true,
+          "description": "SMILES string (for synthesis tasks) or text description (for generate/caption)"
+        }
+      },
+      "output_map": {
+        "model": {
+          "type": "string",
+          "description": "Model name (chem-t5)"
+        },
+        "task": {
+          "type": "string",
+          "description": "Task performed"
+        },
+        "output": {
+          "type": "string",
+          "description": "Generated SMILES or text result"
+        },
+        "input": {
+          "type": "string",
+          "description": "Echo of input"
+        }
+      },
       "catalog": {
-        "description_short": "Chem-T5 — multitask text+chemistry T5 (IBM GT4SD)",
+        "description_short": "Chem-T5 \u2014 multitask text+chemistry T5 (IBM GT4SD)",
         "description": "Chem-T5 (GT4SD/multitask-text-and-chemistry-t5-base-standard): multitask text and chemistry T5. Tasks via /v1/science/generate: forward_synthesis, retrosynthesis, molecular captioning, text-to-molecule generation, paragraph_to_actions. CPU.",
         "owned_by": "IBM GT4SD",
         "source": "GT4SD/multitask-text-and-chemistry-t5-base-standard",

@@ -49,6 +49,51 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "sequence": {
+          "type": "string",
+          "required": true,
+          "pattern": "^[ACDEFGHIKLMNPQRSTVWY]+$",
+          "max_length": 1000,
+          "description": "Protein amino-acid sequence in single-letter codes (\u22641000 residues)"
+        },
+        "num_recycle": {
+          "type": "int",
+          "required": false,
+          "default": 3,
+          "min": 1,
+          "max": 10,
+          "description": "Number of recycling iterations (more = better accuracy, slower)"
+        },
+        "demo": {
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "description": "Use built-in 100-aa demo peptide instead of providing sequence"
+        }
+      },
+      "output_map": {
+        "model": {
+          "type": "string",
+          "description": "Model name (alphafold2)"
+        },
+        "pdb": {
+          "type": "string",
+          "description": "Predicted protein structure in PDB format"
+        },
+        "plddt": {
+          "type": "float",
+          "description": "Mean pLDDT confidence score (0-100)"
+        },
+        "ptm": {
+          "type": "float",
+          "description": "Predicted TM-score (0-1), global structure confidence"
+        },
+        "sequence_length": {
+          "type": "int",
+          "description": "Number of residues in predicted structure"
+        }
+      },
       "catalog": {
         "description_short": "AlphaFold2 protein structure prediction (via ColabFold)",
         "description": "AlphaFold2 (DeepMind) protein structure prediction served via ColabFold (colabfold_batch, alphafold2_ptm). MSA is fetched from the public ColabFold API (api.colabfold.com); AF2 params (~3.8GB) are cached on the PVC. POST a protein sequence (<=1000 aa) to /v1/science/predict and receive a PDB, per-residue pLDDT, mean pLDDT and pTM. HAMi GPU slice (gpumem 24576).",

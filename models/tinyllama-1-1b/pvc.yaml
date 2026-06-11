@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: tinyllama-models
+  name: tinyllama-1-1b-models
   namespace: models
 spec:
   accessModes:

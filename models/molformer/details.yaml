@@ -11,9 +11,19 @@ data:
       "id": "molformer",
       "status": "production",
       "type": "embedding",
-      "endpoints": { "primary": "/v1/science/embed", "health": "/health" },
-      "routing": { "k8s_name": "molformer", "no_stream": true, "upstream_model_id": null },
-      "limits": { "context_window": 202, "max_input_tokens": 202 },
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "molformer",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 202,
+        "max_input_tokens": 202
+      },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
@@ -21,13 +31,58 @@ data:
         "cold_start_estimate": "1-2 minutes"
       },
       "behavior": {
-        "supports_vision": false, "supports_tools": false,
-        "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "param_translation": { "thinking": { "mode": "none" } },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
       "defaults": {},
-      "custom_params": { "passthrough": true },
+      "custom_params": {
+        "passthrough": true
+      },
       "schema_version": 2,
+      "input_map": {
+        "smiles": {
+          "type": "string",
+          "required": false,
+          "description": "Single SMILES string, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin). Max 202 tokens."
+        },
+        "smiles_list": {
+          "type": "array[string]",
+          "required": false,
+          "description": "List of SMILES strings for batch embedding. Max 202 tokens per molecule."
+        },
+        "_note": "Provide either 'smiles' (single) or 'smiles_list' (batch), not both. Endpoint: /v1/science/embed"
+      },
+      "output_map": {
+        "object": {
+          "type": "string",
+          "description": "Always 'list' (OpenAI embeddings format)"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "object": "string",
+            "index": "int",
+            "embedding": "[float]"
+          },
+          "description": "Embedding results; each entry has a 768-dim float vector per molecule"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name used for the request"
+        },
+        "usage": {
+          "type": "object",
+          "description": "Token usage stats"
+        }
+      },
       "catalog": {
         "description_short": "MoLFormer-XL molecular embeddings from SMILES (chemistry)",
         "description": "IBM Research MoLFormer-XL (110M), a linear-attention transformer pre-trained on 1.1B molecules (PubChem + ZINC). Turns a SMILES string into a 768-dim molecular embedding for property prediction / similarity; outperforms GROVER and ChemBERTa on MoleculeNet. Custom modeling (trust_remote_code). Served on a HAMi sub-GPU slice.",
@@ -43,13 +98,23 @@ data:
         "embedding_dimensions": 768,
         "max_input_tokens": 202,
         "pooling": "pooler/mean",
-        "tags": ["embedding", "science", "chemistry", "molecules", "smiles", "gpu"],
+        "tags": [
+          "embedding",
+          "science",
+          "chemistry",
+          "molecules",
+          "smiles",
+          "gpu"
+        ],
         "gpu": true,
         "input_format": {
           "model": "molformer",
           "smiles": "single SMILES string, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin)",
           "smiles_list": "or a list of SMILES strings"
         },
-        "output_format": { "embeddings": "[[768 floats]]", "dim": 768 }
+        "output_format": {
+          "embeddings": "[[768 floats]]",
+          "dim": 768
+        }
       }
     }

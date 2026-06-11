@@ -54,6 +54,29 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "items": {"role": "string", "content": "string"},
+          "required": true,
+          "description": "Chat messages in OpenAI format (system/user/assistant)"
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 8192, "description": "Maximum tokens to generate"},
+        "temperature": {"type": "float", "default": 0.3, "min": 0.0, "max": 2.0, "description": "Sampling temperature"},
+        "top_p": {"type": "float", "default": 0.9, "min": 0.0, "max": 1.0, "description": "Nucleus sampling probability"},
+        "top_k": {"type": "integer", "default": 0, "min": 0, "max": 100, "description": "Top-K sampling (0 = disabled)"},
+        "repetition_penalty": {"type": "float", "default": 1.0, "min": 0.9, "max": 2.0, "description": "Repetition penalty"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "stop": {"type": "string|array", "description": "Stop sequences"},
+        "frequency_penalty": {"type": "float", "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty for repetition"}
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model identifier"},
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}, "description": "Generated chat completions"},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
       "catalog": {
         "description_short": "Cohere Command R 7B, RAG-optimized chat (multilingual)",
         "owned_by": "CohereForAI",
