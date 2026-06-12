@@ -29,6 +29,7 @@ data:
         "supports_vision": true,
         "supports_tools": false,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": false,
         "strips_thinking": false
       },
@@ -53,9 +54,67 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages [{role: 'user'|'system'|'assistant', content: str|array}]. Content can include image_url objects."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 2048,
+          "max": 8192,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 0.95,
+          "description": "Nucleus sampling threshold"
+        },
+        "top_k": {
+          "type": "integer",
+          "required": false,
+          "default": 64,
+          "description": "Top-K sampling"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        },
+        "image": {
+          "type": "string",
+          "required": false,
+          "description": "Base64-encoded image or URL. Up to 8 images per prompt."
+        }
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (may include image analysis)"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
+      },
       "catalog": {
         "description_short": "Google Gemma 3 4B instruction-tuned, multimodal (text + image, multilingual)",
-        "description": "Google Gemma 3 4B Instruct. Lightweight open multimodal model (SigLIP vision tower) accepting text + images in OpenAI chat format, with a 128K-capable context (served at 64K here) and strong multilingual instruction-following for its size. Served on a HAMi vGPU slice.",
+        "description": "Google Gemma 3 4B Instruct. Lightweight open multimodal model (SigLIP vision tower) accepting text + images in OpenAI chat format, with a 128K-capable context (served at 64K here) and strong multilingual instruction-following for its size. Served on a HAMi vGPU slice (20 GiB). No tool calling or reasoning mode.",
         "owned_by": "Google",
         "source": "google/gemma-3-4b-it",
         "source_url": "https://huggingface.co/google/gemma-3-4b-it",

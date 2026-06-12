@@ -8,7 +8,7 @@ metadata:
     serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
-    minReplicas: 1
+    minReplicas: 0
     scaleTarget: 3
     scaleMetric: concurrency
     timeout: 300

@@ -11,76 +11,121 @@ data:
       "id": "medgemma-27b-it",
       "status": "production",
       "type": "chat",
-      "description_short": "Google MedGemma 27B, medical multimodal (text + radiology images)",
-      "description": "Google MedGemma 27B instruction-tuned multimodal model. Fine-tuned on medical text, radiology (CXR, CT), dermatology, ophthalmology (fundus), and histopathology images. Uses SigLIP image encoder pre-trained on de-identified medical data. 128K context window. Based on Gemma 3 architecture. 2x L40S GPUs. Supports text-only and text+image inputs.",
-      "context_window": 120000,
-      "max_completion_tokens": 8000,
       "endpoints": {
         "primary": "/v1/chat/completions",
         "health": "/v1/models"
       },
-      "owned_by": "google",
-      "source": "google/medgemma-27b-it",
-      "source_url": "https://huggingface.co/google/medgemma-27b-it",
-      "license": "Health AI Developer Foundations Terms of Use",
-      "parameters": "27B",
-      "parameter_count": 27000000000,
-      "precision": "bfloat16",
-      "architecture": "gemma3",
-      "framework": "vllm",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 2,
-        "gpu_type": "L40S",
-        "min_replicas": 0,
-        "max_replicas": 1,
-        "startup_seconds": 300,
-        "container_image": "vllm/vllm-openai:v0.8.4",
-        "served_model_name": "medgemma-27b-it",
-        "node": "any-L40S",
-        "timeout": 150
-      },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "medgemma-27b-it",
         "serialize": false,
         "no_stream": false,
-        "deployment_mode": "Knative"
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": true,
+      "limits": {
+        "context_window": 32768,
+        "max_completion_tokens": 8192
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "~3-5 minutes (27B BF16, 2x L40S)"
+      },
+      "behavior": {
         "supports_vision": true,
-        "supports_video": false,
         "supports_tools": false,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": false,
-        "needs_json_fixing": false,
         "strips_thinking": false
       },
-      "domain": "biomedical",
-      "subdomain": "medical-multimodal",
-      "tags": ["chat", "llm", "biomedical", "clinical", "radiology", "multimodal", "science", "vision"],
-      "content_types": ["text", "image"],
-      "languages": ["english"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "top_p": 0.95,
+          "max_tokens": 4096
+        },
+        "meta_tasks": {
+          "title":     {"max_tokens": 80},
+          "tags":      {"max_tokens": 60},
+          "followups": {"max_tokens": 220}
+        }
+      },
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "messages": {
           "type": "array",
-          "items": {"role": "string", "content": "string|array"},
           "required": true,
-          "description": "Chat messages in OpenAI format. Content can include image_url objects for medical images."
+          "description": "Chat messages [{role: 'user'|'system'|'assistant', content: str|array}]. Content can include image_url objects for medical images (chest X-ray, derm, fundus, histo)."
         },
-        "max_tokens": {"type": "integer", "default": 4096, "max": 8000, "description": "Maximum tokens to generate"},
-        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
-        "temperature": {"type": "float", "default": 0.7, "description": "Sampling temperature"}
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 4096,
+          "max": 8192,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 0.95,
+          "description": "Nucleus sampling threshold"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        },
+        "image": {
+          "type": "string",
+          "required": false,
+          "description": "Base64-encoded medical image or URL. Supports chest X-ray, dermatology, fundus, histopathology. Up to 5 images per prompt."
+        }
       },
       "output_map": {
-        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
-        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (may include medical image analysis)"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
       },
-      "server_config": {
-        "cli_args": ["--model=/data", "--served-model-name=medgemma-27b-it", "--port=8080", "--tensor-parallel-size=2", "--max-model-len=32768", "--dtype=bfloat16", "--gpu-memory-utilization=0.92", "--trust-remote-code", "--limit-mm-per-prompt=image=5"],
-        "model_path": "/data",
-        "weight_files": ["*.safetensors"],
-        "shared_memory": "16Gi"
+      "catalog": {
+        "description_short": "Google MedGemma 27B — medical multimodal model for radiology, derm, fundus & histo (2x L40S)",
+        "description": "Google MedGemma 27B instruction-tuned multimodal model. Based on Gemma 3 architecture with SigLIP image encoder pre-trained on de-identified medical data (chest X-ray, dermatology, ophthalmology, histopathology). Fine-tuned on medical text and images for clinical text comprehension, visual question answering, and report generation. 128K native context (deployed at 32K for 2x L40S BF16 memory constraints). Health AI Developer Foundations license.",
+        "owned_by": "Google",
+        "source": "google/medgemma-27b-it",
+        "source_url": "https://huggingface.co/google/medgemma-27b-it",
+        "license": "Health AI Developer Foundations Terms of Use",
+        "parameters": "27B",
+        "precision": "bfloat16",
+        "framework": "vllm",
+        "domain": "biomedical",
+        "subdomain": "medical-multimodal",
+        "tags": ["chat", "llm", "biomedical", "clinical", "radiology", "multimodal", "vision", "medical", "google", "medgemma"]
       }
     }

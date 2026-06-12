@@ -1,17 +1,25 @@
+# medgemma-27b-it — Google MedGemma 27B IT (Gemma 3-based, medical multimodal).
+# vLLM v0.20.2, BF16, TP2 on 2x L40S. SigLIP medical image encoder.
+# Modernized: vllm serve format, max-model-len 32K (was 8K), max-num-seqs=4, timeout 300s.
+# max-model-len=32768: Model supports 128K but 27B BF16 (~54GB weights) on 2x L40S (92GB total)
+# limits practical context. 32K is safe for KV cache headroom.
+# --disable-custom-all-reduce required for TP>=2 on HAMi (P2P busy-wait stall → NCCL).
+# Scale-to-zero, 15m idle retention.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: medgemma-27b-it
   namespace: models
   annotations:
-    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
     minReplicas: 0
+    maxReplicas: 1
     scaleTarget: 3
     scaleMetric: concurrency
-    timeout: 150
+    timeout: 300
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -56,18 +64,21 @@ spec:
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
         args:
-          - --model=/data
+          - serve
+          - /data
           - --served-model-name=medgemma-27b-it
           - --port=8080
           - --tensor-parallel-size=2
-          - --max-model-len=8192
+          - --max-model-len=32768
           - --dtype=bfloat16
           - --gpu-memory-utilization=0.92
           - --trust-remote-code
           - '--limit-mm-per-prompt={"image": 5}'
-          # TP=2 on HAMi: disable custom all-reduce (P2P busy-wait stall) -> NCCL.
           - --disable-custom-all-reduce
+          - --max-num-seqs=4
         env:
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache
