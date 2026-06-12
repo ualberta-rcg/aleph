@@ -1,0 +1,15 @@
+# Qwen2.5-VL-72B-Instruct-AWQ (4-bit quantized) vision-language model.
+# Weights (~75 GB) persist on NFS (nfs-client) so scale-from-zero cold starts skip
+# re-download. Populated once by download-job.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen25-vl-72b-awq-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 100Gi
