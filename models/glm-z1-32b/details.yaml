@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "glm-z1-32b",
+      "status": "production",
       "type": "chat",
       "endpoints": {
         "primary": "/v1/chat/completions",
@@ -21,40 +22,119 @@ data:
         "upstream_model_id": null
       },
       "limits": {
-        "context_window": 32768
+        "context_window": 32768,
+        "max_completion_tokens": 16384
       },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "idle_retention": "15m"
+        "idle_retention": "15m",
+        "cold_start_estimate": "~3 minutes (32B dense, TP2)"
       },
       "behavior": {
         "supports_vision": false,
-        "supports_tools": false,
+        "supports_tools": true,
         "supports_system_prompt": true,
-        "reasoning_model": true
+        "supports_streaming": true,
+        "reasoning_model": true,
+        "strips_thinking": true
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "toggle",
+          "default": true,
+          "param": "thinking",
+          "on_value": true,
+          "off_value": false,
+          "note": "GLM-Z1 thinking is always-on by default via chat template. glm45 reasoning parser extracts <think...think> blocks."
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
       "defaults": {
         "chat": {
-          "temperature": 0.7,
-          "max_tokens": 8192
+          "temperature": 0.6,
+          "top_p": 0.95,
+          "max_tokens": 8192,
+          "thinking": { "enabled": true }
         }
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages [{role: 'user'|'system'|'assistant', content: str}]"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 8192,
+          "max": 16384,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.6,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature (0.6 recommended for reasoning)"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 0.95,
+          "description": "Nucleus sampling threshold"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "thinking": {
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "description": "Enable/disable thinking mode (default: true)"
+        },
+        "tools": {
+          "type": "array",
+          "required": false,
+          "description": "Tool definitions for function calling (OpenAI format, parsed by glm45)"
+        },
+        "tool_choice": {
+          "type": "string",
+          "required": false,
+          "description": "Tool choice: 'auto', 'none', or specific tool name"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        }
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes reasoning_content when thinking enabled)"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
+      },
       "catalog": {
-        "description_short": "GLM-Z1-32B-0414 reasoning variant: R1-style thinking, distinct lineage.",
-        "description": "GLM-Z1-32B-0414 reasoning variant: R1-style thinking, distinct lineage.",
+        "description_short": "GLM-Z1-32B-0414 — deep thinking reasoning + function calling (Zhipu-AI)",
+        "description": "GLM-Z1-32B-0414 is Zhipu-AI's 32B reasoning model with deep thinking (<think...think> tags, like DeepSeek-R1). Trained with cold start + extended RL on math, code, and logic. Also supports function calling via glm45 parser. 32K context, TP2 on L40S. Thinking is on by default. Recommended: temp=0.6, top_p=0.95.",
         "owned_by": "Zhipu-AI",
-        "source": "zai-org/GLM-Z1-32B-0414",
-        "source_url": "https://huggingface.co/zai-org/GLM-Z1-32B-0414",
+        "source": "THUDM/GLM-Z1-32B-0414",
+        "source_url": "https://huggingface.co/THUDM/GLM-Z1-32B-0414",
+        "license": "Apache 2.0",
+        "parameters": "32B dense",
+        "precision": "bf16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",
-        "parameters": "TP2",
-        "tags": [
-          "chat",
-          "llm",
-          "reasoning"
-        ]
+        "tags": ["chat", "llm", "reasoning", "thinking", "tools", "function-calling", "zhipu", "glm-z1"]
       }
     }

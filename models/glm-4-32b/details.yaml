@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "glm-4-32b",
+      "status": "production",
       "type": "chat",
       "endpoints": {
         "primary": "/v1/chat/completions",
@@ -21,41 +22,107 @@ data:
         "upstream_model_id": null
       },
       "limits": {
-        "context_window": 32768
+        "context_window": 32768,
+        "max_completion_tokens": 8192
       },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "idle_retention": "15m"
+        "idle_retention": "15m",
+        "cold_start_estimate": "~3 minutes (32B dense, TP2)"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": true,
         "supports_system_prompt": true,
-        "reasoning_model": false
+        "supports_streaming": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
       "defaults": {
         "chat": {
           "temperature": 0.7,
+          "top_p": 0.95,
           "max_tokens": 8192
         }
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages [{role: 'user'|'system'|'assistant', content: str}]"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 8192,
+          "max": 8192,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Nucleus sampling threshold"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "tools": {
+          "type": "array",
+          "required": false,
+          "description": "Tool definitions for function calling (OpenAI format, parsed by glm45)"
+        },
+        "tool_choice": {
+          "type": "string",
+          "required": false,
+          "description": "Tool choice: 'auto', 'none', or specific tool name"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        }
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
+      },
       "catalog": {
-        "description_short": "GLM-4-32B-0414 instruct: strong function calling + agentic workflows.",
-        "description": "GLM-4-32B-0414 instruct: strong function calling + agentic workflows.",
+        "description_short": "GLM-4-32B-0414 — strong function calling + agentic workflows (Zhipu-AI)",
+        "description": "GLM-4-32B-0414 is Zhipu-AI's 32B dense instruct model with strong tool/function calling (BFCL-v3 69.6, matching GPT-4o). Uses glm45 tool parser for OpenAI-compatible function calling. 32K context, TP2 on L40S. No reasoning/thinking mode — use GLM-Z1-32B for reasoning.",
         "owned_by": "Zhipu-AI",
-        "source": "zai-org/GLM-4-32B-0414",
-        "source_url": "https://huggingface.co/zai-org/GLM-4-32B-0414",
+        "source": "THUDM/GLM-4-32B-0414",
+        "source_url": "https://huggingface.co/THUDM/GLM-4-32B-0414",
+        "license": "Apache 2.0",
+        "parameters": "32B dense",
+        "precision": "bf16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",
-        "parameters": "TP2",
-        "tags": [
-          "chat",
-          "llm",
-          "agentic",
-          "tool-calling"
-        ]
+        "tags": ["chat", "llm", "agentic", "tools", "function-calling", "zhipu", "glm4"]
       }
     }
