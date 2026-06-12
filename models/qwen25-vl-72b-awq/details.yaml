@@ -17,7 +17,7 @@ data:
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": { "max_completion_tokens": 32768, "context_window": 131072 },
+      "limits": { "max_completion_tokens": 32768, "context_window": 128000 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,

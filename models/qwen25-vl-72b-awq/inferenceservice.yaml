@@ -29,7 +29,7 @@ spec:
           - --model=/mnt/models
           - --served-model-name=qwen25-vl-72b-awq
           - --tensor-parallel-size=4
-          - --max-model-len=131072
+          - --max-model-len=128000
           - --dtype=auto
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=4
