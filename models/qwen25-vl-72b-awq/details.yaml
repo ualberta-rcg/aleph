@@ -9,20 +9,27 @@ data:
   details.json: |
     {
       "id": "qwen25-vl-72b-awq",
+      "status": "production",
       "type": "chat",
-      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
       "routing": {
         "k8s_name": "qwen25-vl-72b-awq",
         "serialize": false,
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": { "max_completion_tokens": 32768, "context_window": 128000 },
+      "limits": {
+        "context_window": 128000,
+        "max_completion_tokens": 32768
+      },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "~3 minutes (75 GB AWQ, 4x L40S)"
+        "cold_start_estimate": "~3 minutes (72 GB AWQ, 2x L40S)"
       },
       "behavior": {
         "supports_vision": true,
@@ -33,11 +40,18 @@ data:
         "strips_thinking": false
       },
       "param_translation": {
+        "thinking": {
+          "mode": "none"
+        },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": { "temperature": 0.7, "top_p": 0.8, "max_tokens": 8192 },
+        "chat": {
+          "temperature": 0.7,
+          "top_p": 0.8,
+          "max_tokens": 8192
+        },
         "meta_tasks": {
           "title":     { "max_tokens": 80 },
           "tags":      { "max_tokens": 60 },
@@ -52,9 +66,61 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages [{role: 'user'|'system'|'assistant', content: str}]"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 8192,
+          "max": 32768,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Nucleus sampling threshold"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        },
+        "image": {
+          "type": "string",
+          "required": false,
+          "description": "Base64-encoded image or URL"
+        }
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (may include image analysis)"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
+      },
       "catalog": {
-        "description_short": "Qwen2.5-VL-72B-AWQ — large vision-language model, 4-bit quantized (4x L40S)",
-        "description": "Qwen2.5-VL-72B-Instruct-AWQ is the official 4-bit AWQ quantization of Qwen2.5-VL-72B-Instruct. 72.2B dense, GQA (64Q/8KV), 128K max positions, 128K deployed context. Supports dynamic-resolution images, video up to 1+ hour, and up to 20 images per prompt. Visual grounding for GUI agents. AWQ quantization reduces weights from ~144 GB to ~72 GB, fitting comfortably on 4x L40S with full 128K context. No structured tool/function calling.",
+        "description_short": "Qwen2.5-VL-72B-AWQ — large vision-language model, 4-bit quantized (2x L40S)",
+        "description": "Qwen2.5-VL-72B-Instruct-AWQ is the official 4-bit AWQ quantization of Qwen2.5-VL-72B-Instruct. 72.2B dense, GQA (64Q/8KV), 128K max positions, 128K deployed context. Supports dynamic-resolution images, video up to 1+ hour, and up to 20 images per prompt. Visual grounding for GUI agents. AWQ quantization reduces weights from ~144 GB to ~72 GB, fitting on 2x L40S with full 128K context. No structured tool/function calling.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen2.5-VL-72B-Instruct-AWQ",
         "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-72B-Instruct-AWQ",

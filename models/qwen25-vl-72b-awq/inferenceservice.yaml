@@ -1,9 +1,9 @@
-# Qwen/Qwen2.5-VL-72B-Instruct-AWQ (4-bit quantized) on cluster 230 / HAMi. vLLM v0.20.2, TP4 (whole devices).
-# HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=4, DO NOT set gpumem,
+# Qwen/Qwen2.5-VL-72B-Instruct-AWQ (4-bit quantized) on cluster 230 / HAMi. vLLM v0.20.2, TP2 (whole devices).
+# HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=2, DO NOT set gpumem,
 # and --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL is fast).
 # VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 required on L40S (SM89). Scale-to-zero, 15m idle.
-# AWQ 4-bit weights: ~17 GiB/GPU (auto-detected from model config). 128K context (model max).
-# gpu-memory-utilization=0.92 → 44.2 GiB budget, ~27 GiB for KV+encoder after weights.
+# AWQ 4-bit weights: ~20 GiB/GPU with TP2. 128K context (model max_position_embeddings).
+# gpu-memory-utilization=0.92 → 44.2 GiB budget, ~24 GiB for KV+encoder after weights.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -28,7 +28,7 @@ spec:
         args:
           - --model=/mnt/models
           - --served-model-name=qwen25-vl-72b-awq
-          - --tensor-parallel-size=4
+          - --tensor-parallel-size=2
           - --max-model-len=128000
           - --dtype=auto
           - --gpu-memory-utilization=0.92
@@ -55,7 +55,7 @@ spec:
           limits:
             cpu: "16"
             memory: 128Gi
-            nvidia.com/gpu: "4"
+            nvidia.com/gpu: "2"
         readinessProbe:
           httpGet: { path: /v1/models, port: 8080 }
           periodSeconds: 15
