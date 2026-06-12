@@ -22,7 +22,7 @@ data:
         "upstream_model_id": null
       },
       "limits": {
-        "context_window": 128000,
+        "context_window": 65536,
         "max_completion_tokens": 32768
       },
       "scaling": {
@@ -120,7 +120,7 @@ data:
       },
       "catalog": {
         "description_short": "Qwen2.5-VL-72B-AWQ — large vision-language model, 4-bit quantized (2x L40S)",
-        "description": "Qwen2.5-VL-72B-Instruct-AWQ is the official 4-bit AWQ quantization of Qwen2.5-VL-72B-Instruct. 72.2B dense, GQA (64Q/8KV), 128K max positions, 128K deployed context. Supports dynamic-resolution images, video up to 1+ hour, and up to 20 images per prompt. Visual grounding for GUI agents. AWQ quantization reduces weights from ~144 GB to ~72 GB, fitting on 2x L40S with full 128K context. No structured tool/function calling.",
+        "description": "Qwen2.5-VL-72B-Instruct-AWQ is the official 4-bit AWQ quantization of Qwen2.5-VL-72B-Instruct. 72.2B dense, GQA (64Q/8KV), 128K max positions, 64K deployed context (128K OOMs on L40S 48GB). Supports dynamic-resolution images, video up to 1+ hour, and up to 20 images per prompt. Visual grounding for GUI agents. AWQ quantization reduces weights from ~144 GB to ~72 GB, fitting on 2x L40S. No structured tool/function calling.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen2.5-VL-72B-Instruct-AWQ",
         "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-72B-Instruct-AWQ",

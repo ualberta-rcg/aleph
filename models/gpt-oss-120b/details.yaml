@@ -11,145 +11,147 @@ data:
       "id": "gpt-oss-120b",
       "status": "production",
       "type": "chat",
-      "description_short": "OpenAI GPT-OSS 120B MoE, configurable reasoning + native tool calling",
-      "description": "OpenAI GPT-OSS 120B MoE (MXFP4, 117B total / 5.1B active params). Text-only model with configurable reasoning effort (low/medium/high), native function calling via harmony format, structured outputs, and agentic capabilities. 128K context. Trained with same RL techniques as o3/o4-mini. Near-parity with o4-mini on reasoning benchmarks. Apache 2.0 license.",
-      "context_window": 65536,
-      "max_completion_tokens": 16000,
       "endpoints": {
         "primary": "/v1/chat/completions",
         "health": "/v1/models"
       },
-      "owned_by": "openai",
-      "source": "openai/gpt-oss-120b",
-      "source_url": "https://huggingface.co/openai/gpt-oss-120b",
-      "license": "Apache-2.0",
-      "parameters": "117B MoE (5.1B active)",
-      "parameter_count": 117000000000,
-      "precision": "mxfp4",
-      "architecture": "GptOssForCausalLM",
-      "framework": "vllm",
-      "model_architecture": {
-        "type": "Mixture-of-Experts Transformer",
-        "total_params": "117B",
-        "active_params_per_token": "5.1B",
-        "total_experts": 128,
-        "active_experts_per_token": 4,
-        "layers": 36,
-        "hidden_size": 2880,
-        "attention_heads": 64,
-        "kv_heads": 8,
-        "head_dimension": 64,
-        "attention_pattern": "alternating sliding_window=128 and full attention",
-        "positional_encoding": "RoPE with YaRN scaling (theta=150000, factor=32)",
-        "activation": "SiLU (SwiGLU variant)",
-        "tokenizer": "o200k_harmony (superset of o4-mini/GPT-4o tokenizer)",
-        "response_format": "harmony (NOT standard chat template)"
-      },
-      "quantization": {
-        "method": "mxfp4",
-        "description": "MoE expert MLP weights quantized to MXFP4; attention, router, embeddings, and LM head kept in higher precision",
-        "shipped_with_weights": true,
-        "changeable": false
-      },
-      "capabilities": {
-        "text_input": true,
-        "image_input": false,
-        "audio_input": false,
-        "video_input": false,
-        "multimodal": false,
-        "reasoning": true,
-        "reasoning_effort_levels": ["low", "medium", "high"],
-        "tool_calling": true,
-        "function_calling": true,
-        "structured_outputs": true,
-        "streaming": true,
-        "web_browsing": "model generates tool calls; execution requires client-side orchestrator",
-        "code_execution": "model generates code; execution requires client-side orchestrator",
-        "system_prompt": true
-      },
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 2,
-        "gpu_type": "L40S",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "startup_seconds": 90,
-        "container_image": "vllm/vllm-openai:v0.20.2",
-        "init_image": "python:3.12-slim",
-        "served_model_name": "gpt-oss-120b",
-        "node": "any-L40S",
-        "timeout": 300,
-        "model_path": "/data",
-        "weight_size": "60.77 GiB (15 safetensor shards)",
-        "memory_usage": "34.38 GiB GPU across 2x L40S",
-        "kv_cache_tokens": 281201,
-        "max_concurrency_131k": "~4x at 65K context"
-      },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "gpt-oss-120b",
         "serialize": false,
         "no_stream": false,
-        "deployment_mode": "Knative"
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": true,
+      "limits": {
+        "context_window": 131072,
+        "max_completion_tokens": 32768
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "~2-3 minutes (MXFP4 MoE 60GB, TP2 over NFS)"
+      },
+      "behavior": {
         "supports_vision": false,
-        "supports_video": false,
-        "supports_audio": false,
         "supports_tools": true,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": true,
-        "needs_json_fixing": false,
         "strips_thinking": true
       },
-      "domain": "nlp",
-      "subdomain": "large-language-model",
-      "tags": ["chat", "llm", "reasoning", "agentic", "moe", "openai", "tool-calling", "text-only"],
-      "content_types": ["text"],
-      "languages": ["multilingual"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": {
+          "mode": "effort",
+          "default_effort": "medium",
+          "effort_aliases": {
+            "none": "low", "minimal": "low", "disabled": "low",
+            "low": "low",
+            "medium": "medium", "med": "medium",
+            "high": "high", "xhigh": "high", "max": "high"
+          },
+          "on":  { "reasoning_effort": "medium" },
+          "off": { "reasoning_effort": "low" },
+          "note": "gpt-oss always reasons (no fully-off mode). Lowest effort='low' still does minimal CoT. Maps none/disabled→low to honor the intent."
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 1.0,
+          "top_p": 1.0,
+          "max_tokens": 16384,
+          "thinking": { "enabled": true, "effort": "medium" }
+        },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80,  "thinking": { "enabled": false } },
+          "tags":      { "max_tokens": 60,  "thinking": { "enabled": false } },
+          "followups": { "max_tokens": 220, "thinking": { "enabled": false } }
+        }
+      },
+      "custom_params": {
+        "schema": {
+          "reasoning_effort": { "type": "string", "enum": ["low","medium","high"], "default": "medium" }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "messages": {
           "type": "array",
-          "items": {"role": "string", "content": "string"},
           "required": true,
           "description": "Chat messages in OpenAI format. Uses harmony response format internally."
         },
-        "max_tokens": {"type": "integer", "default": 4096, "max": 16000, "description": "Maximum tokens to generate"},
-        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
-        "reasoning_effort": {"type": "string", "enum": ["low","medium","high"], "description": "Configurable reasoning effort via system prompt"},
-        "tools": {"type": "array", "description": "OpenAI-format tool definitions for function calling"},
-        "tool_choice": {"type": "string", "description": "auto or none (required not supported)"}
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 16384,
+          "max": 32768,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Nucleus sampling threshold"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "reasoning_effort": {
+          "type": "string",
+          "required": false,
+          "enum": ["low", "medium", "high"],
+          "default": "medium",
+          "description": "Configurable reasoning effort. Always-on (no fully-off mode)."
+        },
+        "tools": {
+          "type": "array",
+          "required": false,
+          "description": "OpenAI-format tool definitions for native harmony function calling"
+        },
+        "tool_choice": {
+          "type": "string",
+          "required": false,
+          "description": "Tool choice: auto, none, or required"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        }
       },
       "output_map": {
-        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}},
-        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (may include reasoning_content when thinking)"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
       },
-      "server_config": {
-        "vllm_args": [
-          "serve", "/data",
-          "--served-model-name", "gpt-oss-120b",
-          "--port", "8080",
-          "--tensor-parallel-size", "2",
-          "--max-model-len", "65536",
-          "--gpu-memory-utilization", "0.92",
-          "--max-num-seqs", "8",
-          "--reasoning-parser", "openai_gptoss",
-          "--tool-call-parser", "openai",
-          "--enable-auto-tool-choice"
-        ],
-        "env": {
-          "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
-          "OMP_NUM_THREADS": "1"
-        },
-        "vllm_version": "0.20.2",
-        "attention_backend": "TRITON_ATTN (auto-selected for SM89/L40S)",
-        "shared_memory": "16Gi",
-        "startup_warnings": [
-          "Auto-initialization of reasoning token IDs failed — harmless, openai_gptoss parser uses token IDs directly",
-          "SymmMemCommunicator not supported on SM89 — expected, L40S lacks symmetric memory",
-          "For gpt-oss, we ignore --enable-auto-tool-choice — model always has tool use enabled"
-        ],
-        "note": "Standard vLLM v0.20.2 with native gpt-oss support. No custom build, no venv, no --enforce-eager. Triton attention auto-selected for L40S. Harmony format, reasoning, and tool calling handled natively."
+      "catalog": {
+        "description_short": "OpenAI GPT-OSS 120B MoE, configurable reasoning + native tools (TP2, 2x L40S)",
+        "description": "OpenAI GPT-OSS 120B MoE (MXFP4, 117B total / 5.1B active params, 128 experts, 4 active). Text-only model with configurable reasoning effort (low/medium/high via reasoning_effort), native function calling via harmony format, structured outputs, and agentic capabilities. 128K context (deployed at 131K). Trained with same RL techniques as o3/o4-mini. Near-parity with o4-mini on reasoning benchmarks. Always reasons — no fully-off mode (lowest effort='low'). Apache 2.0 license.",
+        "owned_by": "openai",
+        "source": "openai/gpt-oss-120b",
+        "source_url": "https://huggingface.co/openai/gpt-oss-120b",
+        "license": "Apache-2.0",
+        "parameters": "117B MoE (5.1B active, 128 experts)",
+        "precision": "mxfp4",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "reasoning",
+        "tags": ["chat", "llm", "reasoning", "agentic", "moe", "openai", "tool-calling", "text-only", "harmony"]
       }
     }

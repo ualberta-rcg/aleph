@@ -7,14 +7,14 @@ metadata:
   name: phi-4-reasoning
   namespace: models
   annotations:
-    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
     minReplicas: 0
     scaleTarget: 3
     scaleMetric: concurrency
-    timeout: 150
+    timeout: 300
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -59,8 +59,11 @@ spec:
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
         args:
-          - --model=/data
+          - serve
+          - /data
           - --served-model-name=phi-4-reasoning
           - --port=8080
           - --max-model-len=32768

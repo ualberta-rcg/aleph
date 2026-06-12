@@ -18,17 +18,18 @@ data:
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": { "max_completion_tokens": 32768, "context_window": 131072 },
+      "limits": { "context_window": 131072, "max_completion_tokens": 32768 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "1-2 minutes"
+        "cold_start_estimate": "~2 minutes (MXFP4 MoE 14GB, TP1 vGPU)"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": true,
         "supports_system_prompt": true,
+        "supports_streaming": true,
         "reasoning_model": true,
         "strips_thinking": true
       },
@@ -37,18 +38,25 @@ data:
           "mode": "effort",
           "default_effort": "medium",
           "effort_aliases": {
-            "none": "low", "minimal": "low", "low": "low",
+            "none": "low", "minimal": "low", "disabled": "low",
+            "low": "low",
             "medium": "medium", "med": "medium",
             "high": "high", "xhigh": "high", "max": "high"
           },
           "on":  { "reasoning_effort": "medium" },
-          "off": { "reasoning_effort": "low" }
+          "off": { "reasoning_effort": "low" },
+          "note": "gpt-oss always reasons (no fully-off mode). Lowest effort='low' still does minimal CoT."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": { "temperature": 1.0, "top_p": 1.0, "max_tokens": 16384 },
+        "chat": {
+          "temperature": 1.0,
+          "top_p": 1.0,
+          "max_tokens": 16384,
+          "thinking": { "enabled": true, "effort": "medium" }
+        },
         "meta_tasks": {
           "title":     { "max_tokens": 80,  "thinking": { "enabled": false } },
           "tags":      { "max_tokens": 60,  "thinking": { "enabled": false } },
@@ -62,8 +70,73 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages in OpenAI format. Uses harmony response format internally."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 16384,
+          "max": 32768,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Nucleus sampling threshold"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "reasoning_effort": {
+          "type": "string",
+          "required": false,
+          "enum": ["low", "medium", "high"],
+          "default": "medium",
+          "description": "Configurable reasoning effort. Always-on (no fully-off mode)."
+        },
+        "tools": {
+          "type": "array",
+          "required": false,
+          "description": "OpenAI-format tool definitions for native harmony function calling"
+        },
+        "tool_choice": {
+          "type": "string",
+          "required": false,
+          "description": "Tool choice: auto, none, or required"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        }
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (may include reasoning_content when thinking)"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
+      },
       "catalog": {
         "description_short": "OpenAI GPT-OSS 20B MoE, configurable reasoning + native tools (lightweight)",
+        "description": "OpenAI GPT-OSS 20B MoE (MXFP4, 21B total / 3.6B active params). Lightweight text-only reasoning model with configurable reasoning effort (low/medium/high), native function calling via harmony format, structured outputs. 128K context. Always reasons — no fully-off mode. Good fit for single L40S vGPU slice. Apache 2.0.",
         "owned_by": "openai",
         "source": "openai/gpt-oss-20b",
         "license": "Apache-2.0",
@@ -72,6 +145,6 @@ data:
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "reasoning",
-        "tags": ["chat", "llm", "reasoning", "agentic", "moe", "tool-calling"]
+        "tags": ["chat", "llm", "reasoning", "agentic", "moe", "tool-calling", "harmony"]
       }
     }

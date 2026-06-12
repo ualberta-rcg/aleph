@@ -4,11 +4,11 @@ metadata:
   name: gpt-oss-120b
   namespace: models
   annotations:
-    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
-    minReplicas: 1
+    minReplicas: 0
     scaleTarget: 3
     scaleMetric: concurrency
     timeout: 300
