@@ -90,7 +90,7 @@ data:
         "tools": {
           "type": "array",
           "required": false,
-          "description": "Tool definitions for function calling (OpenAI format, parsed by glm45)"
+          "description": "Tool definitions for function calling (OpenAI format, parsed by custom glm4_0414 plugin)"
         },
         "tool_choice": {
           "type": "string",
@@ -113,7 +113,7 @@ data:
       },
       "catalog": {
         "description_short": "GLM-4-32B-0414 — strong function calling + agentic workflows (Zhipu-AI)",
-        "description": "GLM-4-32B-0414 is Zhipu-AI's 32B dense instruct model with strong tool/function calling (BFCL-v3 69.6, matching GPT-4o). Uses glm45 tool parser for OpenAI-compatible function calling. 32K context, TP2 on L40S. No reasoning/thinking mode — use GLM-Z1-32B for reasoning.",
+        "description": "GLM-4-32B-0414 is Zhipu-AI's 32B dense instruct model with strong tool/function calling (BFCL-v3 69.6, matching GPT-4o). Emits tool calls in its native 'name\\n{json}' text format, parsed by a custom glm4_0414 vLLM tool-parser plugin (loaded via --tool-parser-plugin) into OpenAI-compatible function calls. 32K context, TP2 on L40S. No reasoning/thinking mode — use GLM-Z1-32B for reasoning.",
         "owned_by": "Zhipu-AI",
         "source": "THUDM/GLM-4-32B-0414",
         "source_url": "https://huggingface.co/THUDM/GLM-4-32B-0414",

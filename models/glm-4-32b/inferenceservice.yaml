@@ -33,8 +33,11 @@ spec:
           - --dtype=auto
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=8
-          - --tool-call-parser=glm45
+          - --tool-call-parser=glm4_0414
+          - --tool-parser-plugin=/opt/glm4_parser/glm4_0414_tool_parser.py
           - --enable-auto-tool-choice
+          - --enable-prefix-caching
+          - --enable-chunked-prefill
           - --disable-custom-all-reduce
           - --port=8080
         env:
@@ -78,12 +81,18 @@ spec:
           - name: model-data
             mountPath: /mnt/models
             readOnly: true
+          - name: glm4-parser
+            mountPath: /opt/glm4_parser
+            readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
       - name: model-data
         persistentVolumeClaim:
           claimName: glm-4-32b-data
+      - name: glm4-parser
+        configMap:
+          name: glm4-0414-parser
       - name: shm
         emptyDir:
           medium: Memory

@@ -1,0 +1,284 @@
+apiVersion: v1
+data:
+  glm4_0414_tool_parser.py: |
+    # SPDX-License-Identifier: Apache-2.0
+    """Custom vLLM tool parser for GLM-4-32B-0414 (dense, "glm4" architecture).
+
+    GLM-4-32B-0414 emits tool calls as PLAIN TEXT, not special tokens:
+
+        function_name
+        {"arg": "value"}
+
+    This is the model's own documented format (see the model card's
+    ``is_function_call()`` helper and its regex ``r'([^\\n`]*?)\\n({.*?})(?=\\w*\\n|$)'``).
+    There are no ``<tool_call>...</tool_call>`` tokens — those belong to the newer
+    GLM-4.5/4.6/4.7 ("glm4_moe") models, which is what vLLM's built-in ``glm45``
+    parser targets. Neither ``glm45`` nor ``pythonic`` matches this model's output,
+    so both return an empty ``tool_calls`` list and pass the raw text through as
+    ``content``.
+
+    This parser mirrors the model card's reference logic and produces
+    OpenAI-format ``tool_calls``. It is loaded by vLLM via the plugin flag:
+
+        vllm serve /mnt/models \\
+            --enable-auto-tool-choice \\
+            --tool-call-parser glm4_0414 \\
+            --tool-parser-plugin /opt/glm4_parser/glm4_0414_tool_parser.py
+
+    Works on vLLM 0.20.2 (the tool_parsers package lives at ``vllm.tool_parsers``).
+    """
+
+    import ast
+    import json
+    import re
+    from collections.abc import Sequence
+    from typing import Any
+
+    from vllm.entrypoints.chat_utils import make_tool_call_id
+    from vllm.entrypoints.openai.chat_completion.protocol import (
+        ChatCompletionNamedToolChoiceParam,
+        ChatCompletionRequest,
+    )
+    from vllm.entrypoints.openai.engine.protocol import (
+        DeltaFunctionCall,
+        DeltaMessage,
+        DeltaToolCall,
+        ExtractedToolCallInformation,
+        FunctionCall,
+        ToolCall,
+    )
+    from vllm.entrypoints.openai.responses.protocol import ResponsesRequest
+    from vllm.logger import init_logger
+    from vllm.tokenizers import TokenizerLike
+    from vllm.tool_parsers.abstract_tool_parser import Tool, ToolParser, ToolParserManager
+
+    logger = init_logger(__name__)
+
+    # GLM-4-32B-0414 native format: a function name line, a newline, then a JSON
+    # object. The lazy match + lookahead handles a single call followed by either
+    # more text or end-of-output. This is verbatim from the model card.
+    _FUNC_CALL_RE = re.compile(r"([^\n`]*?)\n(\{.*?\})(?=\w*\n|$)", re.DOTALL)
+
+
+    @ToolParserManager.register_module("glm4_0414")
+    class Glm4_0414_ToolParser(ToolParser):
+        """Tool parser for GLM-4-32B-0414's ``name\\n{json}`` text format."""
+
+        # GLM emits tool calls in its own text format (defined by the chat
+        # template), not via guided JSON. Tell the serving layer NOT to force
+        # structured outputs for required/named tool_choice — guided decoding
+        # would inject a JSON schema that fights the model's native format.
+        supports_required_and_named = False
+
+        def __init__(self, tokenizer: TokenizerLike, tools: list[Tool] | None = None):
+            super().__init__(tokenizer, tools)
+            # Streaming state.
+            self._sent_content_idx: int = 0
+
+        # ------------------------------------------------------------------ #
+        # helpers
+        # ------------------------------------------------------------------ #
+        def _known_tool_names(self) -> set[str]:
+            names: set[str] = set()
+            for t in self.tools:
+                fn = getattr(t, "function", None)
+                name = getattr(fn, "name", None)
+                if name:
+                    names.add(name)
+            return names
+
+        @staticmethod
+        def _parse_args(args_str: str) -> dict[str, Any] | None:
+            """Parse a JSON argument blob, falling back to Python literal eval."""
+            try:
+                obj = json.loads(args_str)
+                return obj if isinstance(obj, dict) else None
+            except json.JSONDecodeError:
+                pass
+            try:
+                obj = ast.literal_eval(args_str)
+                return obj if isinstance(obj, dict) else None
+            except (ValueError, SyntaxError):
+                return None
+
+        def _extract(self, model_output: str) -> list[tuple[str, dict[str, Any]]]:
+            """Return validated [(func_name, args_dict), ...] from raw output.
+
+            When the request carries tool definitions, only function names that
+            match a declared tool are accepted — this prevents normal prose that
+            happens to contain a newline+brace (e.g. a code block) from being
+            misread as a tool call.
+            """
+            known = self._known_tool_names()
+            out: list[tuple[str, dict[str, Any]]] = []
+            for name_str, args_str in _FUNC_CALL_RE.findall(model_output):
+                name = name_str.strip()
+                if not name:
+                    continue
+                if known and name not in known:
+                    continue
+                args = self._parse_args(args_str)
+                if args is None:
+                    continue
+                out.append((name, args))
+            return out
+
+        @staticmethod
+        def _looks_like_tool_start(text: str, known: set[str]) -> bool:
+            """True if the partial output could be the start of a tool call.
+
+            Used during streaming to decide whether to buffer (it's becoming a
+            tool call) or forward as plain content (it's prose). The model emits a
+            tool call as ``name\\n{json}`` token-by-token, so the function name
+            arrives incrementally (e.g. ``get`` then ``_weather``). We must buffer
+            as soon as the first line is a *prefix* of a known tool name — if we
+            waited for an exact match, the early tokens would already have been
+            flushed as content.
+            """
+            if not known:
+                return False
+            first_line = text.split("\n", 1)[0]
+            if "\n" in text:
+                # A newline has arrived: the function name is complete, so require
+                # an exact match before treating the rest as JSON arguments.
+                return first_line in known
+            # No newline yet: buffer while still a prefix of some known tool.
+            return any(name.startswith(first_line) for name in known)
+
+        # ------------------------------------------------------------------ #
+        # request adjustment
+        # ------------------------------------------------------------------ #
+        def adjust_request(
+            self, request: ChatCompletionRequest | ResponsesRequest
+        ) -> ChatCompletionRequest | ResponsesRequest:
+            if request.tools:
+                tc = request.tool_choice
+                # For required/named tool_choice, skip structured-outputs so the
+                # model is free to emit its native name+json text format.
+                if tc == "required" or isinstance(tc, ChatCompletionNamedToolChoiceParam):
+                    return request
+            return super().adjust_request(request)
+
+        # ------------------------------------------------------------------ #
+        # non-streaming
+        # ------------------------------------------------------------------ #
+        def extract_tool_calls(
+            self,
+            model_output: str,
+            request: ChatCompletionRequest,
+        ) -> ExtractedToolCallInformation:
+            try:
+                calls = self._extract(model_output)
+                if not calls:
+                    return ExtractedToolCallInformation(
+                        tools_called=False, tool_calls=[], content=model_output
+                    )
+                tool_calls: list[ToolCall] = []
+                for name, args in calls:
+                    tool_calls.append(
+                        ToolCall(
+                            type="function",
+                            function=FunctionCall(
+                                name=name,
+                                arguments=json.dumps(args, ensure_ascii=False),
+                            ),
+                        )
+                    )
+                return ExtractedToolCallInformation(
+                    tools_called=True, tool_calls=tool_calls, content=None
+                )
+            except Exception:
+                logger.exception("Failed to extract tool calls")
+                return ExtractedToolCallInformation(
+                    tools_called=False, tool_calls=[], content=model_output
+                )
+
+        # ------------------------------------------------------------------ #
+        # streaming
+        #
+        # GLM-4 emits the tool call with no prose preamble. Strategy: re-parse the
+        # accumulated text each call. If no complete tool call is detected yet but
+        # the first line is a known function name, buffer (return None). Otherwise
+        # forward new text as content. Once a complete call is parsed, emit it as
+        # a tool_call delta (diffed against what was already sent).
+        # ------------------------------------------------------------------ #
+        def extract_tool_calls_streaming(
+            self,
+            previous_text: str,
+            current_text: str,
+            delta_text: str,
+            previous_token_ids: Sequence[int],
+            current_token_ids: Sequence[int],
+            delta_token_ids: Sequence[int],
+            request: ChatCompletionRequest,
+        ) -> DeltaMessage | None:
+            known = self._known_tool_names()
+            calls = self._extract(current_text)
+
+            # No tool call parsed yet.
+            if not calls:
+                if self._looks_like_tool_start(current_text, known):
+                    return None  # likely a tool call forming — buffer
+                # prose: forward any new characters as content
+                if len(current_text) > self._sent_content_idx:
+                    chunk = current_text[self._sent_content_idx:]
+                    self._sent_content_idx = len(current_text)
+                    return DeltaMessage(content=chunk)
+                return None
+
+            # We have at least one complete tool call. Emit new/changed calls,
+            # re-using the base-class prev_tool_call_arr state as the diff ledger.
+            delta: DeltaMessage | None = None
+            for i, (name, args) in enumerate(calls):
+                args_str = json.dumps(args, ensure_ascii=False)
+                prev = self.prev_tool_call_arr[i] if i < len(
+                    self.prev_tool_call_arr) else None
+                if prev is None:
+                    # brand-new tool call: send id + name + full args
+                    self.current_tool_id = i
+                    tool_id = make_tool_call_id()
+                    d = DeltaMessage(
+                        tool_calls=[
+                            DeltaToolCall(
+                                index=i,
+                                id=tool_id,
+                                type="function",
+                                function=DeltaFunctionCall(
+                                    name=name, arguments=args_str
+                                ),
+                            )
+                        ]
+                    )
+                    # grow the ledger
+                    while len(self.prev_tool_call_arr) <= i:
+                        self.prev_tool_call_arr.append({})
+                    self.prev_tool_call_arr[i] = {
+                        "name": name,
+                        "arguments": args_str,
+                    }
+                    delta = d
+                elif prev.get("arguments") != args_str or prev.get("name") != name:
+                    # changed since last emit (rare for this model) — resend full
+                    d = DeltaMessage(
+                        tool_calls=[
+                            DeltaToolCall(
+                                index=i,
+                                function=DeltaFunctionCall(
+                                    name=name, arguments=args_str
+                                ),
+                            )
+                        ]
+                    )
+                    self.prev_tool_call_arr[i] = {
+                        "name": name,
+                        "arguments": args_str,
+                    }
+                    delta = d
+            return delta
+kind: ConfigMap
+metadata:
+  name: glm4-0414-parser
+  namespace: models
+  labels:
+    component: vllm-tool-parser
+    parser: glm4_0414
