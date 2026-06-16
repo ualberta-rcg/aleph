@@ -214,6 +214,9 @@ def _anth_sse(event: str, data: dict) -> bytes:
 
 def anth_stream_start_events(model: str) -> list[bytes]:
     msg_id = "msg_" + uuid.uuid4().hex[:24]
+    # Only message_start here — content blocks are opened lazily by the
+    # streaming generator as text or tool_use deltas arrive, so a tool-only
+    # response is not fronted by an empty text block.
     return [
         _anth_sse("message_start", {
             "type": "message_start",
@@ -224,22 +227,13 @@ def anth_stream_start_events(model: str) -> list[bytes]:
                 "usage": {"input_tokens": 0, "output_tokens": 0},
             },
         }),
-        _anth_sse("content_block_start", {
-            "type": "content_block_start", "index": 0,
-            "content_block": {"type": "text", "text": ""},
-        }),
     ]
-
-
-def anth_stream_delta_event(text: str) -> bytes:
-    return _anth_sse("content_block_delta", {
-        "type": "content_block_delta", "index": 0,
-        "delta": {"type": "text_delta", "text": text},
-    })
 
 
 def anth_stream_stop_events(finish_reason: str | None, output_tokens: int,
                             resources: dict | None = None) -> list[bytes]:
+    # The generator closes the last open content block itself; this only emits
+    # the trailing message_delta + message_stop.
     delta: dict[str, Any] = {
         "type": "message_delta",
         "delta": {"stop_reason": _ANTH_STOP_MAP.get(finish_reason, "end_turn"),
@@ -249,7 +243,6 @@ def anth_stream_stop_events(finish_reason: str | None, output_tokens: int,
     if resources:
         delta["resources"] = resources
     return [
-        _anth_sse("content_block_stop", {"type": "content_block_stop", "index": 0}),
         _anth_sse("message_delta", delta),
         _anth_sse("message_stop", {"type": "message_stop"}),
     ]
@@ -1332,7 +1325,28 @@ async def anthropic_messages(request: Request):
             finish = None
             out_tokens = 0
             buf = ""
+            # Content blocks are opened lazily: index/track the currently-open
+            # block so a tool-call response becomes a tool_use block instead of
+            # the function name leaking through as text.
+            cur_idx = -1            # index of the open content block (-1 = none)
+            cur_kind = None         # "text" | "tool_use"
+            tool_state: dict[int, dict] = {}   # per tool-call index -> {id,name,args_sent}
             t0 = time.monotonic()
+
+            def _open_block(kind: str, **block_fields) -> bytes:
+                nonlocal cur_idx, cur_kind
+                if cur_idx >= 0:
+                    out = _anth_sse("content_block_stop",
+                                    {"type": "content_block_stop", "index": cur_idx})
+                else:
+                    out = b""
+                cur_idx += 1
+                cur_kind = kind
+                return out + _anth_sse("content_block_start", {
+                    "type": "content_block_start", "index": cur_idx,
+                    "content_block": {"type": kind, **block_fields},
+                })
+
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
                 async with c.stream("POST", url, content=json.dumps(oai).encode(),
                                     headers=headers) as r:
@@ -1344,14 +1358,56 @@ async def anthropic_messages(request: Request):
                             if not obj:
                                 continue
                             for ch in obj.get("choices", []) or []:
-                                delta = (ch.get("delta") or {}).get("content")
-                                if delta:
-                                    yield anth_stream_delta_event(delta)
+                                delta = ch.get("delta") or {}
+                                # ---- text content ----
+                                text = delta.get("content")
+                                if text:
+                                    if cur_kind != "text":
+                                        yield _open_block("text", text="")
+                                    yield _anth_sse("content_block_delta", {
+                                        "type": "content_block_delta", "index": cur_idx,
+                                        "delta": {"type": "text_delta", "text": text},
+                                    })
+                                # ---- tool calls ----
+                                for tc in delta.get("tool_calls") or []:
+                                    tidx = tc.get("index", 0)
+                                    fn = tc.get("function") or {}
+                                    st = tool_state.get(tidx)
+                                    if st is None:
+                                        tc_id = tc.get("id") or ("toolu_" + uuid.uuid4().hex[:24])
+                                        st = {"id": tc_id, "name": fn.get("name", ""),
+                                              "args_sent": ""}
+                                        tool_state[tidx] = st
+                                        yield _open_block("tool_use", id=tc_id,
+                                                          name=st["name"], input={})
+                                    args = fn.get("arguments") or ""
+                                    if args and args != st["args_sent"]:
+                                        new = (args[len(st["args_sent"]):]
+                                               if args.startswith(st["args_sent"]) else args)
+                                        st["args_sent"] = args
+                                        yield _anth_sse("content_block_delta", {
+                                            "type": "content_block_delta", "index": cur_idx,
+                                            "delta": {"type": "input_json_delta",
+                                                      "partial_json": new},
+                                        })
                                 if ch.get("finish_reason"):
                                     finish = ch["finish_reason"]
                             u = obj.get("usage")
                             if u:
                                 out_tokens = u.get("completion_tokens", out_tokens)
+            if cur_idx >= 0:
+                yield _anth_sse("content_block_stop",
+                                {"type": "content_block_stop", "index": cur_idx})
+            else:
+                # Empty turn (no text, no tool calls — e.g. immediate stop or a
+                # fully stripped thinking response): emit a placeholder text
+                # block so the message always carries at least one content block.
+                yield _anth_sse("content_block_start", {
+                    "type": "content_block_start", "index": 0,
+                    "content_block": {"type": "text", "text": ""},
+                })
+                yield _anth_sse("content_block_stop",
+                                {"type": "content_block_stop", "index": 0})
             latency_ms = int((time.monotonic() - t0) * 1000)
             for ev in anth_stream_stop_events(
                 finish, out_tokens, resource_block(info, latency_ms)
