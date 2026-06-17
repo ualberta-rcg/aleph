@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Runs ON the head node (172.26.92.230), from the dir this repo was unpacked into
+# Runs ON the head node (control plane), from the dir this repo was unpacked into
 # (default /root/gateway-build). Applies gateway manifests + Tyk config. Idempotent.
 #
-# Invoked by ../deploy.sh; you normally don't run this by hand.
+# Invoked by ../deploy-aleph/deploy.sh; you normally don't run this by hand.
 set -euo pipefail
 
 export PATH="$PATH:/var/lib/rancher/rke2/bin"

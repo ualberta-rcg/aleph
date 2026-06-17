@@ -13,11 +13,9 @@ KServe/Knative + Tyk model-inference platform.
 |---|---|
 | `gateway/` | FastAPI inference gateway (OpenAI + Anthropic compatible), Dockerfile, k8s manifests, Tyk config |
 | `models/` | Per-model KServe `InferenceService` + `PVC` + `details.yaml` cards (LLMs, embeddings, rerank, TTS, science models) |
-| `install-kubeflow/` | Cluster bring-up scripts (RKE2 manifests, Tyk OSS, test model) |
-| `storage/` | NFS StorageClass definitions (`nfs-client` default, OneFS-safe mount options) |
+| `deploy-aleph/` | Platform deploy: install scripts (RKE2 manifests, Istio/Knative/KServe, Tyk OSS), StorageClasses, `deploy.sh` |
 | `test/` | Deployment & verification tests (`full_test.py` e2e sweep, `test-model.sh`, `smoke.sh`) |
 | `scratch/` | Ad-hoc local scripts/inputs (gitignored) |
-| `deploy.sh` | Convenience deploy wrapper (ships repo to head node, runs `gateway/remote-deploy.sh`) |
 | `docs/` + `CHANGELOG.md` | Design + ops docs (`RUNBOOK`, `GATEWAY-DESIGN`, `GATEWAY-ARCHITECTURE`, `CHANGELOG`) |
 
 ## Cluster Overview
@@ -138,7 +136,7 @@ kubectl create secret generic hf-token -n models \
 
 ### Tyk secret
 
-`gateway/tyk/tyk-keys.sh` and `install-kubeflow/04-install-tyk-gateway.sh` read
+`gateway/tyk/tyk-keys.sh` and `deploy-aleph/04-install-tyk-gateway.sh` read
 `TYK_SECRET` / `TYK_API_SECRET` from the environment (no baked-in default). Export them
 (e.g. `set -a; source .env; set +a`) before running.
 

@@ -131,7 +131,7 @@ real payloads on cluster 230.
 
 - Deployment now uses `rkhoja/aleph:latest` with `imagePullPolicy: IfNotPresent`
   (replaces local `model-gateway:<tag>` + `Never` + containerd import).
-- `deploy.sh` / `remote-deploy.sh` no longer build on the control plane; `GATEWAY_IMAGE`
+- `deploy-aleph/deploy.sh` / `gateway/remote-deploy.sh` no longer build on the control plane; `GATEWAY_IMAGE`
   env var selects the tag (default `rkhoja/aleph:latest`).
 - RUNBOOK/README/gateway CLAUDE updated: Docker Hub is primary; local build is appendix only.
 - Rolled out on cluster 230; gateway deployment healthy.
@@ -507,7 +507,7 @@ document (`TEST.md`/`CLAUDE.md`), and mark an honest `status` on each card.
   returns `Errno 5 (EIO)` on COMMIT for write RPCs > 128 KiB over **NFSv4.1/4.2**. The
   default `nfs-client` SC mounts v4.2 @ `wsize/rsize=1Mi`, so multi-GB safetensors failed
   at `close()` (small files were fine). NFSv3 and v4.0 work even at 1 MiB.
-- **Fix:** new StorageClass **`nfs-models`** (`storage/nfs-models-storageclass.yaml`) with
+- **Fix:** new StorageClass **`nfs-models`** (`deploy-aleph/storage/nfs-models-storageclass.yaml`) with
   `mountOptions: nfsvers=4.2,wsize=131072,rsize=131072,hard`. Verified ~700 MB/s, 2 GB write OK.
 - **Impact:** model weights now persist on NFS PVCs (`models/*/pvc.yaml`, SC `nfs-models`).
   Scale-from-zero cold starts **skip the re-download** (~90 s vs ~3 min before). Replaces the

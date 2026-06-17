@@ -64,8 +64,8 @@ cert-manager built in** (plus NVIDIA drivers baked into the GPU node images). So
 | Step | What | Where |
 |---|---|---|
 | A | **Label GPU nodes** `gpu=on` (the one thing the build doesn't do) | `kubectl label node <GPU_NODE> gpu=on` |
-| B | Install **Istio + Knative + KServe + Profiles** | `install-kubeflow/01-install.sh` then `02-post-install.sh` (run on the head node) |
-| C | Install **Tyk OSS + Redis** (Helm) | `install-kubeflow/04-install-tyk-gateway.sh` *(see note)* |
+| B | Install **Istio + Knative + KServe + Profiles** | `deploy-aleph/01-install.sh` then `02-post-install.sh` (run on the head node) |
+| C | Install **Tyk OSS + Redis** (Helm) | `deploy-aleph/04-install-tyk-gateway.sh` *(see note)* |
 | D | Deploy **our gateway + model + Tyk wiring** | §1–§5 below |
 
 > **Note on step C / Tyk:** `04-install-tyk-gateway.sh` does the Helm install of Tyk + Redis,
@@ -101,7 +101,7 @@ kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<s
 kubectl rollout status deploy/model-gateway -n models
 ```
 
-From a login node, `./deploy.sh` ships manifests and applies everything (no local build).
+From a login node, `./deploy-aleph/deploy.sh` ships manifests and applies everything (no local build).
 
 <details>
 <summary>Appendix: local build + containerd import (dev / air-gapped only)</summary>
@@ -174,7 +174,7 @@ Two changes vs a normal GPU-operator manifest, both in `models/command-r-7b/infe
    Secret for non-test), then every restart/cold-start reuses the weights.
 
 ```bash
-kubectl apply -f storage/nfs-models-storageclass.yaml      # once per cluster
+kubectl apply -f deploy-aleph/storage/nfs-models-storageclass.yaml      # once per cluster
 kubectl apply -f models/command-r-7b/pvc.yaml
 kubectl apply -f models/command-r-7b/inferenceservice.yaml
 kubectl get isvc command-r-7b -n models -w        # wait for READY=True (first run pulls ~9GB vLLM image)
@@ -341,7 +341,7 @@ Anthropic SDK: `base_url="http://<HEAD_IP>:30808"` (it appends `/v1/messages`), 
 4. **NFS large-write EIO (SOLVED)** — the default SC mounts NFSv4.2 with `wsize/rsize=1Mi`; the
    OneFS/Isilon backend returns `Errno 5 Input/output error` on COMMIT for >128Ki write RPCs over
    NFSv4.1/4.2, so multi-GB safetensors failed at `close()` (small files OK).
-   **Fix:** dedicated SC `nfs-models` (`storage/nfs-models-storageclass.yaml`) with
+   **Fix:** dedicated SC `nfs-models` (`deploy-aleph/storage/nfs-models-storageclass.yaml`) with
    `mountOptions: nfsvers=4.2,wsize=131072,rsize=131072` → ~700 MB/s, verified. Model PVCs use this
    SC so weights persist and **scale-from-zero cold starts skip the re-download** (~90s vs ~3min).
    (NFSv3 and v4.0 also work at default wsize; the 1Mi RPC on v4.1+ is the trigger.)

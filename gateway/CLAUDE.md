@@ -59,7 +59,7 @@ Docker Hub on `main` pushes that touch `gateway/**`.
 
 - Image: `rkhoja/aleph` (`latest` + immutable `gateway-<shortsha>`)
 - Deployment: `k8s/deployment.yaml` uses `imagePullPolicy: IfNotPresent`
-- Rollout: `./deploy.sh` or `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:<tag>`
+- Rollout: `./deploy-aleph/deploy.sh` or `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:<tag>`
 - Pin CI tags for reproducibility; use `latest` for the newest build.
 
 ### Local build (dev / air-gapped fallback only)

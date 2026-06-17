@@ -61,10 +61,10 @@ kubectl create secret generic hf-token -n models \
 
 ```bash
 # from a login node with sudo SSH access to control plane
-./deploy.sh
+./deploy-aleph/deploy.sh
 
 # or pin a CI-built image tag
-GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha> ./deploy.sh
+GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha> ./deploy-aleph/deploy.sh
 ```
 
 Gateway image is published to Docker Hub as `rkhoja/aleph` (see `.github/workflows/deploy-gateway.yml`).
@@ -81,8 +81,7 @@ python3 test/full_test.py
 |---|---|
 | `gateway/` | FastAPI gateway app, translation logic, k8s deployment, Tyk API defs |
 | `models/` | Per-model `InferenceService`, `PVC`, and `details.yaml` cards |
-| `install-kubeflow/` | Cluster/platform install scripts and configs |
-| `storage/` | StorageClass manifests (`nfs-client` default, tuning options) |
+| `deploy-aleph/` | Platform deploy: install scripts (Istio/Knative/KServe, Tyk), StorageClasses, `deploy.sh` |
 | `test/` | Deployment & verification tests (`full_test.py` e2e sweep, `test-model.sh`, `smoke.sh`) |
 | `scratch/` | Ad-hoc local scripts/inputs (gitignored) |
 | `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
