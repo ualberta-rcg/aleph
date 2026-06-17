@@ -1,6 +1,6 @@
 # Inference Gateway — Architecture & Card Schema
 
-> The **what and why**. For the build plan and current cluster state, see `CLUSTER-230-PLAN.md`.
+> The **what and why**. For the build/deploy steps and current cluster state, see `RUNBOOK.md`.
 > Supersedes the design notes in `GATEWAY-DESIGN.md` (kept for history).
 
 ## TL;DR

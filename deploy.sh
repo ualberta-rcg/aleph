@@ -6,7 +6,7 @@
 #   GATEWAY_IMAGE=rkhoja/aleph:gateway-68f01ba ./deploy.sh   # pin a CI tag
 #   HEAD=172.26.92.230 ./deploy.sh
 #
-# For a DIFFERENT cluster, don't use this as-is — follow RUNBOOK.md and substitute
+# For a DIFFERENT cluster, don't use this as-is — follow docs/RUNBOOK.md and substitute
 # the per-cluster values (node labels, Tyk release name/secret, StorageClass, IPs).
 # Assumes the platform is already up (RKE2, HAMi, KServe/Knative, Istio, Tyk OSS, NFS).
 set -euo pipefail

@@ -84,13 +84,15 @@ python3 scratch/full_test.py
 | `install-kubeflow/` | Cluster/platform install scripts and configs |
 | `storage/` | StorageClass manifests (`nfs-client` default, tuning options) |
 | `scratch/` | End-to-end tests and targeted validation scripts |
-| `RUNBOOK.md` | Operational commands and troubleshooting runbook |
+| `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
+| `docs/GATEWAY-DESIGN.md` | Gateway design rationale |
+| `docs/GATEWAY-ARCHITECTURE.md` | Card schema + handler map |
 | `CHANGELOG.md` | Timeline of model/platform updates |
 | `CLAUDE.md` | Operator and agent context for this repository |
 
 ## 🧭 Operations Notes
 
-- Main working cluster documented here is control-plane `172.26.92.230` with HAMi-enabled GPU workers.
+- Main working cluster is a control-plane node with HAMi-enabled GPU workers (cluster-specific values in `docs/RUNBOOK.md` §0).
 - Node image build/publish source-of-truth is [`ualberta-rcg/warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami); this repo consumes that image line.
 - Keep secrets in `.env` only (gitignored); do not inline tokens in manifests.
 - Model-specific deployment guidance belongs in `models/CLAUDE.md` and optional `models/<model>/CLAUDE.md`.

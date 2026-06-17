@@ -1,6 +1,65 @@
-# Changelog — cluster 230 gateway + models
+# Changelog — model gateway + models
 
-Verified on cluster 230 (`kubeflow-head-node2`, 172.26.92.230). Newest first.
+Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+
+## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
+
+- **glm-4-32b — working tool calling** via a custom vLLM parser. GLM-4-32B-0414 emits tool calls as
+  plain text (`function_name\n{json}`), not `<tool_call>` tokens, so vLLM's built-in `glm45` parser
+  returned empty `tool_calls`. Built `models/glm-4-32b/glm4_0414_tool_parser.py` (mirrors the model
+  card's regex + name-validation), mounted via `--tool-parser-plugin` + `--tool-call-parser=glm4_0414`.
+- **gateway**: emit `tool_use` content blocks in Anthropic `/v1/messages` **streaming** responses —
+  tool calls were being dropped in SSE (only the non-stream path produced them).
+- TEST-STATUS: fixed a blank line that broke GitHub table rendering.
+
+## 2026-06-12 — GLM family modernized (v2 cards, parsers, test suites)
+
+- **glm-4-32b / glm-z1-32b / glm-z1-rumination-32b** → v2 cards, `vllm serve` format, `glm45` tool
+  parsers, per-model test suites. Documented the **GLM reasoning-parser incompatibility**:
+  `--reasoning-parser=glm45` crashes (maps to a DeepSeek parser expecting `<think>` tokens GLM's
+  tokenizer lacks), so GLM-Z1 thinking stays in-template and is never surfaced as `reasoning_content`.
+  Rumination's chat template ignores tools/system-prompt by design (`supports_tools: false`).
+
+## 2026-06-11 — Qwen + vision fleet: full v2 card campaign (11 models)
+
+Migrated the Qwen line to v2 cards with full gateway test suites:
+- **qwen3-32b** (effort, 23/25), **qwen35-122b** (toggle, 23/23), **qwen3-235b** (non-thinking, 21/21),
+  **qwq-32b** (always-on, 21/21), **qwen25-coder-32b** (22/22), **qwen25-vl-3b/7b/72b** (18/22/22),
+  **qwen36-35b-a3b** (reasoning+tools+vision, 21/21), **qwen25-vl-72b-awq** (16/18).
+- **Vision standardization**: `--limit-mm-per-prompt=20` across VLMs; context raised to 64K
+  (32K on qwen25-vl-3b). qwen25-vl-72b-awq switched TP4→TP2 (model `max_position_embeddings`=128K).
+- **Removed k2-v2** — FP32-only (~290 GB), impractical cold start over NFS.
+- Refreshed `models.md` + `TEST-STATUS.md` for all 9 Qwen models + vision limits.
+
+## 2026-06-10 — Science/chat v2 cards + gateway vision gating
+
+- **v2 cards**: command-r-7b (scale-to-zero + 15m, 16/16), deepseek-v2-lite-16b (14/14),
+  openbiollm-70b, oceangpt-30b (64K + tools), geogalactica (v0.20.2 + chat template), tinyllama
+  (llama.cpp crash fix), astrosage (`no_stream` custom server), progen2 (protein gen + input/output maps).
+- **gateway**: vision gating — reject image input for non-vision models; force `stream=false` upstream
+  for `no_stream` card models.
+- astrosage: rewrote CLAUDE.md + added README.
+
+## 2026-06-09 — qwen36-27b flagship + single-file gateway + CI
+
+- **qwen36-27b**: enabled reasoning + tools + vision, 131K context; switched thinking to **effort
+  mode** for native `reasoning_effort` support (became the effort-mode template for the fleet).
+- **gateway**: merged `anthropic_xlate.py` into `gateway.py` — single-file gateway.
+- **CI/deploy**: post-build image verification + Docker cache-bust fixes; deployment pinned to a CI
+  tag with `imagePullPolicy: Always`, then moved to `latest` + always-pull.
+
+## 2026-06-08 — Science wake-up batch, NIM containers, card templates
+
+- **Wake-up tested 10 stalled models** → 6 FIXED (presto pass-mask fix, aeneas JAX warmup,
+  geogalactica gate accepted, others), 2 need code fixes, 1 vLLM fail.
+- **NIM containers**: renamed boltz→boltz-2 and added openfold-3 (both `nvcr.io/nim/...`); patched
+  boltz NIM v1.7.0 `confidence_score` KeyError at startup; standardized 16 GiB `/dev/shm` for NIMs.
+- **Batch-fixed 7 failed models**; bumped Knative `progress-deadline` for caduceus / prithvi-eo.
+- Merged the 2026-06 LLM batch into the TEST-STATUS main table + added NIM notes.
+- **Templates**: expanded the details.yaml template with real input_map/output_map patterns from
+  science models; added an audit prompt for systematic model audit.
+- **gateway**: moved the Anthropic type-gate ahead of readiness/cold-start checks; added API mapping docs.
 
 ## 2026-06-07 — Tier 2 science models: 2 PASS, 3 blocked by Knative timeout
 

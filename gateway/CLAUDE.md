@@ -64,7 +64,7 @@ Docker Hub on `main` pushes that touch `gateway/**`.
 
 ### Local build (dev / air-gapped fallback only)
 
-See RUNBOOK.md appendix. Do not use for cluster 230 day-to-day deploys.
+See docs/RUNBOOK.md appendix (local-build / air-gapped fallback). Do not use for day-to-day deploys.
 
 ## Behavior guardrails
 

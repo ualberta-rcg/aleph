@@ -197,3 +197,70 @@ These NIM containers exist on build.nvidia.com but are not yet on the cluster. C
 |---|---|---|
 | llama-3.3-70b | meta-llama/Llama-3.3-70B-Instruct | gated (403); HF access not granted on token |
 | llama-4-scout | meta-llama/Llama-4-Scout-17B-16E-Instruct | gated (403); HF access not granted on token |
+
+---
+
+## Chat LLM capability matrix
+
+Per-chat-model config detail that isn't in the main table above: thinking mode, the vLLM
+parsers wired in the ISVC, vision, card schema, and the gateway test tally. **Where this
+disagrees with the main table, the main table wins.** Source: live `details.yaml` /
+`inferenceservice.yaml` audit + per-model gateway test runs. (Historical campaign tracker
+retained in the local working dir.)
+
+| Model | Thinking | Reason parser | Tool parser | Vision | Card | Tests |
+|---|---|---|---|---|---|---|
+| qwen36-27b | effort | qwen3 | qwen3_coder | ✅ | v2 | 25/27 |
+| qwen3-32b | effort | qwen3 | hermes | — | v2 | 23/25 |
+| qwen3-235b | none | — | hermes | — | v2 | 21/21 |
+| qwen35-122b | toggle | qwen3 | qwen3_coder | — | v2 | 23/23 |
+| qwen36-35b-a3b | effort | qwen3 | qwen3_coder | ✅ | v2 | 21/21 |
+| qwq-32b | always-on | deepseek_r1 | hermes | — | v2 | 21/21 |
+| gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 23/25 |
+| gpt-oss-20b | effort | openai_gptoss | openai | — | v2 | 23/25 |
+| phi-4-reasoning | budget | deepseek_r1 | — | — | v2 | 19/20 |
+| r1-distill-qwen-32b | always-on | deepseek_r1 | — | — | v2 † | PASS |
+| r1-distill-llama-70b | always-on | deepseek_r1 | — | — | v2 † | PASS |
+| glm-4-32b | none | — | glm4_0414 (plugin) | — | v2 | 15/19 |
+| glm-z1-32b | toggle | — (template) | glm45 ⚠️ | — | v2 | 17/20 |
+| glm-z1-rumination-32b | toggle | — (template) | — (by design) | — | v2 | 16/18 |
+| qwen25-coder-32b | none | — | hermes | — | v2 | 22/22 |
+| qwen25-vl-72b | none | — | — | ✅ | v2 | 22/22 |
+| qwen25-vl-72b-awq | none | — | — | ✅ | v2 | 16/18 |
+| qwen25-vl-7b | none | — | hermes | ✅ | v2 | 22/22 |
+| qwen25-vl-3b | none | — | — | ✅ | v2 | 18/18 |
+| gemma-4-26b-a4b | effort | gemma4 | gemma4 | ✅ | v2 | 22/25 |
+| gemma-3-4b-it | none | — | — | ✅ | v2 | 17/20 |
+| medgemma-27b-it | none | — | — | ✅ | v2 | 17/20 |
+| deepseek-v2-lite-16b | none | — | — | — | v2 | 14/14 |
+| command-r-7b | none | — | — | — | v2 | 16/16 |
+| openbiollm-70b | none | — | — | — | v2 | 14/14 |
+| oceangpt-30b | none | — | hermes | — | v2 | 14/14 |
+| geogalactica | none | — | — | — | v2 | 14/14 |
+| tinyllama-1-1b | none | — | — | — | v2 (llama.cpp) | 14/14 |
+| astrosage | none | — | — | — | v2 (custom) | 14/14 |
+
+Notes:
+- † `r1-distill-*` cards are v2 but **omit `param_translation.thinking`** (always-on reasoning,
+  no toggle) and advertise `context_window: 131072` while the ISVC serves `65536` — card-hygiene
+  follow-up only; the models themselves PASS.
+- **GLM tool-calling:** `glm-4-32b` is fixed (custom `glm4_0414` parser + plugin). `glm-z1-32b`
+  ⚠️ still uses the broken built-in `glm45` (structured tool calls fail; swap is the open gap).
+  `glm-z1-rumination-32b` ignores tools by design (its chat template drops them).
+- **Reasoning parser caveat:** `--reasoning-parser=glm45` crashes on GLM-Z1 (DeepSeekV3 parser
+  expects `<think>` tokens GLM's tokenizer lacks), so GLM reasoning is never surfaced as
+  `reasoning_content` — it runs in-template only.
+- **Missing `param_translation.thinking`** on several non-reasoning cards is functionally
+  identical to `mode: none` (the gateway defaults absent → none).
+
+## Thinking mode reference
+
+| Mode | When to use | Example models | Mechanism |
+|---|---|---|---|
+| **budget** | model supports `thinking_token_budget` | phi-4-reasoning | effort → token count (0 / 1024 / 4096 / 12288 / 24576 / null) |
+| **effort** | native `reasoning_effort`, or binary thinking via `chat_template_kwargs` | qwen36-27b, qwen3-32b, gpt-oss-20b, gemma-4-26b-a4b | effort alias → on/off, or passthrough |
+| **toggle** | simple thinking on/off | qwen35-122b, glm-z1-32b | injects `chat_template_kwargs.enable_thinking` |
+| **always-on** | always reasons; no toggle, no `reasoning_content` extraction | qwq-32b, r1-distill-*, glm-z1-* | reasoning runs in-template; `param_translation.thinking` absent (≡ none) |
+| **none** | non-reasoning model | gemma-3-4b-it, most chat models | no thinking translation |
+
+Card template + v1→v2 migration: see `models/DETAILS-TEMPLATE-LLM.md` and `models/MIGRATION.md`.
