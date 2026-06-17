@@ -14,8 +14,7 @@ KServe/Knative + Tyk model-inference platform.
 | `gateway/` | FastAPI inference gateway (OpenAI + Anthropic compatible), Dockerfile, k8s manifests, Tyk config |
 | `models/` | Per-model KServe `InferenceService` + `PVC` + `details.yaml` cards (LLMs, embeddings, rerank, TTS, science models) |
 | `deploy-aleph/` | Platform deploy: install scripts (RKE2 manifests, Istio/Knative/KServe, Tyk OSS), StorageClasses, `deploy.sh` |
-| `test/` | Deployment & verification tests (`full_test.py` e2e sweep, `test-model.sh`, `smoke.sh`) |
-| `scratch/` | Ad-hoc local scripts/inputs (gitignored) |
+| `test/` | Deployment & verification tests (`full_test.py`, `test-model.sh`, `smoke.sh`); fixtures in `test/inputs/` |
 | `docs/` + `CHANGELOG.md` | Design + ops docs (`RUNBOOK`, `GATEWAY-DESIGN`, `GATEWAY-ARCHITECTURE`, `CHANGELOG`) |
 
 ## Cluster Overview

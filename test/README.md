@@ -13,5 +13,6 @@ Vulcan login node with a Tyk key (see `docs/RUNBOOK.md`) unless noted.
 | `retest.py` | Targeted re-run of a model's tests after a change. |
 | `test-pending-batch2b.py` | Batch test of the pending (batch-2b) model set. |
 
-Ad-hoc / one-off scripts and test inputs (e.g. `1crn.pdb`, `bus.jpg`) stay in
-`scratch/` (gitignored) — not part of the committed suite.
+Committed test fixtures live in `test/inputs/` (e.g. `1crn.pdb`). Ad-hoc scripts
+and transient outputs go in `scratch/` — a local working dir (gitignored, not
+part of the repo).

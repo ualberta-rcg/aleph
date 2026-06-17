@@ -18,11 +18,8 @@ venv/
 *.swp
 .DS_Store
 
-# Test/scratch output
+# Test output / local working dir
 /tmp/
 *_report.txt
-scratch/*.txt
-scratch/*.b64
-scratch/*.jpg
-scratch/*.png
-scratch/*.py
+# scratch/ — local working dir (gitignored; not part of the repo)
+scratch/

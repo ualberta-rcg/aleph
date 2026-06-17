@@ -82,8 +82,7 @@ python3 test/full_test.py
 | `gateway/` | FastAPI gateway app, translation logic, k8s deployment, Tyk API defs |
 | `models/` | Per-model `InferenceService`, `PVC`, and `details.yaml` cards |
 | `deploy-aleph/` | Platform deploy: install scripts (Istio/Knative/KServe, Tyk), StorageClasses, `deploy.sh` |
-| `test/` | Deployment & verification tests (`full_test.py` e2e sweep, `test-model.sh`, `smoke.sh`) |
-| `scratch/` | Ad-hoc local scripts/inputs (gitignored) |
+| `test/` | Deployment & verification tests (`full_test.py`, `test-model.sh`, `smoke.sh`); fixtures in `test/inputs/` |
 | `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
 | `docs/GATEWAY-DESIGN.md` | Gateway design rationale |
 | `docs/GATEWAY-ARCHITECTURE.md` | Card schema + handler map |
