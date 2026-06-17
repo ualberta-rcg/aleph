@@ -72,7 +72,7 @@ Gateway image is published to Docker Hub as `rkhoja/aleph` (see `.github/workflo
 ### 4) Run full compatibility tests
 
 ```bash
-python3 scratch/full_test.py
+python3 test/full_test.py
 ```
 
 ## 📚 Repository Layout
@@ -83,7 +83,8 @@ python3 scratch/full_test.py
 | `models/` | Per-model `InferenceService`, `PVC`, and `details.yaml` cards |
 | `install-kubeflow/` | Cluster/platform install scripts and configs |
 | `storage/` | StorageClass manifests (`nfs-client` default, tuning options) |
-| `scratch/` | End-to-end tests and targeted validation scripts |
+| `test/` | Deployment & verification tests (`full_test.py` e2e sweep, `test-model.sh`, `smoke.sh`) |
+| `scratch/` | Ad-hoc local scripts/inputs (gitignored) |
 | `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
 | `docs/GATEWAY-DESIGN.md` | Gateway design rationale |
 | `docs/GATEWAY-ARCHITECTURE.md` | Card schema + handler map |

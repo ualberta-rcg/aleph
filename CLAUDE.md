@@ -15,9 +15,10 @@ KServe/Knative + Tyk model-inference platform.
 | `models/` | Per-model KServe `InferenceService` + `PVC` + `details.yaml` cards (LLMs, embeddings, rerank, TTS, science models) |
 | `install-kubeflow/` | Cluster bring-up scripts (RKE2 manifests, Tyk OSS, test model) |
 | `storage/` | NFS StorageClass definitions (`nfs-client` default, OneFS-safe mount options) |
-| `scratch/` | Test harnesses (`full_test.py` = full OpenAI/Anthropic sweep) |
-| `demo/`, `deploy.sh` | Convenience demo + deploy wrapper |
-| `*.md` (RUNBOOK, GATEWAY-*, CLUSTER-230-PLAN, CHANGELOG) | Design + ops docs |
+| `test/` | Deployment & verification tests (`full_test.py` e2e sweep, `test-model.sh`, `smoke.sh`) |
+| `scratch/` | Ad-hoc local scripts/inputs (gitignored) |
+| `deploy.sh` | Convenience deploy wrapper (ships repo to head node, runs `gateway/remote-deploy.sh`) |
+| `docs/` + `CHANGELOG.md` | Design + ops docs (`RUNBOOK`, `GATEWAY-DESIGN`, `GATEWAY-ARCHITECTURE`, `CHANGELOG`) |
 
 ## Cluster Overview
 

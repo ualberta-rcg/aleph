@@ -172,7 +172,7 @@ test the real endpoint(s) with task-realistic payloads, deep-fix until correct, 
 document (`TEST.md`/`CLAUDE.md`), and mark an honest `status` on each card.
 
 ### Tooling
-- `scripts/test-model.sh` — apply-from-repo, Knative-aware activation (pre-warm via gateway
+- `test/test-model.sh` — apply-from-repo, Knative-aware activation (pre-warm via gateway
   request, not manual scale), `recreate` (delete+clear+reapply, keep PVC), curl with
   cold-start retry, scale-cycle.
 - `models/MODEL-STATUS.md` — master matrix (PASS / FIXED / FAIL) for all ~157 models.
@@ -578,7 +578,7 @@ document (`TEST.md`/`CLAUDE.md`), and mark an honest `status` on each card.
   `_wake_up_model`, but the retry estimate is card-driven.
 
 ### Demo
-- `demo/demo.sh` — 10 copy-pasteable curls (catalogue, OpenAI chat, reasoning, streaming,
+- `test/smoke.sh` — 10 copy-pasteable curls (catalogue, OpenAI chat, reasoning, streaming,
   Anthropic, vision, embeddings, telemetry, cold-start) runnable from a login node with a key.
 
 ### Gateway image

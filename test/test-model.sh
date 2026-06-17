@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Per-model test helper for cluster 230. Run from the repo root on a Vulcan login node.
+# Per-model test helper. Run from the repo root on a Vulcan login node.
 #
-#   scripts/test-model.sh <model-dir-name> [action]
+#   test/test-model.sh <model-dir-name> [action]
 #
 # actions:
 #   apply     - kubectl apply the model's local manifests (reconcile drift)
