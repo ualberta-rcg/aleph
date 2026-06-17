@@ -11,7 +11,7 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
   card's regex + name-validation), mounted via `--tool-parser-plugin` + `--tool-call-parser=glm4_0414`.
 - **gateway**: emit `tool_use` content blocks in Anthropic `/v1/messages` **streaming** responses —
   tool calls were being dropped in SSE (only the non-stream path produced them).
-- TEST-STATUS: fixed a blank line that broke GitHub table rendering.
+- MODEL-STATUS: fixed a blank line that broke GitHub table rendering.
 
 ## 2026-06-12 — GLM family modernized (v2 cards, parsers, test suites)
 
@@ -30,7 +30,7 @@ Migrated the Qwen line to v2 cards with full gateway test suites:
 - **Vision standardization**: `--limit-mm-per-prompt=20` across VLMs; context raised to 64K
   (32K on qwen25-vl-3b). qwen25-vl-72b-awq switched TP4→TP2 (model `max_position_embeddings`=128K).
 - **Removed k2-v2** — FP32-only (~290 GB), impractical cold start over NFS.
-- Refreshed `models.md` + `TEST-STATUS.md` for all 9 Qwen models + vision limits.
+- Refreshed `models.md` + `MODEL-STATUS.md` for all 9 Qwen models + vision limits.
 
 ## 2026-06-10 — Science/chat v2 cards + gateway vision gating
 
@@ -56,7 +56,7 @@ Migrated the Qwen line to v2 cards with full gateway test suites:
 - **NIM containers**: renamed boltz→boltz-2 and added openfold-3 (both `nvcr.io/nim/...`); patched
   boltz NIM v1.7.0 `confidence_score` KeyError at startup; standardized 16 GiB `/dev/shm` for NIMs.
 - **Batch-fixed 7 failed models**; bumped Knative `progress-deadline` for caduceus / prithvi-eo.
-- Merged the 2026-06 LLM batch into the TEST-STATUS main table + added NIM notes.
+- Merged the 2026-06 LLM batch into the MODEL-STATUS main table + added NIM notes.
 - **Templates**: expanded the details.yaml template with real input_map/output_map patterns from
   science models; added an audit prompt for systematic model audit.
 - **gateway**: moved the Anthropic type-gate ahead of readiness/cold-start checks; added API mapping docs.
@@ -163,9 +163,9 @@ body limit (connection reset even when the pod returned 200). Fix: summarize out
 - prithvi-eo/wxc, surya, terramind-flood, totalsegmentator (in progress)
 - k2-v2 download ~complete (~287G/290G), deploy+test pending
 
-Tracker: `models/TEST-STATUS.md` updated for all of the above.
+Tracker: `models/MODEL-STATUS.md` updated for all of the above.
 
-## 2026-06-05 — per-model verification loop (in progress)
+## 2026-06-05 — per-model verification loop (complete) — 138 models migrated 232→230
 
 Systematic one-by-one verification of every migrated model on 230: bring up via gateway,
 test the real endpoint(s) with task-realistic payloads, deep-fix until correct, scale-cycle,
@@ -175,7 +175,7 @@ document (`TEST.md`/`CLAUDE.md`), and mark an honest `status` on each card.
 - `scripts/test-model.sh` — apply-from-repo, Knative-aware activation (pre-warm via gateway
   request, not manual scale), `recreate` (delete+clear+reapply, keep PVC), curl with
   cold-start retry, scale-cycle.
-- `models/TEST-STATUS.md` — master matrix (PASS / FIXED / FAIL) for all ~157 models.
+- `models/MODEL-STATUS.md` — master matrix (PASS / FIXED / FAIL) for all ~157 models.
 
 ### Key finding
 - KServe "READY" was misleading: several servers returned `/health` 200 while the model

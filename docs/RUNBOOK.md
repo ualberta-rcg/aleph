@@ -419,4 +419,4 @@ and per thinking `mode`, hand-tuned for reasoning models).
 - **Phase 4 — External access:** pending. Traefik IngressRoute → Tyk → `model-gateway`; TLS via
   cert-manager (DNS-01) or manual cert.
 - **Phase 5 — Model migration:** largely complete (the bulk of the fleet is migrated and carded);
-  remaining work is per-model card v2 backfill (science input/output schema) — see `models/TEST-STATUS.md`.
+  remaining work is per-model card v2 backfill (science input/output schema) — see `models/MODEL-STATUS.md`.

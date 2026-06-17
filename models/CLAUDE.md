@@ -44,7 +44,7 @@ Each model directory should contain (as applicable):
 - **`CUDA_DISABLE_CONTROL` is NOT required** — verified; no-gpumem already gives
   whole-card memory and native behavior.
 - The fix took gpt-oss-120b from 0.25 → ~200 tok/s. Validated TP2 (oceangpt ~73,
-  medgemma ~20) and TP4 (qwen35-122b ~65). The POC cluster 232 doesn't need any of
+  medgemma ~20) and TP4 (qwen35-122b ~65). The legacy POC cluster doesn't need any of
   this because it uses the NVIDIA GPU Operator (whole devices, native P2P), not HAMi.
 - **VRAM guard (bash `nvidia-smi memory.free` retry loop) is now redundant** for
   whole-device models: HAMi only schedules them onto tenant-free cards, so VRAM is
