@@ -137,7 +137,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1 gpumem 32GB; 7B dense + ViT (28 layers, GQA 28Q/4KV); vision (dynamic-res, video, 20 images/prompt) + tools (hermes, forced); no reasoning; 65K ctx; init container for HF download; 22/22 gateway test ✅ 2026-06-11; cold start ~120s |
 | qwen25-vl-72b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 72.2B dense VLM; vision (dynamic-res images, video, 5 img/prompt); no tools, no reasoning; 131K native ctx deployed at 32K; 22/22 gateway test ✅ 2026-06-11; cold start ~285s; limit-mm-per-prompt=5 images |
 | qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 235B-A22B AWQ int4 MoE (22B active, 128 experts); non-thinking Instruct-2507 variant; tools (hermes parser); no reasoning parser (non-thinking); awq_marlin quantization; 131K ctx; 21/21 gateway test ✅ 2026-06-11; vision correctly rejected; ~4min cold start; **NIM available:** `nvcr.io/nim/qwen/qwen3-235b-a22b` |
-| qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.8B dense; thinking (qwen3 parser, effort mode) + tools (hermes); 23/25 gateway test ✅ 2026-06-11; vision correctly rejected |
+| qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.8B dense; managed thinking (qwen3 parser, effort mode, enable_thinking toggle) + tools (hermes); 33-check test 30/3/0 ✅ 2026-06-18; vision rejected |
 | qwen35-122b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 122B FP8 MoE (10B active); thinking toggle (qwen3 parser) + tools (qwen3_coder); language-model-only (vision disabled); 131K ctx; 23/23 gateway test ✅ 2026-06-11; vision correctly rejected |
 | qwen36-27b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; Jupiter+Ganymede; Gated-DeltaNet on vllm:latest |
 | qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 35B MoE (3B active) hybrid Gated-DeltaNet; reasoning (qwen3 parser, effort mode, NOT on by default — needs enable_thinking=true) + tools (qwen3_coder parser) + vision (ViT encoder, images+video); 256K native ctx deployed at 32K; 21/21 gateway test ✅ 2026-06-11; cold start ~285s; card rewritten from flat v1 to full v2 (was completely wrong about capabilities) |
@@ -211,7 +211,7 @@ retained in the local working dir.)
 | Model | Thinking | Reason parser | Tool parser | Vision | Card | Tests |
 |---|---|---|---|---|---|---|
 | qwen36-27b | effort | qwen3 | qwen3_coder | ✅ | v2 | 25/27 |
-| qwen3-32b | effort | qwen3 | hermes | — | v2 | 23/25 |
+| qwen3-32b | effort | qwen3 | hermes | — | v2 | 30/3 (33) |
 | qwen3-235b | none | — | hermes | — | v2 | 21/21 |
 | qwen35-122b | toggle | qwen3 | qwen3_coder | — | v2 | 23/23 |
 | qwen36-35b-a3b | effort | qwen3 | qwen3_coder | ✅ | v2 | 21/21 |
