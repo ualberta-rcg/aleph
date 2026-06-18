@@ -140,7 +140,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.8B dense; managed thinking (qwen3 parser, effort mode, enable_thinking toggle) + tools (hermes); 33-check test 30/3/0 ✅ 2026-06-18; vision rejected |
 | qwen35-122b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 122B FP8 MoE (10B active); thinking toggle (qwen3 parser) + tools (qwen3_coder); language-model-only (vision disabled); 131K ctx; 23/23 gateway test ✅ 2026-06-11; vision correctly rejected |
 | qwen36-27b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; Gated-DeltaNet hybrid; managed thinking (effort + enable_thinking) + vision + tools (qwen3_coder); 30-check test 28/2/0 ✅ 2026-06-18 |
-| qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 35B MoE (3B active) hybrid Gated-DeltaNet; reasoning (qwen3 parser, effort mode, NOT on by default — needs enable_thinking=true) + tools (qwen3_coder parser) + vision (ViT encoder, images+video); 256K native ctx deployed at 32K; 21/21 gateway test ✅ 2026-06-11; cold start ~285s; card rewritten from flat v1 to full v2 (was completely wrong about capabilities) |
+| qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 35B MoE (3B active) hybrid Gated-DeltaNet; managed thinking (effort + enable_thinking) + tools (qwen3_coder) + vision; 64K ctx; 30-check test 28/2/0 ✅ 2026-06-18 |
 | qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; always-on reasoning (deepseek_r1 parser, no thinking toggle); tools (hermes parser); 32K ctx; 21/21 gateway test ✅ 2026-06-11; reasoning_content present; vision correctly rejected; ~2min cold start; **NIM available:** `nvcr.io/nim/qwen/qwq-32b` |
 | r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | FIXED | vLLM v0.20.2 TP4 whole-device; tokenizer_class patch (was Ġ/Ċ garbled); 40km/h correct; max-len 65536 |
 | r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 12^2=144; deepseek_r1 parser; max-len 65536 (KV fit) |
@@ -214,7 +214,7 @@ retained in the local working dir.)
 | qwen3-32b | effort | qwen3 | hermes | — | v2 | 30/3 (33) |
 | qwen3-235b | none | — | hermes | — | v2 | 21/21 |
 | qwen35-122b | toggle | qwen3 | qwen3_coder | — | v2 | 23/23 |
-| qwen36-35b-a3b | effort | qwen3 | qwen3_coder | ✅ | v2 | 21/21 |
+| qwen36-35b-a3b | effort | qwen3 | qwen3_coder | ✅ | v2 | 28/2 (30) |
 | qwq-32b | always-on | deepseek_r1 | hermes | — | v2 | 21/21 |
 | gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
 | gpt-oss-20b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |

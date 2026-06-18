@@ -41,7 +41,9 @@ data:
             "high": "high", "xhigh": "high", "max": "high"
           },
           "on": { "chat_template_kwargs": { "enable_thinking": true } },
-          "off": { "chat_template_kwargs": { "enable_thinking": false } }
+          "off": { "chat_template_kwargs": { "enable_thinking": false } },
+          "off_max_tokens": 2048,
+          "note": "Managed thinking. Binary enable_thinking (real off). ON exposes `reasoning`; OFF -> no reasoning + max_tokens capped to off_max_tokens."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
@@ -62,6 +64,22 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {"type": "array", "required": true, "description": "Chat messages [{role, content|content[]}] (content may include image_url blocks)"},
+        "max_tokens": {"type": "integer", "required": false, "default": 32768, "max": 32768},
+        "temperature": {"type": "float", "required": false, "default": 0.6, "min": 0.0, "max": 2.0},
+        "top_p": {"type": "float", "required": false, "default": 0.95},
+        "top_k": {"type": "integer", "required": false, "default": 20},
+        "stream": {"type": "boolean", "required": false, "default": false},
+        "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high"], "default": "medium", "description": "none/low = off; medium/high = on"},
+        "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder)"},
+        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision)"}
+      },
+      "output_map": {
+        "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the `reasoning` field when thinking is ON)"},
+        "usage": {"type": "object", "description": "prompt_tokens, completion_tokens, total_tokens"}
+      },
       "catalog": {
         "description_short": "Qwen3.6-35B-A3B — hybrid Gated-DeltaNet MoE (3B active), thinking + tools + vision (2x L40S)",
         "description": "Qwen3.6-35B-A3B is a hybrid architecture combining 30 Gated DeltaNet (linear attention) layers with 10 full softmax attention layers. 35B total parameters with 3B active per token (256 experts, 8+1 routed). Supports thinking mode (qwen3 parser), tool calling (qwen3_coder parser), and vision (images + video). 256K native context deployed at 64K. Requires vLLM >= 0.19.0.",
