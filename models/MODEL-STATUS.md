@@ -81,8 +81,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
 | geogalactica | chat | true | /v1/chat/completions | READY | FIXED | 14/14 ✅ via gateway; v0.20.2 TP2; OPT 30B; context 2048 (hard limit); tools/vision rejected; prev engine core init fail resolved |
 | glm-4-32b | chat | true | /v1/chat/completions | READY | PASS | org moved THUDM->zai-org; haiku ok. **NIM available:** `nvcr.io/nim/zai-org/glm-51` (GLM-5.1, build.nvidia.com/z-ai/glm-5.1) |
-| glm-z1-32b | chat | true | /v1/chat/completions | READY | FIXED | dropped deepseek_r1 parser (no <think/> special tokens); 8!=40320 |
-| glm-z1-rumination-32b | chat | true | /v1/chat/completions | READY | FIXED | dropped deepseek_r1 parser; agentic finish-call format; Tokyo ok |
+| glm-z1-32b | chat | true | /v1/chat/completions | READY | FIXED | managed-thinking N/A — glm45 parser keeps reasoning in-template (not surfaced as a `reasoning` field, so expose/strip doesn't apply); tool parser broken (glm45). Skip-and-note. Basic chat works. |
+| glm-z1-rumination-32b | chat | true | /v1/chat/completions | READY | FIXED | managed-thinking N/A (reasoning in-template, glm45); ignores tools + system-prompt by design. Skip-and-note. |
 | gpt-oss-120b | chat | true | /v1/chat/completions | READY | PASS | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce; managed thinking ON (expose reasoning: effort + fake token-budget) / OFF (strip + cap) verified 30/3/0 (33-check) |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | TP1; v0.20.2; managed thinking ON/OFF verified 30/3/0 (33-check); OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | READY | FIXED | add gcc/g++ to init (terratorch->stringzilla build); demo OK |

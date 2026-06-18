@@ -43,6 +43,12 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
   reasoning, OFF strips + caps max_tokens (reduce what fits, since they can't stop reasoning).
   `_manages_thinking` now includes `always_on`. For qwq/r1-distill meta-tasks (OpenWebUI).
 - **qwen35-122b**: NO-ISVC on 230 (TP4 122B not deployed) — skip-and-note.
+- **r1-distill-qwen-32b / r1-distill-llama-70b**: managed always_on — ON exposes reasoning,
+  OFF strips+caps; 20/5/0 each. Cards rewritten to full v2; README+CLAUDE created; pre-set stop
+  annotation removed so wake-on-demand works.
+- **glm-z1-32b / glm-z1-rumination-32b**: skip-and-note — glm45 parser keeps reasoning in-template
+  (not surfaced as a `reasoning` field, so managed expose/strip doesn't apply); glm-z1-32b tool
+  parser broken; rumination ignores tools/system by design.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 
