@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "oceangpt-30b",
+      "status": "production",
       "type": "chat",
       "endpoints": {
         "primary": "/v1/chat/completions",
@@ -84,6 +85,7 @@ data:
         "owned_by": "zjunlp",
         "source": "zjunlp/OceanGPT-basic-30B-A3B-Instruct",
         "source_url": "https://huggingface.co/zjunlp/OceanGPT-basic-30B-A3B-Instruct",
+        "precision": "bfloat16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",

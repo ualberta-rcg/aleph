@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "geogalactica",
+      "status": "production",
       "type": "chat",
       "endpoints": {
         "primary": "/v1/chat/completions",
@@ -82,6 +83,8 @@ data:
         "owned_by": "geobrain-ai",
         "source": "geobrain-ai/geogalactica",
         "source_url": "https://huggingface.co/geobrain-ai/geogalactica",
+        "license": "Apache-2.0",
+        "precision": "bfloat16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",

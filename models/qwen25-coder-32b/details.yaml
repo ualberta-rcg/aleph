@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen25-coder-32b",
+      "status": "production",
       "type": "chat",
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
