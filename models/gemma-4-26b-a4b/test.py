@@ -1,213 +1,315 @@
-import httpx, json, sys
+"""gemma-4-26b-a4b comprehensive gateway test (run inside the gateway pod).
+
+Google Gemma 4 26B A4B MoE (FP8, 1x L40S). Effort-mode reasoning (gemma4 parsers) WITH
+vision (multimodal). vLLM v0.20.2.
+
+Vision variant of the standardized battery: image input must WORK (200 + description),
+not be rejected. Otherwise: wake + full OpenAI/Anthropic + thinking on/off/budget/stream
++ meta-tasks + guardrails.
+
+Run:  cat models/gemma-4-26b-a4b/test.py | \
+      kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+"""
+import httpx, json, os, time
 
 G = "http://localhost:8080"
-MODEL = "gemma-4-26b-a4b"
+MODEL = os.environ.get("MODEL", "gemma-4-26b-a4b")
+HARD = ("A farmer has 17 sheep. All but 9 die. How many sheep are left? "
+        "Take that number, multiply by 7, then subtract 4. Show your reasoning.")
+# 1x1 red PNG (base64) — cluster can't fetch external URLs, so use inline data.
+RED_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 results = []
 
-def req(method, path, body=None, timeout=120, stream=False):
+
+def req(method, path, body=None, timeout=300, stream=False):
     if stream:
         return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
     return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail))
     print(f"[{icon}] {status} | {name}: {detail}", flush=True)
 
-def safe_content(msg, maxlen=80):
-    c = msg.get("content")
-    return (c[:maxlen] if c else "<null>") if c is not None else "<null>"
 
-################################################################
-# OPENAI STYLE
-################################################################
+def _rc(msg):
+    return msg.get("reasoning") or msg.get("reasoning_content") or ""
 
-# 1. Basic chat
-def t01():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "What is 2+2?"}], "max_tokens": 20, "temperature": 0})
-    d = r.json(); msg = d["choices"][0]["message"]
-    has_r = msg.get("reasoning") or msg.get("reasoning_content")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI basic chat", f"content={safe_content(msg)} reasoning={'yes' if has_r else 'no'}")
 
-# 2. Streaming chat
-def t02():
-    with req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "Count 1 to 3"}], "max_tokens": 30, "stream": True}, stream=True) as r:
-        chunks = [l for l in r.iter_lines() if l.startswith("data:") and "DONE" not in l]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI streaming", f"{len(chunks)} chunks")
+def oai(body):
+    r = req("POST", "/v1/chat/completions", body)
+    d = r.json()
+    return r, d, d["choices"][0]["message"]
 
-# 3. Thinking enabled (default, no explicit param)
-def t03():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "What is 15*17?"}], "max_tokens": 200})
-    d = r.json(); msg = d["choices"][0]["message"]
-    has_r = bool(msg.get("reasoning") or msg.get("reasoning_content"))
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI thinking (default)", f"reasoning={'yes' if has_r else 'no'} content={safe_content(msg)}")
 
-# 4. Thinking disabled via reasoning_effort=none
-def t04():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "Say hello in 5 words."}], "max_tokens": 30, "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]
-    has_r = bool(msg.get("reasoning") or msg.get("reasoning_content"))
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI thinking OFF", f"reasoning={'yes' if has_r else 'no'} content={safe_content(msg)}")
+def safe(m, n=60):
+    c = m.get("content") or ""
+    return (c[:n] + "…") if len(c) > n else c
 
-# 5. Temperature=0 (deterministic, thinking off)
-def t05():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "What is the capital of France?"}], "max_tokens": 20, "temperature": 0, "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp=0", f"content={safe_content(msg)}")
 
-# 6. Temperature=1.0 + top_k=64 (Gemma 4 recommended)
-def t06():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "Say hello"}], "max_tokens": 20, "temperature": 1.0, "top_k": 64, "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp=1 top_k=64", f"content={safe_content(msg)}")
+TOOLS = [{"type": "function", "function": {
+    "name": "get_weather", "description": "Get weather for a city",
+    "parameters": {"type": "object", "properties": {"city": {"type": "string"}},
+                   "required": ["city"]}}}]
+ANT_TOOLS = [{"name": "get_weather", "description": "Get weather",
+              "input_schema": {"type": "object",
+                               "properties": {"city": {"type": "string"}},
+                               "required": ["city"]}}]
 
-# 7. Top_p sampling
-def t07():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "Say hello"}], "max_tokens": 20, "top_p": 0.95, "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI top_p=0.95", f"content={safe_content(msg)}")
+# ── 1. WAKE (retry through cold-start 503) + basic chat ───────────────────────
+def wake():
+    body = {"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}],
+            "reasoning_effort": "none", "max_tokens": 20, "temperature": 0}
+    for attempt in range(72):
+        r = req("POST", "/v1/chat/completions", body)
+        if r.status_code == 200:
+            m = r.json()["choices"][0]["message"]
+            record("PASS", 200, "WAKE + OAI basic", f"attempts={attempt+1} content={safe(m,30)!r}")
+            return
+        if r.status_code == 503:
+            time.sleep(5); continue
+        record("FAIL", r.status_code, "WAKE + OAI basic", f"unexpected status body={r.text[:80]}")
+        return
+    record("FAIL", 503, "WAKE + OAI basic", "timed out waiting for warm model")
 
-# 8. Stop sequences
-def t08():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "Count: 1, 2, 3, 4, 5, 6, 7"}], "max_tokens": 50, "stop": ["5"], "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]; finish = d["choices"][0].get("finish_reason")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI stop sequences", f"finish={finish} content={safe_content(msg)}")
 
-# 9. System prompt (native system role support in Gemma 4)
-def t09():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "system", "content": "You are a pirate. Always speak like a pirate."}, {"role": "user", "content": "Hello!"}], "max_tokens": 30, "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI system prompt", f"content={safe_content(msg)}")
+# ── OpenAI feature battery ────────────────────────────────────────────────────
+def stream():
+    with req("POST", "/v1/chat/completions", {"model": MODEL,
+             "messages": [{"role": "user", "content": "Count 1 to 3"}], "max_tokens": 30,
+             "reasoning_effort": "none", "stream": True}, stream=True) as r:
+        n = len([l for l in r.iter_lines() if l.startswith("data:") and "DONE" not in l])
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI streaming", f"{n} chunks")
 
-# 10. Tool calling (gemma4 parser)
-def t10():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "What is the weather in Edmonton?"}], "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get weather for a city", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}], "max_tokens": 100, "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]
-    tc = msg.get("tool_calls", [])
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI tool calling", f"tool_calls={len(tc)} fn={tc[0]['function']['name'] if tc else 'none'}")
+def temp0():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France?"}],
+                  "reasoning_effort": "none", "max_tokens": 20, "temperature": 0})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp=0", safe(m))
 
-# 11. Vision (image URL — model supports vision)
-def t11():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": [{"type": "text", "text": "What do you see in this image? Describe briefly."}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png"}}]}], "max_tokens": 50, "reasoning_effort": "none"}, timeout=60)
-    d = r.json(); msg = d["choices"][0]["message"]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI vision", f"content={safe_content(msg)}")
+def temp_topk():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hello"}],
+                  "reasoning_effort": "none", "max_tokens": 20, "temperature": 1.0, "top_k": 64})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp+top_k", safe(m))
 
-# 12. Large max_tokens
-def t12():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 8000, "reasoning_effort": "none"})
-    d = r.json(); msg = d["choices"][0]["message"]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI max_tokens=8k", f"content={safe_content(msg, 40)}")
+def top_p():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hello"}],
+                  "reasoning_effort": "none", "max_tokens": 20, "top_p": 0.95})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI top_p", safe(m))
 
-# 13. Usage/token counts present
-def t13():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10, "reasoning_effort": "none"})
-    d = r.json(); usage = d.get("usage", {})
-    record("PASS" if usage.get("prompt_tokens") else "FAIL", r.status_code, "OAI usage tokens", f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')} total={usage.get('total_tokens')}")
+def stop_seq():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Count: 1, 2, 3, 4, 5, 6, 7"}],
+                  "reasoning_effort": "none", "max_tokens": 50, "stop": ["5"]})
+    fin = d["choices"][0].get("finish_reason")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI stop sequences", f"finish={fin} {safe(m)}")
 
-################################################################
-# ANTHROPIC STYLE
-################################################################
+def system():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "system", "content": "You are a pirate. Speak like a pirate."},
+                  {"role": "user", "content": "Hello!"}], "reasoning_effort": "none", "max_tokens": 30})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI system prompt", safe(m))
 
-# 14. Basic Anthropic message
-def t14():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "messages": [{"role": "user", "content": "What is 3+3? Just the number."}]})
-    d = r.json(); content = d.get("content", [{}])[0].get("text", "")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT basic message", f"type={d.get('type')} stop={d.get('stop_reason')} text={content[:60]}")
+def tools_oai():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Weather in Edmonton?"}],
+                  "reasoning_effort": "none", "max_tokens": 200, "tools": TOOLS})
+    tc = m.get("tool_calls", [])
+    record("PASS" if r.status_code == 200 and tc else "FAIL", r.status_code, "OAI tools",
+           f"tool_calls={len(tc)}")
 
-# 15. Anthropic streaming
-def t15():
-    with req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "stream": True, "messages": [{"role": "user", "content": "Say hi"}]}, stream=True) as r:
-        events = [l for l in r.iter_lines() if l.startswith("event:")]
-        etypes = set(l.split(": ", 1)[1].strip() for l in events)
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT streaming", f"{len(events)} events types={etypes}")
+def vision():
+    r, d, m = oai({"model": MODEL, "max_tokens": 60, "reasoning_effort": "none",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "What color is this image? One word."},
+                {"type": "image_url", "image_url": {"url": RED_PNG}}]}]})
+    ok = r.status_code == 200 and len(m.get("content") or "") > 0
+    record("PASS" if ok else "FAIL", r.status_code, "OAI vision (image works)", safe(m, 40))
 
-# 16. Anthropic with system prompt
-def t16():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "system": "You are a pirate.", "messages": [{"role": "user", "content": "Hello!"}]})
-    d = r.json(); content = d.get("content", [{}])[0].get("text", "")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT system prompt", f"text={content[:60]}")
+def max_tokens():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}],
+                  "reasoning_effort": "none", "max_tokens": 8192})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI max_tokens=8k", safe(m, 30))
 
-# 17. Anthropic with thinking disabled
-def t17():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": "Say hello in 5 words."}]})
-    d = r.json(); content = d.get("content", [{}])[0].get("text", "")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT thinking disabled", f"stop={d.get('stop_reason')} text={content[:60]}")
+def usage():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}],
+                  "reasoning_effort": "none", "max_tokens": 10})
+    u = d.get("usage", {})
+    record("PASS" if u.get("prompt_tokens") else "FAIL", r.status_code, "OAI usage",
+           f"prompt={u.get('prompt_tokens')} completion={u.get('completion_tokens')}")
 
-# 18. Anthropic with temperature
-def t18():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 20, "temperature": 0, "messages": [{"role": "user", "content": "Capital of France?"}]})
-    d = r.json(); content = d.get("content", [{}])[0].get("text", "")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT temp=0", f"text={content[:60]}")
+def resources():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}],
+                  "reasoning_effort": "none", "max_tokens": 10})
+    res = d.get("resources", {})
+    record("PASS" if r.status_code == 200 and "model" in res else "FAIL", r.status_code,
+           "OAI resources block", f"keys={sorted(res.keys())}")
 
-# 19. Anthropic with top_p + top_k
-def t19():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 20, "top_p": 0.95, "top_k": 64, "messages": [{"role": "user", "content": "Say hi"}]})
-    d = r.json(); content = d.get("content", [{}])[0].get("text", "")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT top_p+top_k", f"text={content[:60]}")
+# ── Thinking ──────────────────────────────────────────────────────────────────
+def think_on_medium():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
+                  "reasoning_effort": "medium", "max_tokens": 16000, "temperature": 1.0, "top_p": 0.95})
+    rc = _rc(m)
+    record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
+           "OAI think ON medium", f"rc_len={len(rc)} content_len={len(m.get('content') or '')}")
 
-# 20. Anthropic with stop_sequences
-def t20():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 50, "stop_sequences": ["5"], "messages": [{"role": "user", "content": "Count: 1,2,3,4,5,6,7"}]})
-    d = r.json(); stop = d.get("stop_sequence"); sr = d.get("stop_reason")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT stop_sequences", f"stop_reason={sr} stop_seq={stop}")
+def think_on_high():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
+                  "reasoning_effort": "high", "max_tokens": 16000, "temperature": 1.0, "top_p": 0.95})
+    rc = _rc(m)
+    record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
+           "OAI think ON high", f"rc_len={len(rc)}")
 
-# 21. Anthropic with tools
-def t21():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 100, "messages": [{"role": "user", "content": "Weather in Edmonton?"}], "tools": [{"name": "get_weather", "description": "Get weather", "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}]})
+def think_off():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France?"}],
+                  "reasoning_effort": "none", "max_tokens": 8000, "temperature": 0})
+    rc = _rc(m); ct = (d.get("usage") or {}).get("completion_tokens", 0)
+    record("PASS" if r.status_code == 200 and not rc else "FAIL", r.status_code,
+           "OAI think OFF", f"rc_len={len(rc)} {safe(m,30)!r} completion_tokens={ct}")
+
+def think_budget():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
+                  "thinking_token_budget": 2000, "max_tokens": 20000, "temperature": 1.0})
+    rc = _rc(m); ct = (d.get("usage") or {}).get("completion_tokens", 0)
+    record("PASS" if r.status_code == 200 and rc and ct <= 2600 else "FAIL", r.status_code,
+           "OAI fake token-budget", f"rc_len={len(rc)} completion_tokens={ct} (budget 2000)")
+
+def think_stream():
+    rn = cn = 0
+    with req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": HARD}],
+             "reasoning_effort": "medium", "max_tokens": 8000, "temperature": 1.0, "top_p": 0.95,
+             "stream": True, "stream_options": {"include_usage": True}}, stream=True) as r:
+        for line in r.iter_lines():
+            if not line.startswith("data:") or "[DONE]" in line:
+                continue
+            try: o = json.loads(line[5:].strip())
+            except Exception: continue
+            for ch in o.get("choices", []):
+                dd = ch.get("delta", {})
+                if dd.get("reasoning") or dd.get("reasoning_content"): rn += 1
+                if dd.get("content"): cn += 1
+    record("PASS" if r.status_code == 200 and rn > 0 else "FAIL", r.status_code,
+           "OAI stream think ON", f"reasoning_deltas={rn} content_deltas={cn}")
+
+# ── Meta-tasks ────────────────────────────────────────────────────────────────
+def _meta(signal, name, cap):
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user",
+                  "content": f"{signal} for: The quick brown fox jumps over the lazy dog."}],
+                  "max_tokens": 512, "temperature": 0})
+    rc = _rc(m); ct = (d.get("usage") or {}).get("completion_tokens", 0)
+    ok = r.status_code == 200 and not rc and ct <= cap
+    record("PASS" if ok else "FAIL", r.status_code, f"OAI meta {name}",
+           f"rc_len={len(rc)} completion_tokens={ct} (cap {cap}) {safe(m,30)!r}")
+
+def meta_title():   _meta("Generate a concise, 3-5 word title", "title", 80)
+def meta_tags():    _meta("Generate 1-3 broad tags", "tags", 60)
+def meta_followups(): _meta("Suggest 3-5 relevant follow-up questions", "followups", 220)
+
+# ── Anthropic feature battery ─────────────────────────────────────────────────
+def ant_basic():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "temperature": 0,
+            "thinking": {"type": "disabled"},
+            "messages": [{"role": "user", "content": "What is 3+3? Just the number."}]})
+    d = r.json(); t = next((b.get("text", "") for b in d.get("content", []) if b.get("type") == "text"), "")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT basic", f"{t[:50]!r}")
+
+def ant_stream():
+    with req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "stream": True,
+             "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": "Say hi"}]},
+             stream=True) as r:
+        etypes = set(l.split(": ", 1)[1].strip() for l in r.iter_lines() if l.startswith("event:"))
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT streaming", f"types={etypes}")
+
+def ant_system():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "thinking": {"type": "disabled"},
+            "system": "You are a pirate.", "messages": [{"role": "user", "content": "Hello!"}]})
+    d = r.json(); t = next((b.get("text", "") for b in d.get("content", []) if b.get("type") == "text"), "")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT system", f"{t[:50]!r}")
+
+def ant_temp0():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 20, "temperature": 0,
+            "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": "Capital of France?"}]})
+    d = r.json(); t = next((b.get("text", "") for b in d.get("content", []) if b.get("type") == "text"), "")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT temp=0", f"{t[:50]!r}")
+
+def ant_topk():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 20, "top_p": 0.95, "top_k": 64,
+            "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": "Say hi"}]})
+    d = r.json(); t = next((b.get("text", "") for b in d.get("content", []) if b.get("type") == "text"), "")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT top_p+top_k", f"{t[:50]!r}")
+
+def ant_stop():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 50, "stop_sequences": ["5"],
+            "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": "Count: 1,2,3,4,5,6,7"}]})
+    d = r.json()
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT stop_sequences",
+           f"stop_reason={d.get('stop_reason')} stop_seq={d.get('stop_sequence')}")
+
+def ant_tools():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 200, "thinking": {"type": "disabled"},
+            "messages": [{"role": "user", "content": "Weather in Edmonton?"}], "tools": ANT_TOOLS})
     d = r.json(); blocks = d.get("content", [])
-    tool_blocks = [b for b in blocks if b.get("type") == "tool_use"]
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT tool calling", f"tool_use_blocks={len(tool_blocks)} total_blocks={len(blocks)}")
+    tub = [b for b in blocks if b.get("type") == "tool_use"]
+    record("PASS" if r.status_code == 200 and tub else "FAIL", r.status_code, "ANT tools",
+           f"tool_use_blocks={len(tub)}")
 
-# 22. Anthropic max_tokens truncation
-def t22():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 10, "messages": [{"role": "user", "content": "Tell me a long story"}]})
-    d = r.json(); sr = d.get("stop_reason"); tokens = d.get("usage", {}).get("output_tokens")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT max_tokens=10", f"stop_reason={sr} output_tokens={tokens}")
+def ant_think_on():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 16000,
+            "messages": [{"role": "user", "content": HARD}],
+            "thinking": {"type": "enabled", "budget_tokens": 8000}})
+    d = r.json(); blocks = d.get("content", [])
+    has = any(b.get("type") == "thinking" for b in blocks)
+    record("PASS" if r.status_code == 200 and has else "FAIL", r.status_code, "ANT think ON",
+           f"has_thinking={has} types={[b.get('type') for b in blocks]}")
 
-################################################################
-# GATEWAY GUARDRAILS
-################################################################
+def ant_think_off():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 8000, "temperature": 0,
+            "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": "Capital of France?"}]})
+    d = r.json(); blocks = d.get("content", [])
+    has = any(b.get("type") == "thinking" for b in blocks)
+    record("PASS" if r.status_code == 200 and not has else "FAIL", r.status_code, "ANT think OFF",
+           f"has_thinking={has} output_tokens={d.get('usage',{}).get('output_tokens')}")
 
-# 23. Embed model via Anthropic (should reject)
-def t23():
+# ── Guardrails ────────────────────────────────────────────────────────────────
+def guard_embed():
     r = req("GET", "/v1/models?all=true")
     embed = next((m["id"] for m in r.json().get("data", []) if m.get("type") == "embedding"), None)
     if not embed:
-        record("SKIP", 0, "Guard: embed via ANT", "no embed model found"); return
-    r2 = req("POST", "/v1/messages", {"model": embed, "max_tokens": 10, "messages": [{"role": "user", "content": "test"}]})
-    record("EXP" if r2.status_code == 400 else "FAIL", r2.status_code, "Guard: embed via ANT", f"code={r2.json().get('error', {}).get('code', '')}")
+        record("SKIP", 0, "Guard: embed via ANT", "no embed model"); return
+    r2 = req("POST", "/v1/messages", {"model": embed, "max_tokens": 10,
+             "messages": [{"role": "user", "content": "test"}]})
+    record("EXP" if r2.status_code == 400 else "FAIL", r2.status_code, "Guard: embed via ANT",
+           f"code={r2.json().get('error',{}).get('code','')}")
 
-# 24. Non-existent model
-def t24():
-    r = req("POST", "/v1/chat/completions", {"model": "fake-xyz", "messages": [{"role": "user", "content": "test"}]})
-    record("EXP" if r.status_code == 404 else "FAIL", r.status_code, "Guard: bad model", r.json().get("error", "")[:60])
+def guard_badmodel():
+    r = req("POST", "/v1/chat/completions", {"model": "fake-xyz",
+            "messages": [{"role": "user", "content": "test"}]})
+    record("EXP" if r.status_code == 404 else "FAIL", r.status_code, "Guard: bad model",
+           str(r.json().get("error", ""))[:50])
 
-# 25. Model catalog capabilities
-def t25():
+def catalog():
     r = req("GET", "/v1/models")
     m = next((x for x in r.json().get("data", []) if x["id"] == MODEL), None)
     if not m:
         record("FAIL", 0, "Catalog entry", "not found"); return
     c = m.get("capabilities", {})
     ok = c.get("reasoning") and c.get("tools") and c.get("vision")
-    record("PASS" if ok else "FAIL", r.status_code, "Catalog capabilities", f"vision={c.get('vision')} tools={c.get('tools')} reasoning={c.get('reasoning')} ctx={m.get('context_window')} max_out={m.get('max_completion_tokens')}")
+    record("PASS" if ok else "FAIL", r.status_code, "Catalog capabilities",
+           f"vision={c.get('vision')} tools={c.get('tools')} reasoning={c.get('reasoning')} "
+           f"ctx={m.get('context_window')} max_out={m.get('max_completion_tokens')}")
 
-################################################################
-print("\n" + "=" * 60, flush=True)
-print("Gemma-4-26B-A4B Comprehensive Gateway Test", flush=True)
-print("=" * 60 + "\n", flush=True)
-
-for t in [t01, t02, t03, t04, t05, t06, t07, t08, t09, t10, t11, t12, t13,
-          t14, t15, t16, t17, t18, t19, t20, t21, t22,
-          t23, t24, t25]:
+# ── run ───────────────────────────────────────────────────────────────────────
+print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (vision)", flush=True)
+print("=" * 66, flush=True)
+for t in [wake, stream, temp0, temp_topk, top_p, stop_seq, system, tools_oai, vision, max_tokens,
+          usage, resources, think_on_medium, think_on_high, think_off, think_budget, think_stream,
+          meta_title, meta_tags, meta_followups,
+          ant_basic, ant_stream, ant_system, ant_temp0, ant_topk, ant_stop, ant_tools,
+          ant_think_on, ant_think_off, guard_embed, guard_badmodel, catalog]:
     try:
         t()
     except Exception as e:
-        record("ERR", 0, t.__name__, str(e)[:100])
+        record("ERR", 0, t.__name__, str(e)[:120])
 
-p = sum(1 for r in results if r[0] == "PASS")
-e = sum(1 for r in results if r[0] == "EXP")
-f = sum(1 for r in results if r[0] in ("FAIL", "ERR"))
-s = sum(1 for r in results if r[0] == "SKIP")
-print(f"\n{'=' * 60}", flush=True)
-print(f"Results: {p} passed, {e} expected failures, {f} failed, {s} skipped", flush=True)
-print(f"{'=' * 60}", flush=True)
+p = sum(1 for x in results if x[0] == "PASS")
+e = sum(1 for x in results if x[0] == "EXP")
+f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
+s = sum(1 for x in results if x[0] == "SKIP")
+print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}",
+      flush=True)

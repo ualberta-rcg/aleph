@@ -37,26 +37,21 @@ data:
         "supports_system_prompt": true,
         "supports_streaming": true,
         "reasoning_model": true,
-        "strips_thinking": true
+        "strips_thinking": false
       },
       "param_translation": {
         "thinking": {
-          "mode": "effort",
+          "mode": "toggle",
+          "default_effort": "medium",
           "effort_aliases": {
             "none": "none", "minimal": "none", "disabled": "none",
             "low": "low", "medium": "medium", "med": "medium",
-            "high": "high", "xhigh": "xhigh", "max": "max"
+            "high": "high", "xhigh": "high", "max": "high"
           },
-          "effort_map": {
-            "none":  {"reasoning_effort": "none"},
-            "low":   {"reasoning_effort": "low"},
-            "medium":{"reasoning_effort": "medium"},
-            "high":  {"reasoning_effort": "high"},
-            "xhigh": {"reasoning_effort": "high"},
-            "max":   {"reasoning_effort": "high"}
-          },
-          "default_effort": "medium",
-          "disabled_effort": "none"
+          "on":  {"chat_template_kwargs": {"enable_thinking": true}},
+          "off": {"chat_template_kwargs": {"enable_thinking": false}},
+          "off_max_tokens": 2048,
+          "note": "Managed thinking. Gemma 4 activates thinking via chat_template_kwargs.enable_thinking (NOT reasoning_effort, which yields no trace). ON (medium/high) -> enable_thinking true -> `reasoning` field exposed; OFF (reasoning_effort none) -> enable_thinking false -> no reasoning + max_tokens capped to off_max_tokens."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }

@@ -75,7 +75,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image). **NIM available (FCN2):** `nvcr.io/nim/nvidia/fourcastnet` (build.nvidia.com/nvidia/fourcastnet, L40S-tested) |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | galileo pip package import conflicts with cloned repo; server stuck at model loading |
 | gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
-| gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8 (progress-deadline fix); correct answers. **NIM available:** `nvcr.io/nim/google/gemma-4-31b-it` (build.nvidia.com/google/gemma-4-31b-it) |
+| gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8; managed thinking (toggle: enable_thinking, not reasoning_effort) + vision + tools; 32-check test 30/2/0 ✅ 2026-06-18. (NIM alt: nvcr.io/nim/google/gemma-4-31b-it) |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
@@ -229,7 +229,7 @@ retained in the local working dir.)
 | qwen25-vl-72b-awq | none | — | — | ✅ | v2 | 16/18 |
 | qwen25-vl-7b | none | — | hermes | ✅ | v2 | 22/22 |
 | qwen25-vl-3b | none | — | — | ✅ | v2 | 18/18 |
-| gemma-4-26b-a4b | effort | gemma4 | gemma4 | ✅ | v2 | 22/25 |
+| gemma-4-26b-a4b | toggle | gemma4 | gemma4 | ✅ | v2 | 30/2 (32) |
 | gemma-3-4b-it | none | — | — | ✅ | v2 | 17/20 |
 | medgemma-27b-it | none | — | — | ✅ | v2 | 17/20 |
 | deepseek-v2-lite-16b | none | — | — | — | v2 | 14/14 |

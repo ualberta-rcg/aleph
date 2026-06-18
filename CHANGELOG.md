@@ -25,6 +25,10 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
   OpenAI/Anthropic + thinking on/off/budget/stream + meta-tasks + guardrails). Card: add
   `off_max_tokens` + `input_map`/`output_map`/`custom_params` (v2 completeness) + managed-thinking
   note; README/CLAUDE updated.
+- **gemma-4-26b-a4b** re-verified — fixed thinking: card was `effort` mode (reasoning_effort yields
+  no trace on gemma-4); changed to **toggle** mode via `chat_template_kwargs.enable_thinking`
+  (confirmed direct-to-predictor). 32-check vision-variant battery 30/2/0 (vision works, thinking
+  on/off/budget/stream, meta, both protocols). README added; CLAUDE gateway/test section.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 

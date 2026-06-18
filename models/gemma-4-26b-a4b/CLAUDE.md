@@ -101,6 +101,18 @@ curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/cha
 
 1. **PVC has old venv with vllm 0.9.2**: The `/data/venv/` on PVC still has the old vllm install from when the init container built it. Not used by the main container (uses image-native vllm), but wastes ~5 GB on the PVC. Can be cleaned up with `rm -rf /data/venv` from a debug pod if space is needed.
 
+## Gateway integration & test (2026-06-18)
+
+- Card `details.yaml`: Template A, `schema_version: 2`, thinking **`mode: toggle`** (was `effort`
+  — wrong: gemma-4 activates thinking via `chat_template_kwargs.enable_thinking`, not
+  `reasoning_effort`, which yields no trace). `strips_thinking: false`, `off_max_tokens: 2048`.
+- **Managed thinking** — ON (medium/high) exposes the **`reasoning`** field (Anthropic: `thinking`
+  block); OFF (`reasoning_effort: none`) → `enable_thinking: false`, no reasoning + capped tokens.
+- vLLM v0.20.2 emits reasoning in **`reasoning`** (not `reasoning_content`); the gemma4 parser
+  separates it only when `enable_thinking` is true.
+- Test: 32-check vision-variant battery (image must work, not be rejected). Last run
+  **30 pass / 2 expected / 0 fail**.
+
 ## Files
 
 | File | Purpose |
