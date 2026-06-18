@@ -81,8 +81,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | geneformer | embedding | true | /v1/embed | READY | PASS | needs gene_ids token IDs (recreated) |
 | geogalactica | chat | true | /v1/chat/completions | READY | FIXED | 14/14 ✅ via gateway; v0.20.2 TP2; OPT 30B; context 2048 (hard limit); tools/vision rejected; prev engine core init fail resolved |
 | glm-4-32b | chat | true | /v1/chat/completions | READY | PASS | org moved THUDM->zai-org; haiku ok. **NIM available:** `nvcr.io/nim/zai-org/glm-51` (GLM-5.1, build.nvidia.com/z-ai/glm-5.1) |
-| glm-z1-32b | chat | true | /v1/chat/completions | READY | FIXED | managed-thinking N/A — glm45 parser keeps reasoning in-template (not surfaced as a `reasoning` field, so expose/strip doesn't apply); tool parser broken (glm45). Skip-and-note. Basic chat works. |
-| glm-z1-rumination-32b | chat | true | /v1/chat/completions | READY | FIXED | managed-thinking N/A (reasoning in-template, glm45); ignores tools + system-prompt by design. Skip-and-note. |
+| glm-z1-32b | — | — | — | RETIRED | — | Removed 2026-06-18 — redundant reasoning model; reasoning not surfaceable (chat template has no enable_thinking; glm45 parser crashes). Deleted from repo + cluster. Use qwq/r1-distill/gpt-oss/qwen3 instead. |
+| glm-z1-rumination-32b | — | — | — | RETIRED | — | Removed 2026-06-18 — deep-research reasoner; same surfacing issue + ignores tools/system by design. Deleted from repo + cluster. |
 | gpt-oss-120b | chat | true | /v1/chat/completions | READY | PASS | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce; managed thinking ON (expose reasoning: effort + fake token-budget) / OFF (strip + cap) verified 30/3/0 (33-check) |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | TP1; v0.20.2; managed thinking ON/OFF verified 30/3/0 (33-check); OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | READY | FIXED | add gcc/g++ to init (terratorch->stringzilla build); demo OK |
@@ -222,8 +222,6 @@ retained in the local working dir.)
 | r1-distill-qwen-32b | always-on | deepseek_r1 | — | — | v2 † | 20/5 (25) |
 | r1-distill-llama-70b | always-on | deepseek_r1 | — | — | v2 † | 20/5 (25) |
 | glm-4-32b | none | — | glm4_0414 (plugin) | — | v2 | 15/19 |
-| glm-z1-32b | toggle | — (template) | glm45 ⚠️ | — | v2 | 17/20 |
-| glm-z1-rumination-32b | toggle | — (template) | — (by design) | — | v2 | 16/18 |
 | qwen25-coder-32b | none | — | hermes | — | v2 | 22/22 |
 | qwen25-vl-72b | none | — | — | ✅ | v2 | 22/22 |
 | qwen25-vl-72b-awq | none | — | — | ✅ | v2 | 16/18 |
@@ -244,12 +242,8 @@ Notes:
 - † `r1-distill-*` cards are v2 but **omit `param_translation.thinking`** (always-on reasoning,
   no toggle) and advertise `context_window: 131072` while the ISVC serves `65536` — card-hygiene
   follow-up only; the models themselves PASS.
-- **GLM tool-calling:** `glm-4-32b` is fixed (custom `glm4_0414` parser + plugin). `glm-z1-32b`
-  ⚠️ still uses the broken built-in `glm45` (structured tool calls fail; swap is the open gap).
-  `glm-z1-rumination-32b` ignores tools by design (its chat template drops them).
-- **Reasoning parser caveat:** `--reasoning-parser=glm45` crashes on GLM-Z1 (DeepSeekV3 parser
-  expects `<think>` tokens GLM's tokenizer lacks), so GLM reasoning is never surfaced as
-  `reasoning_content` — it runs in-template only.
+- **GLM tool-calling:** `glm-4-32b` is fixed (custom `glm4_0414` parser + plugin). (The glm-z1
+  pair was retired 2026-06-18 — reasoning not surfaceable + broken/by-design tools.)
 - **Missing `param_translation.thinking`** on several non-reasoning cards is functionally
   identical to `mode: none` (the gateway defaults absent → none).
 
@@ -259,8 +253,8 @@ Notes:
 |---|---|---|---|
 | **budget** | model supports `thinking_token_budget` | phi-4-reasoning | effort → token count (0 / 1024 / 4096 / 12288 / 24576 / null) |
 | **effort** | native `reasoning_effort`, or binary thinking via `chat_template_kwargs` | qwen36-27b, qwen3-32b, gpt-oss-20b, gemma-4-26b-a4b | effort alias → on/off, or passthrough |
-| **toggle** | simple thinking on/off | qwen35-122b, glm-z1-32b | injects `chat_template_kwargs.enable_thinking` |
-| **always-on** | always reasons; no toggle, no `reasoning_content` extraction | qwq-32b, r1-distill-*, glm-z1-* | reasoning runs in-template; `param_translation.thinking` absent (≡ none) |
+| **toggle** | simple thinking on/off | qwen35-122b | injects `chat_template_kwargs.enable_thinking` |
+| **always-on** | always reasons; managed (expose on / strip+cap off) | qwq-32b, r1-distill-* | `mode: always_on`; deepseek_r1 extracts reasoning; gateway exposes on / strips+caps off |
 | **none** | non-reasoning model | gemma-3-4b-it, most chat models | no thinking translation |
 
 Card template + v1→v2 migration: see `models/DETAILS-TEMPLATE-LLM.md` and `models/MIGRATION.md`.
