@@ -39,6 +39,10 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
   output_map/custom_params. README + CLAUDE created.
 - **qwen36-35b-a3b** re-verified — 30-check vision+tools battery 28/2/0 (managed thinking effort
   + enable_thinking, vision, qwen3_coder tools). Card: off_max_tokens + input_map/output_map.
+- **gateway**: always-on reasoning models (`mode: always_on`) are now managed too — ON exposes
+  reasoning, OFF strips + caps max_tokens (reduce what fits, since they can't stop reasoning).
+  `_manages_thinking` now includes `always_on`. For qwq/r1-distill meta-tasks (OpenWebUI).
+- **qwen35-122b**: NO-ISVC on 230 (TP4 122B not deployed) — skip-and-note.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 

@@ -1005,13 +1005,14 @@ def _strips_thinking(info: dict) -> bool:
 
 
 def _manages_thinking(info: dict) -> bool:
-    """A model whose reasoning the gateway turns on/off via the card
-    (param_translation.thinking.mode in budget/effort/toggle). For these we
-    expose reasoning when thinking is ON and strip+cap when OFF. always_on /
-    none models (qwq, r1-distill) and non-reasoning models are not managed."""
+    """A model whose reasoning the gateway exposes/strips per-request
+    (param_translation.thinking.mode in budget/effort/toggle/always_on). For these we
+    expose reasoning when thinking is ON and strip+cap when OFF. always_on models
+    (qwq, r1-distill) can't stop reasoning, so OFF = strip the reasoning + cap max_tokens
+    (reduce what fits). none / non-reasoning models are not managed."""
     mode = (((info.get("card", {}) or {}).get("param_translation", {}) or {})
             .get("thinking", {}) or {}).get("mode", "none")
-    return mode in ("budget", "effort", "toggle")
+    return mode in ("budget", "effort", "toggle", "always_on")
 
 
 def _expose_reasoning(info: dict, thinking_on: bool) -> bool:
