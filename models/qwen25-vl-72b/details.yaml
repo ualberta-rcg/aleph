@@ -53,6 +53,22 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": { "type": "array", "required": true, "description": "Chat messages; content may include image_url objects" },
+        "max_tokens": { "type": "integer", "required": false, "default": 4096, "max": 32768, "description": "Maximum tokens to generate" },
+        "temperature": { "type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature" },
+        "top_p": { "type": "float", "required": false, "default": 0.8, "description": "Nucleus sampling threshold" },
+        "stream": { "type": "boolean", "required": false, "default": false, "description": "Enable streaming responses" },
+        "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)" },
+        "image": { "type": "string", "required": false, "description": "Base64-encoded image or URL (dynamic-resolution, up to 5/prompt)" }
+      },
+      "output_map": {
+        "id": { "type": "string", "description": "Chat completion ID" },
+        "object": { "type": "string", "description": "\"chat.completion\"" },
+        "model": { "type": "string", "description": "Model name" },
+        "choices": { "type": "array", "items": { "message": "object", "finish_reason": "string" }, "description": "Response choices (may include image analysis)" },
+        "usage": { "type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)" }
+      },
       "catalog": {
         "description_short": "Qwen2.5-VL-72B — large vision-language model for images, video & visual grounding (4x L40S)",
         "description": "Qwen2.5-VL-72B-Instruct is a large vision-language model. 72.2B dense, GQA (64Q/8KV), 128K max positions, 32K deployed context (BF16 weights at 34.43 GiB/GPU limit KV headroom on L40S 48 GiB; use AWQ variant for 64K context). Supports dynamic-resolution images, video, and up to 5 images per prompt. Visual grounding for GUI agents. No structured tool/function calling. Deployed in BF16 on 4x L40S with TP4.",

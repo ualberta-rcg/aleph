@@ -55,6 +55,24 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": { "type": "array", "required": true, "description": "Chat messages; content may include image_url objects" },
+        "max_tokens": { "type": "integer", "required": false, "default": 4096, "max": 16384, "description": "Maximum tokens to generate" },
+        "temperature": { "type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature" },
+        "top_p": { "type": "float", "required": false, "default": 0.8, "description": "Nucleus sampling threshold" },
+        "stream": { "type": "boolean", "required": false, "default": false, "description": "Enable streaming responses" },
+        "tools": { "type": "array", "required": false, "description": "OpenAI-format tool definitions (hermes parser)" },
+        "tool_choice": { "type": "string", "required": false, "description": "Tool choice: auto, none, or specific tool (force the function for reliable use)" },
+        "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)" },
+        "image": { "type": "string", "required": false, "description": "Base64-encoded image or URL (dynamic-resolution, up to 20/prompt)" }
+      },
+      "output_map": {
+        "id": { "type": "string", "description": "Chat completion ID" },
+        "object": { "type": "string", "description": "\"chat.completion\"" },
+        "model": { "type": "string", "description": "Model name" },
+        "choices": { "type": "array", "items": { "message": "object", "finish_reason": "string" }, "description": "Response choices (may include image analysis or tool_calls)" },
+        "usage": { "type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)" }
+      },
       "catalog": {
         "description_short": "Qwen2.5-VL 7B vision-language: images, video, OCR, charts, docs (multimodal)",
         "description": "Qwen2.5-VL 7B Instruct vision-language model. Accepts text + images + video in OpenAI chat format (image_url / video_url with base64 or URL). Strong at OCR, chart/document parsing, visual localization and structured extraction. Runs on a HAMi vGPU slice. Tool calling is supported (hermes parser); the model is conservative on tool_choice='auto', so pass an explicit tool_choice (force the function) for reliable tool use.",

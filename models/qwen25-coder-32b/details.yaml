@@ -53,6 +53,23 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": { "type": "array", "required": true, "description": "Chat messages (system/user/assistant)" },
+        "max_tokens": { "type": "integer", "required": false, "default": 8192, "max": 32768, "description": "Maximum tokens to generate" },
+        "temperature": { "type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature" },
+        "top_p": { "type": "float", "required": false, "default": 0.8, "description": "Nucleus sampling threshold" },
+        "stream": { "type": "boolean", "required": false, "default": false, "description": "Enable streaming responses" },
+        "tools": { "type": "array", "required": false, "description": "OpenAI-format tool definitions (hermes parser)" },
+        "tool_choice": { "type": "string", "required": false, "description": "Tool choice: auto, none, or specific tool" },
+        "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)" }
+      },
+      "output_map": {
+        "id": { "type": "string", "description": "Chat completion ID" },
+        "object": { "type": "string", "description": "\"chat.completion\"" },
+        "model": { "type": "string", "description": "Model name" },
+        "choices": { "type": "array", "items": { "message": "object", "finish_reason": "string" }, "description": "Response choices (may include tool_calls)" },
+        "usage": { "type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)" }
+      },
       "catalog": {
         "description_short": "Qwen2.5-Coder-32B — code generation, reasoning & repair specialist with tools (2x L40S)",
         "description": "Qwen2.5-Coder-32B-Instruct is a code-specialist LLM. 32.5B dense, GQA (40Q/8KV), 131K native context deployed at 32K. State-of-the-art open-source codeLLM matching GPT-4o on coding benchmarks. Supports tool/function calling via hermes parser. Trained on 5.5T tokens of source code, text-code grounding, and synthetic data. Ideal for code generation, code reasoning, code fixing, and code agents.",

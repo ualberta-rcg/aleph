@@ -49,6 +49,22 @@ data:
       },
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "messages": { "type": "array", "required": true, "description": "Chat messages; content may include image_url objects" },
+        "max_tokens": { "type": "integer", "required": false, "default": 2048, "max": 4096, "description": "Maximum tokens to generate" },
+        "temperature": { "type": "float", "required": false, "default": 0.2, "min": 0.0, "max": 2.0, "description": "Sampling temperature" },
+        "top_p": { "type": "float", "required": false, "default": 0.9, "description": "Nucleus sampling threshold" },
+        "stream": { "type": "boolean", "required": false, "default": false, "description": "Enable streaming responses" },
+        "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)" },
+        "image": { "type": "string", "required": false, "description": "Base64-encoded image or URL (dynamic-resolution, up to 4/prompt)" }
+      },
+      "output_map": {
+        "id": { "type": "string", "description": "Chat completion ID" },
+        "object": { "type": "string", "description": "\"chat.completion\"" },
+        "model": { "type": "string", "description": "Model name" },
+        "choices": { "type": "array", "items": { "message": "object", "finish_reason": "string" }, "description": "Response choices (may include image analysis)" },
+        "usage": { "type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)" }
+      },
       "catalog": {
         "description_short": "Qwen2.5-VL-3B — compact vision-language for images, video, OCR & docs, 32K ctx (1x GPU slice)",
         "description": "Qwen2.5-VL-3B-Instruct is a compact vision-language model. 3B dense + ViT (36 layers, GQA 16Q/2KV), 128K max positions, 64K deployed context. Supports dynamic-resolution images, video up to 1+ hour, up to 20 images per prompt, OCR, chart/document parsing, and visual grounding. No tool/function calling. Fits on a single HAMi GPU slice (24 GB).",
