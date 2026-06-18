@@ -51,8 +51,14 @@ data:
           "temperature": 0.7,
           "top_p": 0.95,
           "max_tokens": 8192
+        },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
         }
       },
+      "custom_params": { "passthrough": true },
       "schema_version": 2,
       "input_map": {
         "messages": {
