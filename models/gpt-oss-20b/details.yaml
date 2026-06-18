@@ -31,7 +31,7 @@ data:
         "supports_system_prompt": true,
         "supports_streaming": true,
         "reasoning_model": true,
-        "strips_thinking": true
+        "strips_thinking": false
       },
       "param_translation": {
         "thinking": {
@@ -45,7 +45,8 @@ data:
           },
           "on":  { "reasoning_effort": "medium" },
           "off": { "reasoning_effort": "low" },
-          "note": "gpt-oss always reasons (no fully-off mode). Lowest effort='low' still does minimal CoT."
+          "off_max_tokens": 2048,
+          "note": "Managed thinking. ON: expose the `reasoning` field; effort low/med/high controls depth; a caller-supplied thinking_token_budget fakes a cap via max_tokens. OFF: effort low + strip reasoning + cap max_tokens to off_max_tokens, so the client sees only a direct answer (no reasoning). gpt-oss always reasons internally; there is no fully-off mode."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }

@@ -165,13 +165,17 @@ _ANTH_STOP_MAP = {
 }
 
 
-def anth_from_openai(resp: dict, model: str) -> dict:
+def anth_from_openai(resp: dict, model: str, *, include_thinking: bool = False) -> dict:
     """Convert an OpenAI chat-completions response to Anthropic Messages shape."""
     choices = resp.get("choices") or [{}]
     choice = choices[0]
     msg = choice.get("message", {}) or {}
 
     blocks: list[dict] = []
+    if include_thinking:
+        reasoning = msg.get("reasoning") or msg.get("reasoning_content")
+        if reasoning:
+            blocks.append({"type": "thinking", "thinking": reasoning})
     text = msg.get("content")
     if text:
         blocks.append({"type": "text", "text": text})
@@ -788,16 +792,25 @@ def prepare_chat(
     think_enabled: bool | None = None,
     think_effort: str | None = None,
     think_budget: int | None = None,
-) -> dict:
+) -> tuple[dict, bool]:
     card = info["card"]
     pt = (card.get("param_translation", {}) or {}).get("thinking", {}) or {}
     pt_mode = pt.get("mode", "none")
     body = apply_defaults(card, body)
 
+    # Detect an explicit client "off" (OpenAI reasoning_effort none/disabled/off). gpt-oss
+    # always reasons internally, but the client asked for no reasoning -- treat as off so we
+    # strip the (minimal) reasoning and cap tokens. The model still runs at low effort upstream.
+    _OFF_EFFORTS = {"none", "disabled", "off"}
+    _re = _raw_effort(body.get("reasoning_effort")) if body.get("reasoning_effort") is not None else None
+    client_off = isinstance(_re, str) and _re.lower() in _OFF_EFFORTS
+
     meta = detect_meta_task(body)
     thinking_enabled = True
     chat_defaults = (card.get("defaults", {}) or {}).get("chat", {}) or {}
     thinking_enabled = (chat_defaults.get("thinking", {}) or {}).get("enabled", True)
+    if client_off:
+        thinking_enabled = False
     meta_effort = None
 
     if meta:
@@ -846,7 +859,8 @@ def prepare_chat(
                 body["reasoning_effort"] = resolved
 
         THINK_MIN_BUDGET = 4096
-        explicit_think = "reasoning_effort" in body or "chat_template_kwargs" in body
+        explicit_think = ("reasoning_effort" in body or "chat_template_kwargs" in body
+                or isinstance(body.get("thinking_token_budget"), int))
         if (thinking_enabled and not explicit_think
                 and (card.get("behavior", {}) or {}).get("reasoning_model")):
             mt = body.get("max_tokens")
@@ -854,6 +868,21 @@ def prepare_chat(
                 thinking_enabled = False
 
         body = apply_thinking(card, body, thinking_enabled)
+        # Effort/toggle models have no native thinking budget. If the caller gave
+        # one (thinking_token_budget), fake it by capping max_tokens so reasoning
+        # can't exceed the requested budget (still leaves room for the answer).
+        if pt_mode in ("effort", "toggle"):
+            tb = body.get("thinking_token_budget")
+            if isinstance(tb, int) and tb > 0:
+                reserve = pt.get("answer_reserve", 512)
+                floor = tb + reserve
+                cap = (card.get("limits", {}) or {}).get("max_completion_tokens")
+                mt = body.get("max_tokens")
+                if not isinstance(mt, int) or mt > floor:
+                    body["max_tokens"] = min(floor, cap) if isinstance(cap, int) and cap > 0 else floor
+            # Consumed by the fake-budget cap above; don't forward to upstream (vLLM
+            # would reject the unknown field on an effort/toggle model).
+            body.pop("thinking_token_budget", None)
 
     # Hard cap to the card's max_completion_tokens.
     cap = (card.get("limits", {}) or {}).get("max_completion_tokens")
@@ -865,7 +894,7 @@ def prepare_chat(
     # Rewrite the model name if the backend expects a different served name.
     if info.get("upstream_model_id"):
         body["model"] = info["upstream_model_id"]
-    return body
+    return body, thinking_enabled
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -975,6 +1004,38 @@ def _strips_thinking(info: dict) -> bool:
     return bool(((info.get("card", {}) or {}).get("behavior", {}) or {}).get("strips_thinking"))
 
 
+def _manages_thinking(info: dict) -> bool:
+    """A model whose reasoning the gateway turns on/off via the card
+    (param_translation.thinking.mode in budget/effort/toggle). For these we
+    expose reasoning when thinking is ON and strip+cap when OFF. always_on /
+    none models (qwq, r1-distill) and non-reasoning models are not managed."""
+    mode = (((info.get("card", {}) or {}).get("param_translation", {}) or {})
+            .get("thinking", {}) or {}).get("mode", "none")
+    return mode in ("budget", "effort", "toggle")
+
+
+def _expose_reasoning(info: dict, thinking_on: bool) -> bool:
+    """Should reasoning ship to the client for this request?
+    Managed-thinking models: expose when on, hide when off.
+    Others: legacy behavior (hide iff the card sets strips_thinking)."""
+    if _manages_thinking(info):
+        return thinking_on
+    return not _strips_thinking(info)
+
+
+def _off_token_cap(info: dict, body: dict) -> dict:
+    """When thinking is OFF for a managed model, restrict the token budget so the
+    model can't burn tokens on (about-to-be-stripped) reasoning. Effort models
+    have no native thinking budget, so we fake one with a max_tokens cap
+    (card's param_translation.thinking.off_max_tokens, default 2048)."""
+    pt = (((info.get("card", {}) or {}).get("param_translation", {}) or {})
+          .get("thinking", {}) or {})
+    cap = pt.get("off_max_tokens", 2048)
+    mt = body.get("max_tokens")
+    body["max_tokens"] = min(mt, cap) if isinstance(mt, int) else cap
+    return body
+
+
 def _supports_tools(info: dict) -> bool:
     return bool(((info.get("card", {}) or {}).get("behavior", {}) or {}).get("supports_tools"))
 
@@ -1038,10 +1099,11 @@ def strip_reasoning_obj(data: dict) -> dict:
     return data
 
 
-async def _forward(info: dict, path: str, body: bytes, stream: bool):
+async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
+                   strip_reasoning: bool | None = None):
     url = upstream_url(path)
     headers = upstream_headers(info)
-    strip = _strips_thinking(info)
+    strip = _strips_thinking(info) if strip_reasoning is None else strip_reasoning
     if stream and not info.get("no_stream"):
         async def gen():
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
@@ -1223,10 +1285,13 @@ async def chat(request: Request):
     cold = await cold_start_guard(info)
     if cold is not None:
         return cold
-    parsed = prepare_chat(info, parsed)
+    parsed, thinking_on = prepare_chat(info, parsed)
+    if _manages_thinking(info) and not thinking_on:
+        parsed = _off_token_cap(info, parsed)
     stream = bool(parsed.get("stream"))
     if stream and not info.get("no_stream"):
-        return await _forward(info, "/v1/chat/completions", json.dumps(parsed).encode(), True)
+        return await _forward(info, "/v1/chat/completions", json.dumps(parsed).encode(), True,
+                              strip_reasoning=not _expose_reasoning(info, thinking_on))
 
     # no_stream card or non-streaming request: force stream=false upstream
     parsed["stream"] = False
@@ -1242,7 +1307,7 @@ async def chat(request: Request):
                         media_type=r.headers.get("content-type", "application/json"))
     try:
         data = r.json()
-        if _strips_thinking(info):
+        if not _expose_reasoning(info, thinking_on):
             strip_reasoning_obj(data)
         data["resources"] = resource_block(info, latency_ms)
         return JSONResponse(data)
@@ -1299,11 +1364,11 @@ async def anthropic_messages(request: Request):
                .get("thinking", {}) or {}).get("mode", "none")
     oai = anth_to_openai(a_body)
     if pt_mode == "budget":
-        oai = prepare_chat(
+        oai, thinking_on = prepare_chat(
             info, oai, think_enabled=enabled, think_effort=effort, think_budget=budget,
         )
     else:
-        oai = prepare_chat(info, oai)
+        oai, _ = prepare_chat(info, oai)
         # Honor the client's requested thinking level. Anthropic budget_tokens / effort
         # map to the model's native effort (gpt-oss: low/medium/high); inject it before
         # apply_thinking so the caller's level wins over the card default.
@@ -1312,6 +1377,10 @@ async def anthropic_messages(request: Request):
             if resolved:
                 oai["reasoning_effort"] = resolved
         oai = apply_thinking(info["card"], oai, enabled)
+        thinking_on = enabled
+    if _manages_thinking(info) and not thinking_on:
+        oai = _off_token_cap(info, oai)
+    expose = _expose_reasoning(info, thinking_on)
     stream = bool(a_body.get("stream"))
     url = upstream_url("/v1/chat/completions")
     headers = upstream_headers(info)
@@ -1359,6 +1428,15 @@ async def anthropic_messages(request: Request):
                                 continue
                             for ch in obj.get("choices", []) or []:
                                 delta = ch.get("delta") or {}
+                                # ---- reasoning -> thinking block (only when exposing) ----
+                                reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                                if reasoning and expose:
+                                    if cur_kind != "thinking":
+                                        yield _open_block("thinking", thinking="", signature="")
+                                    yield _anth_sse("content_block_delta", {
+                                        "type": "content_block_delta", "index": cur_idx,
+                                        "delta": {"type": "thinking_delta", "thinking": reasoning},
+                                    })
                                 # ---- text content ----
                                 text = delta.get("content")
                                 if text:
@@ -1427,7 +1505,7 @@ async def anthropic_messages(request: Request):
         _METRICS["requests_error"] += 1
         return Response(content=r.content, status_code=r.status_code,
                         media_type=r.headers.get("content-type", "application/json"))
-    out = anth_from_openai(r.json(), model_id)
+    out = anth_from_openai(r.json(), model_id, include_thinking=expose)
     out["resources"] = resource_block(info, latency_ms)
     return JSONResponse(out)
 

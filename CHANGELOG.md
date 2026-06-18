@@ -3,6 +3,23 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
+
+- **gateway**: managed-thinking models (`param_translation.thinking.mode` in budget/effort/toggle)
+  now expose reasoning when thinking is ON and strip+cap when OFF — replacing the old global
+  `strips_thinking` strip. OpenAI ships the `reasoning` field; Anthropic emits a `thinking` content
+  block (non-stream + SSE). OFF caps `max_tokens` to the card's `off_max_tokens` (default 2048) so
+  the model can't burn tokens on about-to-be-stripped reasoning.
+- **gateway**: effort/toggle models fake a token budget — a caller-supplied
+  `thinking_token_budget` caps `max_tokens` (budget + answer reserve); consumed and not forwarded.
+- **gateway**: `prepare_chat` returns `(body, thinking_on)`; added `_manages_thinking` /
+  `_expose_reasoning` / `_off_token_cap`; `thinking_token_budget` counts as explicit thinking.
+- **Root cause**: vLLM v0.20.2 emits gpt-oss reasoning in the `reasoning` field (NOT
+  `reasoning_content`), so "thinking wasn't working" was a false negative — the parser splits fine.
+- **gpt-oss-20b / gpt-oss-120b**: cards → `strips_thinking: false` + `off_max_tokens: 2048`;
+  test.py rewritten to assert reasoning present (ON, effort + fake budget) / absent + capped (OFF)
+  over both protocols, reading the `reasoning` field.
+
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 
 - **glm-4-32b — working tool calling** via a custom vLLM parser. GLM-4-32B-0414 emits tool calls as
