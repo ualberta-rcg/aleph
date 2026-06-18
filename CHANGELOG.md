@@ -34,6 +34,9 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
   max_tokens (≥~4000) or reasoning eats the budget → empty content; OFF (budget 0) is
   unreliable on vLLM V1 (redacted_thinking not always extracted, vllm#18141). Card: strips_thinking
   off + off_max_tokens + quirk note.
+- **qwen36-27b** re-verified — 30-check vision+tools battery 28/2/0 (managed thinking effort +
+  enable_thinking toggle, vision, qwen3_coder tools). Card: add off_max_tokens + input_map/
+  output_map/custom_params. README + CLAUDE created.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 
