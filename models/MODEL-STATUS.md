@@ -83,8 +83,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | glm-4-32b | chat | true | /v1/chat/completions | READY | PASS | org moved THUDM->zai-org; haiku ok. **NIM available:** `nvcr.io/nim/zai-org/glm-51` (GLM-5.1, build.nvidia.com/z-ai/glm-5.1) |
 | glm-z1-32b | chat | true | /v1/chat/completions | READY | FIXED | dropped deepseek_r1 parser (no <think/> special tokens); 8!=40320 |
 | glm-z1-rumination-32b | chat | true | /v1/chat/completions | READY | FIXED | dropped deepseek_r1 parser; agentic finish-call format; Tokyo ok |
-| gpt-oss-120b | chat | true | /v1/chat/completions | READY | FIXED | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce (HAMi custom-AR stall); CUDA_DISABLE_CONTROL removed (unneeded); reasoning+OpenAI+Anthropic |
-| gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
+| gpt-oss-120b | chat | true | /v1/chat/completions | READY | PASS | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce; managed thinking ON (expose reasoning: effort + fake token-budget) / OFF (strip + cap) verified 30/3/0 (33-check) |
+| gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | TP1; v0.20.2; managed thinking ON/OFF verified 30/3/0 (33-check); OpenAI + Anthropic |
 | granite-geospatial-biomass | classify | true | /v1/science/predict | READY | FIXED | add gcc/g++ to init (terratorch->stringzilla build); demo OK |
 | granite-geospatial-ocean | classify | true | /v1/science/embed | READY | FIXED | add gcc/g++ to init; demo embeddings OK; slow cold-start |
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
@@ -216,8 +216,8 @@ retained in the local working dir.)
 | qwen35-122b | toggle | qwen3 | qwen3_coder | — | v2 | 23/23 |
 | qwen36-35b-a3b | effort | qwen3 | qwen3_coder | ✅ | v2 | 21/21 |
 | qwq-32b | always-on | deepseek_r1 | hermes | — | v2 | 21/21 |
-| gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 23/25 |
-| gpt-oss-20b | effort | openai_gptoss | openai | — | v2 | 23/25 |
+| gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
+| gpt-oss-20b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
 | phi-4-reasoning | budget | deepseek_r1 | — | — | v2 | 19/20 |
 | r1-distill-qwen-32b | always-on | deepseek_r1 | — | — | v2 † | PASS |
 | r1-distill-llama-70b | always-on | deepseek_r1 | — | — | v2 † | PASS |
