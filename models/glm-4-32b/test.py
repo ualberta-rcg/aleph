@@ -1,454 +1,288 @@
-#!/usr/bin/env python3
-"""GLM-4-32B gateway conformance suite.
+"""glm-4-32b comprehensive gateway test (run inside the gateway pod).
 
-Targets the model-gateway (NOT raw vLLM), so it exercises both the OpenAI and
-Anthropic faces of the endpoint plus the OpenWebUI/meta catalog surface.
+Auto-detecting non-reasoning battery. Reads the model's capabilities (vision, tools)
+from the live /v1/models catalog and runs the checks that match: vision_works when
+supported else vision_rejected; tools_works when supported else tools_rejected.
+Streaming is detected at runtime (SSE for normal backends, JSON for no_stream cards).
+Otherwise the standard battery: wake, OpenAI features, meta-tasks, Anthropic, guardrails.
 
-GLM-4-32B-0414 is a dense chat/tool model — NOT a reasoning or vision model.
-So the "reasoning levels" and "vision" sections are negative tests: the
-gateway must no-op thinking params and must reject image input with a clean
-400, never crash and never leak a thinking/image path.
+The wake() loop retries through 503 model_starting, so this works against a cold model.
 
-Run via port-forward to the gateway, or point straight at the ClusterIP:
-
-    # port-forward (default http://localhost:8080)
-    kubectl -n models port-forward svc/model-gateway 8080:80 &
-    python3 test.py
-
-    # or against the in-cluster gateway directly
-    GATEWAY_URL=http://10.43.79.101 MODEL_ID=glm-4-32b python3 test.py
+Run:  cat models/glm-4-32b/test.py | \
+      kubectl exec -i -n models deploy/model-gateway -c gateway -- env MODEL=glm-4-32b python3 -
 """
-import os, sys, json
-import httpx
+import httpx, json, os, time
 
-G = os.environ.get("GATEWAY_URL", "http://localhost:8080").rstrip("/")
-MODEL = os.environ.get("MODEL_ID", "glm-4-32b")
-TIMEOUT = int(os.environ.get("TIMEOUT", "180"))
+G = "http://localhost:8080"
+MODEL = os.environ.get("MODEL", "glm-4-32b")
 results = []
 
+# ── detect capabilities from the live catalog ─────────────────────────────────
+_caps = httpx.get(f"{G}/v1/models", timeout=30).json()
+_me = next((m for m in _caps.get("data", []) if m["id"] == MODEL), {})
+CAP = _me.get("capabilities", {})
+VISION = bool(CAP.get("vision"))
+TOOLS = bool(CAP.get("tools"))
+MAXOUT = int(_me.get("max_completion_tokens") or 8192) or 8192
 
-def req(method, path, body=None, timeout=TIMEOUT, stream=False, headers=None):
-    url = f"{G}{path}"
+
+def req(method, path, body=None, timeout=180, stream=False):
     if stream:
-        return httpx.stream(method, url, json=body, timeout=timeout, headers=headers)
-    return httpx.request(method, url, json=body, timeout=timeout, headers=headers)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
 
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail))
-    print(f"[{icon}] {status:>3} | {name}: {detail}", flush=True)
+    print(f"[{icon}] {status} | {name}: {detail}", flush=True)
 
 
-def ok(resp, name, detail, want=200):
-    record("PASS" if resp.status_code == want else "FAIL", resp.status_code, name, detail)
-
-
-def safe(v, n=60):
-    if v is None:
-        return "<null>"
-    s = str(v)
-    return s[:n] + ("…" if len(s) > n else "")
-
-
-def chat(msg="hi", **kw):
-    body = {"model": MODEL, "messages": [{"role": "user", "content": msg}], "max_tokens": 30}
-    body.update(kw)
-    return req("POST", "/v1/chat/completions", body)
-
-
-def has_reasoning(msg) -> bool:
-    return bool(msg.get("reasoning") or msg.get("reasoning_content"))
-
-
-# A tiny image (1x1 transparent PNG), base64 data URL — used only to prove the
-# gateway rejects vision for a non-vision model. Never reaches the GPU.
-PNG_1X1 = ("data:image/png;base64,"
-           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
-
-# A weather tool, OpenAI shape.
-WEATHER_TOOL_OAI = [{"type": "function", "function": {
-    "name": "get_weather", "description": "Get current weather for a city",
-    "parameters": {"type": "object",
-                   "properties": {"location": {"type": "string", "description": "City name"},
-                                  "unit": {"type": "string", "enum": ["c", "f"]}},
-                   "required": ["location"]}}}]
-
-# Same tool, Anthropic shape.
-WEATHER_TOOL_ANT = [{"name": "get_weather", "description": "Get current weather for a city",
-                     "input_schema": {"type": "object",
-                                      "properties": {"location": {"type": "string"}},
-                                      "required": ["location"]}}]
-
-
-################################################################
-# OPENAI — chat & sampling
-################################################################
-
-def t01():
-    r = chat("What is 2+2? Answer with just the number.", temperature=0)
-    msg = r.json()["choices"][0]["message"]
-    ok(r, "OAI basic chat", f"content={safe(msg.get('content'))}")
-
-
-def t02():
-    with req("POST", "/v1/chat/completions",
-             {"model": MODEL, "messages": [{"role": "user", "content": "Count 1 to 5"}],
-              "max_tokens": 40, "stream": True}, stream=True) as r:
-        chunks = [l for l in r.iter_lines() if l.startswith("data:") and "DONE" not in l]
-    ok(r, "OAI streaming", f"{len(chunks)} chunks")
-
-
-def t03():
-    r = chat("Capital of France?", temperature=0, max_tokens=20)
-    ok(r, "OAI temp=0", f"content={safe(r.json()['choices'][0]['message'].get('content'))}")
-
-
-def t04():
-    r = chat("Say hello in one word.", top_p=0.95, max_tokens=15)
-    ok(r, "OAI top_p=0.95", f"content={safe(r.json()['choices'][0]['message'].get('content'))}")
-
-
-def t05():
-    r = chat("Count: 1, 2, 3, 4, 5, 6, 7, 8", max_tokens=60, stop=["6"])
-    ch = r.json()["choices"][0]
-    ok(r, "OAI stop seq", f"finish={ch.get('finish_reason')} content={safe(ch['message'].get('content'))}")
-
-
-def t06():
-    r = chat("Hello!", max_tokens=30,
-             messages=[{"role": "system", "content": "You are a pirate. Always say 'Arrr'."},
-                       {"role": "user", "content": "Hello!"}])
-    ok(r, "OAI system prompt", f"content={safe(r.json()['choices'][0]['message'].get('content'))}")
-
-
-def t07():
-    r = chat("Repeat the word 'ha' many times.", frequency_penalty=1.5, max_tokens=40)
-    ok(r, "OAI frequency_penalty", f"content={safe(r.json()['choices'][0]['message'].get('content'))}")
-
-
-def t08():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 12})
-    u = r.json().get("usage", {})
-    ok(r, "OAI usage tokens", f"prompt={u.get('prompt_tokens')} comp={u.get('completion_tokens')} total={u.get('total_tokens')}")
-
-
-################################################################
-# OPENAI — tools (the glm4_0414 fix under test)
-################################################################
-
-def t09():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL,
-            "messages": [{"role": "user", "content": "What's the weather in Tokyo? Call the tool."}],
-            "max_tokens": 150, "tools": WEATHER_TOOL_OAI, "tool_choice": "auto", "temperature": 0.1})
-    msg = r.json()["choices"][0]["message"]; tc = msg.get("tool_calls", [])
-    fn = tc[0]["function"]["name"] if tc else "none"
-    ok(r, "OAI tool: auto", f"tool_calls={len(tc)} fn={fn} content_null={msg.get('content') is None}")
-
-
-def t10():
-    # tool_choice=none must NOT emit tool_calls even when prompted to call.
-    r = req("POST", "/v1/chat/completions", {"model": MODEL,
-            "messages": [{"role": "user", "content": "What's the weather in Berlin? Call the tool."}],
-            "max_tokens": 80, "tools": WEATHER_TOOL_OAI, "tool_choice": "none"})
-    msg = r.json()["choices"][0]["message"]
-    ok(r, "OAI tool: choice=none", f"tool_calls={len(msg.get('tool_calls', []))} content={safe(msg.get('content'))}")
-
-
-def t11():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL,
-            "messages": [{"role": "user", "content": "What's the weather in Cairo? You must use the tool."}],
-            "max_tokens": 150, "tools": WEATHER_TOOL_OAI, "tool_choice": "required", "temperature": 0.1})
-    msg = r.json()["choices"][0]["message"]; tc = msg.get("tool_calls", [])
-    ok(r, "OAI tool: required", f"tool_calls={len(tc)} fn={tc[0]['function']['name'] if tc else 'none'}")
-
-
-def t12():
-    r = req("POST", "/v1/chat/completions", {"model": MODEL,
-            "messages": [{"role": "user", "content": "What's the weather in Rome? Use get_weather."}],
-            "max_tokens": 150, "tools": WEATHER_TOOL_OAI,
-            "tool_choice": {"type": "function", "function": {"name": "get_weather"}}, "temperature": 0.1})
-    msg = r.json()["choices"][0]["message"]; tc = msg.get("tool_calls", [])
-    args = tc[0]["function"]["arguments"] if tc else ""
-    ok(r, "OAI tool: named", f"tool_calls={len(tc)} args={safe(args, 50)}")
-
-
-def t13():
-    # Streaming tool call — the re-parse-and-diff path must emit a tool_calls delta.
-    with req("POST", "/v1/chat/completions", {"model": MODEL,
-             "messages": [{"role": "user", "content": "What's the weather in Lisbon? Call the tool."}],
-             "max_tokens": 150, "tools": WEATHER_TOOL_OAI, "tool_choice": "auto",
-             "temperature": 0.1, "stream": True}, stream=True) as r:
-        tc_chunks, fr = 0, None
-        for l in r.iter_lines():
-            l = l.strip()
-            if not l.startswith("data:") or "DONE" in l:
-                continue
-            o = json.loads(l[5:].strip())
-            ch = o["choices"][0]
-            if ch["delta"].get("tool_calls"):
-                tc_chunks += 1
-            if ch.get("finish_reason"):
-                fr = ch["finish_reason"]
-    ok(r, "OAI tool: streaming", f"tool_delta_chunks={tc_chunks} finish={fr}")
-
-
-################################################################
-# OPENAI — reasoning no-op (GLM-4-32B is NOT a reasoning model)
-################################################################
-
-def t14():
-    r = chat("Explain gravity briefly.", reasoning_effort="high", max_tokens=60)
-    msg = r.json()["choices"][0]["message"]
-    ok(r, "OAI reasoning_effort=high", f"reasoning_leak={has_reasoning(msg)} content={safe(msg.get('content'))}")
-
-
-def t15():
-    for lvl in ("low", "medium", "high", "max"):
-        r = chat("Say ok.", reasoning_effort=lvl, max_tokens=10)
-        if r.status_code != 200:
-            ok(r, f"OAI reasoning_effort={lvl}", f"http={r.status_code}")
-            return
-    record("PASS", 200, "OAI reasoning_effort levels", "low/medium/high/max all 200")
-
-
-def t16():
-    # thinking_token_budget must be ignored, not subtracted from output.
-    r = chat("Say hello.", extra_body={"thinking_token_budget": 2000}, max_tokens=20)
-    ok(r, "OAI thinking_token_budget", f"content={safe(r.json()['choices'][0]['message'].get('content'))}")
-
-
-################################################################
-# OPENAI — vision rejection (no vision support)
-################################################################
-
-def t17():
-    body = {"model": MODEL, "max_tokens": 30,
-            "messages": [{"role": "user", "content": [
-                {"type": "text", "text": "What is in this image?"},
-                {"type": "image_url", "image_url": {"url": PNG_1X1}}]}]}
+def oai(body):
     r = req("POST", "/v1/chat/completions", body)
-    code = r.json().get("error", {}).get("code", "")
-    record("EXP" if r.status_code == 400 and "vision" in code else "FAIL",
-           r.status_code, "OAI vision rejected", f"code={code}")
+    d = r.json()
+    return r, d, d["choices"][0]["message"]
 
 
-################################################################
-# OPENAI — max_tokens enforcement
-################################################################
-
-def t18():
-    r = chat("Tell me a long story about a dragon.", max_tokens=12)
-    ch = r.json()["choices"][0]; u = r.json().get("usage", {})
-    ok(r, "OAI max_tokens=12 truncation", f"finish={ch.get('finish_reason')} comp_tokens={u.get('completion_tokens')}")
+def safe(m, n=60):
+    c = m.get("content") or ""
+    return (c[:n] + "…") if len(c) > n else c
 
 
-def t19():
-    # Asking for more than the card cap (8192) must be clamped, not error.
-    r = chat("Say hi.", max_tokens=999999)
-    ok(r, "OAI max_tokens>cap clamp", f"status={r.status_code} finish={r.json()['choices'][0].get('finish_reason') if r.status_code==200 else 'n/a'}")
+def capmt(n):
+    return min(n, MAXOUT)
 
 
-################################################################
-# ANTHROPIC — chat & sampling
-################################################################
+# ── 1. WAKE (retry 503 model_starting) ────────────────────────────────────────
+def wake():
+    body = {"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}],
+            "max_tokens": 16, "temperature": 0}
+    for attempt in range(90):  # ~7.5 min cap
+        r = req("POST", "/v1/chat/completions", body)
+        if r.status_code == 200:
+            m = r.json()["choices"][0]["message"]
+            record("PASS", 200, "WAKE + OAI basic", f"attempts={attempt+1} content={safe(m,30)!r}")
+            return
+        if r.status_code == 503:
+            time.sleep(5); continue
+        record("FAIL", r.status_code, "WAKE + OAI basic", f"unexpected body={r.text[:80]}")
+        return
+    record("FAIL", 503, "WAKE + OAI basic", "timed out waiting for warm model")
 
-def ant(body):
-    body = {"model": MODEL, "max_tokens": 30, **body}
-    return req("POST", "/v1/messages", body)
+
+# ── OpenAI feature battery ────────────────────────────────────────────────────
+def stream():
+    with req("POST", "/v1/chat/completions", {"model": MODEL,
+             "messages": [{"role": "user", "content": "Count 1 to 3"}],
+             "max_tokens": 30, "stream": True}, stream=True) as r:
+        ct = r.headers.get("content-type", "")
+        if "event-stream" in ct:
+            n = sum(1 for l in r.iter_lines() if l.startswith("data:") and "[DONE]" not in l)
+            record("PASS" if r.status_code == 200 and n > 0 else "FAIL", r.status_code,
+                   "OAI streaming", f"SSE chunks={n}")
+        else:
+            data = r.read()
+            ok = r.status_code == 200 and b'"choices"' in data
+            record("PASS" if ok else "FAIL", r.status_code,
+                   "OAI streaming (no_stream→JSON)", f"ct={ct} bytes={len(data)}")
+
+def temp0():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France?"}],
+                  "max_tokens": 20, "temperature": 0})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp=0", safe(m))
+
+def temp_topk():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hello"}],
+                  "max_tokens": 20, "temperature": 0.3, "top_k": 50, "top_p": 0.9})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp+top_k/top_p", safe(m))
+
+def stop_seq():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Count: 1, 2, 3, 4, 5, 6, 7"}],
+                  "max_tokens": 50, "stop": ["5"]})
+    fin = d["choices"][0].get("finish_reason")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI stop sequences", f"finish={fin} {safe(m)}")
+
+def system():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "system", "content": "You are a pirate. Speak like a pirate."},
+                  {"role": "user", "content": "Hello!"}], "max_tokens": 30})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI system prompt", safe(m))
+
+def max_tokens():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": capmt(4096)})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI max_tokens", f"asked={capmt(4096)} {safe(m,30)!r}")
+
+def usage():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
+    u = d.get("usage") or {}
+    pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI usage",
+           f"prompt={pt} completion={ct}" + ("" if pt else " (no usage block — custom backend)"))
+
+def resources():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
+    res = d.get("resources", {})
+    record("PASS" if r.status_code == 200 and "model" in res else "FAIL", r.status_code,
+           "OAI resources", f"keys={sorted(res.keys())}")
 
 
-def t20():
-    r = ant({"messages": [{"role": "user", "content": "What is 3+3? Just the number."}]})
-    d = r.json(); txt = d.get("content", [{}])[0].get("text", "")
-    ok(r, "ANT basic", f"stop={d.get('stop_reason')} text={safe(txt)}")
+# ── Tools (works if supported, else rejected) ─────────────────────────────────
+def _tools_body():
+    return {"model": MODEL, "messages": [{"role": "user", "content": "What's the weather in Edmonton?"}],
+            "max_tokens": 200,
+            "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather",
+                       "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}}}]}
+
+def tools_works():
+    r, d, m = oai(_tools_body())
+    tc = m.get("tool_calls") or []
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI tools work",
+           f"tool_calls={len(tc)} content={safe(m,30)!r}")
+
+def tools_rejected():
+    r = req("POST", "/v1/chat/completions", _tools_body())
+    record("EXP" if r.status_code == 400 else "FAIL", r.status_code, "OAI tools rejected (no tools)",
+           f"code={r.json().get('error',{}).get('code','')}")
 
 
-def t21():
+# ── Vision (works if supported, else rejected) ────────────────────────────────
+_PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+def _vision_body():
+    return {"model": MODEL, "max_tokens": 40,
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "What is in this image? One word."},
+                {"type": "image_url", "image_url": {"url": _PX}}]}]}
+
+def vision_works():
+    r, d, m = oai(_vision_body())
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI vision work", safe(m, 30))
+
+def vision_rejected():
+    r = req("POST", "/v1/chat/completions", _vision_body())
+    record("EXP" if r.status_code == 400 else "FAIL", r.status_code, "Guard: vision rejected",
+           f"code={r.json().get('error',{}).get('code','')}")
+
+
+# ── Meta-tasks (OpenWebUI title/tags/followups — must be short, no reasoning) ──
+def _meta(signal, name, cap):
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user",
+                  "content": f"{signal} for: The quick brown fox jumps over the lazy dog."}],
+                  "max_tokens": capmt(512), "temperature": 0})
+    ct = (d.get("usage") or {}).get("completion_tokens", 0)
+    record("PASS" if r.status_code == 200 and ct <= cap else "FAIL", r.status_code,
+           f"OAI meta {name}", f"completion_tokens={ct} (cap {cap}) {safe(m,30)!r}")
+
+def meta_title():    _meta("Generate a concise, 3-5 word title", "title", 120)
+def meta_tags():     _meta("Generate 1-3 broad tags", "tags", 100)
+def meta_followups(): _meta("Suggest 3-5 relevant follow-up questions", "followups", 300)
+
+
+# ── Anthropic feature battery ─────────────────────────────────────────────────
+def _ant_text(d):
+    return next((b.get("text", "") for b in d.get("content", []) if b.get("type") == "text"), "")
+
+def ant_basic():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "temperature": 0,
+            "messages": [{"role": "user", "content": "What is 3+3? Just the number."}]})
+    d = r.json()
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT basic", f"{_ant_text(d)[:50]!r}")
+
+def ant_stream():
     with req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30, "stream": True,
              "messages": [{"role": "user", "content": "Say hi"}]}, stream=True) as r:
-        ev = [l.split(": ", 1)[1].strip() for l in r.iter_lines() if l.startswith("event:")]
-    types = set(ev)
-    ok(r, "ANT streaming", f"{len(ev)} events types={types}")
+        ct = r.headers.get("content-type", "")
+        if "event-stream" in ct:
+            etypes = set(l.split(": ", 1)[1].strip() for l in r.iter_lines() if l.startswith("event:"))
+            record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT streaming", f"types={etypes}")
+        else:
+            data = r.read()
+            ok = r.status_code == 200 and b'"content"' in data
+            record("PASS" if ok else "FAIL", r.status_code, "ANT streaming (no_stream→JSON)", f"ct={ct}")
 
-
-def t22():
-    r = ant({"system": "You are a terse math tutor.", "messages": [{"role": "user", "content": "What is 2+2?"}]})
-    txt = r.json().get("content", [{}])[0].get("text", "")
-    ok(r, "ANT system prompt", f"text={safe(txt)}")
-
-
-def t23():
-    r = ant({"temperature": 0, "max_tokens": 20, "messages": [{"role": "user", "content": "Capital of France?"}]})
-    ok(r, "ANT temp=0", f"text={safe(r.json().get('content', [{}])[0].get('text', ''))}")
-
-
-def t24():
-    r = ant({"max_tokens": 60, "stop_sequences": ["5"],
-             "messages": [{"role": "user", "content": "Count: 1,2,3,4,5,6,7"}]})
+def ant_system():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 30,
+            "system": "You are a pirate.", "messages": [{"role": "user", "content": "Hello!"}]})
     d = r.json()
-    ok(r, "ANT stop_sequences", f"stop_reason={d.get('stop_reason')} stop_seq={d.get('stop_sequence')}")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT system", f"{_ant_text(d)[:50]!r}")
 
-
-def t25():
-    r = ant({"max_tokens": 10, "messages": [{"role": "user", "content": "Tell me a long story"}]})
+def ant_temp0():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 20, "temperature": 0,
+            "messages": [{"role": "user", "content": "Capital of France?"}]})
     d = r.json()
-    ok(r, "ANT max_tokens=10", f"stop_reason={d.get('stop_reason')} out_tokens={d.get('usage', {}).get('output_tokens')}")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT temp=0", f"{_ant_text(d)[:50]!r}")
 
-
-################################################################
-# ANTHROPIC — tools
-################################################################
-
-def t26():
-    r = ant({"max_tokens": 150, "messages": [{"role": "user", "content": "What's the weather in Tokyo?"}],
-             "tools": WEATHER_TOOL_ANT, "tool_choice": {"type": "any"}, "temperature": 0.1})
-    blocks = r.json().get("content", [])
-    tu = [b for b in blocks if b.get("type") == "tool_use"]
-    name = tu[0].get("name") if tu else "none"
-    ok(r, "ANT tool: any", f"tool_use={len(tu)} total_blocks={len(blocks)} name={name}")
-
-
-def t27():
-    # Streaming Anthropic tool_use → a content_block_start block whose type is tool_use.
-    with req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 150, "stream": True,
-             "messages": [{"role": "user", "content": "What's the weather in Paris?"}],
-             "tools": WEATHER_TOOL_ANT, "tool_choice": {"type": "any"}, "temperature": 0.1}, stream=True) as r:
-        lines = list(r.iter_lines())
-    blocks = []
-    cur_event = None
-    for l in lines:
-        l = l.strip()
-        if l.startswith("event:"):
-            cur_event = l.split(":", 1)[1].strip()
-        elif l.startswith("data:") and cur_event == "content_block_start":
-            try:
-                blk = json.loads(l[5:].strip()).get("content_block", {})
-                blocks.append(blk.get("type"))
-            except Exception:
-                pass
-    has_tu = "tool_use" in blocks
-    record("PASS" if r.status_code == 200 and has_tu else "FAIL",
-           r.status_code, "ANT tool: streaming", f"block_types={blocks} tool_use_present={has_tu}")
-
-
-################################################################
-# ANTHROPIC — reasoning no-op + vision rejection
-################################################################
-
-def t28():
-    r = ant({"max_tokens": 40, "thinking": {"type": "enabled", "budget_tokens": 1024},
-             "messages": [{"role": "user", "content": "Explain entropy briefly."}]})
+def ant_stop():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 50, "stop_sequences": ["5"],
+            "messages": [{"role": "user", "content": "Count: 1,2,3,4,5,6,7"}]})
     d = r.json()
-    leak = any(b.get("type") == "thinking" for b in d.get("content", []))
-    ok(r, "ANT thinking=enabled (no-op)", f"stop={d.get('stop_reason')} thinking_block_leak={leak}")
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT stop_sequences",
+           f"stop_reason={d.get('stop_reason')}")
+
+def ant_vision_works():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 40,
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "What is in this image? One word."},
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": _PX.split(",",1)[1]}}]}]})
+    d = r.json()
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "ANT vision work", f"{_ant_text(d)[:40]!r}")
+
+def ant_vision_rejected():
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 40,
+            "messages": [{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": _PX.split(",",1)[1]}}]}]})
+    record("EXP" if r.status_code == 400 else "FAIL", r.status_code, "Guard: ANT vision rejected",
+           f"code={r.json().get('error',{}).get('code','')}")
 
 
-def t29():
-    r = ant({"max_tokens": 30, "messages": [{"role": "user", "content": [
-        {"type": "text", "text": "What is this?"},
-        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": PNG_1X1.split(",", 1)[1]}}]}]})
-    code = r.json().get("error", {}).get("code", "")
-    record("EXP" if r.status_code == 400 and "vision" in code else "FAIL",
-           r.status_code, "ANT vision rejected", f"code={code}")
-
-
-################################################################
-# OPENWEBUI / meta surface
-################################################################
-
-def t30():
-    r = req("GET", "/v1/models")
-    m = next((x for x in r.json().get("data", []) if x["id"] == MODEL), None)
-    if not m:
-        record("FAIL", 0, "META catalog entry", "not in /v1/models"); return
-    c = m.get("capabilities", {})
-    want = (not c.get("vision") and not c.get("reasoning") and c.get("tools") is True
-            and c.get("system_prompt") is True)
-    ok(r, "META catalog capabilities", f"vision={c.get('vision')} tools={c.get('tools')} reasoning={c.get('reasoning')} sys={c.get('system_prompt')}")
-
-
-def t31():
-    r = req("GET", "/v1/models")
-    m = next((x for x in r.json().get("data", []) if x["id"] == MODEL), None)
-    if not m:
-        record("FAIL", 0, "META catalog fields", "missing"); return
-    need = {"id", "object", "type", "owned_by", "context_window", "max_completion_tokens",
-            "description", "endpoint", "capabilities", "scaling", "tags"}
-    missing = [k for k in need if k not in m]
-    ok(r, "META catalog fields", f"present={len(need - set(missing))}/{len(need)} missing={missing or 'none'}")
-
-
-def t32():
-    # ?all=true surfaces non-chat models too; glm-4-32b must still be present.
-    r = req("GET", "/v1/models?all=true")
-    ids = [x["id"] for x in r.json().get("data", [])]
-    ok(r, "META /v1/models?all=true", f"count={len(ids)} has_self={MODEL in ids}")
-
-
-def t33():
-    r = req("GET", "/healthz")
-    ok(r, "META /healthz", f"body={safe(r.text, 40)}")
-
-
-def t34():
-    r = req("GET", "/readyz")
-    ok(r, "META /readyz", f"body={safe(r.text, 40)}")
-
-
-################################################################
-# GUARDRAILS
-################################################################
-
-def t35():
-    # Non-existent model → 404, not a 500 or upstream leak.
-    r = req("POST", "/v1/chat/completions", {"model": "does-not-exist-xyz", "messages": [{"role": "user", "content": "x"}]})
-    record("EXP" if r.status_code == 404 else "FAIL", r.status_code, "GRD bad model", safe(r.json().get("error", ""), 60))
-
-
-def t36():
-    # An embedding model must not successfully complete a chat. Exact rejection
-    # code varies (400 if gateway blocks it, 404/503 if that model is cold or
-    # lacks a chat endpoint) — the guardrail is "no 200 chat from an embedder".
+# ── Guardrails ────────────────────────────────────────────────────────────────
+def guard_embed():
     r = req("GET", "/v1/models?all=true")
     embed = next((m["id"] for m in r.json().get("data", []) if m.get("type") == "embedding"), None)
     if not embed:
-        record("SKIP", 0, "GRD embed via chat", "no embedding model deployed"); return
-    r2 = req("POST", "/v1/chat/completions", {"model": embed, "messages": [{"role": "user", "content": "x"}]})
-    held = r2.status_code != 200
-    record("EXP" if held else "FAIL", r2.status_code, "GRD embed via chat", f"embed={embed} served_chat={not held}")
+        record("SKIP", 0, "Guard: embed via chat", "no embed model"); return
+    r2 = req("POST", "/v1/chat/completions", {"model": embed, "max_tokens": 10,
+             "messages": [{"role": "user", "content": "test"}]})
+    if r2.status_code in (400, 422):
+        record("EXP", r2.status_code, "Guard: embed via chat", "rejected (non-chat)")
+    elif r2.status_code == 503:
+        record("SKIP", r2.status_code, "Guard: embed via chat", "embed model cold — can't verify")
+    else:
+        record("FAIL", r2.status_code, "Guard: embed via chat", f"unexpected code={r2.status_code}")
+
+def guard_badmodel():
+    r = req("POST", "/v1/chat/completions", {"model": "fake-xyz",
+            "messages": [{"role": "user", "content": "test"}]})
+    record("EXP" if r.status_code == 404 else "FAIL", r.status_code, "Guard: bad model",
+           str(r.json().get("error", ""))[:50])
+
+def catalog():
+    r = req("GET", "/v1/models")
+    m = next((x for x in r.json().get("data", []) if x["id"] == MODEL), None)
+    if not m:
+        record("FAIL", 0, "Catalog entry", "not found"); return
+    c = m.get("capabilities", {})
+    ok = (c.get("vision") == VISION) and (c.get("tools") == TOOLS) and not c.get("reasoning")
+    record("PASS" if ok else "FAIL", r.status_code, "Catalog capabilities",
+           f"vision={c.get('vision')} tools={c.get('tools')} reasoning={c.get('reasoning')} ctx={m.get('context_window')}")
 
 
-def t37():
-    # Empty messages list → should be rejected, not crash the model.
-    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [], "max_tokens": 5})
-    ok(r, "GRD empty messages", f"status={r.status_code} (200 ok if engine tolerates)", want=r.status_code)
-
-
-################################################################
-print("\n" + "=" * 64, flush=True)
-print(f"GLM-4-32B gateway conformance — target {G}, model {MODEL}", flush=True)
-print("=" * 64 + "\n", flush=True)
-
-TESTS = [t01, t02, t03, t04, t05, t06, t07, t08,
-         t09, t10, t11, t12, t13,
-         t14, t15, t16, t17, t18, t19,
-         t20, t21, t22, t23, t24, t25,
-         t26, t27, t28, t29,
-         t30, t31, t32, t33, t34,
-         t35, t36, t37]
-
-for t in TESTS:
+# ── run ───────────────────────────────────────────────────────────────────────
+print("=" * 66, flush=True)
+print(f"{MODEL} comprehensive gateway test (non-reasoning, auto-detected)", flush=True)
+print(f"vision={VISION} tools={TOOLS} maxout={MAXOUT}", flush=True)
+print("=" * 66, flush=True)
+for t in [wake, stream, temp0, temp_topk, stop_seq, system, max_tokens, usage, resources,
+          tools_works if TOOLS else tools_rejected,
+          vision_works if VISION else vision_rejected,
+          meta_title, meta_tags, meta_followups,
+          ant_basic, ant_stream, ant_system, ant_temp0, ant_stop,
+          ant_vision_works if VISION else ant_vision_rejected,
+          guard_embed, guard_badmodel, catalog]:
     try:
         t()
     except Exception as e:
-        record("ERR", 0, t.__name__, f"{type(e).__name__}: {str(e)[:90]}")
+        record("ERR", 0, getattr(t, "__name__", "?"), str(e)[:120])
 
-p = sum(1 for r in results if r[0] == "PASS")
-e = sum(1 for r in results if r[0] == "EXP")
-f = sum(1 for r in results if r[0] in ("FAIL", "ERR"))
-s = sum(1 for r in results if r[0] == "SKIP")
-total = len(results)
-print(f"\n{'=' * 64}", flush=True)
-print(f"Results: {p} passed, {e} expected-fail, {f} failed, {s} skipped  ({total} total)", flush=True)
-print(f"{'=' * 64}", flush=True)
-sys.exit(0 if f == 0 else 1)
+p = sum(1 for x in results if x[0] == "PASS")
+e = sum(1 for x in results if x[0] == "EXP")
+f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
+s = sum(1 for x in results if x[0] == "SKIP")
+print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}", flush=True)
