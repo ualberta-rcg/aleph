@@ -142,8 +142,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwen36-27b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; Gated-DeltaNet hybrid; managed thinking (effort + enable_thinking) + vision + tools (qwen3_coder); 30-check test 28/2/0 ✅ 2026-06-18 |
 | qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 35B MoE (3B active) hybrid Gated-DeltaNet; managed thinking (effort + enable_thinking) + tools (qwen3_coder) + vision; 64K ctx; 30-check test 28/2/0 ✅ 2026-06-18 |
 | qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; managed always-on thinking (deepseek_r1) — ON exposes reasoning, OFF strips+caps; tools (hermes); 32K ctx; 21-check test 18/3/0 ✅ 2026-06-18 |
-| r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | FIXED | vLLM v0.20.2 TP4 whole-device; tokenizer_class patch (was Ġ/Ċ garbled); 40km/h correct; max-len 65536 |
-| r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 12^2=144; deepseek_r1 parser; max-len 65536 (KV fit) |
+| r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-node; tokenizer_class patch; managed always-on reasoning (deepseek_r1) — ON exposes, OFF strips+caps; 25-check 20/5/0 ✅ 2026-06-18 |
+| r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; managed always-on reasoning (deepseek_r1) — ON exposes, OFF strips+caps; 25-check 20/5/0 ✅ 2026-06-18 |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | READY | PASS | 120-dim RNA (recreated) |
@@ -219,8 +219,8 @@ retained in the local working dir.)
 | gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
 | gpt-oss-20b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
 | phi-4-reasoning | budget | deepseek_r1 | — | — | v2 | 26/5 (31) ⚠ always-reasons + V1 quirk |
-| r1-distill-qwen-32b | always-on | deepseek_r1 | — | — | v2 † | PASS |
-| r1-distill-llama-70b | always-on | deepseek_r1 | — | — | v2 † | PASS |
+| r1-distill-qwen-32b | always-on | deepseek_r1 | — | — | v2 † | 20/5 (25) |
+| r1-distill-llama-70b | always-on | deepseek_r1 | — | — | v2 † | 20/5 (25) |
 | glm-4-32b | none | — | glm4_0414 (plugin) | — | v2 | 15/19 |
 | glm-z1-32b | toggle | — (template) | glm45 ⚠️ | — | v2 | 17/20 |
 | glm-z1-rumination-32b | toggle | — (template) | — (by design) | — | v2 | 16/18 |

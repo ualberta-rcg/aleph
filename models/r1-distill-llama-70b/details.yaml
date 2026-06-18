@@ -9,53 +9,72 @@ data:
   details.json: |
     {
       "id": "r1-distill-llama-70b",
+      "status": "production",
       "type": "chat",
-      "endpoints": {
-        "primary": "/v1/chat/completions",
-        "health": "/v1/models"
-      },
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
         "k8s_name": "r1-distill-llama-70b",
         "serialize": false,
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": {
-        "context_window": 131072
-      },
+      "limits": { "context_window": 65536, "max_completion_tokens": 16384 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "idle_retention": "15m"
+        "idle_retention": "15m",
+        "cold_start_estimate": "~4-5 minutes (130 GB BF16, TP4 whole node)"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": false,
         "supports_system_prompt": true,
-        "reasoning_model": true
+        "supports_streaming": true,
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "always_on",
+          "off_max_tokens": 4096,
+          "note": "Managed always-on thinking. R1-distill-llama always reasons (deepseek_r1 parser). Default ON -> expose `reasoning`. OFF (reasoning_effort none / meta-task) -> strip + cap max_tokens (reduce). Meta caps generous so think+output fits, then strip. TP4 whole-node."
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": {
-          "temperature": 0.7,
-          "max_tokens": 8192
+        "chat": { "temperature": 0.7, "top_p": 0.95, "max_tokens": 16384 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 1500, "thinking": { "enabled": false } },
+          "tags":      { "max_tokens": 1500, "thinking": { "enabled": false } },
+          "followups": { "max_tokens": 3000, "thinking": { "enabled": false } }
         }
       },
+      "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "messages": {"type": "array", "required": true, "description": "Chat messages [{role, content}]"},
+        "max_tokens": {"type": "integer", "required": false, "default": 16384, "max": 16384},
+        "temperature": {"type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0},
+        "top_p": {"type": "float", "required": false, "default": 0.95},
+        "stream": {"type": "boolean", "required": false, "default": false},
+        "reasoning_effort": {"type": "string", "required": false, "description": "none = strip+cap reasoning; absent = expose (always-on)"}
+      },
+      "output_map": {
+        "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the `reasoning` field when thinking is ON)"},
+        "usage": {"type": "object", "description": "prompt_tokens, completion_tokens, total_tokens"}
+      },
       "catalog": {
-        "description_short": "DeepSeek-R1 reasoning distilled into Llama-70B. Strong open chain-of-thought.",
-        "description": "DeepSeek-R1 reasoning distilled into Llama-70B. Strong open chain-of-thought.",
+        "description_short": "DeepSeek-R1 distilled into Llama-70B — always-on reasoning (TP4 whole node)",
+        "description": "DeepSeek-R1-Distill-Llama-70B. Always-on chain-of-thought (<think> blocks, deepseek_r1 parser). Deployed TP4 across 4x L40S (whole node). No tools, text-only. tokenizer_class patched (fixes Ġ/Ċ garbling). Always reasons — managed by the gateway (expose on, strip+cap off).",
         "owned_by": "DeepSeek",
         "source": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         "framework": "vllm",
         "domain": "nlp",
-        "subdomain": "large-language-model",
-        "parameters": "TP4",
-        "tags": [
-          "chat",
-          "llm",
-          "reasoning",
-          "science"
-        ]
+        "subdomain": "reasoning",
+        "parameters": "70B dense, TP4",
+        "tags": ["chat", "llm", "reasoning", "always-on", "large"]
       }
     }

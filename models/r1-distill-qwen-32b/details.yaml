@@ -9,52 +9,72 @@ data:
   details.json: |
     {
       "id": "r1-distill-qwen-32b",
+      "status": "production",
       "type": "chat",
-      "endpoints": {
-        "primary": "/v1/chat/completions",
-        "health": "/v1/models"
-      },
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
         "k8s_name": "r1-distill-qwen-32b",
         "serialize": false,
         "no_stream": false,
         "upstream_model_id": null
       },
-      "limits": {
-        "context_window": 131072
-      },
+      "limits": { "context_window": 65536, "max_completion_tokens": 16384 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "idle_retention": "15m"
+        "idle_retention": "15m",
+        "cold_start_estimate": "~2-3 minutes (28 GB BF16, TP2)"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": false,
         "supports_system_prompt": true,
-        "reasoning_model": true
+        "supports_streaming": true,
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "always_on",
+          "off_max_tokens": 4096,
+          "note": "Managed always-on thinking. R1-distill always reasons (deepseek_r1 parser, <think> blocks). Default ON -> expose `reasoning`. OFF (reasoning_effort none / meta-task) -> can't stop reasoning, so strip it + cap max_tokens (reduce). Meta caps are generous so think+output fits, then strip."
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
       },
       "defaults": {
-        "chat": {
-          "temperature": 0.7,
-          "max_tokens": 8192
+        "chat": { "temperature": 0.7, "top_p": 0.95, "max_tokens": 16384 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 1500, "thinking": { "enabled": false } },
+          "tags":      { "max_tokens": 1500, "thinking": { "enabled": false } },
+          "followups": { "max_tokens": 3000, "thinking": { "enabled": false } }
         }
       },
+      "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "messages": {"type": "array", "required": true, "description": "Chat messages [{role, content}]"},
+        "max_tokens": {"type": "integer", "required": false, "default": 16384, "max": 16384},
+        "temperature": {"type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0},
+        "top_p": {"type": "float", "required": false, "default": 0.95},
+        "stream": {"type": "boolean", "required": false, "default": false},
+        "reasoning_effort": {"type": "string", "required": false, "description": "none = strip+cap reasoning; absent = expose (always-on)"}
+      },
+      "output_map": {
+        "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the `reasoning` field when thinking is ON)"},
+        "usage": {"type": "object", "description": "prompt_tokens, completion_tokens, total_tokens"}
+      },
       "catalog": {
-        "description_short": "DeepSeek-R1 reasoning distilled into Qwen-32B. Faster R1-grade reasoning.",
-        "description": "DeepSeek-R1 reasoning distilled into Qwen-32B. Faster R1-grade reasoning.",
+        "description_short": "DeepSeek-R1 distilled into Qwen-32B — always-on R1-grade reasoning (TP2)",
+        "description": "DeepSeek-R1-Distill-Qwen-32B. Always-on chain-of-thought (<think> blocks, deepseek_r1 parser). Based on Qwen-32B, deployed TP2 on 2x L40S. No tools, text-only. 131K native context deployed at 64K. Always reasons — managed by the gateway (expose on, strip+cap off).",
         "owned_by": "DeepSeek",
         "source": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
         "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
         "framework": "vllm",
         "domain": "nlp",
-        "subdomain": "large-language-model",
-        "parameters": "TP2",
-        "tags": [
-          "chat",
-          "llm",
-          "reasoning"
-        ]
+        "subdomain": "reasoning",
+        "parameters": "32B dense, TP2",
+        "tags": ["chat", "llm", "reasoning", "always-on"]
       }
     }
