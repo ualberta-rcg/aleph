@@ -1,60 +1,25 @@
-# TinyLlama-1.1B
+# TinyLlama 1.1B
 
-TinyLlama-1.1B-Chat served via llama-cpp-python (CPU inference).
-[HuggingFace](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF)
+TinyLlama 1.1B Chat v1.0, quantized to GGUF Q4_K_M (~640 MB) and served on **CPU** via llama-cpp-python. Pretrained on 3T tokens and fine-tuned with the Zephyr recipe; same architecture/tokenizer as Llama 2. Small, fast, and the cluster's only CPU model.
+[HuggingFace: TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF) · Apache-2.0
 
-## Resource Requirements
+## What it does
+- **Chat**: OpenAI `/v1/chat/completions` (system + user turns). Zephyr prompt template.
+- **No streaming** — `stream:true` is accepted but the gateway returns a single JSON completion (`no_stream` card).
+- **No tools / vision / reasoning.** Context 4096 tokens; 1.1B params, Q4_K_M.
 
-| Resource | Request | Limit |
-|----------|---------|-------|
-| CPU | 4 | 8 |
-| Memory | 3Gi | 4Gi |
-| GPU | None (CPU only) | - |
-| Storage | 5Gi (PVC: `tinyllama-1-1b-models`) | - |
-
-## API Endpoint
-
+## Call it
 ```bash
-# Chat completion (via gateway)
-curl -X POST http://<gateway>/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "tinyllama-1-1b",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 50
-  }'
-
-# Anthropic-style (gateway translates)
-curl -X POST http://<gateway>/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "tinyllama-1-1b",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 50
-  }'
+curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
+  "model": "tinyllama-1-1b",
+  "messages": [{"role": "user", "content": "Hello!"}],
+  "max_tokens": 50
+}'
 ```
 
-## Scaling Configuration
+## Resources
+- **CPU only** (no GPU), llama-cpp-python, `--n_gpu_layers=0`. ~4 vCPU / 3 Gi. GGUF on PVC `tinyllama-1-1b-models`.
+- Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~30 s.
 
-| Setting | Value |
-|---------|-------|
-| minReplicas | 0 (scale to zero) |
-| idle_retention | 15m |
-| Context Window | 4096 tokens |
-| Streaming | No (gateway forces stream=false) |
-
-## Deploy
-
-```bash
-kubectl apply -f details.yaml
-kubectl apply -f inferenceservice.yaml
-kubectl get inferenceservice tinyllama-1-1b -n models
-```
-
-## Notes
-
-- GGUF format (Q4_K_M quantization, ~638MB)
-- Streaming disabled (`no_stream: true` in card)
-- CPU-only workload — no GPU scheduling
-- Init container downloads GGUF on first boot
-- 14/14 gateway tests passed (2026-06-10)
+## Source
+[HuggingFace: TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF) (base: [TinyLlama/TinyLlama-1.1B-Chat-v1.0](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)) · Apache-2.0

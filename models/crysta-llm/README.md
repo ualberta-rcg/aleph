@@ -1,42 +1,28 @@
 # CrystaLLM
 
-CrystaLLM-pi_base (~25M, GPT-2 architecture) generates crystal structures in **CIF format**
-from a chemical formula prompt. Uses a custom character-level CIF tokenizer (vocab=377).
-[HuggingFace](https://huggingface.co/c-bone/CrystaLLM-pi_base)
+CrystaLLM-pi_base (~25M, GPT-2 architecture) generates crystal structures in **CIF format** from a chemical formula prompt, using a custom character-level CIF tokenizer (vocab=377). Served by a custom (non-OpenAI) generation server.
+[HuggingFace: c-bone/CrystaLLM-pi_base](https://huggingface.co/c-bone/CrystaLLM-pi_base) · MIT
 
-## Resource Requirements
+## What it does
+- **Crystal generation**: given a formula (`NaCl`, `LiFePO4`, `MgO`, …) it emits CIF-format crystal structures.
+- **Custom endpoint** `POST /v1/science/generate` — not chat. No tools / vision / streaming.
+- Context window 1024 tokens; ~25M params, GPU float16.
 
-| Resource | Request | Limit |
-|----------|---------|-------|
-| GPU | 1x HAMi slice (L40S) | - |
-| Storage | PVC: `crysta-llm-data` | - |
-
-## API Endpoint (custom — NOT OpenAI chat)
-
+## Call it
 ```bash
-curl -X POST http://<gateway>/v1/science/generate \
-  -H "Content-Type: application/json" \
-  -d '{"model":"crysta-llm","formula":"NaCl","max_new_tokens":400,"num_samples":1,"temperature":1.0}'
+curl $GW/v1/science/generate -H 'Content-Type: application/json' -d '{
+  "model": "crysta-llm",
+  "formula": "NaCl",
+  "max_new_tokens": 400,
+  "num_samples": 1,
+  "temperature": 1.0
+}'
+# -> { "model": "crysta-llm", "structures": ["data_NaCl\n...CIF...\n"] }
 ```
 
-## Scaling
+## Resources
+- 1× HAMi GPU slice (L40S), custom FastAPI server (`python:3.11-slim` + venv). Weights on PVC `crysta-llm-data`.
+- Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~1-2 min.
 
-| Setting | Value |
-|---------|-------|
-| minReplicas | 0 (scale to zero) |
-| idle_retention | 15m |
-| Context Window | 1024 tokens |
-| Streaming | No |
-
-## Deploy
-
-```bash
-kubectl apply -f details.yaml
-kubectl apply -f inferenceservice.yaml
-```
-
-## Notes
-
-- Non-chat: crystal-structure generation only (CIF output). No tools / vision / anthropic.
-- MIT license. ~25M params, GPU float16.
-- Validated 2026-06-18 via custom generation battery (`test.py`).
+## Source
+[HuggingFace: c-bone/CrystaLLM-pi_base](https://huggingface.co/c-bone/CrystaLLM-pi_base) (tokenizer: [lantunes/CrystaLLM](https://huggingface.co/lantunes/CrystaLLM)) · MIT

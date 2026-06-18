@@ -11,63 +11,81 @@ data:
       "id": "crysta-llm",
       "status": "production",
       "type": "chat",
-      "description_short": "CrystaLLM GPT-2-based crystal structure generation model that outputs CIF-format structures from formula prompts.",
-      "description": "CrystaLLM is a GPT-2-based language model (c-bone/CrystaLLM-pi_base) fine-tuned to generate crystal structures in CIF format. It uses a custom character-level CIF tokenizer (vocab=377) to tokenize crystallographic data. Given a chemical formula prompt, it generates valid CIF-format crystal structure representations. ~25M parameters. MIT license. Custom tokenizer from lantunes/CrystaLLM.",
-      "context_window": 1024,
-      "max_completion_tokens": 1024,
       "endpoints": {
         "primary": "/v1/science/generate",
         "health": "/health"
       },
-      "owned_by": "c-bone",
-      "source": "c-bone/CrystaLLM-pi_base",
-      "source_url": "https://huggingface.co/c-bone/CrystaLLM-pi_base",
-      "license": "MIT",
-      "parameters": "~25M",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "GPT-2 (vocab=377, custom CIF tokenizer)",
-      "framework": "transformers (GPT2LMHeadModel) + custom tokenizer",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 300,
-        "pvc": "crysta-llm-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "crysta-llm",
-        "api_name": "crysta-llm",
-        "gateway_type": "chat"
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 1024,
+        "max_completion_tokens": 1024
       },
-      "domain": "materials-science",
-      "subdomain": "crystal-generation",
-      "tags": ["science", "materials", "crystal", "generate", "llm", "cif", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "supports_streaming": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
-        "formula": "chemical formula e.g. \"NaCl\", \"LiFePO4\"",
-        "temperature": "sampling temperature (default: 1.0)",
-        "max_new_tokens": "maximum tokens to generate (default: 1024)",
-        "num_samples": "number of structures to generate (default: 1)"
+        "formula": {
+          "type": "string",
+          "required": true,
+          "description": "Chemical formula e.g. \"NaCl\", \"LiFePO4\""
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Sampling temperature"
+        },
+        "max_new_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 1024,
+          "description": "Maximum tokens to generate"
+        },
+        "num_samples": {
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "description": "Number of structures to generate"
+        }
       },
       "output_map": {
-        "structures": "array of CIF-format crystal structure strings",
-        "model": "crysta-llm"
+        "model": { "type": "string", "description": "Model name" },
+        "structures": { "type": "array", "description": "Generated CIF-format crystal structure strings" }
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model",
-        "tokenizer_path": "/app/tokenizer",
-        "tokenizer_module": "crystallm_tokenizer.CIFTokenizer"
+      "catalog": {
+        "description_short": "CrystaLLM — generates CIF-format crystal structures from a chemical formula (~25M, GPT-2)",
+        "description": "CrystaLLM-pi_base (c-bone) is a GPT-2-based language model (~25M params) fine-tuned to generate crystal structures in CIF format. It uses a custom character-level CIF tokenizer (vocab=377, from lantunes/CrystaLLM). Given a chemical formula prompt, it generates valid CIF crystal-structure representations. Served by a custom FastAPI server on a HAMi GPU slice. MIT license.",
+        "owned_by": "c-bone",
+        "source": "c-bone/CrystaLLM-pi_base",
+        "source_url": "https://huggingface.co/c-bone/CrystaLLM-pi_base",
+        "license": "MIT",
+        "parameters": "~25M",
+        "precision": "float16",
+        "framework": "transformers (GPT2LMHeadModel) + custom CIF tokenizer",
+        "domain": "materials-science",
+        "subdomain": "crystal-generation",
+        "tags": ["science", "materials", "crystal", "generate", "cif", "gpu"]
       }
     }

@@ -1,35 +1,25 @@
-# tinyllama-1-1b
+# tinyllama-1-1b — Model Context
 
-**Type**: Chat LLM (1.1B, llama.cpp GGUF, CPU)
-**Model**: TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF (Q4_K_M quantization)
-**Endpoint**: POST /v1/chat/completions (OpenAI-compatible)
-**Runtime**: CPU, llama-cpp-python server
+TinyLlama 1.1B Chat (GGUF Q4_K_M) — a tiny, fast chat model served on **CPU** via llama-cpp-python (not vLLM). Good for quick tests and simple tasks; the cluster's only CPU model.
 
-## Naming
-- Card id: `tinyllama-1-1b`
-- ISVC name: `tinyllama-1-1b`
-- PVC: `tinyllama-1-1b-models`
-- Model alias: `tinyllama-1-1b`
-- All names match — no `upstream_model_id` mapping needed.
+## Serving
+- Image `ghcr.io/abetlen/llama-cpp-python`, GGUF Q4_K_M (~640 MB) on PVC `tinyllama-1-1b-models`. Zephyr prompt template.
+- **CPU only** — `--n_gpu_layers=0` is mandatory (without it llama-cpp-python tries CUDA and fails). No GPU request.
+- No streaming: `routing.no_stream: true` → the gateway forces `stream=false` upstream and returns a normal JSON response. `needs_json_fixing: true` (gateway repairs malformed JSON from the server).
+- `serialize: true` (single in-flight request). `minReplicas: 0` + 15m idle retention; cold start ~30 s (model is tiny + already on PVC).
 
-## Key quirks
-- Uses llama-cpp-python server (not vLLM). Serves OpenAI `/v1/chat/completions` and `/v1/models`.
-- Q4_K_M quantization (~640MB). Very fast response on CPU (~270ms for short replies).
-- Context: 4096 tokens.
-- `--n_gpu_layers=0` essential — without it llama-cpp-python tries to use CUDA and fails.
-- Card has `no_stream: true` — gateway forces stream=false upstream.
-- CPU-only, no GPU needed.
-- Card says `scale_to_zero: false` but ISVC has `minReplicas: 0` — effectively scale-to-zero. Card needs update.
+## Gateway integration
+- Card `details.yaml`: **Template A (no_stream variant)**, `schema_version: 2`. Endpoints OpenAI `/v1/chat/completions` + `/v1/models`.
+- Behavior gates: no vision, no tools, no streaming, no reasoning; system prompts supported.
+- A client `stream:true` request is **not** an error — the gateway returns a single non-streaming JSON completion.
 
-## Migration notes (from POC 232)
-- Ported from 232. Changes:
-  - `nvidia.com/gpu.product: NVIDIA-L40S-SHARED` nodeSelector removed (CPU model).
-  - `minReplicas: 1` → `0` + Knative scale-to-zero annotation added.
-  - Inline `HF_TOKEN` → `secretKeyRef: hf-token`.
-  - Added `--n_gpu_layers=0` arg to force CPU inference.
-  - PVC: renamed from `tinyllama-models` to `tinyllama-1-1b-models`.
-- Card updated to v2 schema with input_map/output_map.
+## Deploy / test
+```bash
+kubectl apply -f models/tinyllama-1-1b/     # details.yaml + inferenceservice.yaml + pvc.yaml
+cat models/tinyllama-1-1b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- env MODEL=tinyllama-1-1b python3 -
+```
+Last result: **18 pass / 4 expected / 0 fail / 1 skip** (comprehensive battery; the 4 expected = tools + vision rejected on both endpoints).
 
-## Validation (2026-06-10)
-- 14/14 tests passed through gateway (OpenAI + Anthropic endpoints)
-- Basic chat, system prompt, temperature, streaming (no_stream), tools rejected, vision rejected, reasoning effort ignored, Anthropic basic/system/tools/vision
+## Notes
+- Small model — fine for simple/deterministic tasks, weak on complex reasoning or long instructions.
+- CPU-bound: latency scales with output length; keep `max_tokens` modest.

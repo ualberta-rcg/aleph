@@ -1,44 +1,29 @@
 # ProtGPT2
 
-ProtGPT2 (~1.5B, GPT-2 architecture) generates **novel protein sequences** (amino-acid
-strings) from scratch or by continuing a partial prompt. Trained on natural protein sequences.
-[HuggingFace](https://huggingface.co/nferruz/ProtGPT2)
+ProtGPT2 (~1.5B, GPT-2 architecture) generates **novel protein sequences** (amino-acid strings) from scratch or by continuing a partial seed. Trained on natural protein sequences to produce stable, structurally plausible proteins. Served by a custom (non-OpenAI) generation server.
+[HuggingFace: nferruz/ProtGPT2](https://huggingface.co/nferruz/ProtGPT2) · MIT
 
-## Resource Requirements
+## What it does
+- **Protein generation**: from a seed (e.g. `M`, `MKLV`) it emits amino-acid sequences.
+- **Custom endpoint** `POST /v1/completions` — not chat. No tools / vision / streaming.
+- Context window 1024 tokens; ~1.5B params, GPU float16 (~2 GB VRAM).
+- **Requires a non-empty seed** — an empty prompt 500s (`reshape tensor of 0 elements`).
 
-| Resource | Request | Limit |
-|----------|---------|-------|
-| GPU | 1x HAMi slice (L40S) | - |
-| Storage | PVC: `protgpt2-data` | - |
-
-## API Endpoint (custom — NOT OpenAI chat)
-
+## Call it
 ```bash
-curl -X POST http://<gateway>/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"protgpt2","prompt":"","max_tokens":120,"num_sequences":1,"temperature":0.7}'
+curl $GW/v1/completions -H 'Content-Type: application/json' -d '{
+  "model": "protgpt2",
+  "prompt": "M",
+  "max_tokens": 120,
+  "num_sequences": 1,
+  "temperature": 0.7
+}'
+# -> { "model": "protgpt2", "sequences": ["MKLVVPAT..."] }
 ```
 
-## Scaling
+## Resources
+- 1× HAMi GPU slice (L40S), custom FastAPI server (`python:3.11-slim` + venv). Weights on PVC `protgpt2-data`.
+- Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~1-2 min.
 
-| Setting | Value |
-|---------|-------|
-| minReplicas | 0 (scale to zero) |
-| idle_retention | 15m |
-| Context Window | 1024 tokens |
-| Streaming | No |
-
-## Deploy
-
-```bash
-kubectl apply -f details.yaml
-kubectl apply -f inferenceservice.yaml
-```
-
-## Notes
-
-- Non-chat: protein-sequence generation only. No tools / vision / anthropic.
-- Requires a non-empty seed prompt (e.g. `"prompt":"M"`, a start methionine); an empty
-  prompt crashes the server with a 500 (`reshape tensor of 0 elements`).
-- MIT license. GPU float16.
-- Validated 2026-06-18 via custom generation battery (`test.py`).
+## Source
+[HuggingFace: nferruz/ProtGPT2](https://huggingface.co/nferruz/ProtGPT2) · MIT

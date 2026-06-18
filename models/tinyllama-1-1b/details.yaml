@@ -1,13 +1,124 @@
 apiVersion: v1
-data:
-  details.json: "{\n  \"id\": \"tinyllama-1-1b\",\n  \"type\": \"chat\",\n  \"endpoints\": {\n    \"primary\": \"/v1/chat/completions\",\n    \"health\": \"/v1/models\"\n  },\n  \"routing\": {\n    \"k8s_name\": \"tinyllama-1-1b\",\n    \"serialize\": true,\n    \"no_stream\": true,\n    \"upstream_model_id\": null\n  },\n  \"limits\": {\n    \"context_window\": 4096,\n    \"max_completion_tokens\": 1800\n  },\n  \"scaling\": {\n    \"scale_to_zero\": true,\n    \"min_replicas\": 1,\n    \"cold_start_estimate\": \"30 seconds\",\n    \"idle_retention\": \"15m\"\n  },\n  \"behavior\": {\n    \"supports_vision\": false,\n    \"supports_tools\": false,\n    \"supports_system_prompt\": true,\n    \"reasoning_model\": false,\n    \"strips_thinking\": false,\n    \"supports_streaming\": false,\n    \"needs_json_fixing\": true\n  },\n  \"defaults\": {\n    \"chat\": {\n      \"temperature\": 0.7,\n      \"max_tokens\": 512\n    }\n  },\n  \"schema_version\": 2,\n  \"input_map\": {\n    \"messages\"\
-    : {\n      \"type\": \"array\",\n      \"items\": {\n        \"role\": \"string\",\n        \"content\": \"string\"\n      },\n      \"required\": true,\n      \"description\": \"Chat messages in OpenAI format (system/user/assistant)\"\n    },\n    \"max_tokens\": {\n      \"type\": \"integer\",\n      \"default\": 512,\n      \"max\": 1800,\n      \"description\": \"Maximum tokens to generate\"\n    },\n    \"temperature\": {\n      \"type\": \"float\",\n      \"default\": 0.7,\n      \"min\": 0.0,\n      \"max\": 2.0,\n      \"description\": \"Sampling temperature\"\n    },\n    \"top_p\": {\n      \"type\": \"float\",\n      \"default\": 1.0,\n      \"min\": 0.0,\n      \"max\": 1.0,\n      \"description\": \"Nucleus sampling probability\"\n    },\n    \"stream\": {\n      \"type\": \"boolean\",\n      \"default\": false,\n      \"description\": \"Accepted but ignored (no_stream: true in gateway forces non-streaming response)\"\n    },\n    \"frequency_penalty\": {\n      \"type\"\
-    : \"float\",\n      \"default\": 0.0,\n      \"min\": -2.0,\n      \"max\": 2.0,\n      \"description\": \"Frequency penalty for repetition\"\n    }\n  },\n  \"output_map\": {\n    \"id\": {\n      \"type\": \"string\",\n      \"description\": \"Chat completion ID\"\n    },\n    \"object\": {\n      \"type\": \"string\",\n      \"description\": \"\\\"chat.completion\\\"\"\n    },\n    \"model\": {\n      \"type\": \"string\",\n      \"description\": \"Model identifier\"\n    },\n    \"choices\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"message\": {\n          \"role\": \"string\",\n          \"content\": \"string\"\n        },\n        \"finish_reason\": \"string\"\n      },\n      \"description\": \"Generated chat completions\"\n    },\n    \"usage\": {\n      \"prompt_tokens\": \"int\",\n      \"completion_tokens\": \"int\",\n      \"total_tokens\": \"int\"\n    }\n  },\n  \"catalog\": {\n    \"description_short\": \"TinyLlama 1.1B GGUF Q4_K_M, CPU inference via\
-    \ llama.cpp\",\n    \"description\": \"TinyLlama 1.1B Chat v1.0 quantized to GGUF Q4_K_M (0.67 GB). Pretrained on 3 trillion tokens, fine-tuned with Zephyr recipe (UltraChat + DPO on UltraFeedback). Same architecture and tokenizer as Llama 2. Runs on CPU via llama-cpp-python server. No streaming support. Good for quick tests and simple tasks.\",\n    \"owned_by\": \"TinyLlama\",\n    \"source\": \"TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF\",\n    \"source_url\": \"https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF\",\n    \"original_source\": \"TinyLlama/TinyLlama-1.1B-Chat-v1.0\",\n    \"framework\": \"llama.cpp\",\n    \"domain\": \"nlp\",\n    \"subdomain\": \"small-language-model\",\n    \"parameters\": \"1.1B\",\n    \"tags\": [\n      \"chat\",\n      \"llm\",\n      \"cpu\",\n      \"small\",\n      \"gguf\"\n    ]\n  },\n  \"server_config\": {\n    \"inference_backend\": \"llama.cpp\",\n    \"container_image\": \"ghcr.io/abetlen/llama-cpp-python@sha256:8528cd3c39357e4138a4fd80f17449b6617206e56f0397016c5cb536f89a87d8\"\
-    ,\n    \"gguf_quantization\": \"Q4_K_M\",\n    \"gguf_file_size\": \"0.67 GB\",\n    \"prompt_template\": \"zephyr\",\n    \"note\": \"CPU-only inference. llama-cpp-python server does not support streaming. No reasoning, no tools, no vision.\"\n  }\n}"
 kind: ConfigMap
 metadata:
-  labels:
-    model-details: 'true'
   name: tinyllama-1-1b-details
   namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "tinyllama-1-1b",
+      "status": "production",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "tinyllama-1-1b",
+        "serialize": true,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 4096,
+        "max_completion_tokens": 1800
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "~30 seconds (CPU, GGUF already on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "supports_streaming": false,
+        "reasoning_model": false,
+        "strips_thinking": false,
+        "needs_json_fixing": true
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 0.7, "top_p": 1.0, "max_tokens": 512 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
+      },
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages in OpenAI format (system/user/assistant). Uses the Zephyr prompt template."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 512,
+          "max": 1800,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1.0,
+          "description": "Nucleus sampling probability"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Accepted but ignored — no_stream forces a non-streaming response."
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "min": -2.0,
+          "max": 2.0,
+          "description": "Frequency penalty for repetition"
+        }
+      },
+      "output_map": {
+        "id": { "type": "string", "description": "Chat completion ID" },
+        "object": { "type": "string", "description": "\"chat.completion\"" },
+        "model": { "type": "string", "description": "Model identifier" },
+        "choices": { "type": "array", "items": { "message": "object", "finish_reason": "string" }, "description": "Generated chat completions" },
+        "usage": { "type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)" }
+      },
+      "catalog": {
+        "description_short": "TinyLlama 1.1B Chat (GGUF Q4_K_M), CPU inference via llama.cpp — small + fast",
+        "description": "TinyLlama 1.1B Chat v1.0 quantized to GGUF Q4_K_M (~640 MB). Pretrained on 3 trillion tokens, fine-tuned with the Zephyr recipe (UltraChat + DPO on UltraFeedback). Same architecture/tokenizer as Llama 2. Runs on CPU via the llama-cpp-python server — no GPU required, very fast for short replies. No streaming, no tools, no vision, no reasoning.",
+        "owned_by": "TinyLlama",
+        "source": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+        "source_url": "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+        "original_source": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "license": "Apache-2.0",
+        "parameters": "1.1B",
+        "precision": "gguf_q4_k_m",
+        "framework": "llama.cpp",
+        "domain": "nlp",
+        "subdomain": "small-language-model",
+        "tags": ["chat", "llm", "cpu", "small", "gguf"]
+      }
+    }
