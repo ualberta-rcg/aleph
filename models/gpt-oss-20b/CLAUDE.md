@@ -1,30 +1,26 @@
-# gpt-oss-20b Notes
+# gpt-oss-20b — Model Context
 
-## Purpose
-Primary reasoning-capable OSS chat model behind OpenAI and Anthropic compatible gateway endpoints.
+Lightweight OpenAI reasoning model (21B MoE). Served by vLLM on one L40S vGPU slice.
 
-## Runtime
-- Runtime: vLLM OpenAI server
-- Image: `vllm/vllm-openai:v0.20.2`
-- API via gateway: `/v1/chat/completions`, `/v1/messages`
+## Serving
+- Image `vllm/vllm-openai:v0.20.2`, **TP1**, `--reasoning-parser openai_gptoss --tool-call-parser openai --enable-auto-tool-choice`, `--max-model-len 131072`.
+- `VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1` (required on L40S / SM89 — FlashAttention-3 unavailable).
+- Weights on NFS PVC at `/data` (skip re-download on cold start); `nvidia.com/gpumem: 24576` (sub-GPU slice).
+- `minReplicas: 0` + `scale-to-zero-pod-retention-period: 15m` (scale-to-zero, wake-on-demand).
 
-## Behavior in this platform
-- Model is reasoning-capable.
-- Gateway may strip reasoning fields from final responses to keep client output clean.
-- For very small `max_tokens` requests, gateway may disable thinking unless explicitly requested,
-  to avoid empty final answers.
+## Gateway integration
+- Card `details.yaml`: Template A, `schema_version: 2`, thinking `mode: effort`.
+- **Managed thinking** — ON exposes the **`reasoning`** field (Anthropic: `thinking` block); OFF (`reasoning_effort: none`) strips it + caps `max_tokens` to `off_max_tokens` (2048). `behavior.strips_thinking: false`.
+- vLLM v0.20.2 emits reasoning in **`reasoning`** (not `reasoning_content`) — the gateway reads either.
 
-## Resources / scheduling
-- HAMi fractional GPU allocation via `nvidia.com/gpumem` in manifest.
-- Confirm requested gpumem is sufficient for expected context + concurrency.
+## Deploy / test
+```bash
+kubectl apply -f models/gpt-oss-20b/      # details.yaml + inferenceservice.yaml + pvc.yaml
+# run the 33-check battery inside the gateway pod:
+cat models/gpt-oss-20b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last result: **30 pass / 3 expected / 0 fail** (wake + OpenAI/Anthropic features + thinking on/off/budget/stream + meta-tasks + guardrails).
 
-## Deploy checklist
-1. Ensure `hf-token` secret exists in `models` namespace.
-2. Apply PVC and InferenceService manifests.
-3. Wait for pod readiness / first-load completion.
-4. Validate OpenAI + Anthropic endpoint behavior (including reasoning levels).
-
-## Validation smoke tests
-- OpenAI: `reasoning_effort` levels accepted and produce answer text.
-- Anthropic: adaptive effort / budget-style requests map successfully.
-- No leaked reasoning/thinking content in response body when strip policy is enabled.
+## Notes
+- gpt-oss always reasons internally — "off" = lowest effort (`low`) + stripped/capped output, not true no-reasoning.
+- High effort is token-voracious: give adequate `max_tokens` or the answer comes back empty (all budget spent on reasoning).

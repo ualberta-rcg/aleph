@@ -132,7 +132,7 @@ data:
         "id": {"type": "string", "description": "Chat completion ID"},
         "object": {"type": "string", "description": "\"chat.completion\""},
         "model": {"type": "string", "description": "Model name"},
-        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (may include reasoning_content when thinking)"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the `reasoning` field when thinking is ON)"},
         "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
       },
       "catalog": {
