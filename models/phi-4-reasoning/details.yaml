@@ -30,7 +30,7 @@ data:
         "supports_tools": false,
         "supports_system_prompt": true,
         "reasoning_model": true,
-        "strips_thinking": true
+        "strips_thinking": false
       },
       "param_translation": {
         "thinking": {
@@ -39,6 +39,7 @@ data:
           "answer_reserve": 512,
           "default_effort": "medium",
           "disabled_effort": "none",
+          "off_max_tokens": 2048,
           "effort_aliases": {
             "none": "none", "minimal": "none", "disabled": "none",
             "low": "low", "medium": "medium", "med": "medium",
@@ -52,7 +53,7 @@ data:
             "xhigh": { "thinking_token_budget": 24576 },
             "max":   { "thinking_token_budget": null }
           },
-          "note": "Emulates Anthropic/OpenAI effort via vLLM thinking_token_budget; 0 = skip CoT"
+          "note": "Managed thinking (budget mode). ON (medium/high) exposes the `reasoning` field. QUIRKS: phi-4 always emits a CoT trace, so requests need adequate max_tokens (>=~4000) or reasoning eats the whole budget and content comes back empty; the OFF path (budget 0) is unreliable on the vLLM V1 engine (redacted_thinking not always extracted -> empty content, vllm#18141). Give generous max_tokens."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }

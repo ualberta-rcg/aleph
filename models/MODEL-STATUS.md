@@ -122,7 +122,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | openfold-3 | structure | true | /v1/science/predict | READY | PASS | OpenFold-3 NIM container. **NIM:** `nvcr.io/nim/openfold/openfold3` (build.nvidia.com/openfold/openfold3) |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
 | pangu-weather | forecast | true | /v1/science/forecast | READY | FIXED | demo+real ONNX; summarized upper/surface stats (not raw 721x1440 grids) |
-| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; gateway budget mode maps effort→thinking_token_budget (0=skip CoT); OpenAI+Anthropic verified 2026-06-06 |
+| phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS⚠ | v0.20.2 whole L40S; budget mode (effort→thinking_token_budget). Thinking ON works. QUIRK: phi-4 always reasons — needs max_tokens ≥~4000 or reasoning eats the budget → empty content; OFF (budget 0) unreliable on V1 (vllm#18141). 31-check 26/5/0 |
 | presto | classify | false | /v1/embeddings | READY | FIXED | wake-up test PASS 2026-06-08: 17-band S1_S2_ERA5_SRTM satellite embeddings; pass mask/month/dynamic_world kwargs |
 | prithvi-eo | embed | true | /v1/embed | READY | FIXED | BACKBONE_REGISTRY + forward_features, GDAL + libexpat1 runtime dep; 1024-dim CLS embeddings PASS |
 | prithvi-wxc | embed | true | /v1/science/forecast | READY | PASS | demo forecast OK after unstop+cold-start (~6min); real MERRA-2 state not exercised |
@@ -218,7 +218,7 @@ retained in the local working dir.)
 | qwq-32b | always-on | deepseek_r1 | hermes | — | v2 | 21/21 |
 | gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
 | gpt-oss-20b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
-| phi-4-reasoning | budget | deepseek_r1 | — | — | v2 | 19/20 |
+| phi-4-reasoning | budget | deepseek_r1 | — | — | v2 | 26/5 (31) ⚠ always-reasons + V1 quirk |
 | r1-distill-qwen-32b | always-on | deepseek_r1 | — | — | v2 † | PASS |
 | r1-distill-llama-70b | always-on | deepseek_r1 | — | — | v2 † | PASS |
 | glm-4-32b | none | — | glm4_0414 (plugin) | — | v2 | 15/19 |

@@ -29,6 +29,11 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
   no trace on gemma-4); changed to **toggle** mode via `chat_template_kwargs.enable_thinking`
   (confirmed direct-to-predictor). 32-check vision-variant battery 30/2/0 (vision works, thinking
   on/off/budget/stream, meta, both protocols). README added; CLAUDE gateway/test section.
+- **phi-4-reasoning** re-verified (budget mode) — 31-check 26/5/0. Thinking ON exposes
+  reasoning. Documented quirk: phi-4 always emits a CoT trace, so requests need adequate
+  max_tokens (≥~4000) or reasoning eats the budget → empty content; OFF (budget 0) is
+  unreliable on vLLM V1 (redacted_thinking not always extracted, vllm#18141). Card: strips_thinking
+  off + off_max_tokens + quirk note.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 
