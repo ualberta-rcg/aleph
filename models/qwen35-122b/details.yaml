@@ -36,7 +36,9 @@ data:
         "thinking": {
           "mode": "toggle",
           "on":  { "chat_template_kwargs": { "enable_thinking": true } },
-          "off": { "chat_template_kwargs": { "enable_thinking": false } }
+          "off": { "chat_template_kwargs": { "enable_thinking": false } },
+          "off_max_tokens": 2048,
+          "note": "Managed thinking. Binary enable_thinking. ON exposes `reasoning`; OFF -> no reasoning + max_tokens capped to off_max_tokens."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
@@ -57,6 +59,20 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": {"type": "array", "required": true, "description": "Chat messages [{role, content}]"},
+        "max_tokens": {"type": "integer", "required": false, "default": 32768, "max": 32768},
+        "temperature": {"type": "float", "required": false, "default": 1.0, "min": 0.0, "max": 2.0},
+        "top_p": {"type": "float", "required": false, "default": 0.95},
+        "stream": {"type": "boolean", "required": false, "default": false},
+        "reasoning_effort": {"type": "string", "required": false, "description": "none = off; medium/high = on"},
+        "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder)"}
+      },
+      "output_map": {
+        "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the `reasoning` field when thinking is ON)"},
+        "usage": {"type": "object", "description": "prompt_tokens, completion_tokens, total_tokens"}
+      },
       "catalog": {
         "description_short": "Qwen3.5 122B MoE FP8, toggleable thinking + native tools (4x L40S)",
         "description": "Qwen3.5 122B MoE FP8 - configurable thinking mode via <think/> tags, sparse MoE (256 experts, 8 routed + 1 shared per token), 122B total / 10B active params. 262K native context, served at 131K on 4x L40S. Tool calling + streaming. Deployed language-model-only (vision encoder disabled to save VRAM).",

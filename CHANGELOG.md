@@ -49,6 +49,9 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
 - **glm-z1-32b / glm-z1-rumination-32b**: skip-and-note — glm45 parser keeps reasoning in-template
   (not surfaced as a `reasoning` field, so managed expose/strip doesn't apply); glm-z1-32b tool
   parser broken; rumination ignores tools/system by design.
+- **qwen35-122b**: DEPLOYED on 230 (was NO-ISVC) — TP4 122B FP8, weights pre-staged on PVC;
+  28-check 25/3/0 (managed toggle thinking, qwen3_coder tools, vision off via --language-model-only).
+  Card: off_max_tokens + input_map/output_map.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 

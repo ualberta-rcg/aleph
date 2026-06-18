@@ -138,7 +138,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwen25-vl-72b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 72.2B dense VLM; vision (dynamic-res images, video, 5 img/prompt); no tools, no reasoning; 131K native ctx deployed at 32K; 22/22 gateway test ✅ 2026-06-11; cold start ~285s; limit-mm-per-prompt=5 images |
 | qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 235B-A22B AWQ int4 MoE (22B active, 128 experts); non-thinking Instruct-2507 variant; tools (hermes parser); no reasoning parser (non-thinking); awq_marlin quantization; 131K ctx; 21/21 gateway test ✅ 2026-06-11; vision correctly rejected; ~4min cold start; **NIM available:** `nvcr.io/nim/qwen/qwen3-235b-a22b` |
 | qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.8B dense; managed thinking (qwen3 parser, effort mode, enable_thinking toggle) + tools (hermes); 33-check test 30/3/0 ✅ 2026-06-18; vision rejected |
-| qwen35-122b | chat | true | /v1/chat/completions | NO-ISVC | — | NOT DEPLOYED on 230 (TP4 122B FP8, whole node); card/docs exist but no InferenceService. Skip-and-note — deploy is a heavy TP4 op. |
+| qwen35-122b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-node; 122B FP8 MoE (10B active); managed thinking (toggle enable_thinking) + tools (qwen3_coder); language-model-only (vision off); 131K ctx; DEPLOYED on 230 (weights on PVC); 28-check test 25/3/0 ✅ 2026-06-18 |
 | qwen36-27b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; Gated-DeltaNet hybrid; managed thinking (effort + enable_thinking) + vision + tools (qwen3_coder); 30-check test 28/2/0 ✅ 2026-06-18 |
 | qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 35B MoE (3B active) hybrid Gated-DeltaNet; managed thinking (effort + enable_thinking) + tools (qwen3_coder) + vision; 64K ctx; 30-check test 28/2/0 ✅ 2026-06-18 |
 | qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; managed always-on thinking (deepseek_r1) — ON exposes reasoning, OFF strips+caps; tools (hermes); 32K ctx; 21-check test 18/3/0 ✅ 2026-06-18 |
@@ -213,7 +213,7 @@ retained in the local working dir.)
 | qwen36-27b | effort | qwen3 | qwen3_coder | ✅ | v2 | 28/2 (30) |
 | qwen3-32b | effort | qwen3 | hermes | — | v2 | 30/3 (33) |
 | qwen3-235b | none | — | hermes | — | v2 | 21/21 |
-| qwen35-122b | toggle | qwen3 | qwen3_coder | — | v2 | NO-ISVC |
+| qwen35-122b | toggle | qwen3 | qwen3_coder | — | v2 | 25/3 (28) |
 | qwen36-35b-a3b | effort | qwen3 | qwen3_coder | ✅ | v2 | 28/2 (30) |
 | qwq-32b | always-on | deepseek_r1 | hermes | — | v2 | 18/3 (21) |
 | gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
