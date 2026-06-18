@@ -17,8 +17,10 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
 - **Root cause**: vLLM v0.20.2 emits gpt-oss reasoning in the `reasoning` field (NOT
   `reasoning_content`), so "thinking wasn't working" was a false negative — the parser splits fine.
 - **gpt-oss-20b / gpt-oss-120b**: cards → `strips_thinking: false` + `off_max_tokens: 2048`;
-  test.py rewritten to assert reasoning present (ON, effort + fake budget) / absent + capped (OFF)
-  over both protocols, reading the `reasoning` field.
+  test.py rebuilt as a 33-check comprehensive battery (both pass 30/3/0): wake-through-503,
+  full OpenAI + Anthropic feature suite (stream/system/temp/top_k/stop/tools/max_tokens/usage),
+  thinking ON/OFF/fake-budget/stream assertions on the `reasoning` field, OpenWebUI meta-tasks
+  (title/tags/followups), vision guard, and catalog/guardrails.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 
