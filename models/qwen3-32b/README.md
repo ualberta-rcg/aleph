@@ -17,17 +17,16 @@ kubectl apply -f details.yaml
 
 ## Testing
 
-The test runs from the gateway pod against the in-cluster gateway endpoint.
+The 33-check comprehensive battery runs inside the gateway pod (the first check wakes the
+model if it's scaled to zero):
 
 ```bash
-# Copy test to gateway pod
-cat test.py | kubectl exec -i -n models <gateway-pod> -c gateway -- tee /tmp/test_qwen3_32b.py
-
-# Run (pod must be warm — wake with a request first if scaled to zero)
-kubectl exec -n models <gateway-pod> -c gateway -- python3 /tmp/test_qwen3_32b.py
+cat models/qwen3-32b/test.py | \
+  kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Expected: **23 passed, 2 expected failures, 0 failed**
+Last run: **30 passed, 3 expected, 0 failed** (wake + OpenAI/Anthropic features + thinking
+on/off/budget/stream + meta-tasks + guardrails).
 
 ## Key Configuration
 
@@ -42,9 +41,9 @@ Expected: **23 passed, 2 expected failures, 0 failed**
 | Scale-to-Zero | 15m idle |
 | Cold Start | ~3-4 min |
 
-## Thinking Mode
+## Thinking Mode (managed by the gateway)
 
-Controlled via `chat_template_kwargs.enable_thinking` (binary on/off):
-- Default: **on** (thinking enabled)
-- Off: `{"chat_template_kwargs": {"enable_thinking": false}}`
-- Gateway maps `reasoning_effort` parameter: none/low → off, medium/high/max → on
+Binary `enable_thinking` switch (a real off, unlike gpt-oss). Gateway maps `reasoning_effort`:
+none/low → off, medium/high/max → on. Through the gateway:
+- **ON** → chain-of-thought in the **`reasoning`** field (OpenAI) / a **`thinking`** block (Anthropic).
+- **OFF** (`reasoning_effort: none`) → no reasoning + `max_tokens` capped to `off_max_tokens` (2048).

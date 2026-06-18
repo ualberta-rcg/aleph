@@ -30,10 +30,14 @@
 
 Env: `HF_HUB_OFFLINE=1`, `VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1`, `OMP_NUM_THREADS=1`
 
-## Thinking Mode (effort)
+## Thinking Mode (effort, managed by the gateway)
 Gateway maps `reasoning_effort` to `chat_template_kwargs.enable_thinking`:
 - `none`/`low` → `enable_thinking: false`
 - `medium`/`high`/`max` → `enable_thinking: true`
+
+Managed thinking: ON exposes the **`reasoning`** field (Anthropic: `thinking` block); OFF
+(reasoning_effort none) strips it + caps `max_tokens` to `off_max_tokens` (2048). Card
+`strips_thinking: false`. vLLM v0.20.2 emits reasoning in **`reasoning`** (not `reasoning_content`).
 
 Best sampling:
 - Thinking ON: `temperature=0.6`, `top_p=0.95`, `top_k=20`
@@ -47,8 +51,8 @@ Best sampling:
 - **SHM**: 12Gi (emptyDir Memory)
 - **Cold start**: 3-4 minutes (NFS model load + vLLM init)
 
-## Test Results (2026-06-11)
-**23/25 passed, 2 expected failures, 0 failed**
+## Test Results (2026-06-18)
+**30 passed, 3 expected, 0 failed** (33-check comprehensive battery)
 
 All OpenAI and Anthropic endpoints working:
 - ✅ Basic chat, streaming, system prompt
@@ -63,4 +67,4 @@ All OpenAI and Anthropic endpoints working:
 - `details.yaml` — ConfigMap (v2 card with param_translation, effort mode)
 - `inferenceservice.yaml` — KServe ISVC (vLLM v0.20.2, TP2, scale-to-zero 15m)
 - `pvc.yaml` — NFS PVC (100Gi RWX)
-- `test.py` — 25-check gateway test
+- `test.py` — 33-check comprehensive gateway test

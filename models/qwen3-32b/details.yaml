@@ -50,7 +50,8 @@ data:
           },
           "on":  {"chat_template_kwargs": {"enable_thinking": true}},
           "off": {"chat_template_kwargs": {"enable_thinking": false}},
-          "note": "Qwen3-32B thinking is binary. Maps reasoning_effort: none/low -> off, medium/high/max -> on."
+          "off_max_tokens": 2048,
+          "note": "Managed thinking. Qwen3-32B has a binary enable_thinking switch (a real off, unlike gpt-oss). ON (medium/high) exposes the `reasoning` field; OFF (reasoning_effort none/low -> enable_thinking false) produces no reasoning + caps max_tokens to off_max_tokens."
         }
       },
       "defaults": {
@@ -66,6 +67,28 @@ data:
         }
       },
       "schema_version": 2,
+      "custom_params": {
+        "schema": {
+          "reasoning_effort": {"type": "string", "enum": ["none","low","medium","high"], "default": "medium"}
+        },
+        "passthrough": true
+      },
+      "input_map": {
+        "messages": {"type": "array", "required": true, "description": "Chat messages [{role, content}]"},
+        "max_tokens": {"type": "integer", "required": false, "default": 32768, "max": 32768, "description": "Maximum tokens to generate"},
+        "temperature": {"type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0},
+        "top_p": {"type": "float", "required": false, "default": 0.8},
+        "top_k": {"type": "integer", "required": false, "default": 20},
+        "stream": {"type": "boolean", "required": false, "default": false},
+        "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high"], "default": "medium", "description": "none/low = thinking off; medium/high = on"},
+        "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (hermes parser)"},
+        "tool_choice": {"type": "string", "required": false}
+      },
+      "output_map": {
+        "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the `reasoning` field when thinking is ON)"},
+        "usage": {"type": "object", "description": "prompt_tokens, completion_tokens, total_tokens"}
+      },
       "catalog": {
         "description_short": "Qwen3-32B dense flagship: thinking mode, tool calling, 100+ languages, 40K context.",
         "description": "Qwen3-32B dense model (32.8B params, 64 layers, GQA). Supports thinking/reasoning mode (binary enable_thinking switch, on by default), agentic tool calling (hermes parser), and 100+ languages. Native context 32K, extended to 131K with YaRN. Best sampling: thinking mode → temp=0.6/topP=0.95; non-thinking → temp=0.7/topP=0.8/topK=20. Requires vLLM >= 0.8.5 with --reasoning-parser=qwen3.",

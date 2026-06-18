@@ -21,6 +21,10 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
   full OpenAI + Anthropic feature suite (stream/system/temp/top_k/stop/tools/max_tokens/usage),
   thinking ON/OFF/fake-budget/stream assertions on the `reasoning` field, OpenWebUI meta-tasks
   (title/tags/followups), vision guard, and catalog/guardrails.
+- **qwen3-32b** re-verified on the managed-thinking gateway — 33-check battery 30/3/0 (wake +
+  OpenAI/Anthropic + thinking on/off/budget/stream + meta-tasks + guardrails). Card: add
+  `off_max_tokens` + `input_map`/`output_map`/`custom_params` (v2 completeness) + managed-thinking
+  note; README/CLAUDE updated.
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 
