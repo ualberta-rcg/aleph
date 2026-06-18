@@ -1,46 +1,28 @@
 # MedGemma 27B IT
 
-Google MedGemma 27B instruction-tuned **multimodal** model for medical / radiology use
-(text + medical images). vLLM backend (TP2).
-[HuggingFace](https://huggingface.co/google/medgemma-27b-it)
+Google's **MedGemma 27B Instruct** — a medical multimodal model (Gemma 3-based, SigLIP medical image encoder) for radiology image understanding, clinical text, and medical Q&A. Served across 2× L40S (TP2).
+[HuggingFace: google/medgemma-27b-it](https://huggingface.co/google/medgemma-27b-it) · Gemma license (**gated — HF_TOKEN required**)
 
-## Resource Requirements
+## What it does
+- **Medical multimodal**: text + medical images (up to 5 per prompt) via OpenAI `image_url` content blocks.
+- **Context** 128K native, served at 32K (VRAM-limited: 27B BF16 ≈ 54 GB on 2× L40S). No tools, no reasoning mode.
+- **Research use** — not for unsupervised clinical decisions.
 
-| Resource | Request | Limit |
-|----------|---------|-------|
-| GPU | 2x L40S (TP2, 27B ~54 GB) | - |
-| Storage | PVC: `medgemma-27b-it-data` | - |
-
-## API Endpoint
-
+## Call it
 ```bash
-curl -X POST http://<gateway>/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "medgemma-27b-it",
-    "messages": [{"role": "user", "content": [{"type":"text","text":"Describe this image."},{"type":"image_url","image_url":{"url":"data:image/png;base64,..."}}]}],
-    "max_tokens": 100
-  }'
+curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
+  "model": "medgemma-27b-it",
+  "messages": [{"role": "user", "content": [
+    {"type": "text", "text": "What findings are visible in this chest X-ray?"},
+    {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+  ]}],
+  "max_tokens": 300
+}'
 ```
 
-## Scaling
+## Resources
+- 2× L40S (whole devices, TP2), `--disable-custom-all-reduce` (PCIe topology), `vllm/vllm-openai:v0.20.2`, bfloat16, `--trust-remote-code`. Weights ~54 GB on PVC `medgemma-27b-it` (gated repo).
+- Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~3-4 min.
 
-| Setting | Value |
-|---------|-------|
-| minReplicas | 0 (scale to zero) |
-| idle_retention | 15m |
-| Context Window | 32768 tokens |
-| Streaming | Yes |
-
-## Deploy
-
-```bash
-kubectl apply -f details.yaml
-kubectl apply -f inferenceservice.yaml
-```
-
-## Notes
-
-- Multimodal: vision supported (medical imaging). Tools: not supported. Reasoning: no.
-- Research use — not for unsupervised clinical decisions.
-- Validated 2026-06-18 via comprehensive gateway battery (`test.py`).
+## Source
+[HuggingFace: google/medgemma-27b-it](https://huggingface.co/google/medgemma-27b-it) · Gemma license (gated)

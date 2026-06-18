@@ -1,44 +1,28 @@
 # Gemma 3 4B IT
 
-Google Gemma 3 4B instruction-tuned **multimodal** model (text + image). vLLM backend.
-[HuggingFace](https://huggingface.co/google/gemma-3-4b-it)
+Google's **Gemma 3 4B Instruct** — a lightweight open multimodal model (SigLIP vision tower) accepting text + images in OpenAI chat format, with strong multilingual instruction-following for its size. Served on a single HAMi GPU slice.
+[HuggingFace: google/gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) · Gemma license
 
-## Resource Requirements
+## What it does
+- **Multimodal chat**: text + images (up to 8 images per prompt) via OpenAI `image_url` content blocks.
+- **Context** 128K native, served at 64K. No tools, no reasoning mode.
+- Text-only requests work normally; images are analyzed inline.
 
-| Resource | Request | Limit |
-|----------|---------|-------|
-| GPU | 1x HAMi slice (L40S) | - |
-| Storage | PVC: `gemma-3-4b-it-data` | - |
-
-## API Endpoint
-
+## Call it
 ```bash
-curl -X POST http://<gateway>/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gemma-3-4b-it",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 50
-  }'
+curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
+  "model": "gemma-3-4b-it",
+  "messages": [{"role": "user", "content": [
+    {"type": "text", "text": "Describe this image."},
+    {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+  ]}],
+  "max_tokens": 200
+}'
 ```
 
-## Scaling
+## Resources
+- 1× HAMi GPU slice (L40S, 20 GiB `gpumem`), TP1, `vllm/vllm-openai:v0.20.2`, bfloat16. CUDA graphs on (no `--enforce-eager`). `--limit-mm-per-prompt '{"image":8}'`. Weights on PVC `gemma-3-4b-it-data`.
+- Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~1-2 min.
 
-| Setting | Value |
-|---------|-------|
-| minReplicas | 0 (scale to zero) |
-| idle_retention | 15m |
-| Context Window | 65536 tokens |
-| Streaming | Yes |
-
-## Deploy
-
-```bash
-kubectl apply -f details.yaml
-kubectl apply -f inferenceservice.yaml
-```
-
-## Notes
-
-- Multimodal: vision supported (image_url content blocks). Tools: not supported. Reasoning: no.
-- Validated 2026-06-18 via comprehensive gateway battery (`test.py`).
+## Source
+[HuggingFace: google/gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) · Gemma license
