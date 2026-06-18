@@ -34,6 +34,7 @@ data:
         "strips_thinking": false
       },
       "param_translation": {
+        "thinking": { "mode": "none" },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
       },
@@ -45,6 +46,7 @@ data:
           "followups": { "max_tokens": 220 }
         }
       },
+      "custom_params": { "passthrough": true },
       "schema_version": 2,
       "catalog": {
         "description_short": "Qwen2.5-VL-3B — compact vision-language for images, video, OCR & docs, 32K ctx (1x GPU slice)",

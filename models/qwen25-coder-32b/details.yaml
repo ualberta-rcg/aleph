@@ -33,6 +33,7 @@ data:
         "strips_thinking": false
       },
       "param_translation": {
+        "thinking": { "mode": "none" },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
       },
