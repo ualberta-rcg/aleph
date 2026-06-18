@@ -180,9 +180,9 @@ def _meta(signal, name, cap):
     record("PASS" if ok else "FAIL", r.status_code, f"OAI meta {name}",
            f"rc_len={len(rc)} completion_tokens={ct} (cap {cap}) {safe(m,30)!r}")
 
-def meta_title():   _meta("Generate a concise, 3-5 word title", "title", 80)
-def meta_tags():    _meta("Generate 1-3 broad tags", "tags", 60)
-def meta_followups(): _meta("Suggest 3-5 relevant follow-up questions", "followups", 220)
+def meta_title():   _meta("Generate a concise, 3-5 word title", "title", 1500)
+def meta_tags():    _meta("Generate 1-3 broad tags", "tags", 1500)
+def meta_followups(): _meta("Suggest 3-5 relevant follow-up questions", "followups", 3000)
 
 # ── Vision guard (text-only) ──────────────────────────────────────────────────
 def vision_rejected():

@@ -35,25 +35,24 @@ data:
       "param_translation": {
         "thinking": {
           "mode": "budget",
-          "budget_support": true,
-          "answer_reserve": 512,
           "default_effort": "medium",
           "disabled_effort": "none",
-          "off_max_tokens": 2048,
+          "answer_reserve": 512,
+          "off_max_tokens": 4096,
           "effort_aliases": {
             "none": "none", "minimal": "none", "disabled": "none",
             "low": "low", "medium": "medium", "med": "medium",
             "high": "high", "xhigh": "xhigh", "max": "max"
           },
           "effort_map": {
-            "none":  { "thinking_token_budget": 0 },
+            "none":  { "thinking_token_budget": 512 },
             "low":   { "thinking_token_budget": 1024 },
             "medium":{ "thinking_token_budget": 4096 },
             "high":  { "thinking_token_budget": 12288 },
             "xhigh": { "thinking_token_budget": 24576 },
             "max":   { "thinking_token_budget": null }
           },
-          "note": "Managed thinking (budget mode). ON (medium/high) exposes the `reasoning` field. QUIRKS: phi-4 always emits a CoT trace, so requests need adequate max_tokens (>=~4000) or reasoning eats the whole budget and content comes back empty; the OFF path (budget 0) is unreliable on the vLLM V1 engine (redacted_thinking not always extracted -> empty content, vllm#18141). Give generous max_tokens."
+          "note": "Managed thinking (budget mode). phi-4 always reasons. ON (medium/high) exposes `reasoning` (budget controls depth). OFF (reasoning_effort none) -> budget 512 (REDUCE — not 0; budget 0 is mishandled per vLLM#18141, burns tokens/empty content) + strip the reasoning + cap max_tokens. Requests still need adequate max_tokens or reasoning eats the budget."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
@@ -66,9 +65,9 @@ data:
           "thinking": { "enabled": true, "effort": "medium" }
         },
         "meta_tasks": {
-          "title":     { "max_tokens": 80,  "thinking": { "effort": "none" } },
-          "tags":      { "max_tokens": 60,  "thinking": { "effort": "none" } },
-          "followups": { "max_tokens": 220, "thinking": { "effort": "none" } }
+          "title":     { "max_tokens": 1500,  "thinking": { "effort": "none" } },
+          "tags":      { "max_tokens": 1500,  "thinking": { "effort": "none" } },
+          "followups": { "max_tokens": 3000, "thinking": { "effort": "none" } }
         }
       },
       "schema_version": 2,

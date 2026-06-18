@@ -52,6 +52,10 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
 - **qwen35-122b**: DEPLOYED on 230 (was NO-ISVC) — TP4 122B FP8, weights pre-staged on PVC;
   28-check 25/3/0 (managed toggle thinking, qwen3_coder tools, vision off via --language-model-only).
   Card: off_max_tokens + input_map/output_map.
+- **phi-4-reasoning**: FIXED the OFF path — budget mode with REDUCE-off (effort_map none →
+  thinking_token_budget 512, NOT 0). budget 0 was mishandled (vLLM#18141: burns tokens, empty
+  content). OFF now = reduce reasoning (512) + strip + cap → content returns. Meta caps bumped
+  (phi-4 reasons a lot). 31-check 26/5/0. (Research: vLLM#18141 phi-4+deepseek_r1 finicky.)
 
 ## 2026-06-15 — GLM-4 tool calling working; Anthropic streaming tool_use fix
 
