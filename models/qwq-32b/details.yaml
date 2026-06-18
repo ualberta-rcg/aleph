@@ -33,15 +33,20 @@ data:
         "strips_thinking": false
       },
       "param_translation": {
+        "thinking": {
+          "mode": "always_on",
+          "off_max_tokens": 4096,
+          "note": "Managed always-on thinking. qwq always reasons (deepseek_r1 parser). Default ON -> expose the `reasoning` field. OFF (reasoning_effort none / meta-task) -> can't stop reasoning, so strip the reasoning + cap max_tokens to off_max_tokens (reduce what fits). Meta-tasks may still come back short/empty (qwq thinks a lot)."
+        },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
       },
       "defaults": {
         "chat": { "temperature": 0.6, "top_p": 0.95, "max_tokens": 32768 },
         "meta_tasks": {
-          "title":     { "max_tokens": 80 },
-          "tags":      { "max_tokens": 60 },
-          "followups": { "max_tokens": 220 }
+          "title":     { "max_tokens": 1500, "thinking": {"enabled": false} },
+          "tags":      { "max_tokens": 1500, "thinking": {"enabled": false} },
+          "followups": { "max_tokens": 3000, "thinking": {"enabled": false} }
         }
       },
       "custom_params": {

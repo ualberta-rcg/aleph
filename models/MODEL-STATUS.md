@@ -141,7 +141,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwen35-122b | chat | true | /v1/chat/completions | NO-ISVC | — | NOT DEPLOYED on 230 (TP4 122B FP8, whole node); card/docs exist but no InferenceService. Skip-and-note — deploy is a heavy TP4 op. |
 | qwen36-27b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; Gated-DeltaNet hybrid; managed thinking (effort + enable_thinking) + vision + tools (qwen3_coder); 30-check test 28/2/0 ✅ 2026-06-18 |
 | qwen36-35b-a3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 35B MoE (3B active) hybrid Gated-DeltaNet; managed thinking (effort + enable_thinking) + tools (qwen3_coder) + vision; 64K ctx; 30-check test 28/2/0 ✅ 2026-06-18 |
-| qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; always-on reasoning (deepseek_r1 parser, no thinking toggle); tools (hermes parser); 32K ctx; 21/21 gateway test ✅ 2026-06-11; reasoning_content present; vision correctly rejected; ~2min cold start; **NIM available:** `nvcr.io/nim/qwen/qwq-32b` |
+| qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; managed always-on thinking (deepseek_r1) — ON exposes reasoning, OFF strips+caps; tools (hermes); 32K ctx; 21-check test 18/3/0 ✅ 2026-06-18 |
 | r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | FIXED | vLLM v0.20.2 TP4 whole-device; tokenizer_class patch (was Ġ/Ċ garbled); 40km/h correct; max-len 65536 |
 | r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 12^2=144; deepseek_r1 parser; max-len 65536 (KV fit) |
 | retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
@@ -215,7 +215,7 @@ retained in the local working dir.)
 | qwen3-235b | none | — | hermes | — | v2 | 21/21 |
 | qwen35-122b | toggle | qwen3 | qwen3_coder | — | v2 | NO-ISVC |
 | qwen36-35b-a3b | effort | qwen3 | qwen3_coder | ✅ | v2 | 28/2 (30) |
-| qwq-32b | always-on | deepseek_r1 | hermes | — | v2 | 21/21 |
+| qwq-32b | always-on | deepseek_r1 | hermes | — | v2 | 18/3 (21) |
 | gpt-oss-120b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
 | gpt-oss-20b | effort | openai_gptoss | openai | — | v2 | 30/3 (33) |
 | phi-4-reasoning | budget | deepseek_r1 | — | — | v2 | 26/5 (31) ⚠ always-reasons + V1 quirk |
