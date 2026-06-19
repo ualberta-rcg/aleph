@@ -28,6 +28,11 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   already rich — added `max_completion_tokens` only. New `test.py` (10-check protein-embed battery:
   dim 1280 / batch / distinctness cos<0.99 / truncation / guardrails / catalog), README, CLAUDE.
   Custom transformers server on a HAMi GPU slice, scale-to-zero. Validation: **8 PASS / 2 EXP / 0 FAIL**.
+- **scibert:** **rewrote the card from old-schema to v2 Template C** (it had top-level fields +
+  `compatibility`/`deployment`/`server_config` blocks; gateway reads `behavior.*`, not `compatibility.*`).
+  Removed `kustomization.yaml` (convention: `apply -f`, no kustomize). New `test.py` (10-check
+  scientific-embed battery: dim 768 / batch / distinctness / truncation / guardrails / catalog),
+  README, refreshed CLAUDE. Custom transformers server, CPU, scale-to-zero. Validation: **8 PASS / 2 EXP / 0 FAIL**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
