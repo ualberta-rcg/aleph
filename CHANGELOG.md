@@ -18,6 +18,11 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   inside the gateway pod). New README + CLAUDE. PVC already RWX — no split needed.
   Validation: **8 PASS / 2 EXP / 0 FAIL / 1 SKIP** (2 EXP = chat→embed 404 + unknown-model 404;
   1 SKIP = truncation). Live card re-applied (`configmap/bge-m3-details configured`).
+- **bge-reranker-v2-m3:** enriched card to full Template C (`status`, `input_map`/`output_map` for
+  the `/v1/rerank` shape, `cross_encoder`, full description). New `test.py` — the 11-check rerank
+  battery (basic / top_n / descending scores in [0,1] / relevance / model-echo / return_documents /
+  guardrails / catalog). New README + CLAUDE. PVC already RWX. Validation: **8 PASS / 3 EXP / 0 FAIL**
+  (3 EXP = chat→404, embed→424, unknown-model 404). Live card re-applied.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

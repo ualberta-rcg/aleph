@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "bge-reranker-v2-m3",
+      "status": "production",
       "type": "reranker",
       "endpoints": { "primary": "/v1/rerank", "health": "/health" },
       "routing": {
@@ -17,22 +18,25 @@ data:
         "no_stream": true,
         "upstream_model_id": null
       },
-      "limits": { "max_completion_tokens": 0, "context_window": 8192 },
+      "limits": { "max_completion_tokens": 0, "context_window": 8192, "max_input_tokens": 8192 },
       "scaling": {
         "scale_to_zero": false,
         "min_replicas": 1,
         "idle_retention": "always-on",
-        "cold_start_estimate": "30-60 seconds"
+        "cold_start_estimate": "10-40 seconds (weights + ONNX on PVC)"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
         "strips_thinking": false
       },
       "param_translation": {
         "thinking": { "mode": "none" },
         "max_tokens": { "field": null }
       },
+      "defaults": {},
       "custom_params": {
         "schema": {
           "top_n": { "type": "integer" },
@@ -41,20 +45,31 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "query": { "type": "string", "required": true, "description": "Search query" },
+        "documents": { "type": "array", "required": true, "description": "Candidate passages to score against the query (gateway maps to TEI 'texts')" },
+        "top_n": { "type": "integer", "required": false, "description": "Return only the top-N results (default: all)" },
+        "return_documents": { "type": "boolean", "required": false, "default": false, "description": "Include each result's document text" }
+      },
+      "output_map": {
+        "results": { "type": "array", "description": "Ranked [{index, relevance_score (0-1 sigmoid), document?}] sorted by relevance_score desc" },
+        "model": { "type": "string", "description": "Model name" }
+      },
       "catalog": {
-        "description_short": "BAAI bge-reranker-v2-m3 multilingual cross-encoder (TEI, CPU)",
-        "description": "BGE Reranker v2-M3 cross-encoder for re-ranking retrieval results. 568M params, 100+ languages. Cohere/Jina-style /v1/rerank API (gateway-translated to TEI /rerank). ONNX/ORT backend for fast large-batch reranking. Always-on CPU.",
+        "description_short": "BAAI bge-reranker-v2-m3 multilingual cross-encoder reranker (TEI/ONNX, CPU always-on)",
+        "description": "BGE-Reranker v2-M3 is a multilingual cross-encoder for re-ranking retrieval results (the second-stage rerank in a hybrid RAG pipeline, after a retriever like bge-m3). ~568M params, XLM-RoBERTa backbone, 100+ languages, up to 8192 tokens. The init container exports the model to ONNX once (idempotent via a sentinel file) so TEI serves it on the ORT backend for fast large-batch scoring. Served CPU-only via TEI; the gateway exposes a Cohere/Jina-style /v1/rerank and translates it to the TEI native /rerank. Relevance scores are sigmoid-normalized to [0,1].",
         "owned_by": "BAAI",
         "source": "BAAI/bge-reranker-v2-m3",
         "source_url": "https://huggingface.co/BAAI/bge-reranker-v2-m3",
         "license": "MIT",
         "parameters": "568M",
         "precision": "onnx-fp32",
-        "framework": "text-embeddings-inference",
+        "framework": "text-embeddings-inference (cpu-1.6, ORT backend)",
         "domain": "nlp",
         "subdomain": "reranking",
         "gpu": false,
+        "cross_encoder": true,
         "max_input_tokens": 8192,
-        "tags": ["reranker", "multilingual", "rag", "cross-encoder", "cohere-compatible", "cpu"]
+        "tags": ["reranker", "multilingual", "cross-encoder", "rag", "cohere-compatible", "cpu"]
       }
     }
