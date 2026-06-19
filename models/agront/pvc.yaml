@@ -1,0 +1,13 @@
+# Venv + model persist on NFS (nfs-client, ReadWriteMany) so scale-from-zero cold starts skip the
+# re-download. Split out of inferenceservice.yaml 2026-06-19.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agront-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 20Gi

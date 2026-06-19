@@ -83,18 +83,23 @@ data:
 
     @app.post("/v1/embeddings")
     async def embeddings(request: dict):
+        # OpenAI-style: {model, input(str|list)} -> {object, data:[{embedding}], model, usage}.
+        # Supports batch (list input) and truncates >1024 tokens (in _embed) rather than rejecting.
         if not model:
             raise HTTPException(503, "Model not loaded yet")
-        seq = request.get("input", "").upper().strip()
-        if not seq:
+        inp = request.get("input", "")
+        seqs = [inp] if isinstance(inp, str) else list(inp)
+        seqs = [str(s).upper().strip() for s in seqs if s and str(s).strip()]
+        if not seqs:
             raise HTTPException(400, "input required")
-        if len(seq) > 6000:
-            raise HTTPException(400, "sequence length > 6000 bp")
         loop = asyncio.get_event_loop()
-        emb = await loop.run_in_executor(None, _embed, seq)
-        return JSONResponse({"object": "list", "data": [
-            {"object": "embedding", "embedding": emb, "index": 0}
-        ], "model": "agront"})
+        data, total = [], 0
+        for i, seq in enumerate(seqs):
+            emb = await loop.run_in_executor(None, _embed, seq)
+            data.append({"object": "embedding", "embedding": emb, "index": i})
+            total += len(seq)
+        return JSONResponse({"object": "list", "data": data, "model": "agront",
+                             "usage": {"prompt_tokens": total, "total_tokens": total}})
 
     @app.post("/v1/science/predict")
     async def predict(request: dict):
@@ -117,18 +122,6 @@ data:
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: agront-data
-  namespace: models
-spec:
-  accessModes: ["ReadWriteMany"]
-  storageClassName: nfs-client
-  resources:
-    requests:
-      storage: 20Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
