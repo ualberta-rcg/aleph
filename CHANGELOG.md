@@ -148,6 +148,10 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   query encoder (768-dim, 64-token context — pair with medcpt-article). Server already compliant.
   Added 9-check medical-query embed test.py + README. GPU (8 GiB), scale-to-zero.
   Validation: **7 PASS / 2 EXP / 0 FAIL**.
+- **medcpt-article:** old-schema card rewritten to v2; migrated PVC RWO→RWX (nfs-models). NCBI MedCPT
+  article encoder (768-dim, 512-token context — pair with medcpt-query). Server already compliant.
+  Added 9-check medical-document embed test.py + README. GPU (8 GiB), scale-to-zero.
+  Validation: **7 PASS / 2 EXP / 0 FAIL**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
