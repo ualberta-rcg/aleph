@@ -79,6 +79,13 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   ESM-C's cold rebuild (esm SDK venv + ~1.2GB model) is slow (>6min) — the test wake window timed
   out once; re-ran after Ready → green. Added 10-check protein-embed test.py (960-dim), README,
   refreshed CLAUDE. GPU, scale-to-zero. Validation: **8 PASS / 2 EXP / 0 FAIL** (dim 960, ctx 2048).
+- **Fast RWX batch (chemberta, clinicalbert, splicebert, specter2):** chemberta + clinicalbert cards
+  were already v2 (added test.py + README). splicebert + specter2 old-schema cards rewritten to v2
+  Template C (+ test.py + README; splicebert source corrected DNA_bert_6→SpliceBERT). All RWX (no
+  migration), CPU, scale-to-zero. Results: chemberta **8/2/0**, clinicalbert **8/2/0**, specter2
+  **8/2/0**, **splicebert 7/3/0** — its distinctness check is EXP because SpliceBERT is a token-level
+  splice-site model whose mean-pooled sequence embeddings aren't discriminative (cos~1.0); use
+  per-token outputs for splice tasks.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

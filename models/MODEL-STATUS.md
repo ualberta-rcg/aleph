@@ -281,6 +281,10 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | esm2-150m | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | 640-dim; recreated PVC (nfs-models) |
 | biomedbert | 8/2/0 | v2 (fixed desc) | RWX | fixed PubMedBERT→BiomedBERT copy-paste |
 | esmc-300m | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | 960-dim; cold rebuild >6min |
+| chemberta | 8/2/0 | v2 (was v2) | RWX | SMILES; added test+README |
+| clinicalbert | 8/2/0 | v2 (was v2) | RWX | MIMIC clinical; added test+README |
+| splicebert | 7/3/0 | v2 (rewrote) | RWX | token-level model; mean-pool not discriminative |
+| specter2 | 8/2/0 | v2 (rewrote) | RWX | paper embeddings |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs

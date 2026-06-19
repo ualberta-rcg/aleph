@@ -9,73 +9,65 @@ data:
   details.json: |
     {
       "id": "specter2-110m",
+      "status": "production",
       "type": "embedding",
-      "description_short": "SPECTER2 — scientific paper embeddings (768-dim)",
-      "description": "SPECTER2 by Allen AI. 110M params. Scientific paper embedding model trained on 6M citation triplets across 23 scientific fields. Takes title+abstract as input, produces 768-dimensional dense embeddings. Ideal for paper search, citation recommendation, and document clustering. Based on SciBERT backbone with additional pre-training on citation graphs. Max sequence length 512 tokens.",
-      "context_window": 512,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
-      },
-      "owned_by": "allenai",
-      "source": "allenai/specter2_base",
-      "source_url": "https://huggingface.co/allenai/specter2_base",
-      "license": "Apache-2.0",
-      "parameters": "110M",
-      "parameter_count": 110000000,
-      "precision": "fp32",
-      "architecture": "transformer",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "startup_seconds": 30,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
       "routing": {
         "k8s_name": "specter2",
+        "serialize": false,
         "no_stream": true,
         "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
-        "supports_vision": false,
-        "reasoning_model": false
+      "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "30-60 seconds (venv + model on PVC)"
       },
-      "domain": "nlp",
-      "subdomain": "scientific-text-embeddings",
-      "tags": ["embedding", "science", "nlp", "papers", "citation"],
-      "content_types": ["text"],
-      "tier": "production",
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
         "input": {
           "type": "string or array of strings",
           "required": true,
-          "description": "Paper text: 'Title: <title>. Abstract: <abstract>' or arbitrary text"
+          "description": "Paper text — 'Title: <title>. Abstract: <abstract>' (or arbitrary text); truncated to 512 tokens."
         }
       },
       "output_map": {
-        "object": "string (list)",
-        "model": "string",
-        "data": {
-          "type": "array",
-          "items": {
-            "object": "string (embedding)",
-            "index": "int",
-            "embedding": "[float x 768]"
-          }
-        },
-        "usage": {"prompt_tokens": "int", "total_tokens": "int"}
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 768]" }, "description": "768-dim mean-pooled (attention-masked) embeddings" },
+        "model": { "type": "string", "description": "Model name (specter2-110m)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "framework": "transformers (HuggingFace)",
-        "max_seq_length": 512,
+      "catalog": {
+        "description_short": "AllenAI SPECTER2 — 768-dim scientific paper embeddings (CPU, scale-to-zero)",
+        "description": "SPECTER2 (allenai/specter2_base): 110M scientific paper embedding model, SciBERT backbone further trained on ~6M citation triplets across 23 fields. Takes title+abstract, produces 768-dim mean-pooled dense embeddings for paper search, citation recommendation, and document clustering. Max 512 tokens. Served CPU-only via a custom transformers FastAPI server, scale-to-zero.",
+        "owned_by": "AllenAI",
+        "source": "allenai/specter2_base",
+        "source_url": "https://huggingface.co/allenai/specter2_base",
+        "license": "Apache-2.0",
+        "parameters": "110M",
+        "precision": "fp32",
+        "framework": "transformers (custom FastAPI server)",
+        "domain": "nlp",
+        "subdomain": "scientific-text-embeddings",
+        "gpu": false,
+        "embedding_dimensions": 768,
         "pooling": "mean (attention-masked)",
-        "embedding_dim": 768
+        "max_input_tokens": 512,
+        "tags": ["embedding", "science", "nlp", "papers", "citation", "cpu"]
       }
     }
