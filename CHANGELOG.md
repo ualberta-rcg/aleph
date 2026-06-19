@@ -15,6 +15,8 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
 - **gpt-oss-120b / gpt-oss-20b**: hardened to 34-check battery; both **31/3/0** (3 EXP = vision /
   embed / bad-model guards). Managed thinking ON exposes `reasoning`, OFF strips + caps; tools,
   Anthropic parity, streaming reasoning, meta-tasks all green. README Testing sections added.
+- **qwen3-32b**: hardened to 34-check battery; **31/3/0**. Effort + binary `enable_thinking` (real
+  off); hermes tools, thinking on/off/budget/stream green.
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 

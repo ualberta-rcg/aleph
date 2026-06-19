@@ -17,7 +17,7 @@ kubectl apply -f details.yaml
 
 ## Testing
 
-The 33-check comprehensive battery runs inside the gateway pod (the first check wakes the
+The 34-check comprehensive battery runs inside the gateway pod (the first check wakes the
 model if it's scaled to zero):
 
 ```bash
@@ -25,8 +25,9 @@ cat models/qwen3-32b/test.py | \
   kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Last run: **30 passed, 3 expected, 0 failed** (wake + OpenAI/Anthropic features + thinking
-on/off/budget/stream + meta-tasks + guardrails).
+Last run (2026-06-18): **31 passed, 3 expected, 0 failed** — answer/finish_reason/tool-name/
+model-echo/truncation assertions + thinking on/off/budget/stream + meta-tasks + Anthropic
+parity + guardrails. (3 EXP = vision-rejected, embed-via-Anthropic, bad-model.)
 
 ## Key Configuration
 
