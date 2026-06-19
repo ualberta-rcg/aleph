@@ -1,0 +1,13 @@
+# Venv + HF cache persist on NFS (ReadWriteMany, nfs-models) so scale-from-zero cold starts skip the
+# re-download. Migrated RWO→RWX 2026-06-19 (was bound ReadWriteOnce, immutable → delete+recreate).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scincl-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 3Gi
