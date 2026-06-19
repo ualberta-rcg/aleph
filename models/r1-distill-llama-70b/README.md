@@ -17,5 +17,15 @@ OFF (`reasoning_effort: none` / meta-task) **strips** the reasoning + caps `max_
 - `tokenizer_class` patched (fixes Ġ/Ċ garbling). Scale-to-zero 15-min; cold start ~4–5 min.
 - Takes the whole GPU node — can't coexist with other whole-GPU models.
 
+## Testing
+The 26-check always-on battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/r1-distill-llama-70b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **21 PASS / 5 EXP / 0 FAIL** — always-on reasoning exposed by default,
+stripped + off-capped on `none`/meta, streaming reasoning, stop/system, tools-rejected +
+vision-rejected guards, Anthropic parity. (`stop_seq` uses a 2048 budget — the reasoner burns tokens
+on CoT before reaching the stop token.)
+
 ## Source
 [deepseek-ai/DeepSeek-R1-Distill-Llama-70B](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B)

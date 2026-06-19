@@ -38,6 +38,8 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
 - **r1-distill-qwen-32b**: hardened to 26-check always-on battery; **21/5/0**. `stop_seq` needs a
   2048 budget (always-on CoT eats a small one before reaching the stop token). README Testing
   section added.
+- **r1-distill-llama-70b**: hardened to 26-check always-on battery; **21/5/0** (TP4). Same stop_seq
+  2048 fix. README Testing section added. **All 11 reasoning models now retested + hardened.**
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
