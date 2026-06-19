@@ -63,6 +63,11 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   to `pvc.yaml`** (live PVC is on `nfs-models`, not `nfs-client` — matched it). Added 10-check biomedical
   embed test.py, README, CLAUDE. Custom transformers server (BertModel), GPU 3 GiB slice, scale-to-zero.
   Validation: **8 PASS / 2 EXP / 0 FAIL** (dim 768).
+- **pubmedbert:** old-schema card rewritten to v2 Template C; dropped `kustomization.yaml`. Added
+  10-check biomedical embed test.py + README; refreshed CLAUDE. Custom transformers server (CPU),
+  scale-to-zero. Validation: **8 PASS / 2 EXP / 0 FAIL** (dim 768); live card re-applied.
+- **MODEL-STATUS.md:** added an "Embeddings pass (2026-06-19)" section tracking the hardened
+  re-verification + Template-C card + RWX status per model (the legacy rows are from the 06-08 loop).
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

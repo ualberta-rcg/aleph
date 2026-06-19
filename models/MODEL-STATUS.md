@@ -258,3 +258,27 @@ Notes:
 | **none** | non-reasoning model | gemma-3-4b-it, most chat models | no thinking translation |
 
 Card template + v1→v2 migration: see `models/DETAILS-TEMPLATE-LLM.md` and `models/MIGRATION.md`.
+
+## Embeddings pass (2026-06-19) — hardened re-verification + Template-C cards
+
+Re-running the embedding/rerank models through the gateway with correctness-asserting `test.py`s,
+rewriting old-schema cards to v2 Template C, splitting/migrating PVCs to RWX, and adding README +
+CLAUDE per dir. (The rows in the main table above are from the 2026-06-08 loop; this is the deeper
+pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `main`.
+
+| Model | Result | Card | PVC | Note |
+|---|---|---|---|---|
+| bge-m3 | 9/2/0 | v2 | RWX | mem 8→16 Gi (OOM fix); truncation now passes |
+| bge-reranker-v2-m3 | 8/3/0 | v2 | RWX | rerank battery; type-mismatch 404/424 |
+| esm2-650m | 8/2/0 | v2 | RWX (split) | protein embed; apply details.yaml only |
+| scibert | 8/2/0 | v2 (rewrote) | RWX | dropped kustomize |
+| bge-small | 9/2/0 | v2 (created) | none | no card existed; TEI fetches model |
+| multilingual-e5-small | 9/2/0 | v2 (rewrote) | RWX | card had wrong endpoint/framework |
+| dnabert-2 | 8/2/0 | v2 (rewrote) | RWX | torch-2.5.1 op pin |
+| esm1b | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | recreated PVC; re-download validated |
+| biobert | 8/2/0 | v2 | RWX (split, nfs-models) | — |
+| pubmedbert | 8/2/0 | v2 (rewrote) | RWX | dropped kustomize; served id pubmedbert-110m |
+
+**Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
+reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
+repo `nfs-client` (immutable; matched live). No non-HF downloaders found (all HF `snapshot_download`).
