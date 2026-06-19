@@ -30,5 +30,12 @@ curl $GW/v1/messages -d '{"model":"gpt-oss-120b","max_tokens":16000,
 - 2× L40S (whole devices, no `gpumem`), **TP2**, `--disable-custom-all-reduce` (L40S PCIe topology, no NVLink P2P), `vllm/vllm-openai:v0.20.2`.
 - ~200 tok/s; weights ~60 GB on PVC. Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~2–3 min.
 
+## Testing
+The 34-check battery runs inside the gateway pod (the first check wakes a scaled-to-zero model):
+```bash
+cat models/gpt-oss-120b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **31 PASS / 3 EXP / 0 FAIL** — managed thinking ON/OFF + token-budget + streaming reasoning, tools, Anthropic parity, truncation, meta-tasks, guardrails. (3 EXP = vision-rejected `400`, embed-via-Anthropic `400`, bad-model `404`.)
+
 ## Source
 [HuggingFace: openai/gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b) · Apache-2.0

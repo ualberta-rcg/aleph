@@ -3,6 +3,19 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
+
+Re-running the 29 chat LLMs through the gateway and tightening each per-model `test.py` from
+status-only checks to correctness assertions. Shared hardening (folded into existing checks,
++1 new `truncation` probe, 33→34 checks for reasoning models): `temp0` asserts the answer contains
+"Paris"; `stop_seq` asserts `finish_reason=="stop"`; `tools` asserts the called function name;
+`stream` requires non-zero chunks; `usage` asserts the `model` field echoes the requested id;
+`truncation` (`max_tokens=5` → `finish_reason=="length"`). Each README gets a Testing section
+(run command + last result).
+- **gpt-oss-120b / gpt-oss-20b**: hardened to 34-check battery; both **31/3/0** (3 EXP = vision /
+  embed / bad-model guards). Managed thinking ON exposes `reasoning`, OFF strips + caps; tools,
+  Anthropic parity, streaming reasoning, meta-tasks all green. README Testing sections added.
+
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
 - **gateway**: managed-thinking models (`param_translation.thinking.mode` in budget/effort/toggle)
