@@ -23,6 +23,11 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   battery (basic / top_n / descending scores in [0,1] / relevance / model-echo / return_documents /
   guardrails / catalog). New README + CLAUDE. PVC already RWX. Validation: **8 PASS / 3 EXP / 0 FAIL**
   (3 EXP = chat→404, embed→424, unknown-model 404). Live card re-applied.
+- **esm2-650m:** **split the inlined PVC** out of `inferenceservice.yaml` into a standalone RWX
+  `pvc.yaml` (the "mixed PVC" cleanup; the server.py ConfigMap stays in the ISVC file). Card was
+  already rich — added `max_completion_tokens` only. New `test.py` (10-check protein-embed battery:
+  dim 1280 / batch / distinctness cos<0.99 / truncation / guardrails / catalog), README, CLAUDE.
+  Custom transformers server on a HAMi GPU slice, scale-to-zero. Validation: **8 PASS / 2 EXP / 0 FAIL**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

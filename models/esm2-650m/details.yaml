@@ -21,6 +21,7 @@ data:
         "upstream_model_id": null
       },
       "limits": {
+        "max_completion_tokens": 0,
         "context_window": 1022,
         "max_input_tokens": 1022
       },
