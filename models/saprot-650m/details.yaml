@@ -11,31 +11,63 @@ data:
       "id": "saprot-650m",
       "status": "production",
       "type": "embedding",
-      "description_short": "Structure-aware protein LM combining amino acids and 3Di tokens (Westlake)",
-      "description": "SaProt 650M from Westlake University combines amino acid and 3Di structure tokens in a single vocabulary, making it structure-aware. Uses AF2-predicted structures for training. ESM-2 backbone architecture. Embeddings encode both sequence and structural information. 650M parameters.",
-      "context_window": 1024,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": {
+        "k8s_name": "saprot-650m",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "owned_by": "westlake-repl",
-      "source": "westlake-repl/SaProt_650M_AF2",
-      "source_url": "https://huggingface.co/westlake-repl/SaProt_650M_AF2",
-      "license": "MIT",
-      "parameters": "650M",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "ESM-2 (AA+3Di vocabulary)",
-      "framework": "transformers + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "saprot-650m-data", "pvc_size": "10Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "saprot-650m", "api_name": "saprot-650m"},
-      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
-      "domain": "proteomics",
-      "subdomain": "structure-aware-embedding",
-      "tags": ["embedding", "science", "proteomics", "protein", "structure", "gpu"],
-      "content_types": ["text"],
-      "languages": ["protein"],
-      "input_map": {"input": "amino acid sequence(s) with optional 3Di tokens (e.g. 'M#a#K#b#')", "sequences": "alias for input"},
-      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "saprot-650m"},
-      "tier": 2
+      "limits": { "max_completion_tokens": 0, "context_window": 1024, "max_input_tokens": 1024 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes (venv + model cached on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "Protein sequence(s) as 1-letter AA codes (SaProt also accepts interleaved foldseek 3Di structure tokens); truncated to 1024 tokens."
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 1280]" }, "description": "1280-dim mean-pooled structure-aware protein embeddings" },
+        "model": { "type": "string", "description": "Model name (saprot-650m)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens} (residue counts)" }
+      },
+      "catalog": {
+        "description_short": "SaProt 650M — structure-aware protein LM (AA+3Di vocab), 1280-dim (GPU, scale-to-zero)",
+        "description": "SaProt 650M (westlake-repl/SaProt_650M_AF2): structure-aware protein language model trained on a fused amino-acid + 3Di (foldseek structure) vocabulary, so it captures both sequence and structure. ESM-2 650M backbone; produces 1280-dim mean-pooled embeddings for function/structure/variant tasks. Max 1024 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice (10 GiB), scale-to-zero. OpenAI-compliant /v1/embeddings (batch + usage).",
+        "owned_by": "Westlake University (westlake-repl)",
+        "source": "westlake-repl/SaProt_650M_AF2",
+        "source_url": "https://huggingface.co/westlake-repl/SaProt_650M_AF2",
+        "license": "MIT",
+        "parameters": "650M",
+        "precision": "fp16 (GPU)",
+        "framework": "transformers EsmModel (custom FastAPI server)",
+        "domain": "proteomics",
+        "subdomain": "protein-language-model",
+        "gpu": true,
+        "embedding_dimensions": 1280,
+        "pooling": "mean",
+        "max_input_tokens": 1024,
+        "tags": ["embedding", "science", "proteomics", "protein", "structure-aware", "saprot"]
+      }
     }

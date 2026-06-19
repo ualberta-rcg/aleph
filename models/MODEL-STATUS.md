@@ -294,6 +294,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | ankh | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | protein T5 encoder; server already compliant |
 | biolinkbert | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | biomedical; gateway 404 during cold-start (pre-warm) |
 | biomed-roberta | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | biomedical RoBERTa; server compliant |
+| saprot-650m | 7/3/0 | v2 (rewrote) | RWX (RWO→RWX) | structure-aware; ⚠ distinctness cos=1.0 anomaly (plain-AA collapsed) |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
