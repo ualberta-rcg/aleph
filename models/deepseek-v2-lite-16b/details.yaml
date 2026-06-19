@@ -107,7 +107,7 @@ data:
       },
       "catalog": {
         "description_short": "DeepSeek-V2-Lite-Chat 16B MoE (2.4B active), Multi-head Latent Attention, bilingual EN/ZH",
-        "description": "DeepSeek-V2-Lite-Chat. 15.7B total / 2.4B active MoE (DeepSeekMoE: 2 shared + 64 routed experts, 6 activated). Uses Multi-head Latent Attention (MLA) for efficient KV-cache compression. Strong bilingual (English/Chinese) chat. No reasoning mode, no tool calling. Served on a HAMi GPU slice with --enforce-eager (MLA attention requires it).",
+        "description": "DeepSeek-V2-Lite-Chat. 15.7B total / 2.4B active MoE (DeepSeekMoE: 2 shared + 64 routed experts, 6 activated). Uses Multi-head Latent Attention (MLA) for efficient KV-cache compression. Strong bilingual (English/Chinese) chat. No reasoning mode, no tool calling. Served TP1 on a HAMi GPU slice, bf16 (MLA attention runs WITHOUT --enforce-eager on vLLM v0.20.2 — removed in commit 1826eb2, 14/14 tests pass).",
         "owned_by": "deepseek-ai",
         "source": "deepseek-ai/DeepSeek-V2-Lite-Chat",
         "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite-Chat",
