@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bge-small-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "bge-small",
+      "status": "production",
+      "type": "embedding",
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": {
+        "k8s_name": "bge-small",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "idle_retention": "always-on",
+        "cold_start_estimate": "20-40 seconds (TEI fetches the ~130MB model on start)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": {
+        "schema": {
+          "encoding_format": { "type": "string", "default": "float" }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array",
+          "required": true,
+          "description": "English text (or list) to embed; each truncated to 512 tokens."
+        },
+        "encoding_format": {
+          "type": "string",
+          "required": false,
+          "default": "float",
+          "description": "'float' (default) or 'base64' (float32 bytes)"
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\"" },
+        "data": { "type": "array", "description": "One {object:'embedding', index, embedding:[float x 384]} per input" },
+        "model": { "type": "string", "description": "TEI model-id (echoed as BAAI/bge-small-en-v1.5)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
+      },
+      "catalog": {
+        "description_short": "BAAI bge-small-en-v1.5 English embeddings: 384-dim, 512 ctx, TEI/CPU always-on",
+        "description": "BGE-small-en-v1.5 is the smallest BGE v1.5 English embedding model (~33M params, 6 layers). Produces 384-dim dense embeddings, CLS-pooled and L2-normalized, optimized for fast retrieval over short English text. Part of the BAAI BGE series. Served CPU-only via HuggingFace TEI, which fetches the ~130MB public model itself on start (no PVC). Note: BGE v1.5 queries need NO instruction prefix.",
+        "owned_by": "BAAI",
+        "source": "BAAI/bge-small-en-v1.5",
+        "source_url": "https://huggingface.co/BAAI/bge-small-en-v1.5",
+        "license": "MIT",
+        "parameters": "33M",
+        "precision": "fp32",
+        "framework": "text-embeddings-inference (cpu-latest)",
+        "domain": "nlp",
+        "subdomain": "embedding",
+        "gpu": false,
+        "embedding_dimensions": 384,
+        "pooling": "cls",
+        "normalization": "l2",
+        "max_input_tokens": 512,
+        "language": "en",
+        "tags": ["embedding", "english", "dense", "retrieval", "small", "cpu"]
+      }
+    }
