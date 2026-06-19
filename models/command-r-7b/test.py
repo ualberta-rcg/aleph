@@ -54,19 +54,21 @@ def stream():
     with req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": "Count 1 to 3"}],
              "max_tokens": 30, "stream": True}, stream=True) as r:
         n = len([l for l in r.iter_lines() if l.startswith("data:") and "DONE" not in l])
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI streaming", f"{n} chunks")
+    record("PASS" if r.status_code == 200 and n > 0 else "FAIL", r.status_code, "OAI streaming", f"{n} chunks")
 
 def temp0():
-    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France?"}], "max_tokens": 20, "temperature": 0})
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp=0", safe(m))
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France? One word."}], "max_tokens": 20, "temperature": 0})
+    ok = r.status_code == 200 and "paris" in (m.get("content") or "").lower()
+    record("PASS" if ok else "FAIL", r.status_code, "OAI temp=0 + answer", safe(m))
 
 def temp_topk():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hello"}], "max_tokens": 20, "temperature": 0.3, "top_p": 0.9})
     record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp+top_p", safe(m))
 
 def stop_seq():
-    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Count: 1, 2, 3, 4, 5, 6, 7"}], "max_tokens": 50, "stop": ["5"]})
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI stop sequences", f"finish={d['choices'][0].get('finish_reason')} {safe(m)}")
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Continue this count: 1, 2, 3, 4,"}], "max_tokens": 100, "stop": ["5"]})
+    fin = d["choices"][0].get("finish_reason")
+    record("PASS" if r.status_code == 200 and fin == "stop" else "FAIL", r.status_code, "OAI stop sequences", f"finish={fin} {safe(m)}")
 
 def system():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "system", "content": "You are a pirate. Speak like a pirate."}, {"role": "user", "content": "Hello!"}], "max_tokens": 30})
@@ -81,10 +83,17 @@ def max_tokens():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 4096})
     record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI max_tokens=4k", safe(m, 30))
 
+def truncation():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Tell me a very long story."}], "max_tokens": 5})
+    fin = d["choices"][0].get("finish_reason"); ct = (d.get("usage") or {}).get("completion_tokens", 0)
+    ok = r.status_code == 200 and fin == "length" and ct <= 8
+    record("PASS" if ok else "FAIL", r.status_code, "OAI truncation max_tokens=5", f"finish={fin} completion_tokens={ct}")
+
 def usage():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
     u = d.get("usage", {})
-    record("PASS" if u.get("prompt_tokens") else "FAIL", r.status_code, "OAI usage", f"prompt={u.get('prompt_tokens')} completion={u.get('completion_tokens')}")
+    ok = u.get("prompt_tokens") and MODEL in (d.get("model") or "")
+    record("PASS" if ok else "FAIL", r.status_code, "OAI usage + model echo", f"prompt={u.get('prompt_tokens')} completion={u.get('completion_tokens')} model={d.get('model')!r}")
 
 def resources():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
@@ -157,7 +166,7 @@ def catalog():
 
 print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (non-reasoning)", flush=True)
 print("=" * 66, flush=True)
-for t in [wake, stream, temp0, temp_topk, stop_seq, system, tools_oai, max_tokens, usage, resources,
+for t in [wake, stream, temp0, temp_topk, stop_seq, system, tools_oai, max_tokens, truncation, usage, resources,
           meta_title, meta_tags, meta_followups, vision_rejected,
           ant_basic, ant_stream, ant_system, ant_temp0, ant_tools,
           guard_embed, guard_badmodel, catalog]:

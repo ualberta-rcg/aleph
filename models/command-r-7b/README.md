@@ -43,4 +43,11 @@ kubectl apply -f inferenceservice.yaml
 
 - Multilingual, RAG-optimized
 - Custom params: top_p, top_k, repetition_penalty
-- 16/16 gateway tests passed (2026-06-10)
+
+## Testing
+The 23-check non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/command-r-7b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **18 PASS / 5 EXP / 0 FAIL** — answer/stop/model-echo/truncation assertions,
+meta-tasks, Anthropic parity, tools-rejected + vision-rejected guards.

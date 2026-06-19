@@ -41,6 +41,11 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
 - **r1-distill-llama-70b**: hardened to 26-check always-on battery; **21/5/0** (TP4). Same stop_seq
   2048 fix. README Testing section added. **All 11 reasoning models now retested + hardened.**
 
+  Non-reasoning chat (Phase 2): same correctness assertions; domain models (astrosage, geogalactica,
+  oceangpt, openbiollm, medgemma, tinyllama) get the domain-agnostic subset (truncation + model-echo)
+  since they may not answer "Paris" or enumerate cleanly.
+- **command-r-7b**: hardened to 23-check battery; **18/5/0**. README Testing section refreshed.
+
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
 - **gateway**: managed-thinking models (`param_translation.thinking.mode` in budget/effort/toggle)
