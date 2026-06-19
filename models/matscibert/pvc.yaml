@@ -1,0 +1,14 @@
+# Weights + venv persist on NFS (nfs-models SC, ReadWriteMany) so scale-from-zero cold starts skip
+# the re-download. Split out of inferenceservice.yaml 2026-06-19. NOTE: matches the live bound PVC
+# (nfs-models) — SC is immutable on a bound PVC.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matscibert-data
+  namespace: models
+spec:
+  storageClassName: nfs-models
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 15Gi

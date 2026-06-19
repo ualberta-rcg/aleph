@@ -86,6 +86,12 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   **8/2/0**, **splicebert 7/3/0** — its distinctness check is EXP because SpliceBERT is a token-level
   splice-site model whose mean-pooled sequence embeddings aren't discriminative (cos~1.0); use
   per-token outputs for splice tasks.
+- **matscibert (science-embed → OpenAI normalization):** the server only exposed `/v1/science/embed`
+  (non-OpenAI shape `{text}`→`{embeddings}`), so it 404'd on the standard `/v1/embeddings` — the gateway
+  forwards `/v1/embeddings` to the backend's `/v1/embeddings` (hardcoded). Added an OpenAI-contract
+  `/v1/embeddings` route to server.py (CLS-pooled, 768-dim; keeps `/v1/science/embed` + `/v1/science/predict`
+  as secondary). Card primary → /v1/embeddings, pooling mean→cls (matches the server); split the inlined
+  PVC (nfs-models). Validation: **8 PASS / 2 EXP / 0 FAIL**. Exemplar for the ~6 other /v1/science/embed models.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

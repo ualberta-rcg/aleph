@@ -285,6 +285,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | clinicalbert | 8/2/0 | v2 (was v2) | RWX | MIMIC clinical; added test+README |
 | splicebert | 7/3/0 | v2 (rewrote) | RWX | token-level model; mean-pool not discriminative |
 | specter2 | 8/2/0 | v2 (rewrote) | RWX | paper embeddings |
+| matscibert | 8/2/0 | v2 (+/v1/embeddings) | RWX (split, nfs-models) | science-embed normalized to OpenAI; science/embed+predict kept secondary |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs

@@ -12,7 +12,8 @@ data:
       "status": "production",
       "type": "embedding",
       "endpoints": {
-        "primary": "/v1/science/embed",
+        "primary": "/v1/embeddings",
+        "secondary": ["/v1/science/embed", "/v1/science/predict"],
         "health": "/health"
       },
       "routing": {
@@ -74,6 +75,6 @@ data:
           "text": "materials-science text (str or [str])"
         },
         "embedding_dimensions": 768,
-        "pooling": "mean"
+        "pooling": "cls"
       }
     }
