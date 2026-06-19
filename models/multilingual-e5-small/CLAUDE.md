@@ -1,93 +1,52 @@
-# Multilingual E5 Small -- Model Context
+# multilingual-e5-small Notes
 
-## What This Model Does
+## Purpose
+Multilingual (100+) text embedding service (384-dim, mean-pooled + L2-normalized) for retrieval.
+Template-C (`type: embedding`) — custom-transformers-server variant.
 
-Multilingual E5 Small (intfloat/multilingual-e5-small) is a 12-layer, 384-dimensional embedding model supporting 100 languages. Initialized from microsoft/Multilingual-MiniLM-L12-H384 and trained with contrastive learning on billions of text pairs across multiple stages (weak supervision pretraining + supervised fine-tuning). Requires "query: " or "passage: " prefix for best retrieval results. Max 512 tokens. Deployed via HuggingFace Text Embeddings Inference (TEI) for maximum throughput.
+## Runtime
+- Image: `python:3.11-slim` running `/data/venv/bin/python /app/server.py` (CPU torch 2.5.1 +
+  transformers 4.44.2 + sentencepiece)
+- server.py: embedded as the `multilingual-e5-small-server` ConfigMap (mounted at `/app`)
+- API path(s): `POST /v1/embeddings` (OpenAI-shaped), `GET /health`, `GET /v1/models`
+- NOTE: transformers pinned 4.44.2 (needs `sentencepiece`; init rebuilds the venv if the version
+  drifts). This is a **custom transformers server, NOT TEI** (older docs incorrectly said TEI / `/embed`).
 
-## Source Repo
+## Resources
+- CPU request/limit: init 2/4, server 2/4
+- Memory request/limit: init 4Gi/8Gi, server 2Gi/4Gi
+- GPU request: **none** (CPU-only)
 
-**HuggingFace**: [intfloat/multilingual-e5-small](https://huggingface.co/intfloat/multilingual-e5-small)
+## Storage
+- PVC name: `multilingual-e5-small-data` (**ReadWriteMany**, nfs-client, 5Gi)
+- Mount path: `/data` (init writes venv + model; server reads readOnly). App at `/app` (ConfigMap).
+- Warm-cache condition: `/data/venv/bin/python` imports sentencepiece + transformers==4.44.2 AND `/data/model/config.json` present
 
-- **License**: Apache-2.0
-- **Architecture**: 12-layer transformer (MiniLM, 384 hidden dim)
-- **Paper**: "Multilingual E5 Text Embeddings: A Technical Report" (Wang et al., arXiv 2024)
-- **Prefix requirement**: Use "query: " for queries and "passage: " for passages in retrieval tasks. Use "query: " for symmetric tasks (similarity, clustering).
+## Known quirks
+- **Custom transformers server** (not TEI/`/embed`): `/v1/embeddings` only, OpenAI-shaped output.
+  Earlier README/CLAUDE described a TEI deployment that was never what got deployed — corrected 2026-06-19.
+- **usage quirk:** `prompt_tokens` is the whitespace-split **word count** (not tokenizer tokens);
+  `total_tokens` is hardcoded `0`. Cosmetic.
+- **L2-normalized** server-side; mean pooling over attention-masked tokens.
+- **No prefix enforcement:** `query:`/`passage:` is the caller's responsibility for retrieval.
+- **Truncation safe:** tokenizer `max_length=512` pre-truncates → no OOM (small CPU model).
+- **Scale-to-zero** (`minReplicas: 0`): first request scales 0→1 (cold start ~30–60s).
 
-## How The Server Works
+## Deploy / update steps
+1. `kubectl apply -f pvc.yaml` (RWX; caches venv + model).
+2. `kubectl apply -f inferenceservice.yaml` (ConfigMap server.py + ISVC; init builds venv + downloads).
+3. `kubectl apply -f details.yaml` (Template-C card; hot-reloads via ConfigMap watch).
+> Apply method: to sync the card/PVC only, apply `details.yaml`/`pvc.yaml` alone — don't re-apply the
+> ISVC with plain client-side `kubectl apply` (churns a Knative revision).
 
-- **Pattern**: HuggingFace Text Embeddings Inference (TEI) + init container download
-- **Container**: `ghcr.io/huggingface/text-embeddings-inference:cpu-1.6` running with `--model-id=/data --port=8080 --dtype=float32`
-- **Init container**: `python:3.11-slim` downloads model from HF to PVC (idempotent via config.json check)
-- **PVC**: `multilingual-e5-small-data` (5Gi, NFS) -- stores model weights only
-- **Health**: TEI's built-in `/health` endpoint
-- **GPU**: None (CPU-only)
-- **Startup**: ~30 seconds
-- **API**: TEI native `/embed` endpoint (not OpenAI-style). Gateway translates requests.
-- **Probes**: K8s readiness probe on `/health`
-
-## Our Config vs Source Recommendations
-
-| Aspect | Source | Our Config | Notes |
-|--------|--------|-----------|-------|
-| Pooling | average_pool with attention mask | TEI handles pooling internally | Correct |
-| Prefix | "query: " / "passage: " | User responsibility | Cannot enforce at server level |
-| Max tokens | 512 | 512 (--max_batch_requests handled by TEI) | Correct |
-| Normalization | L2 normalize recommended | TEI handles this | Correct |
-| Precision | float32 | float32 | Correct for CPU |
-
-## Gateway Integration
-
-- **ISVC name**: `multilingual-e5-small` (matches API id)
-- **MODEL_TYPE**: embedding
-- **KSERVE_CUSTOM_MODELS**: yes -- uses `/v1/` prefix
-- **NOT in GPU_MODELS**: CPU-only
-- **CONTEXT_WINDOWS**: 512
-- **minReplicas**: 1 (always-on)
-- **NOT in _CUSTOM_HEALTH_MODELS**: Uses standard K8s readiness probe
-
-## Deploy / Update / Test
-
-```bash
-# Deploy
-kubectl apply -k models/multilingual-e5-small/
-
-# Force update
-kubectl apply --server-side --force-conflicts -k models/multilingual-e5-small/
-
-# Check status
-kubectl get pods -n models -l serving.kserve.io/inferenceservice=multilingual-e5-small
-
-# Logs
-kubectl logs -n models -l serving.kserve.io/inferenceservice=multilingual-e5-small -c kserve-container -f
-
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"model":"multilingual-e5-small","input":"query: What is machine learning?"}'
-```
-
-## Known Issues / Optimization Opportunities
-
-1. **No configMapGenerator**: Unlike other models, there is no server.py or configMapGenerator since TEI is the server. This is correct.
-
-2. **Always-on**: minReplicas=1 means it always consumes CPU resources. Could be set to 0 for scale-to-zero.
-
-3. **TEI version pinned to cpu-1.6**: Specific version is good for reproducibility but may miss performance improvements in newer versions.
-
-4. **No max_batch_requests/limit**: TEI has configurable concurrency limits that are not explicitly set. Uses TEI defaults.
-
-5. **Prefix awareness**: The server does not enforce or validate the "query: "/"passage: " prefix convention. Users must remember to add it.
-
-6. **Init container idempotent**: Yes -- checks for /data/config.json before downloading.
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ISVC spec (TEI container + init download) |
-| `kustomization.yaml` | Kustomize resources |
-| `pvc.yaml` | Dedicated PVC (multilingual-e5-small-data, 5Gi NFS) |
-| `README.md` | Original documentation |
-
-**IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
+## Validation checks
+- [x] basic request — dim == 384
+- [x] batch (3 texts → 3 vectors, same dim)
+- [x] usage + model echo
+- [x] distinctness (cos 0.86)
+- [x] multilingual (EN/ES/ZH same sentence → cos 0.92)
+- [x] encoding_format=float
+- [x] truncation (>512 tokens → 384-dim, no 500)
+- [x] guardrails (chat→embed 404, unknown model 404)
+- [x] catalog entry (type=embedding, ctx 512)
+- [x] no secret values in manifest (HF_TOKEN via hf-token Secret)

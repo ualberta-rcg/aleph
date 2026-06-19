@@ -36,6 +36,12 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
 - **bge-small:** the dir had **no card at all** (gateway had no catalog entry) → created the Template-C
   card + 11-check embed test.py + README + CLAUDE from scratch. No PVC by design (TEI fetches the
   ~130MB public model itself on start, always-on). Validation: **9 PASS / 2 EXP / 0 FAIL** (dim 384).
+- **multilingual-e5-small:** old-schema card had **wrong endpoint (`/embed`) + wrong framework (claimed
+  TEI) + stale `min_replicas: 1`** — the live deploy is a custom transformers FastAPI server on
+  `/v1/embeddings`, scale-to-zero. Rewrote card to v2 Template C (corrected endpoint/framework/dim/
+  scaling); the existing README + CLAUDE described a never-deployed TEI setup → rewrote both to match
+  reality. Added 11-check multilingual embed test.py; dropped `kustomization.yaml`.
+  Validation: **9 PASS / 2 EXP / 0 FAIL** (dim 384; EN/ES/ZH same-sentence cos 0.92).
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
