@@ -2406,35 +2406,6 @@ curl -s -X POST "$GW/v1/science/predict" -H "Content-Type: application/json" \
 - Test status: **FIXED** (READY).
 - Scale-to-zero: first request may incur cold-start delay.
 
-## `k2-v2`
-
-**LLM360 K2-V2 70B: fully open (weights + data + code + evals). Citable.**
-
-**Endpoint:** `POST /v1/chat/completions` **Protocol:** OpenAI chat  
-**Input:** `messages[]` **Output:** assistant message (+ reasoning if enabled)  
-**Model path:** `models/k2-v2/`
-
-### When to use
-
-- instruction-following chat in nlp domain
-
-### Avoid
-
-- embedding-only workloads, batch offline inference without chat API
-
-### Example
-
-```bash
-curl -s -X POST "$GW/v1/chat/completions" -H "Content-Type: application/json" \
-  -d '{"model":"k2-v2","messages":[{"role":"user","content":"Hello"}]}'
-```
-
-### Quirks
-
-- ships FP32 ~290GB (not 140GB); --dtype=bfloat16 to fit 4xL40S; Xet stalled -> HF_HUB_DISABLE_XET; still downloading
-- Test status: **PENDING** (READY).
-- Scale-to-zero: first request may incur cold-start delay.
-
 ## `kandinsky-3`
 
 **Kandinsky 3 text-to-image and image-to-image generation**
@@ -4750,18 +4721,18 @@ curl -s -X POST "$GW/v1/forecast" -H "Content-Type: application/json" \
 - Scale-to-zero: first request may incur cold-start delay.
 - Use model id `timesfm-500m` in requests.
 
-## `tinyllama`
+## `tinyllama-1-1b`
 
 **TinyLlama 1.1B GGUF Q4_K_M, CPU inference via llama.cpp**
 
 **Endpoint:** `POST /v1/chat/completions` **Protocol:** OpenAI chat  
 **Input:** `messages[]` **Output:** assistant message (+ reasoning if enabled)  
-**Model path:** `models/tinyllama/`
+**Model path:** `models/tinyllama-1-1b/`
 
 ### When to use
 
 - instruction-following chat in nlp domain
-- Gateway model id: `tinyllama-1.1b`
+- Gateway model id: `tinyllama-1-1b`
 
 ### Avoid
 
@@ -4771,14 +4742,14 @@ curl -s -X POST "$GW/v1/forecast" -H "Content-Type: application/json" \
 
 ```bash
 curl -s -X POST "$GW/v1/chat/completions" -H "Content-Type: application/json" \
-  -d '{"model":"tinyllama-1.1b","messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"tinyllama-1-1b","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 ### Quirks
 
 - OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting)
 - Test status: **PASS** (READY).
-- Use model id `tinyllama-1.1b` in requests.
+- Use model id `tinyllama-1-1b` in requests.
 
 ## `totalsegmentator`
 

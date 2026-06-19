@@ -219,7 +219,6 @@ body limit (connection reset even when the pod returned 200). Fix: summarize out
 ### Still PENDING from this batch
 - mattergen (CLI loads; diffusion timeout raised 300→1500s, verify pending)
 - prithvi-eo/wxc, surya, terramind-flood, totalsegmentator (in progress)
-- k2-v2 download ~complete (~287G/290G), deploy+test pending
 
 Tracker: `models/MODEL-STATUS.md` updated for all of the above.
 

@@ -5509,14 +5509,14 @@ Best for time-series / weather forecasting. Not chat, static embeddings.
 - TimesFmModelForPrediction not importable; transformers lacks TimesFm support - needs version pin/upgrade
 - Gateway id `timesfm-500m` (directory `timesfm`).
 
-## `tinyllama`
+## `tinyllama-1-1b`
 
 **TinyLlama 1.1B GGUF Q4_K_M, CPU inference via llama.cpp**
 
 Best for instruction-following chat in nlp domain. Not embedding-only workloads, batch offline inference without chat API.
 
 **Status:** READY **Test:** PASS **Type:** Chat **Runtime:** llama.cpp  
-**Primary endpoint:** `/v1/chat/completions` **Model path:** `models/tinyllama/`
+**Primary endpoint:** `/v1/chat/completions` **Model path:** `models/tinyllama-1-1b/`
 
 **Context window:** 4,096 tokens **Max output:** 1,800 tokens
 
@@ -5524,7 +5524,7 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `tinyllama-1.1b` | `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF` | 1.1B | gguf-q4-km | Apache-2.0 | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
+| `tinyllama-1-1b` | `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF` | 1.1B | gguf-q4-km | Apache-2.0 | nlp | instruction-following chat in nlp domain | embedding-only workloads, batch offline  |
 
 ### Capabilities
 
@@ -5542,7 +5542,7 @@ Best for instruction-following chat in nlp domain. Not embedding-only workloads,
 ### Notes
 
 - OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting)
-- Gateway id `tinyllama-1.1b` (directory `tinyllama`).
+- Gateway id `tinyllama-1-1b` (directory `tinyllama-1-1b`).
 
 ## `totalsegmentator`
 
