@@ -4,14 +4,12 @@ Meta's **ESM-1b** 650M protein language model — 1280-dim mean-pooled per-prote
 amino-acid sequences (up to 1024 residues). Predecessor to ESM-2, trained on UniRef50, still widely
 used. Custom FastAPI/transformers server on a HAMi GPU slice (fp16), scale-to-zero.
 
-> ⚠ **PVC caveat:** the live `esm1b-data` PVC is `ReadWriteOnce` (should be `ReadWriteMany`).
-> It works for single-pod use but caps scale-out at 1 and breaks revision rollouts. See `pvc.yaml`
-> for the RWX spec + migration steps.
+> **PVC:** `esm1b-data` is `ReadWriteMany` (migrated from RWO on 2026-06-19 so `scaleTarget: 5` can scale out).
 
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # ⚠ RWO→RWX migration needed first (see file header)
+kubectl apply -f pvc.yaml              # RWX venv + HF cache (nfs-client)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```

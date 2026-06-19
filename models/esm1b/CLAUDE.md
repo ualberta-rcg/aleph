@@ -15,14 +15,14 @@ Template-C (`type: embedding`) — custom-transformers-server-on-GPU variant.
 - GPU request: `nvidia.com/gpu: 1` · HAMi `nvidia.com/gpumem: 10240` (10 GiB slice; fp16)
 
 ## Storage
-- PVC name: `esm1b-data` — **⚠ LIVE PVC is ReadWriteOnce, not ReadWriteMany.** See `pvc.yaml` for the
-  desired RWX spec + migration steps. RWX is required (ISVC `scaleTarget: 5`); RWO caps concurrency at 1.
+- PVC name: `esm1b-data` (**ReadWriteMany**, nfs-client, 5Gi) — migrated RWO→RWX 2026-06-19
+  (was bound RWO, which capped the ISVC's `scaleTarget: 5` at 1 pod; recreated RWX).
 - Mount path: `/data` (venv + HF cache via `HF_HOME=/data/hf_cache`); app at `/app` (ConfigMap).
 
 ## Known quirks
-- **RWO PVC (flagged):** the live PVC is bound `ReadWriteOnce` — immutable, so it can't be patched to RWX
-  in place (must delete + recreate). Functionally fine for single-pod/wake-on-demand, but it breaks
-  scale-out >1 and Knative revision rollouts. Tracked in `pvc.yaml`.
+- **PVC migrated RWO→RWX (2026-06-19):** the PVC was bound ReadWriteOnce (immutable → required
+  delete+recreate; reclaim=Delete triggered a one-time ~2.5GB model re-download on next cold start).
+  Now RWX, so `scaleTarget: 5` works.
 - **Loads model from HF hub** (not a snapshot on PVC) — `HF_HOME=/data/hf_cache` caches it. Init pre-downloads.
 - **Predecessor to ESM-2** (esm2-650m); 1280-dim, max 1024 residues, mean-pooled, fp16 on GPU.
 - usage: `prompt_tokens`/`total_tokens` = residue count.
