@@ -1,35 +1,47 @@
-# ESM-1b Model Deployment
+# esm1b Notes
 
-## What this model does
-ESM-1b is a 650M parameter protein language model from Meta. Produces embeddings for protein sequences. Predecessor to ESM-2 but still widely used.
+## Purpose
+Protein-sequence embedding service (1280-dim mean-pooled) for proteomics downstream tasks.
+Template-C (`type: embedding`) — custom-transformers-server-on-GPU variant.
 
-## Source
-- **HF**: facebook/esm1b_t33_650M_UR50S
-- **License**: MIT
-- **Parameters**: 650M
+## Runtime
+- Image: `python:3.11-slim` running `/data/venv/bin/python /app/server.py` (torch>=2.6 cu126 + transformers)
+- server.py: embedded as the `esm1b-server` ConfigMap (mounted at `/app`); loads the model from the HF hub (cache on PVC)
+- API path(s): `POST /v1/embeddings` (OpenAI-shaped; accepts `input` or `sequences`), `GET /health`
 
-## How the server works
-- FastAPI server embedded as ConfigMap (`esm1b-server`)
-- `POST /v1/embeddings` -- accepts `input` or `sequences`, returns mean-pooled embeddings
-- Uses AutoTokenizer + EsmModel, fp16 on GPU
-- max_length=1024 truncation
+## Resources
+- CPU request/limit: init 2/4, server 2/4
+- Memory request/limit: init 4Gi/8Gi, server 4Gi/8Gi
+- GPU request: `nvidia.com/gpu: 1` · HAMi `nvidia.com/gpumem: 10240` (10 GiB slice; fp16)
 
-## Our config vs source
-- venv-on-PVC, torch>=2.6 CUDA
-- Pre-downloads model in init container
-- GPU shared (L40S-SHARED), minReplicas: 0
-- 5Gi PVC
+## Storage
+- PVC name: `esm1b-data` — **⚠ LIVE PVC is ReadWriteOnce, not ReadWriteMany.** See `pvc.yaml` for the
+  desired RWX spec + migration steps. RWX is required (ISVC `scaleTarget: 5`); RWO caps concurrency at 1.
+- Mount path: `/data` (venv + HF cache via `HF_HOME=/data/hf_cache`); app at `/app` (ConfigMap).
 
-## Deploy/update/test commands
-```bash
-kubectl apply -k models/esm1b/
-kubectl get inferenceservice esm1b -n models
-```
+## Known quirks
+- **RWO PVC (flagged):** the live PVC is bound `ReadWriteOnce` — immutable, so it can't be patched to RWX
+  in place (must delete + recreate). Functionally fine for single-pod/wake-on-demand, but it breaks
+  scale-out >1 and Knative revision rollouts. Tracked in `pvc.yaml`.
+- **Loads model from HF hub** (not a snapshot on PVC) — `HF_HOME=/data/hf_cache` caches it. Init pre-downloads.
+- **Predecessor to ESM-2** (esm2-650m); 1280-dim, max 1024 residues, mean-pooled, fp16 on GPU.
+- usage: `prompt_tokens`/`total_tokens` = residue count.
+- **v2 card conversion (2026-06-19):** old-schema card rewritten to v2 Template C.
 
-## Gateway integration
-- MODEL_TYPES: `"esm1b": "embedding"`
-- Not in MODEL_METADATA (needs adding)
-- KServe custom model
+## Deploy / update steps
+1. `kubectl apply -f pvc.yaml` — **NOTE:** will FAIL until the RWO PVC is recreated (see file header).
+2. `kubectl apply -f inferenceservice.yaml` (ConfigMap server.py + ISVC).
+3. `kubectl apply -f details.yaml` (Template-C card; hot-reloads via ConfigMap watch).
+> Apply method: to sync the card only, apply `details.yaml` alone — don't re-apply the ISVC with plain
+> client-side `kubectl apply` (churns a Knative revision).
 
-## IMPORTANT
-- Do NOT modify inferenceservice.yaml unless explicitly asked
+## Validation checks
+- [x] basic request — dim == 1280
+- [x] batch (3 seqs → 3 vectors, same dim)
+- [x] usage + model echo (esm1b)
+- [x] distinctness (cos 0.95)
+- [x] encoding_format=float
+- [x] truncation (>1024 residues → 1280-dim, no 500)
+- [x] guardrails (chat→embed 404, unknown model 404)
+- [x] catalog entry (type=embedding, ctx 1024)
+- [x] no secret values in manifest

@@ -11,31 +11,63 @@ data:
       "id": "esm1b",
       "status": "production",
       "type": "embedding",
-      "description_short": "ESM-1b 650M protein language model from Meta",
-      "description": "ESM-1b is a 650M parameter protein language model from Meta (Facebook). Produces per-residue and mean-pooled embeddings for protein sequences. Trained on UniRef50. 1024 residue context. Uses fp16 on GPU. Predecessor to ESM-2 but still widely used.",
-      "context_window": 1024,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": {
+        "k8s_name": "esm1b",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "owned_by": "meta",
-      "source": "facebook/esm1b_t33_650M_UR50S",
-      "source_url": "https://huggingface.co/facebook/esm1b_t33_650M_UR50S",
-      "license": "MIT",
-      "parameters": "650M",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "ESM-1b (Transformer)",
-      "framework": "transformers + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "esm1b-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "esm1b", "api_name": "esm1b"},
-      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
-      "domain": "proteomics",
-      "subdomain": "protein-embedding",
-      "tags": ["embedding", "science", "proteomics", "protein", "meta", "gpu"],
-      "content_types": ["text"],
-      "languages": ["protein"],
-      "input_map": {"input": "amino acid sequence(s)", "sequences": "alias for input"},
-      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "esm1b"},
-      "tier": 2
+      "limits": { "max_completion_tokens": 0, "context_window": 1024, "max_input_tokens": 1024 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes (GPU, model cached on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "Protein sequence(s) as 1-letter amino-acid codes (alias: 'sequences'); truncated to 1024 residues."
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "description": "One {object:'embedding', index, embedding:[float x 1280]} per input (mean-pooled over residues)" },
+        "model": { "type": "string", "description": "Model name (esm1b)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens} (residue counts)" }
+      },
+      "catalog": {
+        "description_short": "Meta ESM-1b 650M protein language model — 1280-dim embeddings (GPU, scale-to-zero)",
+        "description": "ESM-1b (facebook/esm1b_t33_650M_UR50S): 650M-param protein language model from Meta (FAIR), trained on UniRef50. The predecessor to ESM-2 but still widely used. Produces 1280-dim mean-pooled per-protein embeddings of amino-acid sequences (up to 1024 residues) for structure/function/variant tasks. Served via a custom transformers FastAPI server on a HAMi GPU slice (fp16); the model is loaded from the HF hub with the cache on the PVC. Scale-to-zero.",
+        "owned_by": "Meta AI (FAIR)",
+        "source": "facebook/esm1b_t33_650M_UR50S",
+        "source_url": "https://huggingface.co/facebook/esm1b_t33_650M_UR50S",
+        "license": "MIT",
+        "parameters": "650M",
+        "precision": "fp16 (GPU)",
+        "framework": "transformers (custom FastAPI server)",
+        "domain": "proteomics",
+        "subdomain": "protein-language-model",
+        "gpu": true,
+        "embedding_dimensions": 1280,
+        "pooling": "mean",
+        "max_input_tokens": 1024,
+        "tags": ["embedding", "science", "proteomics", "protein", "gpu"]
+      }
     }

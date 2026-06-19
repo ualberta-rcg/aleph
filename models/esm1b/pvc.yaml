@@ -1,0 +1,21 @@
+# Venv + HF cache persist on NFS so scale-from-zero cold starts skip the re-download.
+# Split out of inferenceservice.yaml 2026-06-19.
+#
+# WARNING — access mode drift: the LIVE PVC `esm1b-data` is currently bound as
+# **ReadWriteOnce** (access mode is immutable on a bound PVC, so this RWX spec will FAIL
+# to apply until the PVC is deleted + recreated). RWX is REQUIRED here: the ISVC has
+# `scaleTarget: 5`, so more than one pod must mount concurrently — RWO caps it at 1 and
+# would also break Knative revision rollouts (old+new pod both mounting).
+# To migrate: scale the ISVC to 0, `kubectl delete pvc esm1b-data -n models` (confirm the
+# PV's reclaim policy won't lose data, or back up /data first), then `kubectl apply -f pvc.yaml`.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: esm1b-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 5Gi
