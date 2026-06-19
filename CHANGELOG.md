@@ -152,6 +152,10 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   article encoder (768-dim, 512-token context — pair with medcpt-query). Server already compliant.
   Added 9-check medical-document embed test.py + README. GPU (8 GiB), scale-to-zero.
   Validation: **7 PASS / 2 EXP / 0 FAIL**.
+- **caduceus + nucleotide-transformer** (DNA pair; both servers already OpenAI-compliant — no fix
+  needed): caduceus — v2 card (256-dim RCPS Mamba), removed stale inlined RWO PVC (live already RWX),
+  added test + README. nucleotide-transformer — card already v2, split inlined PVC (matched live
+  nfs-models), added test + README + CLAUDE. Both GPU, scale-to-zero. Validation: **7/2/0** each.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

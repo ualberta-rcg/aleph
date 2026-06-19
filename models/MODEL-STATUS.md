@@ -302,6 +302,8 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | agront | 7/2/0 | v2 (was v2) + server fix | RWX (split) | plant DNA 1500-dim; OpenAI fix batch+usage+truncate |
 | medcpt-query | 7/2/0 | v2 (rewrote) | RWX (RWO→RWX) | MedCPT query encoder; 768-dim, 64-tok; server compliant |
 | medcpt-article | 7/2/0 | v2 (rewrote) | RWX (RWO→RWX) | MedCPT article encoder; 768-dim, 512-tok; server compliant |
+| caduceus | 7/2/0 | v2 (rewrote) | RWX (split) | Mamba DNA; 256-dim RCPS; server compliant |
+| nucleotide-transformer | 7/2/0 | v2 (was v2) | RWX (split, nfs-models) | DNA 1024-dim; server compliant |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs

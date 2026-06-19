@@ -9,33 +9,65 @@ data:
   details.json: |
     {
       "id": "caduceus",
-      "status": "broken",
+      "status": "production",
       "type": "embedding",
-      "description_short": "Bidirectional Mamba DNA model with 131k context (Cornell/Kuleshov)",
-      "description": "Caduceus from the Kuleshov Lab at Cornell is a bidirectional Mamba-based DNA foundation model supporting up to 131k base pair context. Uses reverse complement equivariance for DNA-specific modeling. Requires mamba-ssm and causal-conv1d compiled from source (CUDA). ~45M parameters. Uses PyTorch devel image for compilation.",
-      "context_window": 8192,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": {
+        "k8s_name": "caduceus",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "owned_by": "kuleshov-group",
-      "source": "kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16",
-      "source_url": "https://huggingface.co/kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16",
-      "license": "Apache-2.0",
-      "parameters": "~45M",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "Bidirectional Mamba (state-space model)",
-      "framework": "transformers + mamba-ssm + torch",
-      "deployment": {"image": "pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "4", "memory_request": "8Gi", "pvc": "caduceus-data", "pvc_size": "10Gi", "node_selector": "NVIDIA-L40S", "timeout": 120},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "caduceus", "api_name": "caduceus"},
-      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
-      "domain": "genomics",
-      "subdomain": "dna-embedding",
-      "tags": ["embedding", "science", "genomics", "dna", "mamba", "long-range", "gpu"],
-      "content_types": ["text"],
-      "languages": ["dna"],
-      "input_map": {"input": "DNA sequence (ACGT) or [sequences]", "sequences": "alias for input"},
-      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "caduceus"},
-      "tier": 2
+      "limits": { "max_completion_tokens": 0, "context_window": 8192, "max_input_tokens": 8192 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes (venv + model on PVC; slow mamba-ssm compile on first deploy)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "DNA sequence(s) over ACGT; truncated to 8192 tokens."
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 256]" }, "description": "256-dim mean-pooled DNA embeddings (RCPS: forward + reverse-complement averaged)" },
+        "model": { "type": "string", "description": "Model name (caduceus)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens} (sequence lengths)" }
+      },
+      "catalog": {
+        "description_short": "Caduceus-PS — bidirectional Mamba DNA model, 256-dim (GPU, scale-to-zero)",
+        "description": "Caduceus-PS (kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16): a bidirectional Mamba state-space DNA model with Reverse Complement Permutation Symmetry (RCPS). Long-context (131k native; deployed max 8192). Produces 256-dim mean-pooled DNA embeddings (the server averages the forward and flipped reverse-complement halves for RC-invariance). float32 (SSMs are precision-sensitive); trust_remote_code. Served on a HAMi GPU slice (10 GiB), scale-to-zero. OpenAI-compliant /v1/embeddings (batch + usage).",
+        "owned_by": "Kuleshov Group (Cornell)",
+        "source": "kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16",
+        "source_url": "https://huggingface.co/kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16",
+        "license": "Apache-2.0",
+        "parameters": "Mamba SSM",
+        "precision": "fp32",
+        "framework": "transformers AutoModel (trust_remote_code, mamba-ssm)",
+        "domain": "genomics",
+        "subdomain": "dna-embeddings",
+        "gpu": true,
+        "embedding_dimensions": 256,
+        "pooling": "mean (RCPS fwd+rc averaged)",
+        "max_input_tokens": 8192,
+        "tags": ["embedding", "science", "genomics", "dna", "mamba", "state-space", "long-context"]
+      }
     }

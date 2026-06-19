@@ -1,0 +1,14 @@
+# Venv + HF cache persist on NFS (nfs-models SC, ReadWriteMany) so scale-from-zero cold starts skip
+# the re-download. Split out of inferenceservice.yaml 2026-06-19. NOTE: matches the live bound PVC
+# (nfs-models) — SC is immutable on a bound PVC (repo ISVC said nfs-client; corrected here).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nucleotide-transformer-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 15Gi
