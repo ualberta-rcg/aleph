@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen3-235b",
+      "status": "production",
       "type": "chat",
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
@@ -33,6 +34,7 @@ data:
         "strips_thinking": false
       },
       "param_translation": {
+        "thinking": { "mode": "none" },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
       },
@@ -51,6 +53,23 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "messages": { "type": "array", "required": true, "description": "Chat messages (system/user/assistant)" },
+        "max_tokens": { "type": "integer", "required": false, "default": 32768, "max": 32768, "description": "Maximum tokens to generate" },
+        "temperature": { "type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature (HF recommends 0.7)" },
+        "top_p": { "type": "float", "required": false, "default": 0.8, "description": "Nucleus sampling threshold (HF recommends 0.8)" },
+        "stream": { "type": "boolean", "required": false, "default": false, "description": "Enable streaming responses" },
+        "tools": { "type": "array", "required": false, "description": "OpenAI-format tool definitions (qwen3_coder parser)" },
+        "tool_choice": { "type": "string", "required": false, "description": "Tool choice: auto, none, or specific tool" },
+        "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)" }
+      },
+      "output_map": {
+        "id": { "type": "string", "description": "Chat completion ID" },
+        "object": { "type": "string", "description": "\"chat.completion\"" },
+        "model": { "type": "string", "description": "Model name" },
+        "choices": { "type": "array", "items": { "message": "object", "finish_reason": "string" }, "description": "Response choices (may include tool_calls)" },
+        "usage": { "type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)" }
+      },
       "catalog": {
         "description_short": "Qwen3 235B A22B MoE (AWQ int4), tools + multilingual (4x L40S)",
         "description": "Qwen3-235B-A22B-Instruct-2507 - large sparse MoE, 235B total / 22B active params (128 experts, 8 activated per token). Non-thinking instruct variant. Tool/function calling, 100+ languages, 32K native context served at 131K. Deployed AWQ int4 (QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ) on 4x L40S via vLLM. HF recommends temperature 0.7 / top_p 0.8 / top_k 20.",

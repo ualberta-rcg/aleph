@@ -1,12 +1,122 @@
 apiVersion: v1
-data:
-  details.json: "{\n  \"id\": \"deepseek-v2-lite-16b\",\n  \"type\": \"chat\",\n  \"endpoints\": {\n    \"primary\": \"/v1/chat/completions\",\n    \"health\": \"/v1/models\"\n  },\n  \"routing\": {\n    \"k8s_name\": \"deepseek-v2-lite-16b\",\n    \"serialize\": false,\n    \"no_stream\": false,\n    \"upstream_model_id\": null\n  },\n  \"limits\": {\n    \"context_window\": 131072,\n    \"max_completion_tokens\": 8000\n  },\n  \"scaling\": {\n    \"scale_to_zero\": true,\n    \"min_replicas\": 0,\n    \"cold_start_estimate\": \"2-3 minutes\",\n    \"idle_retention\": \"15m\"\n  },\n  \"behavior\": {\n    \"supports_vision\": false,\n    \"supports_tools\": false,\n    \"supports_system_prompt\": true,\n    \"reasoning_model\": false,\n    \"strips_thinking\": false\n  },\n  \"defaults\": {\n    \"chat\": {\n      \"temperature\": 0.3,\n      \"max_tokens\": 4096\n    }\n  },\n  \"schema_version\": 2,\n  \"input_map\": {\n    \"messages\": {\n      \"type\": \"array\",\n      \"items\"\
-    : {\n        \"role\": \"string\",\n        \"content\": \"string\"\n      },\n      \"required\": true,\n      \"description\": \"Chat messages in OpenAI format (system/user/assistant). Bilingual EN/ZH.\"\n    },\n    \"max_tokens\": {\n      \"type\": \"integer\",\n      \"default\": 4096,\n      \"max\": 8000,\n      \"description\": \"Maximum tokens to generate\"\n    },\n    \"temperature\": {\n      \"type\": \"float\",\n      \"default\": 0.3,\n      \"min\": 0.0,\n      \"max\": 2.0,\n      \"description\": \"Sampling temperature\"\n    },\n    \"top_p\": {\n      \"type\": \"float\",\n      \"default\": 1.0,\n      \"min\": 0.0,\n      \"max\": 1.0,\n      \"description\": \"Nucleus sampling probability\"\n    },\n    \"stream\": {\n      \"type\": \"boolean\",\n      \"default\": false,\n      \"description\": \"Stream responses via SSE\"\n    },\n    \"frequency_penalty\": {\n      \"type\": \"float\",\n      \"default\": 0.0,\n      \"min\": -2.0,\n      \"max\": 2.0,\n \
-    \     \"description\": \"Frequency penalty for repetition\"\n    }\n  },\n  \"output_map\": {\n    \"id\": {\n      \"type\": \"string\",\n      \"description\": \"Chat completion ID\"\n    },\n    \"object\": {\n      \"type\": \"string\",\n      \"description\": \"\\\"chat.completion\\\"\"\n    },\n    \"model\": {\n      \"type\": \"string\",\n      \"description\": \"Model identifier\"\n    },\n    \"choices\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"message\": {\n          \"role\": \"string\",\n          \"content\": \"string\"\n        },\n        \"finish_reason\": \"string\"\n      },\n      \"description\": \"Generated chat completions\"\n    },\n    \"usage\": {\n      \"prompt_tokens\": \"int\",\n      \"completion_tokens\": \"int\",\n      \"total_tokens\": \"int\"\n    }\n  },\n  \"catalog\": {\n    \"description_short\": \"DeepSeek V2 Lite 16B MoE (2.4B active), MLA attention\",\n    \"description\": \"DeepSeek V2 Lite 16B MoE Chat. 15.7B total params,\
-    \ 2.4B active per token. Uses Multi-head Latent Attention (MLA) for efficient KV cache compression and DeepSeekMoE (2 shared + 64 routed experts, 6 activated). Strong bilingual (EN/ZH) chat. No reasoning mode, no tool calling.\",\n    \"owned_by\": \"deepseek-ai\",\n    \"source\": \"deepseek-ai/DeepSeek-V2-Lite-Chat\",\n    \"source_url\": \"https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite-Chat\",\n    \"framework\": \"vllm\",\n    \"domain\": \"nlp\",\n    \"subdomain\": \"large-language-model\",\n    \"parameters\": \"16B MoE (2.4B active)\",\n    \"tags\": [\n      \"chat\",\n      \"llm\",\n      \"code\",\n      \"moe\",\n      \"bilingual\"\n    ]\n  },\n  \"server_config\": {\n    \"note\": \"Uses --enforce-eager (DeepSeek V2 MLA attention requires it). No --reasoning-parser or --tool-call-parser (not a reasoning model, no tool support). vLLM v0.20.2.\"\n  }\n}"
 kind: ConfigMap
 metadata:
-  labels:
-    model-details: 'true'
   name: deepseek-v2-lite-16b-details
   namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "deepseek-v2-lite-16b",
+      "status": "production",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "deepseek-v2-lite-16b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 131072,
+        "max_completion_tokens": 8000
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-3 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "supports_streaming": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 0.3, "top_p": 1.0, "max_tokens": 4096 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
+      },
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages in OpenAI format (system/user/assistant). Bilingual EN/ZH."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 4096,
+          "max": 8000,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.3,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1.0,
+          "description": "Nucleus sampling probability"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Stream responses via SSE"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "min": -2.0,
+          "max": 2.0,
+          "description": "Frequency penalty for repetition"
+        }
+      },
+      "output_map": {
+        "id": { "type": "string", "description": "Chat completion ID" },
+        "object": { "type": "string", "description": "\"chat.completion\"" },
+        "model": { "type": "string", "description": "Model identifier" },
+        "choices": { "type": "array", "items": { "message": { "role": "string", "content": "string" }, "finish_reason": "string" }, "description": "Generated chat completions" },
+        "usage": { "type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)" }
+      },
+      "catalog": {
+        "description_short": "DeepSeek-V2-Lite-Chat 16B MoE (2.4B active), Multi-head Latent Attention, bilingual EN/ZH",
+        "description": "DeepSeek-V2-Lite-Chat. 15.7B total / 2.4B active MoE (DeepSeekMoE: 2 shared + 64 routed experts, 6 activated). Uses Multi-head Latent Attention (MLA) for efficient KV-cache compression. Strong bilingual (English/Chinese) chat. No reasoning mode, no tool calling. Served on a HAMi GPU slice with --enforce-eager (MLA attention requires it).",
+        "owned_by": "deepseek-ai",
+        "source": "deepseek-ai/DeepSeek-V2-Lite-Chat",
+        "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite-Chat",
+        "license": "deepseek-license",
+        "parameters": "16B MoE (2.4B active)",
+        "precision": "bfloat16",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "large-language-model",
+        "tags": ["chat", "llm", "moe", "mla", "bilingual"]
+      }
+    }
