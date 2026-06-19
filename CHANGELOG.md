@@ -120,6 +120,9 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   OpenAI-compliant. Added 10-check biomedical embed test.py (768-dim) + README. GPU (8 GiB), scale-to-zero.
   Validation: **8 PASS / 2 EXP / 0 FAIL**. (Gotcha: the gateway returns **404, not 503**, during cold-start
   for this model, so the test's 503-only wake bails early — poll pod-ready before running post-migration.)
+- **biomed-roberta:** old-schema card rewritten to v2; migrated PVC RWO→RWX (nfs-models). Server already
+  OpenAI-compliant. Added 10-check biomedical embed test.py (768-dim) + README. GPU (8 GiB), scale-to-zero.
+  Validation: **8 PASS / 2 EXP / 0 FAIL**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

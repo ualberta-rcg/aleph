@@ -11,72 +11,63 @@ data:
       "id": "biomed-roberta",
       "status": "production",
       "type": "embedding",
-      "description_short": "BioMed-RoBERTa — biomedical text embeddings from Allen AI (768-dim)",
-      "description": "BioMed-RoBERTa by Allen AI. 110M params. RoBERTa-base model pre-trained on biomedical text (PubMed abstracts + PMC full text). Produces 768-dimensional dense embeddings for biomedical NLP tasks including NER, relation extraction, and document classification. Max sequence length 512 tokens.",
-      "context_window": 512,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
-      },
-      "owned_by": "allenai",
-      "source": "allenai/biomed_roberta_base",
-      "source_url": "https://huggingface.co/allenai/biomed_roberta_base",
-      "license": "Apache-2.0",
-      "parameters": "110M",
-      "parameter_count": 110000000,
-      "precision": "fp32",
-      "architecture": "transformer",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "startup_seconds": 30,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "biomed-roberta",
         "serialize": false,
-        "no_stream": false
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes (venv + model cached on PVC)"
+      },
+      "behavior": {
         "supports_vision": false,
-        "reasoning_model": false
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "domain": "biomedical",
-      "subdomain": "biomedical-text-embeddings",
-      "tags": ["embedding", "biomedical", "nlp", "roberta", "pubmed", "biology"],
-      "content_types": ["text"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
         "input": {
           "type": "string or array of strings",
           "required": true,
-          "description": "Biomedical text"
+          "description": "Biomedical text; truncated to 512 tokens."
         }
       },
       "output_map": {
-        "object": "string (list)",
-        "model": "string",
-        "data": {
-          "type": "array",
-          "items": {
-            "object": "string (embedding)",
-            "index": "int",
-            "embedding": "[float x 768]"
-          }
-        },
-        "usage": {"prompt_tokens": "int", "total_tokens": "int"}
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 768]" }, "description": "768-dim mean-pooled (attention-masked) embeddings" },
+        "model": { "type": "string", "description": "Model name (biomed-roberta)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "framework": "transformers (HuggingFace)",
-        "max_seq_length": 512,
-        "pooling": "mean (attention-masked)",
-        "embedding_dim": 768
+      "catalog": {
+        "description_short": "BioMed-RoBERTa-base — 768-dim biomedical embeddings (GPU, scale-to-zero)",
+        "description": "BioMed-RoBERTa-base (allenai/biomed_roberta_base): RoBERTa pre-trained from scratch on PubMed + PMC + MIMIC-III biomedical text. Produces 768-dim mean-pooled dense embeddings for biomedical NLP, max 512 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice (8 GiB), scale-to-zero. OpenAI-compliant /v1/embeddings (batch + usage).",
+        "owned_by": "AllenAI",
+        "source": "allenai/biomed_roberta_base",
+        "source_url": "https://huggingface.co/allenai/biomed_roberta_base",
+        "license": "Apache-2.0",
+        "parameters": "125M",
+        "precision": "fp16 (GPU)",
+        "framework": "transformers (custom FastAPI server)",
+        "domain": "biomedical",
+        "subdomain": "biomedical-nlp",
+        "gpu": true,
+        "embedding_dimensions": 768,
+        "pooling": "mean",
+        "max_input_tokens": 512,
+        "tags": ["embedding", "biomedical", "nlp", "roberta"]
       }
     }
