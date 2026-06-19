@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen35-122b",
+      "status": "production",
       "type": "chat",
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
@@ -66,7 +67,8 @@ data:
         "top_p": {"type": "float", "required": false, "default": 0.95},
         "stream": {"type": "boolean", "required": false, "default": false},
         "reasoning_effort": {"type": "string", "required": false, "description": "none = off; medium/high = on"},
-        "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder)"}
+        "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder)"},
+        "frequency_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)"}
       },
       "output_map": {
         "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},

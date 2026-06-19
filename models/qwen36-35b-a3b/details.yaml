@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen36-35b-a3b",
+      "status": "production",
       "type": "chat",
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
@@ -73,7 +74,8 @@ data:
         "stream": {"type": "boolean", "required": false, "default": false},
         "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high"], "default": "medium", "description": "none/low = off; medium/high = on"},
         "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder)"},
-        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision)"}
+        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision)"},
+        "frequency_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)"}
       },
       "output_map": {
         "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},

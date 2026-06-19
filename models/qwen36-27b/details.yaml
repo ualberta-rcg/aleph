@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen36-27b",
+      "status": "production",
       "type": "chat",
       "endpoints": {
         "primary": "/v1/chat/completions",
@@ -82,7 +83,8 @@ data:
         "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high"], "default": "medium", "description": "none/low = thinking off; medium/high = on"},
         "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder parser)"},
         "tool_choice": {"type": "string", "required": false},
-        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision)"}
+        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision)"},
+        "frequency_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)"}
       },
       "output_map": {
         "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
@@ -95,6 +97,8 @@ data:
         "owned_by": "Qwen",
         "source": "Qwen/Qwen3.6-27B",
         "source_url": "https://huggingface.co/Qwen/Qwen3.6-27B",
+        "license": "Apache-2.0",
+        "precision": "bfloat16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",

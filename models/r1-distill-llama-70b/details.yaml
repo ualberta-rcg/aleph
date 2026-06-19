@@ -58,7 +58,8 @@ data:
         "temperature": {"type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0},
         "top_p": {"type": "float", "required": false, "default": 0.95},
         "stream": {"type": "boolean", "required": false, "default": false},
-        "reasoning_effort": {"type": "string", "required": false, "description": "none = strip+cap reasoning; absent = expose (always-on)"}
+        "reasoning_effort": {"type": "string", "required": false, "description": "none = strip+cap reasoning; absent = expose (always-on)"},
+        "frequency_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)"}
       },
       "output_map": {
         "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
@@ -71,6 +72,8 @@ data:
         "owned_by": "DeepSeek",
         "source": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        "license": "MIT",
+        "precision": "bfloat16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "reasoning",

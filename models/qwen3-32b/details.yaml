@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen3-32b",
+      "status": "production",
       "type": "chat",
       "endpoints": {
         "primary": "/v1/chat/completions",
@@ -82,7 +83,8 @@ data:
         "stream": {"type": "boolean", "required": false, "default": false},
         "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high"], "default": "medium", "description": "none/low = thinking off; medium/high = on"},
         "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (hermes parser)"},
-        "tool_choice": {"type": "string", "required": false}
+        "tool_choice": {"type": "string", "required": false},
+        "frequency_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)"}
       },
       "output_map": {
         "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
@@ -95,6 +97,8 @@ data:
         "owned_by": "Qwen",
         "source": "Qwen/Qwen3-32B",
         "source_url": "https://huggingface.co/Qwen/Qwen3-32B",
+        "license": "Apache-2.0",
+        "precision": "bfloat16",
         "framework": "vllm",
         "domain": "nlp",
         "subdomain": "large-language-model",
