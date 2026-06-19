@@ -92,6 +92,10 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   `/v1/embeddings` route to server.py (CLS-pooled, 768-dim; keeps `/v1/science/embed` + `/v1/science/predict`
   as secondary). Card primary → /v1/embeddings, pooling mean→cls (matches the server); split the inlined
   PVC (nfs-models). Validation: **8 PASS / 2 EXP / 0 FAIL**. Exemplar for the ~6 other /v1/science/embed models.
+- **ancient-greek-bert:** science-embed → OpenAI normalization (added `/v1/embeddings` route, CLS-pooled
+  768-dim; keeps `/v1/science/embed`). Old-schema card rewritten to v2 (primary `/v1/embeddings`);
+  **migrated PVC RWO→RWX** (nfs-models; re-download). Added test.py + README. GPU, scale-to-zero.
+  Validation: **8 PASS / 2 EXP / 0 FAIL** (distinctness cos 0.30 Ancient-Greek vs English).
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
