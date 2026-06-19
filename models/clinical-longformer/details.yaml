@@ -9,71 +9,65 @@ data:
   details.json: |
     {
       "id": "clinical-longformer",
-      "status": "broken",
+      "status": "production",
       "type": "embedding",
-      "description_short": "Clinical-Longformer — long clinical document embeddings (4096 tokens)",
-      "description": "Clinical-Longformer by yikuan8. 149M params. Longformer model pre-trained on MIMIC-III clinical notes. Handles long clinical documents up to 4096 tokens, far exceeding standard 512-token BERT models. Superior to ClinicalBERT for long clinical texts like discharge summaries and radiology reports. Produces CLS token embeddings for clinical NLP tasks. Apache 2.0 license.",
-      "context_window": 4096,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/science/embed",
-        "health": "/health"
-      },
-      "owned_by": "yikuan8",
-      "source": "yikuan8/Clinical-Longformer",
-      "source_url": "https://huggingface.co/yikuan8/Clinical-Longformer",
-      "license": "Apache-2.0",
-      "parameters": "149M",
-      "parameter_count": 149000000,
-      "precision": "fp32",
-      "architecture": "transformer (longformer)",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "min_replicas": 0,
-        "max_replicas": 1,
-        "startup_seconds": 30,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
+      "endpoints": { "primary": "/v1/embeddings", "secondary": ["/v1/science/embed"], "health": "/health" },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "clinical-longformer",
         "serialize": false,
-        "no_stream": false
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": { "max_completion_tokens": 0, "context_window": 4096, "max_input_tokens": 4096 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "10m",
+        "cold_start_estimate": "30-60 seconds (venv + model on PVC)"
+      },
+      "behavior": {
         "supports_vision": false,
-        "reasoning_model": false
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "domain": "clinical",
-      "subdomain": "clinical-document-embeddings",
-      "tags": ["embedding", "clinical", "nlp", "ehr", "longformer", "long-context", "mimic-iii", "healthcare"],
-      "content_types": ["text"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
-        "text": {
-          "type": "string",
+        "input": {
+          "type": "string or array of strings",
           "required": true,
-          "description": "Clinical text — discharge summaries, radiology reports, progress notes"
-        },
-        "texts": {
-          "type": "array of strings",
-          "required": false,
-          "description": "Batch of clinical texts"
+          "description": "Clinical text / long document (up to 4096 tokens); [CLS]-pooled with Longformer global attention."
         }
       },
       "output_map": {
-        "embeddings": "[[float x 768]]",
-        "model": "string",
-        "dim": "int (768)"
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 768]" }, "description": "768-dim [CLS]-pooled embeddings (global attention on CLS)" },
+        "model": { "type": "string", "description": "Model name (clinical-longformer)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "framework": "transformers (HuggingFace)",
-        "max_seq_length": 4096,
+      "catalog": {
+        "description_short": "Clinical-Longformer — 768-dim embeddings of long clinical documents, 4096 ctx (GPU, scale-to-zero)",
+        "description": "Clinical-Longformer (yikuan8/Clinical-Longformer): Longformer-base pre-trained on MIMIC-III clinical notes. Handles long clinical documents up to 4096 tokens — superior to ClinicalBERT for long texts. Produces 768-dim [CLS]-pooled embeddings with global attention on the CLS token. Served via a custom transformers FastAPI server on a HAMi GPU slice (10 GiB), scale-to-zero. Serves the standard OpenAI /v1/embeddings (legacy /v1/science/embed kept).",
+        "owned_by": "yikuan8",
+        "source": "yikuan8/Clinical-Longformer",
+        "source_url": "https://huggingface.co/yikuan8/Clinical-Longformer",
+        "license": "Apache-2.0",
+        "parameters": "149M",
+        "precision": "fp32",
+        "framework": "transformers (custom FastAPI server)",
+        "domain": "biomedical",
+        "subdomain": "clinical-nlp",
+        "gpu": true,
+        "embedding_dimensions": 768,
         "pooling": "cls (global attention)",
-        "embedding_dim": 768
+        "max_input_tokens": 4096,
+        "tags": ["embedding", "biomedical", "clinical", "longformer", "long-context", "nlp"]
       }
     }

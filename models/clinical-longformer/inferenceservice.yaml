@@ -67,19 +67,34 @@ data:
         embeddings = out.last_hidden_state[:, 0, :].cpu().tolist()
         return {"embeddings": embeddings, "model": "clinical-longformer", "dim": len(embeddings[0])}
 
+    @app.post("/v1/embeddings")
+    async def openai_embeddings(payload: dict):
+        # OpenAI-style: {model, input(str|list)} -> {object, data:[{embedding}], model, usage}
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        inp = payload.get("input")
+        if inp is None:
+            inp = payload.get("texts") or ([payload.get("text")] if payload.get("text") else None)
+        texts = [inp] if isinstance(inp, str) else list(inp or [])
+        if not texts or not texts[0]:
+            return JSONResponse({"error": "provide 'input' (string or list)"}, 400)
+        enc = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=4096)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        # Longformer needs global attention on the CLS token (matches /v1/science/embed)
+        if "global_attention_mask" not in enc:
+            enc["global_attention_mask"] = torch.zeros_like(enc["input_ids"])
+            enc["global_attention_mask"][:, 0] = 1
+        with torch.no_grad():
+            out = model(**enc)
+        emb = out.last_hidden_state[:, 0, :].cpu().tolist()   # [CLS] pooling
+        data = [{"object": "embedding", "index": i, "embedding": e} for i, e in enumerate(emb)]
+        pt = sum(len(t.split()) for t in texts)
+        return {"object": "list", "data": data, "model": payload.get("model", "clinical-longformer"),
+                "usage": {"prompt_tokens": pt, "total_tokens": pt}}
+
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: clinical-longformer-data
-  namespace: models
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 5Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
