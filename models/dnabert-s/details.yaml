@@ -9,37 +9,65 @@ data:
   details.json: |
     {
       "id": "dnabert-s",
+      "status": "production",
       "type": "embedding",
-      "description_short": "Species-aware genome foundation model with contrastive learning",
-      "description": "DNABERT-S from zhihan1996 builds on DNABERT-2 with manifold instance mixup (MI-Mix) and curriculum contrastive learning (C2LR). Creates species-discriminative DNA embeddings ideal for metagenomics, species identification, and phylogenomics. Forced to CPU due to flash attention issues on L40S. No PVC — downloads on every startup.",
-      "context_window": 512,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "science": "/v1/science/predict",
-        "health": "/health"
-      },
-      "owned_by": "zhihan1996",
-      "source": "zhihan1996/DNABERT-S",
-      "source_url": "https://huggingface.co/zhihan1996/DNABERT-S",
-      "license": "MIT",
-      "parameters": "117M",
-      "precision": "float32 (CPU)",
-      "architecture": "BERT-based DNA encoder (MI-Mix + C2LR)",
-      "framework": "transformers + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": false, "min_replicas": 0, "max_replicas": 1, "cpu_request": "2", "memory_request": "8Gi", "pvc": null, "pvc_size": null, "node_selector": "gpu.present=true", "timeout": 120},
+      "endpoints": { "primary": "/v1/embeddings", "secondary": ["/v1/science/predict"], "health": "/health" },
       "routing": {
         "k8s_name": "dnabert-s",
+        "serialize": false,
         "no_stream": true,
         "upstream_model_id": null
       },
-      "compatibility": {"openai_embeddings": true, "input_fields": ["input"]},
-      "domain": "genomics",
-      "subdomain": "species-aware-embedding",
-      "tags": ["embedding", "science", "genomics", "dna", "metagenomics", "species"],
-      "content_types": ["text"],
-      "languages": ["dna"],
-      "input_map": {"input": "DNA sequence (ACGT, max 512 bp)"},
-      "output_map": {"object": "list", "data": "[{object: embedding, embedding: [float], index: int}]", "model": "dnabert-s"},
-      "tier": 2
+      "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes (venv + model on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "DNA sequence(s) over the ACGT alphabet (BPE-tokenized); truncated to 512 tokens."
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 768]" }, "description": "768-dim species-discriminative DNA embeddings" },
+        "model": { "type": "string", "description": "Model name (dnabert-s)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
+      },
+      "catalog": {
+        "description_short": "DNABERT-S — species-aware DNA embeddings (768-dim, CPU, scale-to-zero)",
+        "description": "DNABERT-S (zhihan1996/DNABERT-S): builds on DNABERT-2 with Manifold Instance Mixup (MI-Mix) + Curriculum Contrastive Learning (C2LR) to produce species-discriminative DNA embeddings — ideal for metagenomics, species identification, and phylogenomics. ~117M params, BPE tokenization, 768-dim, max 512 tokens. Served CPU-only (flash-attention issues on L40S) via a custom transformers FastAPI server, scale-to-zero. Serves the standard OpenAI /v1/embeddings.",
+        "owned_by": "Zhihan Zhou (zhihan1996)",
+        "source": "zhihan1996/DNABERT-S",
+        "source_url": "https://huggingface.co/zhihan1996/DNABERT-S",
+        "license": "MIT",
+        "parameters": "117M",
+        "precision": "fp32",
+        "framework": "transformers (custom FastAPI server)",
+        "domain": "genomics",
+        "subdomain": "species-aware-embedding",
+        "gpu": false,
+        "embedding_dimensions": 768,
+        "pooling": "mean",
+        "max_input_tokens": 512,
+        "tags": ["embedding", "science", "genomics", "dna", "metagenomics", "species", "cpu"]
+      }
     }

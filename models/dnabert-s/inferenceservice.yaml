@@ -104,18 +104,23 @@ data:
 
     @app.post("/v1/embeddings")
     async def embeddings(request: dict):
+        # OpenAI-style: {model, input(str|list)} -> {object, data:[{embedding}], model, usage}.
+        # Supports batch (list input) and truncates >512 tokens (in _embed) rather than rejecting.
         if not model:
             raise HTTPException(503, "Model not loaded yet")
-        seq = request.get("input", "").upper().strip()
-        if not seq:
+        inp = request.get("input", "")
+        seqs = [inp] if isinstance(inp, str) else list(inp)
+        seqs = [s.upper().strip() for s in seqs if s and str(s).strip()]
+        if not seqs:
             raise HTTPException(400, "input required")
-        if len(seq) > 512:
-            raise HTTPException(400, "sequence length > 512")
         loop = asyncio.get_event_loop()
-        emb = await loop.run_in_executor(None, _embed, seq)
-        return JSONResponse({"object": "list", "data": [
-            {"object": "embedding", "embedding": emb, "index": 0}
-        ], "model": "dnabert-s"})
+        data, total = [], 0
+        for i, seq in enumerate(seqs):
+            emb = await loop.run_in_executor(None, _embed, seq)
+            data.append({"object": "embedding", "embedding": emb, "index": i})
+            total += len(seq)
+        return JSONResponse({"object": "list", "data": data, "model": "dnabert-s",
+                             "usage": {"prompt_tokens": total, "total_tokens": total}})
 
     @app.post("/v1/science/predict")
     async def predict(request: dict):
