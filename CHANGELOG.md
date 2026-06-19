@@ -59,6 +59,10 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   Oversize single inputs (>8192 tokens) used to OOMKill the pod (exitCode 137) on the fp32 ~8k-token
   forward pass; the truncation test was SKIPped for it. Re-enabled the truncation check — now PASSES
   (prompt_tokens=8003 → 1024-dim, no OOM). bge-m3 now **9 PASS / 2 EXP / 0 FAIL / 0 SKIP**.
+- **biobert:** card was already v2 (fixed a truncated `description_short`); **split the inlined PVC out
+  to `pvc.yaml`** (live PVC is on `nfs-models`, not `nfs-client` — matched it). Added 10-check biomedical
+  embed test.py, README, CLAUDE. Custom transformers server (BertModel), GPU 3 GiB slice, scale-to-zero.
+  Validation: **8 PASS / 2 EXP / 0 FAIL** (dim 768).
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
