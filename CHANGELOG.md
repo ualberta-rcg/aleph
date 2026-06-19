@@ -3,6 +3,27 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-19 — Embeddings pass begins: bge-m3 exemplar (Template C)
+
+Starting the ~64 embedding/rerank model pass. Same posture as the chat sweep — the models are
+already deployed; this is artifact authoring + card enrichment + a verify test, not reconfiguration.
+New campaign conventions (see `~/hami-cluster-test/MODEL-CAMPAIGN-PLAN.md` §11): (1) web-search each
+model's HF repo page before authoring the card; (2) flat dir layout = `details.yaml` / `pvc.yaml` /
+`inferenceservice.yaml` / `test.py` / `README.md` / `CLAUDE.md`; (3) PVC is its own file and must be
+`ReadWriteMany` (NFS RWX — shared across scale-from-zero pods).
+- **bge-m3 (exemplar):** enriched the card to full Template C (`status`, `input_map`, `output_map`,
+  `catalog.pooling=cls`, `normalization=l2`, `max_input_tokens`, full description sourced from the
+  BAAI/bge-m3 HF page). New `test.py` — the reference 11-check embedding battery (dim / batch /
+  model-echo / usage / encoding_format float+base64 / multilingual / guardrails / catalog; runs
+  inside the gateway pod). New README + CLAUDE. PVC already RWX — no split needed.
+  Validation: **8 PASS / 2 EXP / 0 FAIL / 1 SKIP** (2 EXP = chat→embed 404 + unknown-model 404;
+  1 SKIP = truncation). Live card re-applied (`configmap/bge-m3-details configured`).
+- **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
+  limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
+  TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
+  suite skips this rather than restarting the always-on pod each run. Not fixed (memory-limit bump =
+  service change, out of scope).
+
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
 Re-running the 29 chat LLMs through the gateway and tightening each per-model `test.py` from

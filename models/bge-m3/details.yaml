@@ -9,6 +9,7 @@ data:
   details.json: |
     {
       "id": "bge-m3",
+      "status": "production",
       "type": "embedding",
       "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
       "routing": {
@@ -17,22 +18,25 @@ data:
         "no_stream": true,
         "upstream_model_id": null
       },
-      "limits": { "max_completion_tokens": 0, "context_window": 8192 },
+      "limits": { "max_completion_tokens": 0, "context_window": 8192, "max_input_tokens": 8192 },
       "scaling": {
         "scale_to_zero": false,
         "min_replicas": 1,
         "idle_retention": "always-on",
-        "cold_start_estimate": "30-60 seconds"
+        "cold_start_estimate": "20-40 seconds (weights on PVC)"
       },
       "behavior": {
         "supports_vision": false,
         "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
         "strips_thinking": false
       },
       "param_translation": {
         "thinking": { "mode": "none" },
         "max_tokens": { "field": null }
       },
+      "defaults": {},
       "custom_params": {
         "schema": {
           "encoding_format": { "type": "string", "default": "float" }
@@ -40,21 +44,42 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array",
+          "required": true,
+          "description": "Text (or list of texts) to embed. 100+ languages; each truncated to 8192 tokens."
+        },
+        "encoding_format": {
+          "type": "string",
+          "required": false,
+          "default": "float",
+          "description": "'float' (default, JSON list) or 'base64' (raw float32 bytes)"
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\"" },
+        "data": { "type": "array", "description": "One {object:'embedding', index, embedding:[float x 1024]} per input" },
+        "model": { "type": "string", "description": "TEI model-id (echoed as /data — see CLAUDE.md)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
+      },
       "catalog": {
-        "description_short": "BAAI bge-m3 multilingual embeddings, 8K ctx (TEI, CPU)",
-        "description": "BGE-M3 versatile embedding model: multi-functionality (dense + sparse + ColBERT), multi-linguality (100+ languages), multi-granularity (up to 8192 tokens). 568M params, XLM-RoBERTa backbone. Always-on CPU inference via HuggingFace TEI.",
+        "description_short": "BAAI BGE-M3 multilingual embeddings: 1024-dim dense (+sparse/ColBERT), 8K ctx, TEI/CPU always-on",
+        "description": "BGE-M3 is a versatile embedding model: Multi-Functionality (dense + sparse/lexical + multi-vector ColBERT retrieval in one model), Multi-Linguality (100+ languages), and Multi-Granularity (up to 8192 tokens). ~568M params, XLM-RoBERTa backbone; dense vectors are 1024-dim, CLS-pooled and L2-normalized. No query instruction prefix needed (unlike BGE v1.5). Served CPU-only via HuggingFace TEI; the gateway exposes only the dense /v1/embeddings (OpenAI-shaped) path.",
         "owned_by": "BAAI",
         "source": "BAAI/bge-m3",
         "source_url": "https://huggingface.co/BAAI/bge-m3",
         "license": "MIT",
         "parameters": "568M",
         "precision": "fp32",
-        "framework": "text-embeddings-inference",
+        "framework": "text-embeddings-inference (cpu-1.6)",
         "domain": "nlp",
         "subdomain": "embedding",
         "gpu": false,
         "embedding_dimensions": 1024,
+        "pooling": "cls",
+        "normalization": "l2",
         "max_input_tokens": 8192,
-        "tags": ["embedding", "multilingual", "dense", "sparse", "colbert", "retrieval", "cpu"]
+        "tags": ["embedding", "multilingual", "dense", "sparse", "colbert", "retrieval", "long-context", "cpu"]
       }
     }
