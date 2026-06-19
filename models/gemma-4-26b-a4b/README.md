@@ -37,5 +37,14 @@ curl $GW/v1/messages -d '{"model":"gemma-4-26b-a4b","max_tokens":16000,
 - 1× L40S (FP8, ~25 GB weights), TP1, `vllm/vllm-openai:v0.20.2`, gemma4 reasoning + tool parsers.
 - Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~3 min.
 
+## Testing
+The 33-check vision battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/gemma-4-26b-a4b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **31 PASS / 2 EXP / 0 FAIL** — image vision works, tools (gemma4 parser),
+managed thinking ON/OFF/budget/stream, answer/finish_reason/model-echo/truncation assertions,
+Anthropic parity, guardrails.
+
 ## Source
 [HuggingFace: google/gemma-4-26B-A4B-it](https://huggingface.co/google/gemma-4-26B-A4B-it) · Apache-2.0

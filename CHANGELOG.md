@@ -26,6 +26,8 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
   assertion — chatty models responded instead of enumerating, so never emitted the stop token; switched
   to a continuation prompt (`"Continue this count: 1, 2, 3, 4,"` + `stop:["5"]`) that forces it. README
   Testing section refreshed (was stale `tee`-method + 23-pass).
+- **gemma-4-26b-a4b**: hardened to 33-check vision battery; **31/2/0**. Image vision + tools (gemma4
+  parser) + managed thinking all green. README Testing section added.
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
