@@ -75,12 +75,13 @@ def stream():
              "messages": [{"role": "user", "content": "Count 1 to 3"}], "max_tokens": 30,
              "reasoning_effort": "none", "stream": True}, stream=True) as r:
         n = len([l for l in r.iter_lines() if l.startswith("data:") and "DONE" not in l])
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI streaming", f"{n} chunks")
+    record("PASS" if r.status_code == 200 and n > 0 else "FAIL", r.status_code, "OAI streaming", f"{n} chunks")
 
 def temp0():
-    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France?"}],
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France? One word."}],
                   "reasoning_effort": "none", "max_tokens": 20, "temperature": 0})
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI temp=0", safe(m))
+    ok = r.status_code == 200 and "paris" in (m.get("content") or "").lower()
+    record("PASS" if ok else "FAIL", r.status_code, "OAI temp=0 + answer", safe(m))
 
 def temp_topk():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hello"}],
@@ -95,7 +96,8 @@ def top_p():
 def stop_seq():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Count: 1, 2, 3, 4, 5, 6, 7"}],
                   "reasoning_effort": "none", "max_tokens": 50, "stop": ["5"]})
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI stop sequences", f"finish={d['choices'][0].get('finish_reason')} {safe(m)}")
+    fin = d["choices"][0].get("finish_reason")
+    record("PASS" if r.status_code == 200 and fin == "stop" else "FAIL", r.status_code, "OAI stop sequences", f"finish={fin} {safe(m)}")
 
 def system():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "system", "content": "You are a pirate. Speak like a pirate."},
@@ -106,7 +108,9 @@ def tools_oai():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Weather in Edmonton?"}],
                   "reasoning_effort": "none", "max_tokens": 200, "tools": TOOLS})
     tc = m.get("tool_calls", [])
-    record("PASS" if r.status_code == 200 and tc else "FAIL", r.status_code, "OAI tools", f"tool_calls={len(tc)}")
+    name = tc[0]["function"]["name"] if tc else ""
+    ok = r.status_code == 200 and tc and name == "get_weather"
+    record("PASS" if ok else "FAIL", r.status_code, "OAI tools", f"tool_calls={len(tc)} name={name!r}")
 
 def vision():
     r, d, m = oai({"model": MODEL, "max_tokens": 60, "reasoning_effort": "none",
@@ -121,12 +125,21 @@ def max_tokens():
                   "reasoning_effort": "none", "max_tokens": 8192})
     record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI max_tokens=8k", safe(m, 30))
 
+def truncation():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Tell me a very long story."}],
+                  "reasoning_effort": "none", "max_tokens": 5})
+    fin = d["choices"][0].get("finish_reason"); ct = (d.get("usage") or {}).get("completion_tokens", 0)
+    ok = r.status_code == 200 and fin == "length" and ct <= 8
+    record("PASS" if ok else "FAIL", r.status_code, "OAI truncation max_tokens=5",
+           f"finish={fin} completion_tokens={ct}")
+
 def usage():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}],
                   "reasoning_effort": "none", "max_tokens": 10})
     u = d.get("usage", {})
-    record("PASS" if u.get("prompt_tokens") else "FAIL", r.status_code, "OAI usage",
-           f"prompt={u.get('prompt_tokens')} completion={u.get('completion_tokens')}")
+    ok = u.get("prompt_tokens") and MODEL in (d.get("model") or "")
+    record("PASS" if ok else "FAIL", r.status_code, "OAI usage + model echo",
+           f"prompt={u.get('prompt_tokens')} completion={u.get('completion_tokens')} model={d.get('model')!r}")
 
 def resources():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}],
@@ -137,14 +150,14 @@ def resources():
 
 def think_on_medium():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
-                  "reasoning_effort": "medium", "max_tokens": 16000, "temperature": 0.7})
+                  "reasoning_effort": "medium", "max_tokens": 4096, "temperature": 0.7})
     rc = _rc(m)
     record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
            "OAI think ON medium", f"rc_len={len(rc)} content_len={len(m.get('content') or '')}")
 
 def think_on_high():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
-                  "reasoning_effort": "high", "max_tokens": 16000, "temperature": 0.7})
+                  "reasoning_effort": "high", "max_tokens": 4096, "temperature": 0.7})
     rc = _rc(m)
     record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
            "OAI think ON high", f"rc_len={len(rc)}")
@@ -166,7 +179,7 @@ def think_budget():
 def think_stream():
     rn = cn = 0
     with req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": HARD}],
-             "reasoning_effort": "medium", "max_tokens": 8000, "temperature": 0.7, "stream": True,
+             "reasoning_effort": "medium", "max_tokens": 4096, "temperature": 0.7, "stream": True,
              "stream_options": {"include_usage": True}}, stream=True) as r:
         for line in r.iter_lines():
             if not line.startswith("data:") or "[DONE]" in line:
@@ -227,9 +240,9 @@ def ant_tools():
            f"tool_use_blocks={len(tub)}")
 
 def ant_think_on():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 16000,
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 4096,
             "messages": [{"role": "user", "content": HARD}],
-            "thinking": {"type": "enabled", "budget_tokens": 8000}})
+            "thinking": {"type": "enabled", "budget_tokens": 4096}})
     d = r.json(); blocks = d.get("content", [])
     has = any(b.get("type") == "thinking" for b in blocks)
     record("PASS" if r.status_code == 200 and has else "FAIL", r.status_code, "ANT think ON",
@@ -273,7 +286,7 @@ def catalog():
 
 print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (vision+tools)", flush=True)
 print("=" * 66, flush=True)
-for t in [wake, stream, temp0, temp_topk, top_p, stop_seq, system, tools_oai, vision, max_tokens,
+for t in [wake, stream, temp0, temp_topk, top_p, stop_seq, system, tools_oai, vision, max_tokens, truncation,
           usage, resources, think_on_medium, think_on_high, think_off, think_budget, think_stream,
           meta_title, meta_tags, meta_followups,
           ant_basic, ant_stream, ant_system, ant_temp0, ant_tools,

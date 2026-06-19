@@ -26,5 +26,15 @@ curl $GW/v1/chat/completions -d '{"model":"qwen36-27b","reasoning_effort":"high"
 - 2× L40S (whole devices), TP2, `vllm/vllm-openai:v0.20.2`, qwen3 + qwen3_coder parsers.
 - Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~4–5 min.
 
+## Testing
+The 31-check vision+tools battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/qwen36-27b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **29 PASS / 2 EXP / 0 FAIL** — image vision works, tools, managed thinking
+ON/OFF/budget/stream, answer/finish_reason/model-echo/truncation assertions, Anthropic parity,
+guardrails. (2 EXP = embed-via-Anthropic, bad-model.) Thinking-check `max_tokens` capped at 4096
+to keep the verbose reasoner fast.
+
 ## Source
 [HuggingFace: Qwen/Qwen3.6-27B](https://huggingface.co/Qwen/Qwen3.6-27B)

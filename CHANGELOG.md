@@ -17,6 +17,9 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
   Anthropic parity, streaming reasoning, meta-tasks all green. README Testing sections added.
 - **qwen3-32b**: hardened to 34-check battery; **31/3/0**. Effort + binary `enable_thinking` (real
   off); hermes tools, thinking on/off/budget/stream green.
+- **qwen36-27b**: hardened to 31-check vision+tools battery; **29/2/0**. Image vision + tools +
+  managed thinking all green. (Campaign-wide: capped thinking-check `max_tokens` at 4096 for verbose
+  reasoners — assertions only need a non-empty reasoning trace, so ~4× faster, no loss of coverage.)
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
