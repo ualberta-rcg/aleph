@@ -131,6 +131,9 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
 - **scincl:** old-schema card rewritten to v2; migrated PVC RWO→RWX (nfs-models). Added 10-check
   scientific embed test.py (768-dim) + README. GPU (10 GiB), scale-to-zero.
   Validation: **8 PASS / 2 EXP / 0 FAIL**.
+- **prokbert:** card was already v2; **fixed `/v1/embeddings` to return `usage`** (was omitted). Added
+  10-check DNA-embed test.py (384-dim) + README + CLAUDE. No PVC (HF hub, ephemeral). GPU, scale-to-zero.
+  Validation: **8 PASS / 2 EXP / 0 FAIL**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

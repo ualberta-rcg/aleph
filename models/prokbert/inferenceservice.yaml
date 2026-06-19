@@ -90,7 +90,9 @@ data:
         for i, s in enumerate(seqs):
             emb = await loop.run_in_executor(None, _embed, s)
             data.append({"object": "embedding", "embedding": emb, "index": i})
-        return JSONResponse({"object": "list", "data": data, "model": "prokbert-mini"})
+        total = sum(len(s) for s in seqs)
+        return JSONResponse({"object": "list", "data": data, "model": "prokbert-mini",
+                             "usage": {"prompt_tokens": total, "total_tokens": total}})
 
     @app.post("/v1/science/predict")
     async def predict(request: dict):
