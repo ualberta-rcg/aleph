@@ -218,19 +218,23 @@ Remaining LLMs still on v1 schema — see `models.md` for full list.
 
 ## Scaling Models Up/Down
 
-KServe ISVCs use a `serving.kserve.io/stop: "true"` annotation to fully stop a model (no pods, no revision). **Just setting `minReplicas` is not enough** — Knative honors the stop annotation and will keep the ISVC in `Stopped` state even with `minReplicas: 1`.
+**Steady state for every chat model is wake-on-demand: `minReplicas: 0` and NO `stop` annotation.**
+The first request scales 0→1; the pod idles back to 0 after the retention window. Do **not** leave
+models with `serving.kserve.io/stop: "true"` — that fully stops them (no pods, blocks wake-on-demand)
+and should be used only to deliberately park a model. Note: just setting `minReplicas` is not enough
+to stop a model — Knative honors the stop annotation and keeps the ISVC `Stopped` even with
+`minReplicas: 1`.
 
-### Wake a stopped model
+### Wake a stopped model / pre-warm
 ```bash
-# Remove the stop annotation (this is the key step)
+# Remove the stop annotation (the key step) so it's wake-on-demand again
 kubectl annotate isvc <model> -n models serving.kserve.io/stop- --overwrite
-# Set minReplicas to spin up the pod
+# (optional) spin up a pod immediately instead of waiting for wake-on-demand:
 kubectl patch isvc <model> -n models --type merge -p '{"spec":{"predictor":{"minReplicas":1}}}'
 ```
 
-### Stop a model (spin down completely)
+### Park a model completely (not the default)
 ```bash
-# Scale to zero AND add stop annotation
 kubectl patch isvc <model> -n models --type merge -p '{"spec":{"predictor":{"minReplicas":0}}}'
 kubectl annotate isvc <model> -n models serving.kserve.io/stop=true --overwrite
 ```
@@ -241,8 +245,8 @@ kubectl get isvc <model> -n models -o jsonpath='{.status.conditions[?(@.type=="R
 ```
 
 ### Test pattern (per model)
-1. Remove stop annotation → set minReplicas=1
-2. Wait for `Ready=True`
-3. Run test barrage via gateway (inside gateway pod or from head node via ClusterIP)
-4. Set minReplicas=0 → add stop annotation
+1. Ensure no stop annotation (clear it: `kubectl annotate isvc <model> -n models serving.kserve.io/stop- --overwrite`).
+2. Run the test barrage — its first check wakes the model through the gateway's 503-retry:
+   `cat models/<model>/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -`
+3. Leave at `minReplicas: 0` with **no** stop annotation (wake-on-demand).
 5. Move to next model

@@ -57,6 +57,10 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
   **21/2/0**. Both need a patient wake (115 GB / 144 GB checkpoints from NFS exceed the 7.5-min
   inline wake window); tested after a warm-up. qwen25-vl-72b's ISVC was delete+re-applied to clear
   revision churn from a minReplicas pre-warm attempt. **All 29 chat LLMs now retested + hardened.**
+- **Steady-state policy**: all 29 chat models are now wake-on-demand (`minReplicas: 0`, **no `stop`
+  annotation**). Cleared `serving.kserve.io/stop=true` from the 10 reasoning models that had been
+  left stopped after testing. Root `CLAUDE.md` "Scaling Models Up/Down" rewritten — wake-on-demand is
+  the default resting state; `stop=true` is only for deliberately parking a model.
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
