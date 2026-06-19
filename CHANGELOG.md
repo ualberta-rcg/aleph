@@ -35,6 +35,9 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
 - **qwq-32b**: hardened to 22-check always-on battery; **19/3/0**. Always-on reasoning exposed by
   default, stripped + off-capped on `none`/meta. Tool-name/model-echo/truncation assertions added.
   README Testing section refreshed (was stale `tee`-method + 21-pass).
+- **r1-distill-qwen-32b**: hardened to 26-check always-on battery; **21/5/0**. `stop_seq` needs a
+  2048 budget (always-on CoT eats a small one before reaching the stop token). README Testing
+  section added.
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
