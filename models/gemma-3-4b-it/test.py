@@ -110,12 +110,19 @@ def max_tokens():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": capmt(4096)})
     record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI max_tokens", f"asked={capmt(4096)} {safe(m,30)!r}")
 
+def truncation():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Tell me a very long story."}], "max_tokens": 5})
+    fin = d["choices"][0].get("finish_reason"); ct = (d.get("usage") or {}).get("completion_tokens", 0)
+    ok = r.status_code == 200 and fin == "length" and ct <= 8
+    record("PASS" if ok else "FAIL", r.status_code, "OAI truncation max_tokens=5", f"finish={fin} completion_tokens={ct}")
+
 def usage():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
     u = d.get("usage") or {}
     pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI usage",
-           f"prompt={pt} completion={ct}" + ("" if pt else " (no usage block — custom backend)"))
+    ok = r.status_code == 200 and MODEL in (d.get("model") or "")
+    record("PASS" if ok else "FAIL", r.status_code, "OAI usage + model echo",
+           f"prompt={pt} completion={ct} model={d.get('model')!r}" + ("" if pt else " (no usage block — custom backend)"))
 
 def resources():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
@@ -269,7 +276,7 @@ print("=" * 66, flush=True)
 print(f"{MODEL} comprehensive gateway test (non-reasoning, auto-detected)", flush=True)
 print(f"vision={VISION} tools={TOOLS} maxout={MAXOUT}", flush=True)
 print("=" * 66, flush=True)
-for t in [wake, stream, temp0, temp_topk, stop_seq, system, max_tokens, usage, resources,
+for t in [wake, stream, temp0, temp_topk, stop_seq, system, max_tokens, truncation, usage, resources,
           tools_works if TOOLS else tools_rejected,
           vision_works if VISION else vision_rejected,
           meta_title, meta_tags, meta_followups,

@@ -45,6 +45,14 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
   oceangpt, openbiollm, medgemma, tinyllama) get the domain-agnostic subset (truncation + model-echo)
   since they may not answer "Paris" or enumerate cleanly.
 - **command-r-7b**: hardened to 23-check battery; **18/5/0**. README Testing section refreshed.
+- **glm-4-32b, qwen25-coder-32b, oceangpt-30b, gemma-3-4b-it, qwen25-vl-3b, qwen25-vl-7b,
+  qwen25-vl-72b-awq, openbiollm-70b, medgemma-27b-it, geogalactica**: auto-detect non-reasoning
+  battery + truncation/model-echo assertions; **~20–22 pass / 1–3 exp / 0 fail** (tools/vision
+  auto-detected per model). Big models (medgemma-27b, qwen25-vl-72b, geogalactica, openbiollm-70b)
+  need a quiet cluster to warm within the 7.5-min wake window.
+- **astrosage, tinyllama-1-1b**: custom transformers/llama.cpp backends — model-echo only
+  (truncation not honored by these backends: `max_tokens=5` → `finish=stop, 0 tokens`);
+  **18 pass / 4 exp / 0 fail**.
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 

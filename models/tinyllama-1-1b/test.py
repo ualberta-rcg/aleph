@@ -114,8 +114,9 @@ def usage():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
     u = d.get("usage") or {}
     pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI usage",
-           f"prompt={pt} completion={ct}" + ("" if pt else " (no usage block — custom backend)"))
+    ok = r.status_code == 200 and MODEL in (d.get("model") or "")
+    record("PASS" if ok else "FAIL", r.status_code, "OAI usage + model echo",
+           f"prompt={pt} completion={ct} model={d.get('model')!r}" + ("" if pt else " (no usage block — custom backend)"))
 
 def resources():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10})
