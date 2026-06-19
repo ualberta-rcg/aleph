@@ -11,69 +11,63 @@ data:
       "id": "biomedbert-large",
       "status": "production",
       "type": "embedding",
-      "description_short": "BiomedBERT-large — large PubMed BERT embeddings (340M, 1024-dim)",
-      "description": "BiomedBERT-large by Microsoft. 340M params. Large BERT model pre-trained on PubMed abstracts. State-of-the-art on BioASQ, PubMedQA, and BLURB biomedical benchmarks. Produces 1024-dimensional dense embeddings. Larger variant of BiomedBERT for higher-accuracy biomedical NLP tasks. Max sequence length 512 tokens.",
-      "context_window": 512,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/science/embed",
-        "health": "/health"
-      },
-      "owned_by": "microsoft",
-      "source": "microsoft/BiomedNLP-BiomedBERT-large-uncased-abstract",
-      "source_url": "https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-large-uncased-abstract",
-      "license": "MIT",
-      "parameters": "340M",
-      "parameter_count": 340000000,
-      "precision": "fp32",
-      "architecture": "transformer",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "min_replicas": 0,
-        "max_replicas": 1,
-        "startup_seconds": 30,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
+      "endpoints": { "primary": "/v1/embeddings", "secondary": ["/v1/science/embed"], "health": "/health" },
       "routing": {
-        "path_prefix": "/v1/",
+        "k8s_name": "biomedbert-large",
         "serialize": false,
-        "no_stream": false
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "10m",
+        "cold_start_estimate": "30-60 seconds (venv + model on PVC)"
+      },
+      "behavior": {
         "supports_vision": false,
-        "reasoning_model": false
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "domain": "biomedical",
-      "subdomain": "biomedical-text-embeddings",
-      "tags": ["embedding", "biomedical", "nlp", "pubmed", "biology", "large"],
-      "content_types": ["text"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
-        "text": {
-          "type": "string",
+        "input": {
+          "type": "string or array of strings",
           "required": true,
-          "description": "Biomedical text — PubMed abstracts, clinical text"
-        },
-        "texts": {
-          "type": "array of strings",
-          "required": false,
-          "description": "Batch of biomedical texts"
+          "description": "Biomedical text (abstract/snippet); truncated to 512 tokens."
         }
       },
       "output_map": {
-        "embeddings": "[[float x 1024]]",
-        "model": "string",
-        "dim": "int (1024)"
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 1024]" }, "description": "1024-dim [CLS]-pooled embeddings" },
+        "model": { "type": "string", "description": "Model name (biomedbert-large)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "framework": "transformers (HuggingFace)",
-        "max_seq_length": 512,
+      "catalog": {
+        "description_short": "BiomedBERT-large — 1024-dim biomedical embeddings, PubMed-pretrained (GPU, scale-to-zero)",
+        "description": "BiomedBERT-large (microsoft/BiomedNLP-BiomedBERT-large-uncased-abstract): 340M BERT-large pre-trained from scratch on PubMed abstracts (domain-specific vocabulary). State-of-the-art on BioASQ / PubMedQA / BLURB. Produces 1024-dim [CLS]-pooled dense embeddings, max 512 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice (10 GiB), scale-to-zero. Serves the standard OpenAI /v1/embeddings (legacy /v1/science/embed kept).",
+        "owned_by": "Microsoft",
+        "source": "microsoft/BiomedNLP-BiomedBERT-large-uncased-abstract",
+        "source_url": "https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-large-uncased-abstract",
+        "license": "MIT",
+        "parameters": "340M",
+        "precision": "fp32",
+        "framework": "transformers (custom FastAPI server)",
+        "domain": "biomedical",
+        "subdomain": "biomedical-nlp",
+        "gpu": true,
+        "embedding_dimensions": 1024,
         "pooling": "cls",
-        "embedding_dim": 1024
+        "max_input_tokens": 512,
+        "tags": ["embedding", "biomedical", "nlp", "pubmed", "domain-specific", "bert-large"]
       }
     }
