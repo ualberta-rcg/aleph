@@ -53,6 +53,10 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
 - **astrosage, tinyllama-1-1b**: custom transformers/llama.cpp backends — model-echo only
   (truncation not honored by these backends: `max_tokens=5` → `finish=stop, 0 tokens`);
   **18 pass / 4 exp / 0 fail**.
+- **qwen3-235b** (235B AWQ) + **qwen25-vl-72b** (72B BF16): the two biggest models — **21/3/0** and
+  **21/2/0**. Both need a patient wake (115 GB / 144 GB checkpoints from NFS exceed the 7.5-min
+  inline wake window); tested after a warm-up. qwen25-vl-72b's ISVC was delete+re-applied to clear
+  revision churn from a minReplicas pre-warm attempt. **All 29 chat LLMs now retested + hardened.**
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 

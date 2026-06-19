@@ -19,17 +19,15 @@ kubectl apply -f details.yaml
 
 ## Testing
 
-The test runs from the gateway pod against the in-cluster gateway endpoint.
+The 24-check battery runs inside the gateway pod (first check wakes a scaled-to-zero model —
+235B AWQ loads ~115 GiB, give it a patient wake):
 
 ```bash
-# Copy test to gateway pod
-cat test.py | kubectl exec -i -n models <gateway-pod> -c gateway -- tee /tmp/test_qwen3_235b.py
-
-# Run (pod must be warm — wake with a request first if scaled to zero)
-kubectl exec -n models <gateway-pod> -c gateway -- python3 /tmp/test_qwen3_235b.py
+cat models/qwen3-235b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Expected: **21 passed, 3 expected failures, 0 failed**
+Last run (2026-06-18): **21 PASS / 3 EXP / 0 FAIL** — tools (qwen3_coder parser), streaming,
+temp/stop/system, Anthropic parity, guardrails. (3 EXP = tools/vision/embed guards.)
 
 ## Key Configuration
 
