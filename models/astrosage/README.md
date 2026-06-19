@@ -51,3 +51,11 @@ kubectl apply -f inferenceservice.yaml
 - No streaming support — gateway forces non-streaming responses
 - NFS PVC (ReadWriteMany) for venv + model weights
 - 14/14 gateway tests passed (2026-06-10)
+
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/astrosage/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **18 PASS / 4 EXP / 0 FAIL (custom backend — model-echo only)**
+

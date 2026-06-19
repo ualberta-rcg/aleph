@@ -22,5 +22,12 @@ curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
 - 2× L40S (whole devices, TP2), `--disable-custom-all-reduce` (PCIe topology), `vllm/vllm-openai:v0.20.2`. Weights ~64 GB on PVC `glm-4-32b-data`.
 - Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~3 min.
 
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/glm-4-32b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **20 PASS / 3 EXP / 0 FAIL (glm4_0414 tools)**
+
 ## Source
 [HuggingFace: THUDM/GLM-4-32B-0414](https://huggingface.co/THUDM/GLM-4-32B-0414) · Apache-2.0

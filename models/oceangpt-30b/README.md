@@ -61,3 +61,11 @@ kubectl apply -f inferenceservice.yaml
 - `--tool-call-parser=hermes` + `--enable-auto-tool-choice` for function calling
 - Works on both OpenAI and Anthropic gateway endpoints
 - 14/14 gateway tests passed (2026-06-10)
+
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/oceangpt-30b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **20 PASS / 3 EXP / 0 FAIL (hermes tools)**
+

@@ -24,5 +24,12 @@ curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
 - 1× HAMi GPU slice (L40S, 20 GiB `gpumem`), TP1, `vllm/vllm-openai:v0.20.2`, bfloat16. CUDA graphs on (no `--enforce-eager`). `--limit-mm-per-prompt '{"image":8}'`. Weights on PVC `gemma-3-4b-it-data`.
 - Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~1-2 min.
 
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/gemma-3-4b-it/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **21 PASS / 2 EXP / 0 FAIL (vision)**
+
 ## Source
 [HuggingFace: google/gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) · Gemma license

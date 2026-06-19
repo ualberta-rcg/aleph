@@ -21,5 +21,12 @@ curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
 - **CPU only** (no GPU), llama-cpp-python, `--n_gpu_layers=0`. ~4 vCPU / 3 Gi. GGUF on PVC `tinyllama-1-1b-models`.
 - Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~30 s.
 
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/tinyllama-1-1b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **18 PASS / 4 EXP / 0 FAIL (CPU/llama.cpp — model-echo only)**
+
 ## Source
 [HuggingFace: TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF) (base: [TinyLlama/TinyLlama-1.1B-Chat-v1.0](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)) · Apache-2.0
