@@ -32,6 +32,9 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
   assertion skipped (model adds a disclaimer, not crisp answers) and the truncation-at-5 check removed
   (budget off-mode caps to `off_max_tokens`≈4096, overriding a tiny request; the off-cap is already
   covered by `think_off`). README authored (was missing).
+- **qwq-32b**: hardened to 22-check always-on battery; **19/3/0**. Always-on reasoning exposed by
+  default, stripped + off-capped on `none`/meta. Tool-name/model-echo/truncation assertions added.
+  README Testing section refreshed (was stale `tee`-method + 21-pass).
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 

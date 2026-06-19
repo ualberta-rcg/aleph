@@ -17,17 +17,17 @@ kubectl apply -f details.yaml
 
 ## Testing
 
-The test runs from the gateway pod against the in-cluster gateway endpoint.
+The 22-check always-on battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 
 ```bash
-# Copy test to gateway pod
-cat test.py | kubectl exec -i -n models <gateway-pod> -c gateway -- tee /tmp/test_qwq_32b.py
-
-# Run (pod must be warm — wake with a request first if scaled to zero)
-kubectl exec -n models <gateway-pod> -c gateway -- python3 /tmp/test_qwq_32b.py
+cat models/qwq-32b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Expected: **21 passed, 3 expected failures, 0 failed**
+Last run (2026-06-18): **19 PASS / 3 EXP / 0 FAIL** — always-on reasoning exposed by default,
+stripped + off-capped on `reasoning_effort: none` / meta-tasks, tools, streaming reasoning,
+answer/tool-name/model-echo/truncation assertions, Anthropic parity, guardrails. (Meta title/tags
+may return empty content — qwq thinks so heavily that stripped output is short; the test asserts
+reasoning is stripped, not content non-empty.)
 
 ## Key Configuration
 
