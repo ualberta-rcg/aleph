@@ -11,31 +11,63 @@ data:
       "id": "ankh",
       "status": "production",
       "type": "embedding",
-      "description_short": "T5-based protein language model from ElnaggarLab (TUM, 113M params)",
-      "description": "Ankh is a protein language model based on the T5 encoder architecture from the ElnaggarLab at TU Munich. Trained on UniRef50. Produces high-quality protein embeddings for structure prediction, function annotation, and variant effect prediction. Requires space-separated amino acids as input. Apache 2.0 license.",
-      "context_window": 1024,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": {
+        "k8s_name": "ankh",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "owned_by": "ElnaggarLab",
-      "source": "ElnaggarLab/ankh-base",
-      "source_url": "https://huggingface.co/ElnaggarLab/ankh-base",
-      "license": "Apache-2.0",
-      "parameters": "113M",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "T5 Encoder",
-      "framework": "transformers + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "ankh-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "ankh", "api_name": "ankh"},
-      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
-      "domain": "proteomics",
-      "subdomain": "protein-embedding",
-      "tags": ["embedding", "science", "proteomics", "protein", "gpu"],
-      "content_types": ["text"],
-      "languages": ["protein"],
-      "input_map": {"input": "amino acid sequence(s)", "sequences": "alias for input"},
-      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "ankh"},
-      "tier": 2
+      "limits": { "max_completion_tokens": 0, "context_window": 1024, "max_input_tokens": 1024 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes (venv + model cached on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "Protein sequence(s) as 1-letter amino-acid codes (server space-separates them); truncated to 1024 tokens."
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 768]" }, "description": "768-dim mean-pooled protein embeddings (NaN→0 sanitized)" },
+        "model": { "type": "string", "description": "Model name (ankh)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens} (residue counts)" }
+      },
+      "catalog": {
+        "description_short": "Ankh-base — 768-dim protein embeddings from a T5 encoder (GPU, scale-to-zero)",
+        "description": "Ankh-base (ElnaggarLab/ankh-base): protein language model based on a T5 encoder (trained on ~30M unlabeled protein sequences). Produces 768-dim mean-pooled protein embeddings — input is space-separated amino acids; fp32 (T5 encoders overflow to NaN in fp16, sanitized via nan_to_num). Max 1024 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice (8 GiB), scale-to-zero. Serves the standard OpenAI /v1/embeddings (batch + usage compliant).",
+        "owned_by": "ElnaggarLab (TUM)",
+        "source": "ElnaggarLab/ankh-base",
+        "source_url": "https://huggingface.co/ElnaggarLab/ankh-base",
+        "license": "Apache-2.0",
+        "parameters": "T5-encoder",
+        "precision": "fp32",
+        "framework": "transformers T5EncoderModel (custom FastAPI server)",
+        "domain": "proteomics",
+        "subdomain": "protein-language-model",
+        "gpu": true,
+        "embedding_dimensions": 768,
+        "pooling": "mean",
+        "max_input_tokens": 1024,
+        "tags": ["embedding", "science", "proteomics", "protein", "t5", "gpu"]
+      }
     }

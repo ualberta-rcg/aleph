@@ -291,6 +291,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | biomedbert-large | 8/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | science-embed normalized; 1024-dim CLS, BERT-large |
 | esm2-35m | 8/2/0 | v2 (was v2) | RWX (split, nfs-models) | smallest ESM-2; 480-dim |
 | dnabert-s | 8/2/0 | v2 (rewrote) + server fix | RWX | OpenAI fix: batch+usage+truncation in /v1/embeddings handler |
+| ankh | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | protein T5 encoder; server already compliant |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
