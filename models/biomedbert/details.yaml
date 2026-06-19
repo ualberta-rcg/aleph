@@ -78,7 +78,7 @@ data:
       },
       "catalog": {
         "description_short": "BiomedBERT \u2014 biomedical text embeddings (768-dim)",
-        "description": "BiomedBERT (PubMedBERT-base-uncased-abstract) by Microsoft, 110M params, BERT-base pre-trained from scratch on PubMed abstracts. Produces 768-dim mean-pooled embeddings for biomedical literature mining, clinical NLP, NER and relation extraction. Max 512 tokens. CPU-only.",
+        "description": "BiomedBERT (microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract) by Microsoft, 110M params, BERT-base pre-trained from scratch on biomedical text (PubMed abstracts + PMC full text). Produces 768-dim mean-pooled embeddings for biomedical literature mining, clinical NLP, NER and relation extraction. Max 512 tokens. CPU-only.",
         "owned_by": "Microsoft",
         "source": "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract",
         "source_url": "https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract",

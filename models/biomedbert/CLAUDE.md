@@ -1,7 +1,7 @@
 # biomedbert Notes
 
 ## Purpose
-Microsoft BiomedBERT (PubMedBERT-base-uncased-abstract), 110M. Mean-pooled 768-dim
+Microsoft BiomedBERT (microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract), 110M. Mean-pooled 768-dim
 biomedical text embeddings via `/v1/embeddings`.
 
 ## Runtime
@@ -20,4 +20,7 @@ biomedical text embeddings via `/v1/embeddings`.
 - CPU req/limit 2/4; mem 2Gi/4Gi. PVC `biomedbert-data` 5Gi (RWX, nfs-client).
 
 ## Validation
-See [TEST.md](TEST.md). Embeddings dim=768 verified.
+- **Embeddings pass (2026-06-19):** 10-check battery via the gateway — **8 PASS / 2 EXP / 0 FAIL**
+  (dim 768, batch, distinctness cos 0.79, truncation, guardrails, catalog). Card: fixed a
+  PubMedBERT→BiomedBERT description copy-paste error. Run:
+  `cat models/biomedbert/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -`.

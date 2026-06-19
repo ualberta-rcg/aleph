@@ -279,6 +279,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | biobert | 8/2/0 | v2 | RWX (split, nfs-models) | — |
 | pubmedbert | 8/2/0 | v2 (rewrote) | RWX | dropped kustomize; served id pubmedbert-110m |
 | esm2-150m | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | 640-dim; recreated PVC (nfs-models) |
+| biomedbert | 8/2/0 | v2 (fixed desc) | RWX | fixed PubMedBERT→BiomedBERT copy-paste |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
