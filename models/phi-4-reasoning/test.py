@@ -67,7 +67,7 @@ def stream():
              "messages": [{"role": "user", "content": "Count 1 to 3"}], "max_tokens": 30,
              "reasoning_effort": "none", "stream": True}, stream=True) as r:
         n = len([l for l in r.iter_lines() if l.startswith("data:") and "DONE" not in l])
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI streaming", f"{n} chunks")
+    record("PASS" if r.status_code == 200 and n > 0 else "FAIL", r.status_code, "OAI streaming", f"{n} chunks")
 
 def temp0():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France?"}],
@@ -85,10 +85,10 @@ def top_p():
     record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI top_p", safe(m))
 
 def stop_seq():
-    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Count: 1, 2, 3, 4, 5, 6, 7"}],
-                  "reasoning_effort": "none", "max_tokens": 50, "stop": ["5"]})
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Continue this count: 1, 2, 3, 4,"}],
+                  "reasoning_effort": "none", "max_tokens": 100, "stop": ["5"]})
     fin = d["choices"][0].get("finish_reason")
-    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI stop sequences", f"finish={fin} {safe(m)}")
+    record("PASS" if r.status_code == 200 and fin == "stop" else "FAIL", r.status_code, "OAI stop sequences", f"finish={fin} {safe(m)}")
 
 def system():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "system", "content": "You are a pirate. Speak like a pirate."},
@@ -113,8 +113,9 @@ def usage():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}],
                   "reasoning_effort": "none", "max_tokens": 10})
     u = d.get("usage", {})
-    record("PASS" if u.get("prompt_tokens") else "FAIL", r.status_code, "OAI usage",
-           f"prompt={u.get('prompt_tokens')} completion={u.get('completion_tokens')}")
+    ok = u.get("prompt_tokens") and MODEL in (d.get("model") or "")
+    record("PASS" if ok else "FAIL", r.status_code, "OAI usage + model echo",
+           f"prompt={u.get('prompt_tokens')} completion={u.get('completion_tokens')} model={d.get('model')!r}")
 
 def resources():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "hi"}],
@@ -126,14 +127,14 @@ def resources():
 # ── Thinking (budget mode) ────────────────────────────────────────────────────
 def think_on_medium():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
-                  "reasoning_effort": "medium", "max_tokens": 16000, "temperature": 0.8, "top_p": 0.95})
+                  "reasoning_effort": "medium", "max_tokens": 4096, "temperature": 0.8, "top_p": 0.95})
     rc = _rc(m)
     record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
            "OAI think ON medium", f"rc_len={len(rc)} content_len={len(m.get('content') or '')}")
 
 def think_on_high():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
-                  "reasoning_effort": "high", "max_tokens": 16000, "temperature": 0.8, "top_p": 0.95})
+                  "reasoning_effort": "high", "max_tokens": 4096, "temperature": 0.8, "top_p": 0.95})
     rc = _rc(m)
     record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
            "OAI think ON high", f"rc_len={len(rc)}")
@@ -148,7 +149,7 @@ def think_off():
 def think_budget():
     # budget mode: thinking_token_budget caps REASONING (not total). Assert reasoning present.
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
-                  "thinking_token_budget": 2000, "max_tokens": 16000, "temperature": 0.8})
+                  "thinking_token_budget": 2000, "max_tokens": 4096, "temperature": 0.8})
     rc = _rc(m); ct = (d.get("usage") or {}).get("completion_tokens", 0)
     record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
            "OAI token-budget", f"rc_len={len(rc)} completion_tokens={ct} (budget 2000)")
@@ -156,7 +157,7 @@ def think_budget():
 def think_stream():
     rn = cn = 0
     with req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content": HARD}],
-             "reasoning_effort": "medium", "max_tokens": 8000, "temperature": 0.8, "top_p": 0.95,
+             "reasoning_effort": "medium", "max_tokens": 4096, "temperature": 0.8, "top_p": 0.95,
              "stream": True, "stream_options": {"include_usage": True}}, stream=True) as r:
         for line in r.iter_lines():
             if not line.startswith("data:") or "[DONE]" in line:
@@ -235,9 +236,9 @@ def ant_tools():
            f"code={r.json().get('error',{}).get('code','')}")
 
 def ant_think_on():
-    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 16000,
+    r = req("POST", "/v1/messages", {"model": MODEL, "max_tokens": 4096,
             "messages": [{"role": "user", "content": HARD}],
-            "thinking": {"type": "enabled", "budget_tokens": 8000}})
+            "thinking": {"type": "enabled", "budget_tokens": 4096}})
     d = r.json(); blocks = d.get("content", [])
     has = any(b.get("type") == "thinking" for b in blocks)
     record("PASS" if r.status_code == 200 and has else "FAIL", r.status_code, "ANT think ON",
