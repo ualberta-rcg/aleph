@@ -42,6 +42,10 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   scaling); the existing README + CLAUDE described a never-deployed TEI setup → rewrote both to match
   reality. Added 11-check multilingual embed test.py; dropped `kustomization.yaml`.
   Validation: **9 PASS / 2 EXP / 0 FAIL** (dim 384; EN/ES/ZH same-sentence cos 0.92).
+- **dnabert-2:** old-schema card rewritten to v2 Template C (carrying the torch-2.5.1/transformers-4.40.2
+  pin + custom-op notes into catalog). Added 10-check DNA-embed test.py, README, refreshed CLAUDE;
+  dropped `kustomization.yaml`. Custom transformers server (trust_remote_code), CPU, scale-to-zero.
+  Validation: **8 PASS / 2 EXP / 0 FAIL** (dim 768); live card re-applied.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

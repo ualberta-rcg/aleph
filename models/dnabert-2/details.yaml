@@ -9,76 +9,66 @@ data:
   details.json: |
     {
       "id": "dnabert-2-117m",
+      "status": "production",
       "type": "embedding",
-      "description_short": "DNABERT-2 — multi-species DNA foundation model (768-dim)",
-      "description": "DNABERT-2 by Zhihan Zhou et al. 117M params. Multi-species DNA foundation model using BPE tokenization instead of k-mers. Trained on genomes from multiple species. Produces 768-dimensional dense DNA sequence embeddings for variant effect prediction, genome annotation, regulatory element analysis, and epigenomic prediction. Requires torch 2.5.1 (pinned) due to custom ops compatibility. Max sequence length 512 tokens.",
-      "context_window": 512,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
-      },
-      "owned_by": "zhihan1996",
-      "source": "zhihan1996/DNABERT-2-117M",
-      "source_url": "https://huggingface.co/zhihan1996/DNABERT-2-117M",
-      "license": "Apache-2.0",
-      "parameters": "117M",
-      "parameter_count": 117000000,
-      "precision": "fp32",
-      "architecture": "transformer",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "startup_seconds": 30,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
       "routing": {
         "k8s_name": "dnabert-2",
+        "serialize": false,
         "no_stream": true,
         "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
-        "supports_vision": false,
-        "reasoning_model": false
+      "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "30-60 seconds (venv + model on PVC)"
       },
-      "domain": "genomics",
-      "subdomain": "dna-embeddings",
-      "tags": ["embedding", "science", "genomics", "dna", "multi-species"],
-      "content_types": ["text"],
-      "tier": "production",
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
         "input": {
           "type": "string or array of strings",
           "required": true,
-          "description": "DNA sequence(s) using ACGT characters"
+          "description": "DNA sequence(s) over the ACGT alphabet (BPE-tokenized internally); truncated to 512 tokens."
         }
       },
       "output_map": {
-        "object": "string (list)",
-        "model": "string",
-        "data": {
-          "type": "array",
-          "items": {
-            "object": "string (embedding)",
-            "index": "int",
-            "embedding": "[float x 768]"
-          }
-        },
-        "usage": {"prompt_tokens": "int", "total_tokens": "int"}
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 768]" }, "description": "768-dim mean-pooled (attention-masked) DNA embeddings" },
+        "model": { "type": "string", "description": "Model name (dnabert-2-117m)" },
+        "usage": { "type": "object", "description": "{prompt_tokens (sequence length), total_tokens: 0}" }
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "framework": "transformers (HuggingFace, trust_remote_code=True)",
-        "max_seq_length": 512,
+      "catalog": {
+        "description_short": "DNABERT-2 (117M) multi-species DNA foundation model — 768-dim embeddings (CPU, scale-to-zero)",
+        "description": "DNABERT-2 (zhihan1996/DNABERT-2-117M, Zhou et al. 2023): ~117M-param DNA foundation model that uses BPE tokenization (not fixed k-mers), trained on genomes from multiple species. Produces 768-dim mean-pooled embeddings for variant-effect prediction, genome annotation, regulatory-element analysis, and epigenomic prediction. Max 512 tokens. Custom remote-code model: requires trust_remote_code, a pad_token_id patch, low_cpu_mem_usage=False, and is pinned to torch 2.5.1+cpu / transformers 4.40.2 (custom ops break on torch>=2.6) with TORCHDYNAMO_DISABLE=1 and TORCH_COMPILE_DISABLE=1. Served CPU-only via a custom transformers FastAPI server, scale-to-zero.",
+        "owned_by": "Zhihan Zhou (zhihan1996)",
+        "source": "zhihan1996/DNABERT-2-117M",
+        "source_url": "https://huggingface.co/zhihan1996/DNABERT-2-117M",
+        "paper_url": "https://arxiv.org/abs/2306.15006",
+        "license": "Apache-2.0",
+        "parameters": "117M",
+        "precision": "fp32",
+        "framework": "transformers 4.40.2 (custom FastAPI server, trust_remote_code)",
+        "domain": "genomics",
+        "subdomain": "dna-embeddings",
+        "gpu": false,
+        "embedding_dimensions": 768,
         "pooling": "mean (attention-masked)",
-        "embedding_dim": 768,
-        "torch_version": "2.5.1+cpu (pinned)",
-        "transformers_version": "4.40.2 (pinned)",
-        "notes": "Custom ops break on torch>=2.6; uses TORCHDYNAMO_DISABLE=1 and TORCH_COMPILE_DISABLE=1"
+        "max_input_tokens": 512,
+        "tags": ["embedding", "science", "genomics", "dna", "multi-species", "cpu"]
       }
     }
