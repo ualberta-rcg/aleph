@@ -20,6 +20,8 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
 - **qwen36-27b**: hardened to 31-check vision+tools battery; **29/2/0**. Image vision + tools +
   managed thinking all green. (Campaign-wide: capped thinking-check `max_tokens` at 4096 for verbose
   reasoners — assertions only need a non-empty reasoning trace, so ~4× faster, no loss of coverage.)
+- **qwen36-35b-a3b**: hardened to 31-check vision+tools battery; **29/2/0**. README Testing section
+  refreshed (was stale `tee`-method + 21-pass).
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 

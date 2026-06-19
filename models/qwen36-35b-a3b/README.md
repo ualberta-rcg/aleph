@@ -17,17 +17,16 @@ kubectl apply -f details.yaml
 
 ## Testing
 
-The test runs from the gateway pod against the in-cluster gateway endpoint.
+The 31-check vision+tools battery runs inside the gateway pod (the first check wakes a
+scaled-to-zero model):
 
 ```bash
-# Copy test to gateway pod
-cat test.py | kubectl exec -i -n models <gateway-pod> -c gateway -- tee /tmp/test_qwen36_35b_a3b.py
-
-# Run (pod must be warm — wake with a request first if scaled to zero)
-kubectl exec -n models <gateway-pod> -c gateway -- python3 /tmp/test_qwen36_35b_a3b.py
+cat models/qwen36-35b-a3b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Expected: **21 passed, 2 expected failures, 0 failed**
+Last run (2026-06-18): **29 PASS / 2 EXP / 0 FAIL** — image vision works, tools, managed thinking
+ON/OFF/budget/stream, answer/finish_reason/model-echo/truncation assertions, Anthropic parity,
+guardrails.
 
 ## Key Configuration
 
