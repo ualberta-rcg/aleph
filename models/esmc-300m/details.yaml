@@ -11,31 +11,63 @@ data:
       "id": "esmc-300m",
       "status": "production",
       "type": "embedding",
-      "description_short": "ESM Cambrian 300M next-gen protein LM from EvolutionaryScale",
-      "description": "ESM-C 300M (Cambrian) is the next-generation protein language model from EvolutionaryScale (Meta spinoff). Drop-in replacement for ESM2 with improved performance. Uses the esm SDK for encoding and logits extraction. 300M parameters.",
-      "context_window": 2048,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
+      "routing": {
+        "k8s_name": "esmc-300m",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "owned_by": "EvolutionaryScale",
-      "source": "EvolutionaryScale/esmc-300m-2024-12",
-      "source_url": "https://huggingface.co/EvolutionaryScale/esmc-300m-2024-12",
-      "license": "MIT",
-      "parameters": "300M",
-      "precision": "float32",
-      "architecture": "ESM-C (EvolutionaryScale proprietary arch)",
-      "framework": "esm SDK + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "4Gi", "pvc": "esmc-300m-data", "pvc_size": "5Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "esmc-300m", "api_name": "esmc-300m"},
-      "compatibility": {"openai_embeddings": true, "input_fields": ["input", "sequences"]},
-      "domain": "proteomics",
-      "subdomain": "protein-embedding",
-      "tags": ["embedding", "science", "proteomics", "protein", "evolutionaryscale", "gpu"],
-      "content_types": ["text"],
-      "languages": ["protein"],
-      "input_map": {"input": "amino acid sequence(s)", "sequences": "alias for input"},
-      "output_map": {"object": "list", "data": "[{object: embedding, index: int, embedding: [float]}]", "model": "esmc-300m"},
-      "tier": 2
+      "limits": { "max_completion_tokens": 0, "context_window": 2048, "max_input_tokens": 2048 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes (GPU, model cached on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string or array of strings",
+          "required": true,
+          "description": "Protein sequence(s) as 1-letter amino-acid codes (alias: 'sequences'); truncated to 2048 residues."
+        }
+      },
+      "output_map": {
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "description": "One {object:'embedding', index, embedding:[float x 960]} per input (mean-pooled over residues)" },
+        "model": { "type": "string", "description": "Model name (esmc-300m)" },
+        "usage": { "type": "object", "description": "{prompt_tokens, total_tokens} (residue counts)" }
+      },
+      "catalog": {
+        "description_short": "EvolutionaryScale ESM-C 300M (Cambrian) protein LM — 960-dim embeddings (GPU, scale-to-zero)",
+        "description": "ESM-C 300M (Cambrian, EvolutionaryScale/esmc-300m-2024-12): next-generation protein language model from EvolutionaryScale (Meta spinoff) — a drop-in replacement for ESM-2 with improved performance. 300M params; uses the esm SDK for encoding. Produces 960-dim mean-pooled per-protein embeddings of amino-acid sequences (up to 2048 residues). Served via a custom FastAPI server on a HAMi GPU slice. Scale-to-zero.",
+        "owned_by": "EvolutionaryScale",
+        "source": "EvolutionaryScale/esmc-300m-2024-12",
+        "source_url": "https://huggingface.co/EvolutionaryScale/esmc-300m-2024-12",
+        "license": "MIT",
+        "parameters": "300M",
+        "precision": "fp32",
+        "framework": "esm SDK + torch (custom FastAPI server)",
+        "domain": "proteomics",
+        "subdomain": "protein-language-model",
+        "gpu": true,
+        "embedding_dimensions": 960,
+        "pooling": "mean",
+        "max_input_tokens": 2048,
+        "tags": ["embedding", "science", "proteomics", "protein", "evolutionaryscale", "gpu"]
+      }
     }

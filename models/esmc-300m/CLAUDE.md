@@ -27,3 +27,11 @@ kubectl get inferenceservice esmc-300m -n models
 
 ## IMPORTANT
 - Do NOT modify inferenceservice.yaml unless explicitly asked
+
+## Embeddings pass (2026-06-19)
+- Card rewritten to v2 Template C; **PVC migrated RWO→RWX** (recreated nfs-models RWX; reclaim=Delete
+  → one-time re-download). ESM-C's cold rebuild (esm SDK venv + ~1.2GB model) is **slow (>6 min)** —
+  the test's 6-min wake window timed out once; re-ran after the pod was Ready → all green.
+- 10-check battery via the gateway: **8 PASS / 2 EXP / 0 FAIL** (dim 960, ctx 2048). Run:
+  `cat models/esmc-300m/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -`.
+- Deploy with `kubectl apply -f` (pvc.yaml / inferenceservice.yaml / details.yaml), not `-k`.

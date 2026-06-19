@@ -75,6 +75,10 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
 - **biomedbert:** card was already v2 — fixed a copy-paste error (description called it PubMedBERT;
   BiomedBERT is a different model). Added 10-check biomedical embed test.py + README; refreshed
   CLAUDE (dropped a stale TEST.md ref). CPU, scale-to-zero. Validation: **8 PASS / 2 EXP / 0 FAIL** (dim 768).
+- **esmc-300m:** old-schema card rewritten to v2 Template C; **migrated PVC RWO→RWX** (nfs-models).
+  ESM-C's cold rebuild (esm SDK venv + ~1.2GB model) is slow (>6min) — the test wake window timed
+  out once; re-ran after Ready → green. Added 10-check protein-embed test.py (960-dim), README,
+  refreshed CLAUDE. GPU, scale-to-zero. Validation: **8 PASS / 2 EXP / 0 FAIL** (dim 960, ctx 2048).
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
