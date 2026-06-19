@@ -22,6 +22,10 @@ status-only checks to correctness assertions. Shared hardening (folded into exis
   reasoners — assertions only need a non-empty reasoning trace, so ~4× faster, no loss of coverage.)
 - **qwen36-35b-a3b**: hardened to 31-check vision+tools battery; **29/2/0**. README Testing section
   refreshed (was stale `tee`-method + 21-pass).
+- **qwen35-122b**: hardened to 29-check battery; **26/3/0**. Fixed a false fail in the new `stop_seq`
+  assertion — chatty models responded instead of enumerating, so never emitted the stop token; switched
+  to a continuation prompt (`"Continue this count: 1, 2, 3, 4,"` + `stop:["5"]`) that forces it. README
+  Testing section refreshed (was stale `tee`-method + 23-pass).
 
 ## 2026-06-18 — Managed thinking: expose reasoning ON, strip+cap OFF (gpt-oss)
 
