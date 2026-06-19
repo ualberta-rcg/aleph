@@ -297,6 +297,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | saprot-650m | 7/3/0 | v2 (rewrote) | RWX (RWO→RWX) | structure-aware; ⚠ distinctness cos=1.0 anomaly (plain-AA collapsed) |
 | scincl | 8/2/0 | v2 (rewrote) | RWX (RWO→RWX) | scientific citation; CLS-pool; server compliant |
 | prokbert | 8/2/0 | v2 (was v2) + server fix | none | bacterial DNA 384-dim; added usage to /v1/embeddings |
+| hyenadna | 7/2/0 | v2 (rewrote) | RWX | long-range DNA; fixed ctx 32768→8192; dropped kustomize |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs

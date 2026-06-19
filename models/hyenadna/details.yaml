@@ -9,76 +9,65 @@ data:
   details.json: |
     {
       "id": "hyenadna-6.5m",
+      "status": "production",
       "type": "embedding",
-      "description_short": "HyenaDNA — long-range DNA embeddings (256-dim, up to 160K bp)",
-      "description": "HyenaDNA by HyenaDNA/LongSafari. 6.5M params (medium variant). State-space model using Hyena operators instead of attention, enabling sequence lengths up to 1 million base pairs. This deployment uses the 160K-seqlen variant with max 8192 bp context. Produces 256-dimensional DNA embeddings for long-range regulatory genomics, promoter prediction, and chromatin accessibility. Requires einops and trust_remote_code. Max deployed context 8192 bp (model supports up to 160K).",
-      "context_window": 32768,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/embeddings",
-        "health": "/health"
-      },
-      "owned_by": "LongSafari",
-      "source": "LongSafari/hyenadna-medium-160k-seqlen-hf",
-      "source_url": "https://huggingface.co/LongSafari/hyenadna-medium-160k-seqlen-hf",
-      "license": "MIT",
-      "parameters": "6.5M",
-      "parameter_count": 6500000,
-      "precision": "fp32",
-      "architecture": "state-space",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "startup_seconds": 30,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
+      "endpoints": { "primary": "/v1/embeddings", "health": "/health" },
       "routing": {
         "k8s_name": "hyenadna",
+        "serialize": false,
         "no_stream": true,
         "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
-        "supports_vision": false,
-        "reasoning_model": false
+      "limits": { "max_completion_tokens": 0, "context_window": 8192, "max_input_tokens": 8192 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "30-60 seconds (venv + model on PVC)"
       },
-      "domain": "genomics",
-      "subdomain": "dna-embeddings",
-      "tags": ["embedding", "science", "genomics", "dna", "long-range"],
-      "content_types": ["text"],
-      "tier": "production",
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
         "input": {
           "type": "string or array of strings",
           "required": true,
-          "description": "DNA sequence(s) using ACGT characters (up to 8192 bp per sequence)"
+          "description": "DNA sequence(s) over ACGT (model supports up to 160K bp; this deployment truncates to 8192 bp)."
         }
       },
       "output_map": {
-        "object": "string (list)",
-        "model": "string",
-        "data": {
-          "type": "array",
-          "items": {
-            "object": "string (embedding)",
-            "index": "int",
-            "embedding": "[float x 256]"
-          }
-        },
-        "usage": {"prompt_tokens": "int", "total_tokens": "int"}
+        "object": { "type": "string", "description": "\"list\" (OpenAI embeddings shape)" },
+        "data": { "type": "array", "items": { "object": "string", "index": "int", "embedding": "[float x 256]" }, "description": "256-dim mean-pooled (attention-masked) DNA embeddings" },
+        "model": { "type": "string", "description": "Model name (hyenadna-160k)" },
+        "usage": { "type": "object", "description": "{prompt_tokens (seq length), total_tokens}" }
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "framework": "transformers (HuggingFace, trust_remote_code=True)",
-        "max_seq_length": 8192,
-        "model_max_seq_length": 160000,
+      "catalog": {
+        "description_short": "HyenaDNA medium-160k — long-range DNA embeddings, 256-dim (CPU, scale-to-zero)",
+        "description": "HyenaDNA (LongSafari/hyenadna-medium-160k-seqlen-hf): a state-space model using Hyena operators (sub-quadratic, no attention) for long-range DNA modeling — natively handles up to 160K base pairs. This deployment (6.5M params) truncates to 8192 bp and produces 256-dim mean-pooled embeddings for regulatory genomics, promoter prediction, and chromatin-accessibility tasks. Requires einops + trust_remote_code. Served CPU-only via a custom transformers FastAPI server, scale-to-zero. OpenAI-compliant /v1/embeddings (batch + usage).",
+        "owned_by": "LongSafari (Hazy Research)",
+        "source": "LongSafari/hyenadna-medium-160k-seqlen-hf",
+        "source_url": "https://huggingface.co/LongSafari/hyenadna-medium-160k-seqlen-hf",
+        "license": "MIT",
+        "parameters": "6.5M",
+        "precision": "fp32",
+        "framework": "transformers (custom FastAPI server, trust_remote_code)",
+        "domain": "genomics",
+        "subdomain": "dna-embeddings",
+        "gpu": false,
+        "embedding_dimensions": 256,
         "pooling": "mean (attention-masked)",
-        "embedding_dim": 256,
-        "extra_deps": ["einops"],
-        "notes": "Uses Hyena state-space operators instead of attention for sub-quadratic scaling"
+        "max_input_tokens": 8192,
+        "tags": ["embedding", "science", "genomics", "dna", "long-range", "state-space", "cpu"]
       }
     }
