@@ -100,13 +100,15 @@ def encoding_base64():
            f"dim={n} decoded={not is_list}")
 
 def truncation():
-    # NOTE: a single input well over the 8192-token limit OOM-kills the 8Gi TEI pod
-    # (exitCode 137) during the fp32 forward pass, then cascades 502s to the next checks.
-    # TEI truncates per-sequence by default, but the activation memory for ~8k tokens of
-    # XLM-RoBERTa@fp32 still exceeds the 8Gi limit. Not exercised here to avoid restarting
-    # the always-on pod. Documented in CLAUDE.md ("Operational caveats").
-    record("SKIP", 0, "truncation (>max_input)",
-           "omitted — oversize single input OOMs the 8Gi TEI pod (see CLAUDE.md)")
+    long_text = "genomics " * 4000   # ~9k tokens, over the 8192 limit
+    r, d = embed({"model": MODEL, "input": long_text})
+    n, _ = _vec(d["data"][0]) if (r.status_code == 200 and d.get("data")) else (0, False)
+    u = d.get("usage", {})
+    # TEI truncates per-sequence to max tokens -> 200 + a 1024-dim vector. The pod memory limit
+    # was bumped 8Gi -> 16Gi so the fp32 ~8k-token forward pass no longer OOM-kills the pod.
+    ok = r.status_code == 200 and n == EXP_DIM
+    record("PASS" if ok else "EXP", r.status_code, "truncation (>max_input)",
+           f"dim={n} prompt_tokens={u.get('prompt_tokens')} body={r.text[:50]!r}")
 
 def multilingual():
     r, d = embed({"model": MODEL, "input": "多语言嵌入模型测试"})

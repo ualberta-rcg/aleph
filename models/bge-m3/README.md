@@ -24,9 +24,10 @@ model through the gateway's 503+ETA; bge-m3 is always-on so it's already warm):
 cat models/bge-m3/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Last run (2026-06-19): **8 PASS / 2 EXP / 0 FAIL / 1 SKIP** — dim 1024, batch, model-echo,
-usage, encoding_format (float + base64), multilingual, catalog (type=embedding, ctx 8192),
-guardrails (chat→embed 404, unknown-model 404). (1 SKIP = truncation — see CLAUDE.md.)
+Last run (2026-06-19): **9 PASS / 2 EXP / 0 FAIL / 0 SKIP** — dim 1024, batch, model-echo,
+usage, encoding_format (float + base64), truncation (>8192 tokens), multilingual, catalog
+(type=embedding, ctx 8192), guardrails (chat→embed 404, unknown-model 404). (Memory bumped
+8Gi→16Gi so the truncation check no longer OOMs — see CLAUDE.md.)
 
 ## Key Configuration
 

@@ -55,6 +55,10 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
 - **esm1b RWO→RWX migrated:** recreated the `esm1b-data` PVC as ReadWriteMany (stop ISVC → delete PVC →
   re-apply; reclaim=Delete triggered a one-time ~2.5GB model re-download, cold start ~5.7min). Now
   matches the fleet RWX convention and unblocks `scaleTarget: 5`. Re-verified 8/2/0.
+- **bge-m3 memory bump (OOM fix):** raised the TEI server container limit 8Gi→16Gi (request 6→8Gi).
+  Oversize single inputs (>8192 tokens) used to OOMKill the pod (exitCode 137) on the fp32 ~8k-token
+  forward pass; the truncation test was SKIPped for it. Re-enabled the truncation check — now PASSES
+  (prompt_tokens=8003 → 1024-dim, no OOM). bge-m3 now **9 PASS / 2 EXP / 0 FAIL / 0 SKIP**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

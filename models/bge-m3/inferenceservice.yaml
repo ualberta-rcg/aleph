@@ -66,10 +66,12 @@ spec:
         resources:
           requests:
             cpu: "4"
-            memory: 6Gi
+            memory: 8Gi
           limits:
             cpu: "8"
-            memory: 8Gi
+            memory: 16Gi      # was 8Gi — oversize single inputs OOM-killed TEI (exitCode 137) on the
+                             # fp32 XLM-R forward pass over ~8k tokens; bumped 2026-06-19 so the full
+                             # 8192-token context fits. Reclaim via the truncation test in test.py.
         readinessProbe:
           httpGet:
             path: /health
