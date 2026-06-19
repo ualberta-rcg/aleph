@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: protgpt2-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]   # RWX — NFS-backed, supports many replicas
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 5Gi
