@@ -24,5 +24,12 @@ curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
 - 2× L40S (whole devices, TP2), `--disable-custom-all-reduce` (PCIe topology), `vllm/vllm-openai:v0.20.2`, bfloat16, `--trust-remote-code`. Weights ~54 GB on PVC `medgemma-27b-it` (gated repo).
 - Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~3-4 min.
 
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/medgemma-27b-it/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **21 PASS / 2 EXP / 0 FAIL (vision)**
+
 ## Source
 [HuggingFace: google/medgemma-27b-it](https://huggingface.co/google/medgemma-27b-it) · Gemma license (gated)

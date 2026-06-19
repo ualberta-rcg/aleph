@@ -47,3 +47,11 @@ kubectl apply -f inferenceservice.yaml
 - Uses ALL 4 L40S GPUs (TP=4) — no other GPU models can run simultaneously
 - Llama 3 70B base, no rope scaling — 8K is the hard context limit
 - 14/14 gateway tests passed (2026-06-10)
+
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/openbiollm-70b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **19 PASS / 4 EXP / 0 FAIL (70B TP4 — slow cold-start, patient wake)**
+

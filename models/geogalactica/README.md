@@ -51,3 +51,11 @@ kubectl apply -f inferenceservice.yaml
 - Custom `chat_template.jinja` mounted from PVC
 - `--disable-custom-all-reduce` required for L40S PCIe topology
 - 14/14 gateway tests passed (2026-06-10)
+
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/geogalactica/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **19 PASS / 4 EXP / 0 FAIL (base OPT — slow cold-start, patient wake)**
+

@@ -25,5 +25,12 @@ curl $GW/v1/completions -H 'Content-Type: application/json' -d '{
 - 1× HAMi GPU slice (L40S), custom FastAPI server (`python:3.11-slim` + venv). Weights on PVC `protgpt2-data`.
 - Scale-to-zero: 15-min idle retention, wake-on-demand; cold start ~1-2 min.
 
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/protgpt2/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **6 PASS / 1 EXP / 0 FAIL (custom /v1/completions)**
+
 ## Source
 [HuggingFace: nferruz/ProtGPT2](https://huggingface.co/nferruz/ProtGPT2) · MIT

@@ -47,3 +47,11 @@ kubectl apply -f inferenceservice.yaml
 - Bilingual English/Chinese, strong at reasoning and code
 - MLA compression: ~30KB/token KV, 481K token KV capacity on single L40S
 - 14/14 gateway tests passed (2026-06-10)
+
+## Testing
+The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+```bash
+cat models/deepseek-v2-lite-16b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+```
+Last run (2026-06-18): **14 PASS / 0 FAIL (MLA, TP1, no --enforce-eager)**
+
