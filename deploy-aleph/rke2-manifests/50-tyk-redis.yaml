@@ -1,0 +1,31 @@
+# Tyk Redis (Bitnami) — RKE2 auto-deploy manifest.
+#
+# Tyk OSS requires Redis for rate limiting / API-key storage. Deployed into ns `tyk`, ahead
+# of Tyk (51-tyk.yaml). Standalone, auth enabled, no persistence (state is ephemeral; keys are
+# recreatable).
+#
+# Release name `tyk-redis` produces Service `tyk-redis-master` and Secret `tyk-redis`
+# (key `redis-password`) — both referenced by the Tyk values in 51-tyk.yaml.
+# Source values: deploy-aleph/04-install-tyk-gateway.sh.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: tyk-redis
+  namespace: kube-system
+spec:
+  targetNamespace: tyk
+  createNamespace: true
+  chart: redis
+  repo: https://charts.bitnami.com/bitnami
+  valuesContent: |-
+    auth:
+      enabled: true
+    architecture: standalone
+    master:
+      persistence:
+        enabled: false
+    replica:
+      replicaCount: 0
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 250m, memory: 128Mi }

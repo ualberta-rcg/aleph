@@ -1,0 +1,43 @@
+# NFS provisioner + nfs-models StorageClass — RKE2 auto-deploy manifest.
+#
+# Source: cluster 230's /etc/rancher/manifests/nfs.yaml, with the OneFS-safe StorageClass
+# (formerly deploy-aleph/storage/nfs-models-storageclass.yaml) baked INTO the provisioner
+# chart so there is ONE NFS component and ONE StorageClass (nfs-models). There is intentionally
+# no separate nfs-client SC — nfs-models is the default and the OneFS-safe one.
+#
+# WHY nfs-models (the mountOptions below): the OneFS/Isilon backend
+# (manage.storage.data.vulcan.local) returns EIO on COMMIT for write RPCs > 128 KiB over
+# NFSv4.1/4.2; the default wsize/rsize=1Mi makes multi-GB safetensors writes fail at close().
+# Capping rsize/wsize to 128Ki lets large writes succeed (~700 MB/s verified). The SC
+# mountOptions propagate to the dynamically-provisioned PVs, so all model-weight PVCs benefit.
+#
+# SITE-CONFIG: set nfs.server + nfs.path to this cluster's NFS export.
+#   Default path /aleph (the platform's own export on the Vulcan OneFS backend); 230 used /kubeflow.
+#
+# NOTE: nfs-subdir-external-provisioner is upstream-archived but still functional and is what
+# 230/232 run today. Swap to nfs-csi (sig-storage) in a future iteration if desired.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: nfs-provisioner
+  namespace: kube-system
+spec:
+  targetNamespace: nfs-provisioner
+  createNamespace: true
+  chart: nfs-subdir-external-provisioner
+  repo: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+  valuesContent: |-
+    nfs:
+      server: manage.storage.data.vulcan.local   # SITE-CONFIG
+      path: /aleph                               # platform export (230 used /kubeflow)
+    storageClass:
+      name: nfs-models
+      defaultClass: true
+      reclaimPolicy: Delete
+      mountOptions:
+        - nfsvers=4.2
+        - rsize=131072
+        - wsize=131072
+        - hard
+        - timeo=600
+        - retrans=2

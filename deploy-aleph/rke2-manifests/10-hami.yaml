@@ -1,0 +1,33 @@
+# HAMi — RKE2 auto-deploy manifest (vGPU scheduler + device plugin).
+#
+# Source: cluster 230's /etc/rancher/manifests/hami.yaml. Replaces both nvidia-device-plugin
+# and the NVIDIA GPU Operator: HAMi provides the device plugin + the fractional-GPU scheduler
+# (binpack GPU policy; each L40S split into 10 vGPU slices).
+#
+# PREREQUISITES (Warewulf overlay / node customization — NOT handled by this manifest):
+#   - NVIDIA driver + nvidia-container-cli on the GPU nodes.
+#   - containerd default runtime set to "nvidia" (the rke2-gpu overlay does this).
+#   - GPU nodes labeled  gpu=on   (else the device-plugin DaemonSet won't schedule):
+#         kubectl label node <gpu-node> gpu=on
+#
+# SITE-CONFIG: scheduler.kubeScheduler.imageTag MUST match the cluster's Kubernetes version
+# (HAMi ships a patched kube-scheduler). 230 is v1.36.1 — change this if the next deploy is a
+# different k8s minor.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: hami
+  namespace: kube-system
+spec:
+  targetNamespace: kube-system
+  chart: hami
+  repo: https://project-hami.github.io/HAMi/
+  valuesContent: |-
+    # kubeScheduler.imageTag is auto-set to the cluster Kubernetes version by CI.
+    scheduler:
+      kubeScheduler:
+        imageTag: "v1.36.1"
+    # Host provides the NVIDIA driver + toolkit; rke2-gpu overlay sets the
+    # containerd default runtime to "nvidia".
+    devicePlugin:
+      runtimeClassName: "nvidia"

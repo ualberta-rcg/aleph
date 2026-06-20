@@ -1,0 +1,91 @@
+# Knative Serving — RKE2 auto-deploy manifest (Job).
+#
+# Per-component serving-stack Job (split out of the old monolithic kubeflow-bootstrap).
+# Applies the Knative Serving slice of kubeflow/manifests v1.11-branch (same as 230/232),
+# then patches config-features so KServe InferenceServices can use PVCs (model weights),
+# init containers (downloaders), node selectors (GPU placement), and the nvidia runtime class.
+#
+# Prerequisite: Istio (60-istio.yaml). This Job waits for istio-system, then proceeds; the
+# config-features patch acts as the readiness gate (fails + retries via backoffLimit until
+# Knative is up).
+# Re-run:  kubectl delete job knative-bootstrap -n kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knative-bootstrap
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: knative-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: knative-bootstrap
+    namespace: kube-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: knative-bootstrap
+  namespace: kube-system
+  annotations:
+    description: "Installs Knative Serving + config-features patch from kubeflow/manifests v1.11"
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      serviceAccountName: knative-bootstrap
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: alpine/k8s:1.31.2
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              echo "=== Knative Serving bootstrap ==="
+
+              # Wait for Istio (prerequisite).
+              echo "--- Waiting for Istio (istio-system) ---"
+              kubectl wait --for=condition=Ready pods --all -n istio-system --timeout=600s || true
+
+              cd /tmp
+              rm -rf /tmp/manifests
+              echo "--- Cloning kubeflow/manifests v1.11-branch ---"
+              git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git
+              cd /tmp/manifests
+
+              # 1. Knative Serving (apply twice — first pass races on CRDs).
+              echo "--- Step 1: Knative Serving ---"
+              kubectl apply -k common/knative/knative-serving/overlays/gateways 2>&1 | tail -3 || true
+              sleep 5
+              kubectl apply -k common/knative/knative-serving/overlays/gateways 2>&1 | tail -3 || true
+              kubectl wait --for=condition=Ready pods --all -n knative-serving --timeout=600s || true
+
+              # 2. config-features patch — REQUIRED for KServe ISVCs (PVC / init / nodeSelector /
+              #    runtimeClassName). Fails (and retries) until the config-features ConfigMap exists.
+              echo "--- Step 2: Knative config-features patch ---"
+              kubectl patch configmap config-features -n knative-serving --type merge -p '{
+                "data": {
+                  "kubernetes.podspec-persistent-volume-claim": "enabled",
+                  "kubernetes.podspec-persistent-volume-write": "enabled",
+                  "kubernetes.podspec-securitycontext": "enabled",
+                  "kubernetes.podspec-init-containers": "enabled",
+                  "kubernetes.podspec-nodeselector": "enabled",
+                  "kubernetes.podspec-affinity": "enabled",
+                  "kubernetes.podspec-tolerations": "enabled",
+                  "kubernetes.podspec-runtimeclassname": "enabled"
+                }
+              }'
+
+              echo ""
+              echo "=== Knative Serving bootstrap complete ==="
+          resources:
+            requests: { cpu: "500m", memory: 512Mi }
+            limits:   { cpu: "2", memory: 1Gi }

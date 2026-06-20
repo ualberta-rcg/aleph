@@ -1,0 +1,133 @@
+# KServe — RKE2 auto-deploy manifest (Job).
+#
+# Per-component serving-stack Job (split out of the old monolithic kubeflow-bootstrap).
+# Applies the KServe slice of kubeflow/manifests v1.11-branch (same as 230/232) with the
+# server-side apply the KServe CRDs need, then configures it and stands up the `models`
+# namespace ready to serve. Folds in the former 02-post-install.sh steps so KServe is fully
+# working, not just installed:
+#   - inferenceservice-config (Istio gateways + direct PVC mount for weights)
+#   - `models` namespace with Istio injection + KServe tag routing
+#   - Istio ALLOW policy for `models` (Kubeflow's global-deny-all would otherwise block it)
+#
+# Prerequisite: Knative (61-knative.yaml). This Job waits for knative-serving, then proceeds.
+# Re-run:  kubectl delete job kserve-bootstrap -n kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kserve-bootstrap
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kserve-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: kserve-bootstrap
+    namespace: kube-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kserve-bootstrap
+  namespace: kube-system
+  annotations:
+    description: "Installs KServe + models ns + config from kubeflow/manifests v1.11"
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      serviceAccountName: kserve-bootstrap
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: alpine/k8s:1.31.2
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              echo "=== KServe bootstrap ==="
+
+              # Wait for Knative (prerequisite).
+              echo "--- Waiting for Knative Serving ---"
+              kubectl wait --for=condition=Ready pods --all -n knative-serving --timeout=600s || true
+
+              cd /tmp
+              rm -rf /tmp/manifests
+              echo "--- Cloning kubeflow/manifests v1.11-branch ---"
+              git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git
+              cd /tmp/manifests
+
+              # 1. KServe CRDs (server-side — too large for normal apply). First pass registers
+              #    CRDs; ClusterServingRuntimes fail until the webhook is up.
+              echo "--- Step 1: KServe (CRDs) ---"
+              kubectl apply --server-side --force-conflicts -k applications/kserve/kserve 2>&1 | tail -5 || true
+              echo "--- Waiting for KServe controller ---"
+              kubectl wait --for=condition=Ready pods -n kubeflow -l app=kserve --timeout=600s || true
+
+              # 2. KServe second pass — registers ClusterServingRuntimes now that the webhook is up.
+              echo "--- Step 2: KServe (runtimes) ---"
+              kubectl apply --server-side --force-conflicts -k applications/kserve/kserve 2>&1 | tail -5 || true
+
+              # 3. KServe config — ingress via Istio gateways + direct PVC mount for model weights.
+              #    (Folds in deploy-aleph/configs/inferenceservice-config.yaml.)
+              echo "--- Step 3: inferenceservice-config ---"
+              cat <<'EOF' | kubectl apply -f -
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: inferenceservice-config
+                namespace: kubeflow
+              data:
+                ingress: |-
+                  {
+                     "ingressGateway" : "knative-serving/knative-ingress-gateway",
+                     "localGateway" : "knative-serving/knative-local-gateway",
+                     "localGatewayService" : "knative-local-gateway.istio-system.svc.cluster.local",
+                     "ingressClassName" : "istio",
+                     "urlScheme": "http",
+                     "disableIstioVirtualHost": false,
+                     "disableIngressCreation": false
+                  }
+                storageInitializer: |-
+                  {
+                     "image" : "kserve/storage-initializer:v0.15.2",
+                     "memoryRequest": "100Mi",
+                     "memoryLimit": "1Gi",
+                     "cpuRequest": "100m",
+                     "cpuLimit": "1",
+                     "enableDirectPvcVolumeMount": true,
+                     "enableModelcar": false
+                  }
+              EOF
+
+              # 4. `models` namespace + Istio injection + KServe tag routing.
+              echo "--- Step 4: models namespace ---"
+              kubectl create namespace models --dry-run=client -o yaml | kubectl apply -f -
+              kubectl label namespace models istio-injection=enabled --overwrite
+              kubectl annotate namespace models serving.kserve.io/enable-tag-routing=true --overwrite 2>/dev/null || true
+
+              # 5. Istio ALLOW policy for `models` — Kubeflow's global-deny-all would block it.
+              echo "--- Step 5: Istio allow-all for models ns ---"
+              cat <<'EOF' | kubectl apply -f -
+              apiVersion: security.istio.io/v1
+              kind: AuthorizationPolicy
+              metadata:
+                name: allow-all
+                namespace: models
+              spec:
+                action: ALLOW
+                rules:
+                - {}
+              EOF
+
+              echo ""
+              echo "=== KServe bootstrap complete ==="
+          resources:
+            requests: { cpu: "500m", memory: 512Mi }
+            limits:   { cpu: "2", memory: 1Gi }

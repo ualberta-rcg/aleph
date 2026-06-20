@@ -1,0 +1,29 @@
+# KubeRay operator — RKE2 auto-deploy manifest.
+#
+# Source: cluster 230's /etc/rancher/manifests/kuberay.yaml, plus operator scheduling.
+#
+# The operator is a small control loop; it must NOT land on GPU nodes and consume L40S
+# capacity. It is pinned to control-plane (non-GPU) nodes with a toleration for the
+# control-plane taint in case the node is tainted. (On RKE2 control-plane is usually
+# untainted, so the toleration is harmless.)
+#
+# Ray workload scheduling (head on non-GPU, workers on GPU) is a per-RayCluster convention —
+# see deploy-aleph/examples/ray-cluster-template.yaml and models/kandinsky-3/rayservice.yaml.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: kuberay
+  namespace: kube-system
+spec:
+  targetNamespace: kuberay
+  createNamespace: true
+  chart: kuberay-operator
+  repo: https://ray-project.github.io/kuberay-helm/
+  version: 1.5.1
+  valuesContent: |-
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: "true"
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule

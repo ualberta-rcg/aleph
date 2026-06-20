@@ -1,0 +1,77 @@
+# RayCluster scheduling template — EXAMPLE, NOT auto-applied.
+#
+# This lives under deploy-aleph/examples/ (NOT rke2-manifests/) so RKE2 does NOT deploy it.
+# Copy into a model dir and specialize when you add a Ray-based model.
+#
+# CONVENTION (matches models/kandinsky-3/rayservice.yaml):
+#   - Ray HEAD runs on a NON-GPU node (CPU-only). It must never consume scarce L40S capacity,
+#     and keeping it off GPU nodes is what lets the GPU worker group scale all the way to 0.
+#   - Ray WORKERS run on GPU nodes (gpu=on) under HAMi fractional scheduling
+#     (nvidia.com/gpu + nvidia.com/gpumem), and scale to zero when idle.
+#
+# For Ray Serve (RayService) workloads, ALSO set  proxy_location: HeadOnly  in serveConfigV2
+# so the HTTP proxy stays on the head — otherwise a proxy actor pins a GPU worker busy and
+# blocks scale-to-zero (see kandinsky-3).
+#
+# NOTE: this is a skeleton — fill image, resource sizes, volumes, and serve config per model.
+---
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: ray-template
+  namespace: models
+spec:
+  enableInTreeAutoscaling: true
+  autoscalerOptions:
+    upscalingMode: Default
+    idleTimeoutSeconds: 60        # drop an idle GPU worker 60s after its actor is gone
+    resources:
+      requests: { cpu: "250m", memory: 512Mi }
+      limits:   { cpu: "500m", memory: 1Gi }
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      num-cpus: "2"               # head keeps CPUs so proxies/control run here, not on GPU
+    template:
+      spec:
+        # HEAD on a non-GPU node. Portable form: any node without gpu=on.
+        # (To pin to a specific node like kandinsky-3 does, swap this for:
+        #   nodeSelector: { kubernetes.io/hostname: <non-gpu-node> })
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: gpu
+                      operator: NotIn
+                      values: ["on"]
+        containers:
+          - name: ray-head
+            image: rayproject/ray:2.44.1-py311
+            resources:
+              requests: { cpu: "2", memory: 8Gi }
+              limits:   { cpu: "4", memory: 16Gi }
+  workerGroupSpecs:
+    - groupName: gpu-worker
+      replicas: 0
+      minReplicas: 0              # scale-to-zero: no L40S held while idle
+      maxReplicas: 3
+      rayStartParams: {}
+      template:
+        spec:
+          nodeSelector:
+            gpu: "on"             # WORKERS on GPU nodes
+          containers:
+            - name: ray-worker
+              image: rayproject/ray:2.44.1-py311-gpu
+              resources:
+                requests:
+                  cpu: "4"
+                  memory: 48Gi
+                  nvidia.com/gpu: "1"
+                  nvidia.com/gpumem: "40960"   # HAMi vGPU slice (MiB)
+                limits:
+                  cpu: "8"
+                  memory: 64Gi
+                  nvidia.com/gpu: "1"
+                  nvidia.com/gpumem: "40960"

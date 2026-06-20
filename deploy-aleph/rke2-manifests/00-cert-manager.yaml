@@ -1,0 +1,20 @@
+# cert-manager — RKE2 auto-deploy manifest.
+#
+# Source: split out of cluster 230's /etc/rancher/manifests/rancher.yaml (which bundled
+# cert-manager + Rancher). We keep cert-manager and DROP Rancher (not needed here).
+#
+# cert-manager is required by the ClusterIssuer (01-cluster-issuer.yaml) that issues the
+# endpoint TLS certs via Let's Encrypt HTTP-01. It must be Ready before that issuer validates.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: cert-manager
+  namespace: kube-system
+spec:
+  targetNamespace: cert-manager
+  createNamespace: true
+  chart: cert-manager
+  repo: https://charts.jetstack.io
+  valuesContent: |-
+    crds:
+      enabled: true

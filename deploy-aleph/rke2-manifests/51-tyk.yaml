@@ -1,0 +1,56 @@
+# Tyk OSS gateway — RKE2 auto-deploy manifest (API-key auth + routing in front of KServe).
+#
+# Source values: deploy-aleph/configs/tyk-oss-values.yaml (duplicate `gateway:` key merged).
+# Sits behind the Traefik endpoint; proxies to the model-gateway / KServe. Pump + operator off.
+#
+# SECRET: global.secrets.APISecret is a PLACEHOLDER below. The chart materializes it into
+# Secret `secrets-tyk-oss-tyk-gateway` (key `APISecret`). POST-DEPLOY, replace it with the
+# real value from .env (TYK_API_SECRET) — never commit a real secret. API definitions are also
+# loaded post-deploy (gateway/remote-deploy.sh), not from this manifest.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: tyk-oss
+  namespace: kube-system
+spec:
+  targetNamespace: tyk
+  createNamespace: true
+  chart: tyk-oss
+  repo: https://helm.tyk.io/public/helm/charts/
+  valuesContent: |-
+    global:
+      components:
+        pump: false
+        operator: false
+      secrets:
+        # PLACEHOLDER — inject the real Tyk admin secret post-deploy (see header).
+        APISecret: "CHANGE-ME-INJECT-REAL-SECRET"
+      redis:
+        addrs:
+          - tyk-redis-master.tyk.svc.cluster.local:6379
+        passSecret:
+          name: tyk-redis
+          keyName: redis-password
+        enableCluster: false
+      tls:
+        gateway: false
+      servicePorts:
+        gateway: 8080
+    tyk-gateway:
+      gateway:
+        kind: Deployment
+        replicaCount: 1
+        hostName: ""
+        enablePathPrefixMatching: true
+      service:
+        type: ClusterIP
+        port: 8080
+      ingress:
+        enabled: false
+      resources:
+        requests: { cpu: 100m, memory: 128Mi }
+        limits:   { cpu: 500m, memory: 256Mi }
+      log:
+        level: "info"
+    tyk-pump:
+      enabled: false

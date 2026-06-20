@@ -3,6 +3,53 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-20 — Modular RKE2 auto-deploy manifest set (deploy-aleph/rke2-manifests/)
+
+First cut at version-controlling the cluster bring-up so the next Warewulf deployment brings
+most of the stack up automatically. Goal this round: every component **installed and
+available** as modular RKE2 auto-deploy manifests (one component per file); site-specific
+wiring (macvlan public-IP, `gpu=on` labels, Tyk secret, cert hostnames) is a documented
+post-deploy step. Architecture stance: 232's front-door/TLS pattern, lean — no full Kubeflow
+(no Dex/dashboard/pipelines), no Rancher, no certbot.
+
+New files in `deploy-aleph/rke2-manifests/`:
+- `00-cert-manager.yaml` — cert-manager HelmChart (split out of 230's bundled `rancher.yaml`;
+  Rancher dropped). `crds.enabled: true`.
+- `01-cluster-issuer.yaml` — Let's Encrypt `ClusterIssuer`, ACME **HTTP-01** via the traefik
+  ingress class. Issues endpoint TLS from-cluster (replaces 232's manual external-certbot flow).
+  Ready once cert-manager is up + port 80 reachable; placeholder email.
+- `10-hami.yaml` — HAMi vGPU scheduler + device plugin (verbatim from 230). Needs `gpu=on`
+  labels + containerd nvidia runtime (Warewulf overlay). `kubeScheduler.imageTag` k8s-pinned.
+- `20-kuberay.yaml` — KubeRay operator 1.5.1, pinned to control-plane (off GPU nodes).
+- `30-nfs.yaml` — nfs-subdir provisioner; creates a **single** `nfs-models` StorageClass
+  (default) with the OneFS-safe mountOptions baked in (rsize/wsize=131072). No separate
+  `nfs-client` SC.
+- `40-traefik.yaml` — Traefik HelmChart, generic/default (service enabled), macvlan public-IP
+  binding stripped (post-deploy customization). Notes the bundled-`rke2-traefik` interaction.
+- `50-tyk-redis.yaml` + `51-tyk.yaml` — Bitnami Redis + Tyk OSS into ns `tyk`; Tyk `APISecret`
+  is a placeholder (inject real from `.env` `TYK_API_SECRET` post-deploy).
+- `60-istio.yaml` / `61-knative.yaml` / `62-kserve.yaml` / `63-profiles.yaml` — the serving
+  stack (Istio, Knative, KServe, Profiles) split into **separate per-component Job manifests**,
+  each its own ServiceAccount, self-ordering via internal waits (Istio→Knative→KServe→Profiles)
+  + retries. Same kubeflow/manifests v1.11-branch slices as 230/232. The former
+  `02-post-install.sh` patches are folded in — Knative `config-features` (PVC/init/nodeSelector/
+  nvidia runtime) into `61`, KServe `inferenceservice-config` + `models` ns + Istio allow-all
+  into `62` — so KServe comes up fully working. `63-profiles.yaml` is opt-in (delete to omit
+  Kubeflow Profiles). Replaces the monolithic `60-serving-bootstrap.yaml` / `kubeflow-bootstrap.yaml`.
+
+Also:
+- `deploy-aleph/examples/ray-cluster-template.yaml` — documented RayCluster skeleton (head→
+  non-GPU via `gpu NotIn [on]`, GPU workers scale-to-zero under HAMi), outside the manifests
+  dir so RKE2 doesn't auto-apply it. Pattern from `models/kandinsky-3/`.
+- `deploy-aleph/rke2-manifests/README.md` — the set's runbook: file list, site-config values,
+  post-deploy customization checklist, follow-ups, verification commands.
+
+Not done this round (called out in the README): capture the Warewulf overlay (on 172.26.92.10);
+resolve the double-Traefik (disable bundled `rke2-traefik` via RKE2 config); update
+`models/CLAUDE.md` storage convention `nfs-client`→`nfs-models`; retire the now-redundant
+`deploy-aleph/storage/nfs-models-storageclass.yaml`. Kubeflow Profiles is an opt-in file
+(`63-profiles.yaml`) — delete to omit entirely.
+
 ## 2026-06-20 — Dim verification: 5 non-text embedders (live probe + primary sources)
 
 Re-checked the 5 non-text embedders whose dims I'd "corrected" during the 06-19/20 hardening, because

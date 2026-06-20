@@ -1,0 +1,74 @@
+# Kubeflow Profiles — RKE2 auto-deploy manifest (Job).  [OPTIONAL]
+#
+# Per-component serving-stack Job (split out of the old monolithic kubeflow-bootstrap).
+# Applies Kubeflow Profiles (namespace / user management) from kubeflow/manifests v1.11-branch.
+#
+# This file is OPT-IN: "no Kubeflow" was taken to mean no Dex / Dashboard / Pipelines (which
+# are already excluded). Profiles is lightweight namespace/role scaffolding that KServe does
+# not strictly require. DELETE THIS FILE if you don't want Kubeflow Profiles at all.
+#
+# Prerequisite: the `kubeflow` namespace (created by 60-istio.yaml). This Job waits for it.
+# Re-run:  kubectl delete job profiles-bootstrap -n kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: profiles-bootstrap
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: profiles-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: profiles-bootstrap
+    namespace: kube-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: profiles-bootstrap
+  namespace: kube-system
+  annotations:
+    description: "Installs Kubeflow Profiles from kubeflow/manifests v1.11 (optional)"
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      serviceAccountName: profiles-bootstrap
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: alpine/k8s:1.31.2
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              echo "=== Kubeflow Profiles bootstrap ==="
+
+              # Profiles needs the kubeflow namespace (created by 60-istio.yaml).
+              echo "--- Waiting for kubeflow namespace ---"
+              for i in $(seq 1 60); do
+                kubectl get namespace kubeflow >/dev/null 2>&1 && break
+                sleep 5
+              done
+
+              cd /tmp
+              rm -rf /tmp/manifests
+              echo "--- Cloning kubeflow/manifests v1.11-branch ---"
+              git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git
+              cd /tmp/manifests
+
+              echo "--- Profiles ---"
+              kubectl apply -k applications/profiles/upstream/overlays/kubeflow
+
+              echo ""
+              echo "=== Kubeflow Profiles bootstrap complete ==="
+          resources:
+            requests: { cpu: "500m", memory: 512Mi }
+            limits:   { cpu: "2", memory: 1Gi }

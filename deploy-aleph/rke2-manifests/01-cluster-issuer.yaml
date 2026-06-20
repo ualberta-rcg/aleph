@@ -1,0 +1,30 @@
+# Let's Encrypt ClusterIssuer — RKE2 auto-deploy manifest.
+#
+# cert-manager ACME, HTTP-01 challenge served on port 80 through the Traefik ingress class.
+# This issues the endpoint TLS certs from within the cluster (no external certbot machine,
+# unlike cluster 232's manual flow) and auto-renews them.
+#
+# READY STATE: cert-manager (00-cert-manager.yaml) must be up first, and port 80 must be
+# reachable at the endpoint (Traefik must be exposed — a post-deploy customization step).
+# Until then the issuer shows Ready=False with a challenge/solver reason, which is expected.
+#
+# Defaults: acme.email = the Alliance ops address (admin@alliancecan.ca) — used across the
+# Vulcan clusters (232's LE certs, the cert scripts). Maintainer: khoja1@ualberta.ca. LE takes
+# a single address; change to the maintainer if you'd rather notices go direct.
+# POST-DEPLOY: add a Certificate CR per endpoint hostname once Traefik + port 80 are wired.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Let's Encrypt production ACME directory.
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@alliancecan.ca
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            # Uses the Traefik ingress class (our 40-traefik.yaml, or the bundled rke2-traefik).
+            ingressClassName: traefik
