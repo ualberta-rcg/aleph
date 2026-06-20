@@ -1,29 +1,37 @@
-# Geneformer Model Deployment
+# Geneformer — single-cell transcriptomics embeddings
 
-## What this model does
-Geneformer from NIH NCI is a context-aware gene network inference model. Pretrained on 30M single-cell transcriptomes. V2-104M variant. Takes ranked gene token IDs.
+Geneformer V2 (NIH NCI / ctheodoris, 104M) — context-aware foundation model pretrained on 30M
+single-cell transcriptomes. Takes ranked gene tokens (gene names + expression) and produces a
+**cell-level embedding** (mean-pooled hidden states).
 
 ## Source
-- **HF**: ctheodoris/Geneformer | **License**: BSD-2-Clause | **Params**: 104M
+- HuggingFace: https://huggingface.co/ctheodoris/Geneformer (V2-104M)
+- License: BSD-2-Clause
 
-## How the server works
-- `POST /v1/embed` -- accepts `gene_ids` (ranked gene token IDs, max 4096)
-- Returns mean-pooled cell embeddings
-- Uses AutoModel with trust_remote_code
+## API — `POST /v1/science/embed` (NON-OpenAI domain endpoint, primary)
+Gene-expression input → does NOT expose OpenAI `/v1/embeddings`. `/v1/embed` kept as secondary.
+Body needs `"model": "geneformer"`:
+- `{"model":"geneformer", "genes":["TP53","BRCA1",...], "expression":[1.2,0.5,...]}` → cell embedding
+- Returns `{"embeddings":[[...]], "embedding_dim":N, "model":"geneformer"}`.
 
-## Our config vs source
-- Downloads Geneformer-V2-104M subdirectory only
-- venv-on-PVC, torch CUDA, GPU shared (L40S-SHARED), 5Gi PVC
-- minReplicas: 0, startup/readiness probes configured
+## Deployment
+- **CPU-only** (104M transformer; runs on CPU).
+- **PVC**: `geneformer-data-rwx` — **ReadWriteMany**, nfs-client, 8 Gi (`pvc.yaml`). Migrated
+  RWO→RWX 2026-06-19 via **cp-from-RWO** (venv + weights + tokenizer preserved; old
+  `geneformer-data` deleted). Split out of the ISVC (was inline + RWO).
+- **Venv-on-PVC**: `/data/venv` (transformers + torch, guarded). Loads via `AutoModel(trust_remote_code)`.
+- **Scale-to-zero**: minReplicas 0, 15m retention.
 
-## Deploy/update/test
-```bash
-kubectl apply -k models/geneformer/
-kubectl get inferenceservice geneformer -n models
-```
+## Key files
+- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC (PVC split to `pvc.yaml`)
+- `details.yaml` — v2 card (Template C)
+- `pvc.yaml` — RWX PVC
+- `test.py` — 6-case gateway battery (dim / non-zero / distinctness / deterministic / echo / malformed)
 
-## Gateway integration
-- MODEL_TYPES: `"geneformer": "embedding"` | KServe custom | Not in MODEL_METADATA
+## Notes
+- The server tokenizes gene names (via the gene token dictionary) + ranks by expression, then runs
+  the transformer; embedding = mean-pool over token hidden states. Dim 256 (v2-104M).
+- Downloads the Geneformer-V2-104M subdirectory only.
 
-## IMPORTANT
-- Do NOT modify inferenceservice.yaml unless explicitly asked
+## Update reminder
+- Watch ctheodoris/Geneformer for larger variants (dim may change from 256).

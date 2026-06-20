@@ -273,6 +273,11 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   — 1024 floats ~8KB is fine). v2 card (1024-dim). 6-check test.py; distinctness threshold relaxed
   (random-noise imagery maps near-identically; determinism is the real check). Validation:
   **6 PASS / 0 FAIL**.
+- **geneformer:** RWO→RWX (cp-migrated, venv + weights + tokenizer preserved); +`/v1/science/embed`
+  alias (was `/v1/embed`). **Dim is 768, not 256** (docs wrong). Input gotcha: the server takes
+  `gene_ids` (pre-tokenized integer IDs ranked by expression), NOT the docstring's `{genes,
+  expression}` — the test sends integer token IDs. v2 card; 6-check test.py. Validation:
+  **6 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
