@@ -179,6 +179,9 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   keeps `/v1/science/embed`). Migrated PVC RWO→RWX (nfs-models); card rewritten to v2. Structure-aware
   RNA — short-sequence mean-pool collapses (distinctness EXP, cos~1.0, like splicebert/saprot). Added
   8-check RNA-embed test.py + README. GPU (10 GiB), scale-to-zero. Validation: **5/3/0**.
+- **rnafm:** science-embed → OpenAI normalization (added `/v1/embeddings` route, 640-dim mean-pooled;
+  keeps `/v1/science/embed`). Migrated PVC RWO→RWX (nfs-models); card rewritten to v2. Added 8-check
+  RNA-embed test.py + README. GPU (8 GiB), scale-to-zero. Validation: **6/2/0**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
