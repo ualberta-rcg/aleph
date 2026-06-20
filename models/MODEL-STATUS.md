@@ -307,6 +307,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | gena-lm | 7/2/0 | v2 (rewrote) | RWX (RWO→RWX) | DNA 768-dim; server compliant |
 | ablang2 | 6/2/0 | v2 (was v2) | RWO (deferred) | antibody 480-dim; non-HF Zenodo, RWX migration deferred |
 | molformer | 7/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | SMILES molecular 768-dim; normalized from /v1/science/embed |
+| sapbert | 6/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | biomedical entity linking; 768-dim CLS, 25-tok |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
