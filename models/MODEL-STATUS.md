@@ -44,7 +44,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | chgnet | force-field | true | /v1/science/energy | READY | FIXED | DEEP-FIX: ported server.py was broken (manually built CrystalGraph w/ bad kwarg) -> rewrote to model.predict_structure(); added missing server.py+kustomization (never ported); CederGroupHub/chgnet HF repo removed (404) -> non-fatal, uses chgnet bundled weights; pinned chgnet==0.3.8. water -14.79 eV + forces + stress + magmom |
 | chronos-bolt | forecast | false | /v1/forecast | READY | PASS | quantile forecast on 16-pt series |
 | clap | embedding | false | /v1/embeddings | READY | PASS | text emb 512-dim + zero-shot audio classify (dog 0.73) |
-| clay | embed | false | /v1/science/embed | READY | FIXED | rewrote to Clay v1.5 datacube dict API; cls embedding PASS |
+| clay | embed | false | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp); +embeddings field; 1024-dim CLS (large); 6/0 test; was parked |
 | climatebert | classification | false | /v1/science/classify | READY | PASS | net-zero 0.9988 |
 | climax | forecast | true | /v1/science/forecast | READY | PASS | needs valid ERA5 var names (e.g. 2m_temperature) |
 | clinical-longformer | embedding | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim embeddings; slow on CPU (~2min inference) |

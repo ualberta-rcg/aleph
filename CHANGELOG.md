@@ -238,6 +238,9 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
 - **satmae:** RWO→RWX (cp-migrated, venv preserved); added an `embeddings` alias to the `cls_embedding`
   output for cross-embedder consistency; v2 card (1024-dim ViT-L CLS); 6-check test.py; cleared the
   stop annotation. Validation: **6 PASS / 0 FAIL**.
+- **clay:** RWO→RWX (cp-migrated, venv + checkpoint + claymodel repo preserved); +`embeddings` field;
+  v2 card (1024-dim CLS large encoder — initially guessed 768, corrected from the response); 6-check
+  pixels+waves test.py; cleared the stop annotation. Validation: **6 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 

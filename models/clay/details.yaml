@@ -10,69 +10,59 @@ data:
     {
       "id": "clay",
       "status": "production",
-      "type": "embed",
-      "description_short": "Clay Foundation Model ~330M geospatial MAE embeddings from satellite imagery. Apache 2.0.",
-      "description": "The Clay Foundation Model is a ~330M parameter Masked Autoencoder that generates semantic embeddings from multi-band satellite imagery. It accepts any-band satellite image patches with wavelength metadata, ground sampling distance, and geolocation. The encoder (large variant) produces CLS token embeddings for downstream tasks like land classification, change detection, and environmental monitoring. Apache 2.0 license.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "type": "embedding",
       "endpoints": {
         "primary": "/v1/science/embed",
         "health": "/health"
       },
-      "owned_by": "Clay Foundation",
-      "source": "made-with-clay/Clay",
-      "source_url": "https://huggingface.co/made-with-clay/Clay",
-      "license": "Apache-2.0",
-      "parameters": "~330M",
-      "precision": "fp32",
-      "architecture": "MAE ViT-Large encoder (any-band, wavelength-encoded)",
-      "framework": "lightning + claymodel + einops",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "cpu_request": "4",
-        "memory_request": "8Gi",
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "timeout": 600,
-        "pvc": "clay-data (15Gi, RWO)",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "clay",
-        "api_name": "clay",
-        "gateway_type": "embed"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 minutes (venv-on-PVC + checkpoint already downloaded)"
       },
-      "domain": "earth-observation",
-      "subdomain": "remote-sensing",
-      "tags": ["science", "earth-observation", "satellite", "embed", "mae", "geospatial", "any-band"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "input_map": {
-        "pixels": "[[[band_values...], ...], ...] — [num_bands, H, W] reflectance array",
-        "waves": "wavelengths in micrometers e.g. [0.665, 0.56, 0.49, ...]",
-        "gsd": "ground sampling distance in meters (default 10.0)",
-        "lat": "center latitude (metadata)",
-        "lon": "center longitude (metadata)",
-        "time": "datetime string (metadata)"
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "output_map": {
-        "cls_embedding": "CLS token embedding vector",
-        "model": "clay",
-        "n_bands": "number of input bands"
-      },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data",
-        "checkpoint": "clay-v1.5.ckpt",
-        "repo_path": "/data/repo (cloned from GitHub)",
-        "model_size": "large"
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Clay Foundation Model ~330M geospatial MAE — any-band satellite-image CLS embeddings.",
+        "description": "The Clay Foundation Model (large variant, ~330M) is a Masked Autoencoder that generates semantic embeddings from multi-band satellite imagery. Accepts any-band image patches ([bands,H,W]) with per-band wavelengths (µm), ground sampling distance (m), and optional geolocation/time metadata (encoded as sin/cos). The encoder produces a CLS-token embedding for land classification, change detection, environmental monitoring. Non-text domain model: image+metadata input, does NOT expose OpenAI /v1/embeddings; stays on /v1/science/embed. Output returns both `embeddings` and `cls_embedding` (alias) + `embedding_dim`.",
+        "owned_by": "Clay Foundation",
+        "source": "made-with-clay/Clay",
+        "source_url": "https://huggingface.co/made-with-clay/Clay",
+        "license": "Apache-2.0",
+        "parameters": "~330M (large)",
+        "precision": "fp32",
+        "framework": "lightning + claymodel + einops",
+        "domain": "earth-observation",
+        "subdomain": "remote-sensing",
+        "tags": ["embedding", "science", "earth-observation", "satellite", "mae", "geospatial", "any-band", "cpu"],
+        "gpu": false,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "clay",
+          "pixels": "[[[band_values...],...],...] — [num_bands, H, W] reflectance",
+          "waves": "wavelengths in µm e.g. [0.665, 0.56, 0.49]",
+          "gsd": "ground sampling distance, meters (default 10.0)",
+          "lat": "center latitude (optional metadata)",
+          "lon": "center longitude (optional metadata)",
+          "time": "datetime string (optional metadata)"
+        },
+        "embedding_dimensions": 1024,
+        "pooling": "cls_token (large encoder)"
       }
     }
