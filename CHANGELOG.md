@@ -186,6 +186,11 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   `/v1/embeddings` route; keeps `/v1/science/embed`). Migrated both PVCs RWO→RWX (nfs-models); cards
   → v2. rnamsm: 768-dim mean-pooled RNA MSA (**6/2/0**). gena-lm-large: 1024-dim [CLS] DNA BERT-large
   (**6/3/0** — distinctness EXP, short-DNA borderline). Tests + READMEs added.
+- **ablang2 RWX migration (cp-from-RWO, non-HF):** created a new RWX PVC (`ablang2-data-rwx`), copied
+  the venv + Zenodo weights (1.8G) from the old RWO PVC via a temp cp pod — **no re-download** (ablang2
+  weights come from Zenodo, not HF). Repointed the ISVC; old `ablang2-data` deleted. This was the last
+  deferred non-HF model. **The text/sequence RAG-embedder pass is now COMPLETE** — every model that fits
+  the standard OpenAI `/v1/embeddings` endpoint is normalized, v2-carded, tested, and RWX-migrated.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test
