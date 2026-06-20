@@ -1,21 +1,33 @@
-# BiomedCLIP — Model Context
+# BiomedCLIP — biomedical vision-language model
 
-## What This Model Does
-Microsoft BiomedCLIP — CLIP variant pre-trained on 15M PubMed figure-caption pairs. Embeds biomedical images and text into shared 512-dim space. State-of-the-art biomedical image classification and cross-modal retrieval.
+Microsoft BiomedCLIP — CLIP variant pretrained on 15M PubMed figure-caption pairs. Encodes
+biomedical images and text into a shared **512-dim space** (cross-modal retrieval + zero-shot
+classification).
 
 ## Source
-[microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224](https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224) — Apache-2.0
+- HuggingFace: https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224
+- License: Apache-2.0
 
-## Gateway Integration
-- ISVC name: biomedclip
-- MODEL_TYPE: embed (gateway says "embed")
-- GPU_MODELS: yes
+## API — `POST /v1/science/embed` (domain endpoint, primary)
+Also `/v1/embeddings` (alias) + `POST /v1/classify` (zero-shot). Body needs `"model": "biomedclip"`:
+- `{"model":"biomedclip", "images":["<base64 PNG/JPEG>"], "texts":["..."]}` → `image_embeddings` and/or `text_embeddings`
+- `{"model":"biomedclip", "images":[...], "labels":["pneumonia","normal"]}` → zero-shot classify
 
-## Files
-| File | Purpose |
-|------|---------|
-| `details.yaml` | Model metadata ConfigMap |
-| `inferenceservice.yaml` | ISVC spec |
-| `pvc.yaml` | Dedicated PVC |
+## Deployment
+- **GPU**: 1× L40S (shared HAMi slice).
+- **PVC**: `biomedclip-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **Venv-on-PVC**: `/data/venv` (open_clip + torch, guarded).
+- **Scale-to-zero**: minReplicas 0, 15m retention.
 
-**IMPORTANT: When changing this model's deployment config, update details.yaml to match.**
+## Key files
+- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC
+- `details.yaml` — v2 card (Template C)
+- `pvc.yaml` — RWX PVC
+- `test.py` — 7-case gateway battery (image + text / distinctness / deterministic / shared-space / echo / malformed); pure-stdlib PNG generator (no PIL in gateway pod)
+
+## Notes
+- Server returns `image_embeddings`/`text_embeddings` (per modality), dim 512.
+- Text tokenizer: `open_clip.get_tokenizer("hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224")`.
+
+## Update reminder
+- Watch microsoft for BiomedCLIP v2 / larger variants.

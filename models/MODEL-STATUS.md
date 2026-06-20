@@ -29,7 +29,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomed-roberta | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biomedbert-large | embedding | true | /v1/science/embed | READY | PASS | 1024-dim (field: text) |
 | biomedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id biomedbert-110m) |
-| biomedclip | embed | true | /v1/embeddings | READY | PASS | text_embeddings (texts/images) |
+| biomedclip | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias; image+text 512-dim; 7/0 test; was parked |
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz-1 | structure | true | /v1/science/predict | READY | PASS | Boltz-1 NIM container; protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (--checkpoint boltz1) |

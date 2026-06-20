@@ -278,6 +278,10 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   `gene_ids` (pre-tokenized integer IDs ranked by expression), NOT the docstring's `{genes,
   expression}` — the test sends integer token IDs. v2 card; 6-check test.py. Validation:
   **6 PASS / 0 FAIL**.
+- **biomedclip:** already RWX. Added `/v1/science/embed` alias (was `/v1/embeddings` + `/v1/classify`
+  only). v2 card (512-dim shared image+text space). 7-check test.py covering both modalities +
+  cross-modal shared-space sanity (pure-stdlib PNG). Cleared the stop annotation. Validation:
+  **7 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
