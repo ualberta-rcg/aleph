@@ -24,7 +24,7 @@ kubectl apply -f details.yaml          # Template-C card (type: embedding)
 cat models/brainlm/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Last run (2026-06-19): **6 PASS / 0 FAIL** — dim 1280, non-zero, distinctness, deterministic,
+Last run (2026-06-20): **6 PASS / 0 FAIL** — dim 1280, non-zero, distinctness, deterministic,
 model-echo, malformed.
 
 ## Key Configuration

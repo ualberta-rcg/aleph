@@ -1,7 +1,7 @@
 """brainlm fMRI embedding gateway test (run inside the gateway pod).
 
 Embedding (Template C) battery for a custom BrainLM server (vandijklab ViT-MAE, GPU).
-768-dim latent embeddings from 424-ROI fMRI time-series, via the domain /v1/science/embed
+1280-dim latent embeddings from 424-ROI fMRI time-series, via the domain /v1/science/embed
 endpoint (also aliased at /v1/embeddings). Non-text (fMRI array).
 
 Run:  cat models/brainlm/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
@@ -10,7 +10,7 @@ import httpx, math, os, time
 
 G = "http://localhost:8080"
 MODEL = os.environ.get("MODEL", "brainlm")
-EXP_DIM = 1280  # actual dim (docs said 768)
+EXP_DIM = 1280  # actual dim; 768 was my ViT-Base guess (HF config is silent — verified live)
 N_ROIS = 424
 N_TP = 200
 results = []
@@ -45,7 +45,7 @@ def rand_fmri(seed, rois=N_ROIS, tp=N_TP):
 
 
 def _vec(d):
-    # brainlm returns OpenAI-format: {"data":[{"embedding":[...768...]}]} (serves /v1/embeddings)
+    # brainlm returns OpenAI-format: {"data":[{"embedding":[...1280...]}]} (serves /v1/embeddings)
     data = d.get("data")
     if isinstance(data, list) and data and isinstance(data[0], dict):
         return data[0].get("embedding", [])

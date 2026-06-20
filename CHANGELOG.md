@@ -32,9 +32,10 @@ Artifact-consistency fixes (stale prose left behind when the card was corrected)
 - **clay/test.py:** `EXP_DIM` 768→1024.
 - **geneformer/test.py:** `EXP_DIM` 256→768.
 - **geneformer/README:** config table dim 256→768.
-- **brainlm/{README,CLAUDE.md,details.yaml}:** all 768→1280 (description_short, description, config
-  table, last-run line, response shape). The card `embedding_dimensions: 1280` and test were already
-  correct; only the surrounding prose was stale.
+- **brainlm/{README,CLAUDE.md,details.yaml,test.py}:** all 768→1280 (description_short, description,
+  config table, last-run line, response shape, test docstring/comments). The card
+  `embedding_dimensions: 1280` and the test assertion were already correct; only the surrounding prose
+  was stale. Live card re-applied so the cluster catalog now reads 1280-dim too.
 No ISVC / server changes — dims were correct; this was documentation drift. Validation re-run live
 (06-20): clay 6/0, brainlm 6/0, geneformer 6/0.
 
