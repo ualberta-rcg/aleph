@@ -53,6 +53,7 @@ data:
         ]}
 
     @app.post("/v1/embed")
+    @app.post("/v1/science/embed")
     async def embed(request: dict):
         if model is None:
             return JSONResponse({"error": "model loading"}, 503)
@@ -89,9 +90,11 @@ data:
         cls_emb = final[:, 0, :].squeeze(0).cpu().float().numpy()  # (1024,)
         patch_emb = final[:, 1:, :].squeeze(0).cpu().float().numpy()  # (num_patches, 1024)
 
-        # Summarize to avoid huge payloads
+        # Return the full CLS embedding (1024 floats ~8KB — fine) + summary fields.
         return {
             "model": "prithvi-eo-300m",
+            "embeddings": cls_emb.tolist(),
+            "cls_embedding": cls_emb.tolist(),
             "cls_embedding_dim": len(cls_emb),
             "cls_mean": float(cls_emb.mean()),
             "cls_sample": cls_emb[:10].tolist(),

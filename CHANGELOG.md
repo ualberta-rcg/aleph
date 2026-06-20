@@ -268,6 +268,11 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   decorator; was `/v1/vision/embed` only) + an `embeddings` field. v2 card (768-dim ViT-B/8).
   6-check test.py that generates a pure-stdlib PNG (no PIL in the gateway pod). Cleared the stop
   annotation. Validation: **6 PASS / 0 FAIL**.
+- **prithvi-eo:** already RWX. Added `/v1/science/embed` alias (was `/v1/embed`) + **the full CLS
+  vector** to the output (the old server returned only a 10-element summary "to avoid huge payloads"
+  — 1024 floats ~8KB is fine). v2 card (1024-dim). 6-check test.py; distinctness threshold relaxed
+  (random-noise imagery maps near-identically; determinism is the real check). Validation:
+  **6 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 

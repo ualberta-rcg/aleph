@@ -124,7 +124,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | pangu-weather | forecast | true | /v1/science/forecast | READY | FIXED | demo+real ONNX; summarized upper/surface stats (not raw 721x1440 grids) |
 | phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; budget mode with REDUCE-off (none→512, NOT 0 — budget 0 mishandled per vLLM#18141) + strip; ON exposes reasoning, OFF/meta return content (reasoning stripped); generous meta caps. 31-check 26/5/0 ✅ 2026-06-18 |
 | presto | classify | false | /v1/embeddings | READY | FIXED | wake-up test PASS 2026-06-08: 17-band S1_S2_ERA5_SRTM satellite embeddings; pass mask/month/dynamic_world kwargs |
-| prithvi-eo | embed | true | /v1/embed | READY | FIXED | BACKBONE_REGISTRY + forward_features, GDAL + libexpat1 runtime dep; 1024-dim CLS embeddings PASS |
+| prithvi-eo | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias + full CLS vector (was summary-only); 1024-dim; 6/0 test |
 | prithvi-wxc | embed | true | /v1/science/forecast | READY | PASS | demo forecast OK after unstop+cold-start (~6min); real MERRA-2 state not exercised |
 | progen2 | generate | true | /v1/completions | READY | FIXED | sentinel + progress-deadline 600s; 6.4B protein generation PASS |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
