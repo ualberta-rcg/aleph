@@ -241,6 +241,12 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
 - **clay:** RWO→RWX (cp-migrated, venv + checkpoint + claymodel repo preserved); +`embeddings` field;
   v2 card (1024-dim CLS large encoder — initially guessed 768, corrected from the response); 6-check
   pixels+waves test.py; cleared the stop annotation. Validation: **6 PASS / 0 FAIL**.
+- **astropt (venv conversion):** the init's `/data` sentinel didn't persist deps (pip install went
+  into the ephemeral container python), so the main container reinstalled cu126 torch on every wake.
+  Converted to venv-on-PVC: init builds `/data/venv` once (sentinel `.astropt-ready-v2`, guarded),
+  main runs `/data/venv/bin/python`. PVC was already RWX. **Dim is 768, not the docstring's [N,512]**
+  — the real output is a flat 768-dim vector (demo path still returns [16,512]); v2 card corrected.
+  7-check test.py. Validation: **7 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 

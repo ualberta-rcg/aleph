@@ -164,21 +164,31 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.astropt-ready-v1
+            SENTINEL=/data/.astropt-ready-v2
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
-            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
-            pip install -q astropt huggingface_hub fastapi uvicorn einops
-            python3 -c "
+            # Install deps into a venv ON THE PVC so they persist across pods (the old init
+            # installed into the ephemeral container python, so the main container reinstalled
+            # torch on every wake). Venv guarded; torch preserved across restarts.
+            VENV=/data/venv
+            if [ ! -x "$VENV/bin/python" ]; then
+              echo "Creating venv..."
+              python3 -m venv $VENV
+              $VENV/bin/pip install -U pip
+              echo "Installing torch + torchvision (cu126)..."
+              $VENV/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+              $VENV/bin/pip install astropt huggingface_hub fastapi uvicorn einops
+            else
+              echo "Venv exists (torch preserved)."
+            fi
+            # Download weights if not on PVC (idempotent; snapshot_download skips existing).
+            if [ ! -f /data/astroPT_v2.0.pt ] && [ ! -f /data/model.safetensors ]; then
+              $VENV/bin/python -c "
             import os
             from huggingface_hub import snapshot_download
-            snapshot_download(
-                repo_id='Smith42/astroPT_v2.0',
-                local_dir='/data',
-                local_dir_use_symlinks=False,
-                token=os.environ.get('HF_TOKEN'),
-            )
+            snapshot_download(repo_id='Smith42/astroPT_v2.0', local_dir='/data', local_dir_use_symlinks=False, token=os.environ.get('HF_TOKEN'))
             print('AstroPT weights downloaded.')
             "
+            fi
             touch "$SENTINEL"
             echo "Setup complete."
         resources:
@@ -189,12 +199,8 @@ spec:
     containers:
       - name: kserve-container
         image: python:3.11
-        command: ["bash", "-c"]
-        args:
-          - |
-            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
-            pip install -q astropt fastapi uvicorn einops
-            python /app/server.py
+        command: ["/data/venv/bin/python"]
+        args: ["/app/server.py"]
         env:
           - { name: HF_HOME, value: /tmp }
         ports:

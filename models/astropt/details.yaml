@@ -9,67 +9,56 @@ data:
   details.json: |
     {
       "id": "astropt",
-      "status": "broken",
-      "type": "embed",
-      "description_short": "AstroPT v2.0 95M autoregressive galaxy image transformer. 8.6M galaxies from SDSS/DESI.",
-      "description": "AstroPT v2.0 is a 95M parameter autoregressive GPT model from UniverseTBD/Smith42 trained on 8.6M galaxy images from SDSS/DESI. It tokenizes 64x64 galaxy images into patch sequences and generates latent embeddings via causal attention. The model produces (num_patches, 512) embeddings suitable for galaxy morphology analysis, redshift estimation, and similarity search. MIT license.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "status": "production",
+      "type": "embedding",
       "endpoints": {
         "primary": "/v1/science/embed",
         "health": "/health"
       },
-      "owned_by": "Smith42/UniverseTBD",
-      "source": "Smith42/astroPT_v2.0",
-      "source_url": "https://huggingface.co/Smith42/astroPT_v2.0",
-      "license": "MIT",
-      "parameters": "95M",
-      "precision": "fp32",
-      "architecture": "autoregressive GPT (patch-based, 64x64 input, causal attention)",
-      "framework": "astropt + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S",
-        "cpu_request": "2",
-        "memory_request": "8Gi",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 180,
-        "pvc": "astropt-data (inline)",
-        "image": "python:3.11",
-        "venv": false
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "astropt",
-        "api_name": "astropt",
-        "gateway_type": "embed"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "4-7 min on first v2 boot (venv build); ~30s after"
       },
-      "domain": "astronomy",
-      "subdomain": "galaxy-images",
-      "tags": ["science", "astronomy", "embed", "galaxy", "autoregressive", "gpt", "sdss", "desi", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "input_map": {
-        "image": "[[[R,G,B], ...], ...] — (H, W, 3) or (3, H, W) galaxy image, float [0,1]",
-        "demo": "boolean — returns (16, 512) synthetic embeddings"
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "output_map": {
-        "embeddings": "[[float]] — (num_patches, 512) latent embeddings",
-        "shape": "[N, D] e.g. [16, 512]",
-        "model": "astropt-095m"
-      },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_id": "Smith42/astroPT_v2.0",
-        "model_variant": "astropt/095M",
-        "input_size": "64x64",
-        "embedding_dim": 512
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "AstroPT v2.0 95M autoregressive galaxy-image transformer — patch latent embeddings [N,512].",
+        "description": "AstroPT v2.0 (95M, UniverseTBD/Smith42) is an autoregressive GPT trained on 8.6M galaxy images from SDSS/DESI. It patchifies a galaxy image and runs a causal-attention forward pass. The server returns a single 768-dim embedding vector (empirically verified 2026-06-19; the docstring/old card claimed [N,512] patch latents but the real output is a flat 768-dim vector — the demo path still returns a [16,512] synthetic array). Suitable for galaxy morphology, redshift estimation, similarity search. Non-text domain model: galaxy image input, does NOT expose OpenAI /v1/embeddings; stays on /v1/science/embed.",
+        "owned_by": "Smith42/UniverseTBD",
+        "source": "Smith42/astroPT_v2.0",
+        "source_url": "https://huggingface.co/Smith42/astroPT_v2.0",
+        "license": "MIT",
+        "parameters": "95M",
+        "precision": "fp32",
+        "framework": "astropt + PyTorch (cu126)",
+        "domain": "astronomy",
+        "subdomain": "galaxy-images",
+        "tags": ["embedding", "science", "astronomy", "galaxy", "autoregressive", "gpt", "sdss", "desi", "gpu"],
+        "gpu": true,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "astropt",
+          "image": "[[[R,G,B],...],...] — (H,W,3) galaxy image float [0,1] (patchified by GalaxyImageDataset)",
+          "demo": "boolean — returns (16,512) synthetic embeddings"
+        },
+        "embedding_dimensions": 768,
+        "pooling": "flat vector (server returns shape [768,1])"
       }
     }

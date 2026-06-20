@@ -1,40 +1,38 @@
 # AstroPT v2.0 — Autoregressive Galaxy Image Transformer
 
+AstroPT v2.0 (95M, UniverseTBD/Smith42) — autoregressive GPT trained on 8.6M galaxy images
+(SDSS/DESI). Patchifies a galaxy image and emits **[N, 512] patch latent embeddings** via causal
+attention. NOTE: output is patch-level (2D), not a single pooled vector.
+
 ## Source
 - HuggingFace: https://huggingface.co/Smith42/astroPT_v2.0
 - License: MIT
 
-## Deployment Summary
-- **Model**: AstroPT v2.0 (095M params)
-- **GPU**: 1x L40S (dedicated)
-- **PVC**: astropt-data (inline in ISVC)
-- **Scale-to-zero**: Yes (minReplicas: 0)
-- **Venv**: No (pip install on every start)
+## API — `POST /v1/science/embed` (NON-OpenAI domain endpoint)
+Galaxy image input → does NOT expose OpenAI `/v1/embeddings`. Body needs `"model": "astropt"`:
+- `{"model":"astropt", "image":[[[R,G,B],...],...]}` → (H,W,3) float [0,1] → patch latents `[N,512]`
+- `{"model":"astropt", "demo":true}` → synthetic `[16,512]`
+- Returns `{"embeddings":[[...512...],...N], "shape":[N,512], "model":"astropt-095m"}`.
 
-## API
-- `POST /v1/science/embed` — galaxy image to latent embeddings
-- Input: (H, W, 3) or (3, H, W) RGB galaxy image float [0,1]
-- Output: (num_patches, 512) latent embeddings
-- Demo mode: `{"demo": true}` returns synthetic (16, 512) embeddings
+## Deployment
+- **GPU**: 1× L40S via HAMi (`nvidia.com/gpumem: 8192`), `nodeSelector: gpu=on`.
+- **PVC**: `astropt-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **Venv-on-PVC** (converted 2026-06-19): the old init installed torch into the **ephemeral
+  container python** (the `/data` sentinel didn't persist deps), so the main container reinstalled
+  cu126 torch on every wake. Now the init builds `/data/venv` on the PVC once (sentinel
+  `.astropt-ready-v2`, venv guarded), and the main container runs `/data/venv/bin/python /app/server.py`.
+- **Scale-to-zero**: minReplicas 0, 15m retention.
 
-## Key Files
-- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC + init container
-- `details.yaml` — model metadata ConfigMap
-- No separate pvc.yaml
+## Key files
+- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC + venv-on-PVC init
+- `details.yaml` — v2 card (Template C)
+- `pvc.yaml` — RWX PVC
+- `test.py` — 7-case gateway battery (shape [N,512] / non-zero / distinctness / deterministic / echo / demo / malformed)
 
-## Dependencies
-- astropt (pip package)
-- torch + torchvision (CUDA 12.6)
-- fastapi, uvicorn, huggingface_hub
+## Notes
+- Loads via `astropt` package `load_astropt()`. Per-channel mean/std normalization + positional
+  encoding for the patch sequence. Snapshot of the full repo downloaded to `/data`.
 
-## Audit Notes
-- Uses official load_astropt() API for model loading
-- Per-channel normalization (mean/std) applied to input images
-- Positional encoding generated for patch sequence
-- Sentinel file: /data/.astropt-ready-v1
-- Snapshot download of full repo to PVC
-
-## Update Reminder
-- Monitor Smith42/astroPT_v2.0 for larger model variants
-- Consider adding classification/regression heads for redshift
-- Add separate pvc.yaml for consistency
+## Update reminder
+- Sentinel v1→v2 bump forced the one-time venv build; on a fresh PVC the venv + weights rebuild.
+- Monitor Smith42 for larger variants (dim may change from 512).
