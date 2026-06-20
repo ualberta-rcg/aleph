@@ -10,7 +10,7 @@ import httpx, math, os, time
 
 G = "http://localhost:8080"
 MODEL = os.environ.get("MODEL", "geneformer")
-EXP_DIM = 256  # geneformer-v2-104M hidden dim; confirmed from response embedding_dim if it differs
+EXP_DIM = 768  # geneformer-v2-104M hidden dim (V1-10M was 256); verified live 2026-06-20
 results = []
 
 # A handful of real gene symbols + expression values for a synthetic cell.

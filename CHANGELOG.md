@@ -3,6 +3,41 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-20 — Dim verification: 5 non-text embedders (live probe + primary sources)
+
+Re-checked the 5 non-text embedders whose dims I'd "corrected" during the 06-19/20 hardening, because
+the recorded "wrong" values looked suspicious. Settled each by **reading the actual response length
+live through the gateway** (ground truth) plus the model's HF config / primary docs — not by trusting
+the cards or my earlier notes.
+
+**All five card dims are correct** (verified live). The earlier "wrong" values were largely *my own
+guesses*, not doc errors — the corrected value just hadn't been propagated to every artifact:
+
+| model | live dim | earlier "wrong" | where the wrong value actually came from |
+|---|---|---|---|
+| satmae | 1024 | 512 | config.json `decoder_embed_dim`=512 (the MAE *decoder* dim, misread as encoder); encoder `embed_dim`=1024 |
+| clay | 1024 | 768 | my guess (ViT-Base default); HF config carries no dim — 1024 read from the response |
+| astropt | 768 | [N,512] | the server's own demo path returns a `[16,512]` synthetic array; real `generate_embeddings` output is a flat 768 (nanoGPT 095M `n_embd`) |
+| brainlm | 1280 | 768 | my guess (ViT-Base default); 650M is ViT-Huge, hidden 1280 |
+| geneformer | 768 | 256 | my version-conflation — 256 is the *V1-10M* dim; V2-104M is 768 (BioNeMo / Virtual Cells Platform) |
+
+Honest correction to the 06-19/20 notes: the "(docs wrong)" parenthetical was misleading. In 3 of 5
+cases (clay, brainlm, geneformer) the docs either stated no dim at all (clay, brainlm) or stated the
+*correct* value (geneformer V2 = 768); the wrong number was my own guess or a version mix-up. Only
+astropt's 512 is genuinely a number from the model's own (demo-path) code, and satmae's 512 is a real
+config field I misread. The lesson ("verify the dim empirically every time") holds — but the reason
+isn't "docs lie," it's "I guessed when docs were silent, and didn't propagate the fix."
+
+Artifact-consistency fixes (stale prose left behind when the card was corrected):
+- **clay/test.py:** `EXP_DIM` 768→1024.
+- **geneformer/test.py:** `EXP_DIM` 256→768.
+- **geneformer/README:** config table dim 256→768.
+- **brainlm/{README,CLAUDE.md,details.yaml}:** all 768→1280 (description_short, description, config
+  table, last-run line, response shape). The card `embedding_dimensions: 1280` and test were already
+  correct; only the surrounding prose was stale.
+No ISVC / server changes — dims were correct; this was documentation drift. Validation re-run live
+(06-20): clay 6/0, brainlm 6/0, geneformer 6/0.
+
 ## 2026-06-19 — Embeddings pass begins: bge-m3 exemplar (Template C)
 
 Starting the ~64 embedding/rerank model pass. Same posture as the chat sweep — the models are

@@ -30,8 +30,8 @@ Body needs `"model": "geneformer"`:
 
 ## Notes
 - The server tokenizes gene names (via the gene token dictionary) + ranks by expression, then runs
-  the transformer; embedding = mean-pool over token hidden states. Dim 256 (v2-104M).
+  the transformer; embedding = mean-pool over token hidden states. Dim 768 (v2-104M; V1-10M was 256).
 - Downloads the Geneformer-V2-104M subdirectory only.
 
 ## Update reminder
-- Watch ctheodoris/Geneformer for larger variants (dim may change from 256).
+- Watch ctheodoris/Geneformer for larger variants (dim may change from 768).

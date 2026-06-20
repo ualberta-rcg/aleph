@@ -11,7 +11,7 @@ import httpx, math, os, time
 G = "http://localhost:8080"
 MODEL = os.environ.get("MODEL", "clay")
 # Clay large encoder CLS dim; confirmed from the response `embedding_dim` if it differs.
-EXP_DIM = 768
+EXP_DIM = 1024
 BANDS = 4  # synthetic B/G/R/NIR
 H = W = 32
 WAVES = [0.49, 0.56, 0.665, 0.84]  # µm

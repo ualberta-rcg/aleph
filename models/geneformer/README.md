@@ -33,7 +33,7 @@ deterministic, model-echo, malformed.
 |---------|-------|
 | Backend | custom FastAPI + transformers `AutoModel` (CPU) |
 | Endpoint | `POST /v1/science/embed` (domain; genes+expression; `/v1/embed` secondary) |
-| Embedding dim | 256 (v2-104M mean-pooled hidden states) |
+| Embedding dim | 768 (v2-104M mean-pooled hidden states; V1-10M was 256) |
 | Input | `genes` [names] + `expression` [floats] (tokenized + ranked; max 4096) |
 | Parameters | 104M (V2) |
 | GPU | none (CPU) |

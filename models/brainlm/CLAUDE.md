@@ -2,7 +2,7 @@
 
 BrainLM (650M, vandijklab, ICLR 2024) — ViT-MAE foundation model for fMRI. Accepts 424-ROI
 time-series, converts to a 3-channel 434×434 image (signal + spatial/temporal derivatives), and
-runs ViTMAEForPreTraining to extract a **768-dim latent embedding** per window.
+runs ViTMAEForPreTraining to extract a **1280-dim latent embedding** per window.
 
 ## Source
 - HuggingFace: https://huggingface.co/vandijklab/BrainLM
@@ -12,8 +12,8 @@ runs ViTMAEForPreTraining to extract a **768-dim latent embedding** per window.
 ## API — `POST /v1/science/embed` (NON-OpenAI domain endpoint, primary)
 fMRI-array input → does NOT fit OpenAI `/v1/embeddings` (text-only). Also aliased at `/v1/embeddings`
 (secondary). Body needs `"model": "brainlm"`:
-- `{"model":"brainlm", "fmri":[[roi1_t1,...],...], "model_size":"650M"}` → shape [424, timepoints] → 768-dim
-- Returns `{"embeddings":[[...768...]], "model":"brainlm"}`.
+- `{"model":"brainlm", "fmri":[[roi1_t1,...],...], "model_size":"650M"}` → shape [424, timepoints] → 1280-dim
+- Returns `{"embeddings":[[...1280...]], "model":"brainlm"}`.
 
 ## Deployment
 - **GPU**: 1× L40S (shared HAMi slice).
@@ -25,7 +25,7 @@ fMRI-array input → does NOT fit OpenAI `/v1/embeddings` (text-only). Also alia
 - `inferenceservice.yaml` — ConfigMap (server.py) + ISVC
 - `details.yaml` — v2 card (Template C)
 - `pvc.yaml` — RWX PVC
-- `test.py` — 6-case gateway battery (dim 768 / non-zero / distinctness / deterministic / echo / malformed)
+- `test.py` — 6-case gateway battery (dim 1280 / non-zero / distinctness / deterministic / echo / malformed)
 
 ## Notes
 - ViT-MAE (a vision model) adapted for fMRI: the server reshapes [424 rois, T] → [3, 434, 434]
@@ -34,4 +34,4 @@ fMRI-array input → does NOT fit OpenAI `/v1/embeddings` (text-only). Also alia
 - Custom weight loading via ViTMAEConfig from config.json.
 
 ## Update reminder
-- Watch vandijklab/BrainLM for v2 / larger variants (dim may change from 768).
+- Watch vandijklab/BrainLM for v2 / larger variants (dim may change from 1280).
