@@ -66,20 +66,31 @@ data:
         embeddings = (out.last_hidden_state * mask).sum(1) / mask.sum(1)
         return {"embeddings": embeddings.cpu().tolist(), "model": "ernierna", "dim": embeddings.shape[-1]}
 
+    @app.post("/v1/embeddings")
+    async def openai_embeddings(payload: dict):
+        # OpenAI-style: {model, input(str|list of RNA seq)} -> {object, data:[{embedding}], model, usage}
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        inp = payload.get("input")
+        if inp is None:
+            inp = payload.get("sequences") or ([payload.get("sequence")] if payload.get("sequence") else None)
+        seqs = [inp] if isinstance(inp, str) else list(inp or [])
+        if not seqs or not seqs[0]:
+            return JSONResponse({"error": "provide 'input' (RNA sequence string or list)"}, 400)
+        enc = tokenizer(seqs, return_tensors="pt", padding=True, truncation=True, max_length=1024)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc)
+        mask = enc["attention_mask"].unsqueeze(-1).float()
+        emb = ((out.last_hidden_state * mask).sum(1) / mask.sum(1)).cpu().tolist()
+        data = [{"object": "embedding", "index": i, "embedding": e} for i, e in enumerate(emb)]
+        pt = sum(len(s) for s in seqs)
+        return JSONResponse({"object": "list", "data": data, "model": payload.get("model", "ernierna"),
+                             "usage": {"prompt_tokens": pt, "total_tokens": pt}})
+
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ernierna-data
-  namespace: models
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: nfs-client
-  resources:
-    requests:
-      storage: 5Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
