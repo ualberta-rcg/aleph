@@ -17,7 +17,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
 | astroclip | embed | true | /v1/science/embed | READY | FIXED | Real model 2026-06-19 (was demo stub): venv-on-PVC + 1024-dim image/spectrum (not 512); fixed weights_only (PyTorch 2.6) + upstream batch<2 attentions[1] bug; 9/0 test |
-| astropt | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: venv-on-PVC conversion (was reinstalling torch every wake); 768-dim (docs said [N,512], wrong); 7/0 test |
+| astropt | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: venv-on-PVC conversion (was reinstalling torch every wake); 768-dim (server's demo path returns [16,512]; real generate_embeddings output is flat 768); 7/0 test |
 | astrosage | chat | true | /v1/chat/completions | READY | PASS | 14/14 ✅ via gateway; custom transformers server (not vLLM); 8B Llama-3.1; vGPU slice 16GB; no_stream; vision gating added (gateway-9ade05f) |
 | aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card. **NIM available:** `nvcr.io/nim/baai/bge-m3` (build.nvidia.com/baai/bge-m3) |
@@ -35,7 +35,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | boltz-1 | structure | true | /v1/science/predict | READY | PASS | Boltz-1 NIM container; protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (--checkpoint boltz1) |
 | boltz-2 | structure | true | /v1/science/predict | READY | PASS | Boltz-2 NIM container (default); protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (build.nvidia.com/mit/boltz-2) |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
-| brainlm | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: already RWX+route; mask_ratio=0 fix (was stochastic); dim 1280 (docs said 768); 6/0 test |
+| brainlm | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: already RWX+route; mask_ratio=0 fix (was stochastic); dim 1280 (ViT-Huge hidden; 768 was my ViT-Base guess, docs were silent); 6/0 test |
 | caduceus | embedding | true | /v1/embeddings | READY | FIXED | torch 2.2.0+mamba-ssm 1.2.0 pinned, numpy<2, AutoModel RCPS 256-dim; PVC venv cached; mamba compile ~20min first deploy, 5sec after |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
@@ -78,7 +78,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8; managed thinking (toggle: enable_thinking, not reasoning_effort) + vision + tools; 32-check test 30/2/0 ✅ 2026-06-18. (NIM alt: nvcr.io/nim/google/gemma-4-31b-it) |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
-| geneformer | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp); +/v1/science/embed alias; 768-dim (docs said 256); input=gene_ids; 6/0 test |
+| geneformer | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp); +/v1/science/embed alias; 768-dim (256 was V1-10M; V2-104M is 768 — my version-conflation, docs correct); input=gene_ids; 6/0 test |
 | geogalactica | chat | true | /v1/chat/completions | READY | FIXED | 14/14 ✅ via gateway; v0.20.2 TP2; OPT 30B; context 2048 (hard limit); tools/vision rejected; prev engine core init fail resolved |
 | glm-4-32b | chat | true | /v1/chat/completions | READY | PASS | org moved THUDM->zai-org; haiku ok. **NIM available:** `nvcr.io/nim/zai-org/glm-51` (GLM-5.1, build.nvidia.com/z-ai/glm-5.1) |
 | glm-z1-32b | — | — | — | RETIRED | — | Removed 2026-06-18 — redundant reasoning model; reasoning not surfaceable (chat template has no enable_thinking; glm45 parser crashes). Deleted from repo + cluster. Use qwq/r1-distill/gpt-oss/qwen3 instead. |
