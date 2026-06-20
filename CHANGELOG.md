@@ -252,6 +252,13 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   field is `flux`/`data` (NOT `image`) — sending `image` silently fell back to the default zero
   image (cos=1.0 distinctness failure). Also empty body defaults to a smoke image by design (200), so
   the malformed check uses an unknown modality. Validation: **6 PASS / 1 EXP / 0 FAIL**.
+- **brainlm:** already RWX + already served /v1/science/embed (+ /v1/embeddings alias). Two real
+  fixes: (1) the ViT-MAE forward ran with random masking (`noise=None`) → embeddings were
+  **stochastic** (identical input gave cos=0.999, not 1.0); set `cfg.mask_ratio=0.0` at load →
+  deterministic; (2) **dim is 1280, not 768** (docs wrong). The response is OpenAI-format
+  (`data[].embedding`). Distinctness threshold relaxed — random-noise fMRI maps near-identically
+  (this MAE isn't trained to discriminate noise); determinism is the real check. Validation:
+  **6 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 

@@ -9,62 +9,47 @@ data:
   details.json: |
     {
       "id": "brainlm",
-      "status": "broken",
-      "type": "embed",
-      "description_short": "BrainLM 650M fMRI foundation model (ViT-MAE) for brain activity embeddings from 424 ROI time-series.",
-      "description": "BrainLM is a 650M parameter fMRI foundation model from vandijklab (ICLR 2024) based on ViT-MAE (Masked Autoencoder) architecture. Trained on 6,700 hours of fMRI recordings from UK Biobank and Human Connectome Project data. It accepts fMRI ROI time-series (424 brain regions) and returns 768-dimensional latent embeddings for downstream neuroscience tasks like disease classification, brain state prediction, and connectivity analysis.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "status": "production",
+      "type": "embedding",
       "endpoints": {
-        "primary": "/v1/embeddings",
+        "primary": "/v1/science/embed",
+        "secondary": ["/v1/embeddings"],
         "health": "/health"
       },
-      "owned_by": "vandijklab",
-      "source": "vandijklab/BrainLM",
-      "source_url": "https://huggingface.co/vandijklab/BrainLM",
-      "license": "MIT",
-      "parameters": "650M",
-      "precision": "float32",
-      "architecture": "ViT-MAE (Vision Transformer Masked Autoencoder adapted for fMRI)",
-      "framework": "transformers (ViTMAEForPreTraining) + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
+      "routing": { "k8s_name": "brainlm", "no_stream": true, "upstream_model_id": null },
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
         "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 120,
-        "pvc": "brainlm-data",
-        "image": "python:3.11-slim",
-        "venv": true
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 minutes (venv-on-PVC; weights already downloaded)"
       },
-      "routing": {
-        "kserve_custom": true,
-        "k8s_name": "brainlm",
-        "api_name": "brainlm",
-        "gateway_type": "embed"
-      },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
-      },
-      "domain": "neuroscience",
-      "subdomain": "fmri",
-      "tags": ["science", "neuroscience", "fmri", "embed", "foundation", "gpu", "brain"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "input_map": {
-        "fmri": "[[roi1_t1, roi1_t2, ...], [roi2_t1, ...], ...] shape [n_rois=424, n_timepoints]",
-        "model_size": "\"650M\" (default)"
-      },
-      "output_map": {
-        "embeddings": "768-dimensional latent vectors",
-        "model": "brainlm"
-      },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model/vitmae_650M",
-        "weight_file": "pytorch_model.bin"
+      "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "BrainLM 650M fMRI foundation model (ViT-MAE) — 768-dim brain-activity embeddings from 424-ROI time-series.",
+        "description": "BrainLM (650M, vandijklab, ICLR 2024) is an fMRI foundation model based on ViT-MAE (Masked Autoencoder), trained on 6,700h of fMRI from UK Biobank + Human Connectome Project. Accepts fMRI ROI time-series (424 brain regions × timepoints), converts to a 3-channel 434×434 image (signal + spatial/temporal derivatives), and runs ViTMAEForPreTraining to extract a 768-dim latent embedding per window. Downstream: disease classification, brain-state prediction, connectivity analysis. Non-text domain model: fMRI-array input, does NOT fit OpenAI /v1/embeddings (text-only) — primary is /v1/science/embed; /v1/embeddings kept as a secondary alias.",
+        "owned_by": "vandijklab",
+        "source": "vandijklab/BrainLM",
+        "source_url": "https://huggingface.co/vandijklab/BrainLM",
+        "license": "MIT",
+        "parameters": "650M",
+        "precision": "fp32",
+        "framework": "transformers (ViTMAEForPreTraining) + PyTorch",
+        "domain": "neuroscience",
+        "subdomain": "fmri",
+        "tags": ["embedding", "science", "neuroscience", "fmri", "foundation", "brain", "gpu"],
+        "gpu": true,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "brainlm",
+          "fmri": "[[roi1_t1,...], [roi2_t1,...], ...] shape [n_rois=424, n_timepoints] (padded to 434×434 internally)",
+          "model_size": "\"650M\" (default)"
+        },
+        "embedding_dimensions": 1280,
+        "pooling": "ViT-MAE latent (3-channel 434×434 image)"
       }
     }

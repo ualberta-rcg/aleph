@@ -45,6 +45,7 @@ data:
             with open(config_path) as f:
                 cfg_dict = json.load(f)
             cfg = ViTMAEConfig(**cfg_dict)
+            cfg.mask_ratio = 0.0  # disable MAE random masking -> deterministic embeddings
             m = ViTMAEForPreTraining(cfg)
             weights_path = os.path.join(model_dir, "pytorch_model.bin")
             state = torch.load(weights_path, map_location=DEVICE, weights_only=False)

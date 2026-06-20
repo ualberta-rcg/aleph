@@ -35,7 +35,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | boltz-1 | structure | true | /v1/science/predict | READY | PASS | Boltz-1 NIM container; protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (--checkpoint boltz1) |
 | boltz-2 | structure | true | /v1/science/predict | READY | PASS | Boltz-2 NIM container (default); protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (build.nvidia.com/mit/boltz-2) |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
-| brainlm | embed | true | /v1/embeddings | READY | FIXED | wake-up test PASS 2026-06-08: 1280-dim fMRI embeddings via ViTMAE CLS token; slow model load (~10min) |
+| brainlm | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: already RWX+route; mask_ratio=0 fix (was stochastic); dim 1280 (docs said 768); 6/0 test |
 | caduceus | embedding | true | /v1/embeddings | READY | FIXED | torch 2.2.0+mamba-ssm 1.2.0 pinned, numpy<2, AutoModel RCPS 256-dim; PVC venv cached; mamba compile ~20min first deploy, 5sec after |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |

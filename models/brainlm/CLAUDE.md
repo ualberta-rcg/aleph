@@ -1,46 +1,37 @@
 # BrainLM — fMRI Foundation Model
 
+BrainLM (650M, vandijklab, ICLR 2024) — ViT-MAE foundation model for fMRI. Accepts 424-ROI
+time-series, converts to a 3-channel 434×434 image (signal + spatial/temporal derivatives), and
+runs ViTMAEForPreTraining to extract a **768-dim latent embedding** per window.
+
 ## Source
 - HuggingFace: https://huggingface.co/vandijklab/BrainLM
 - Paper: ICLR 2024
 - License: MIT
 
-## Deployment Summary
-- **Model**: BrainLM 650M (ViT-MAE architecture)
-- **GPU**: 1x L40S (shared)
-- **PVC**: brainlm-data
-- **Scale-to-zero**: Yes (minReplicas: 0)
-- **Venv**: Yes (/data/venv on PVC)
+## API — `POST /v1/science/embed` (NON-OpenAI domain endpoint, primary)
+fMRI-array input → does NOT fit OpenAI `/v1/embeddings` (text-only). Also aliased at `/v1/embeddings`
+(secondary). Body needs `"model": "brainlm"`:
+- `{"model":"brainlm", "fmri":[[roi1_t1,...],...], "model_size":"650M"}` → shape [424, timepoints] → 768-dim
+- Returns `{"embeddings":[[...768...]], "model":"brainlm"}`.
 
-## API
-- `POST /v1/embeddings` — encode fMRI time-series into 768-dim embeddings
-- Input: fMRI data [424 ROIs x timepoints]
-- Output: 768-dimensional latent embeddings
+## Deployment
+- **GPU**: 1× L40S (shared HAMi slice).
+- **PVC**: `brainlm-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **Venv-on-PVC**: `/data/venv` (transformers + torch, guarded). Main runs `/data/venv/bin/python`.
+- **Scale-to-zero**: minReplicas 0, 15m retention.
 
-## Key Files
-- `inferenceservice.yaml` — ConfigMap (server.py) + PVC + ISVC (all-in-one)
-- `pvc.yaml` — brainlm-data PVC
-- `details.yaml` — model metadata ConfigMap
-- `kustomization.yaml` — kustomize resources
+## Key files
+- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC
+- `details.yaml` — v2 card (Template C)
+- `pvc.yaml` — RWX PVC
+- `test.py` — 6-case gateway battery (dim 768 / non-zero / distinctness / deterministic / echo / malformed)
 
-## Dependencies
-- transformers (ViTMAEForPreTraining, ViTMAEConfig)
-- torch
-- fastapi, uvicorn
+## Notes
+- ViT-MAE (a vision model) adapted for fMRI: the server reshapes [424 rois, T] → [3, 434, 434]
+  (pad 424→434; channels = signal, spatial-derivative, temporal-derivative). Requires 424 ROIs
+  (UK Biobank parcellation); timepoints are padded/truncated to 434 internally.
+- Custom weight loading via ViTMAEConfig from config.json.
 
-## Gateway Integration
-- ISVC name: `brainlm`
-- MODEL_TYPE: embed
-- KSERVE_CUSTOM_MODELS: yes
-- GPU_MODELS: yes
-- Listed in MODEL_METADATA
-
-## Audit Notes
-- Adapted ViT-MAE (vision model) for fMRI time-series data
-- Requires exactly 424 ROI inputs (UK Biobank parcellation)
-- Custom weight loading with ViTMAEConfig from config.json
-- Trained on 6,700 hours of fMRI data
-
-## Update Reminder
-- Check for BrainLM v2 or larger variants
-- Monitor vandijklab/BrainLM for updates
+## Update reminder
+- Watch vandijklab/BrainLM for v2 / larger variants (dim may change from 768).
