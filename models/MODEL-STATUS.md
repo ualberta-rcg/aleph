@@ -311,6 +311,8 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | rnabert | 6/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | RNA; 120-dim mean-pooled |
 | ernierna | 5/3/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | structure-aware RNA; 768-dim; distinctness EXP (short-seq collapse) |
 | rnafm | 6/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | non-coding RNA; 640-dim mean-pooled |
+| rnamsm | 6/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | RNA MSA; 768-dim mean-pooled |
+| gena-lm-large | 6/3/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | DNA BERT-large; 1024-dim CLS |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
