@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-20 — Consolidate working docs + salvage ProteinMPNN source (pre-230-redeploy)
+
+230 is being destroyed and rebuilt with Warewulf + the modular RKE2 manifests. Pre-redeploy
+consolidation pass so nothing is lost:
+- New `working/` dir holds working/reference notes moved from the local `~/hami-cluster-test`
+  dir: `MODEL-CAMPAIGN-PLAN.md`, `LLM-MODEL-TRACKER.md`, `CLUSTER-230-PLAN.md`,
+  `MIGRATION-232-to-230.md` (working notes, not canonical — they carry 230/232 refs; canonical
+  docs stay in `docs/`).
+- Salvaged the upstream ProteinMPNN source (`pmpnn_run.py`, `pmpnn_utils.py`) into
+  `models/proteinmpnn/` — the fixed `server.py` (embedded in its isvc ConfigMap) imports
+  `protein_mpnn_utils`; these are the known-good upstream copies for reproducibility.
+- Confirmed nothing else on 230 needs salvage: aleph already holds all 164 live model manifests
+  (171 model dirs, superset), the gateway source, and byte-identical Tyk API defs.
+
 ## 2026-06-20 — Modular RKE2 auto-deploy manifest set (deploy-aleph/rke2-manifests/)
 
 First cut at version-controlling the cluster bring-up so the next Warewulf deployment brings
