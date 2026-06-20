@@ -81,24 +81,15 @@ data:
             # Return CLS token embedding
             cls_emb = latent[:, 0].cpu().numpy().tolist()
             patch_embs = latent[:, 1:].cpu().numpy().tolist()
-            return {"cls_embedding": cls_emb[0], "patch_embeddings": patch_embs[0], "model": "satmae"}
+            return {"embeddings": cls_emb[0], "cls_embedding": cls_emb[0],
+                    "patch_embeddings": patch_embs[0], "dim": len(cls_emb[0]),
+                    "model": "satmae"}
 
         result = await asyncio.get_event_loop().run_in_executor(None, _infer)
         return result
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: satmae-data
-  namespace: models
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 5Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -170,6 +161,6 @@ spec:
           - { name: app, mountPath: /app }
     volumes:
       - name: model-data
-        persistentVolumeClaim: { claimName: satmae-data }
+        persistentVolumeClaim: { claimName: satmae-data-rwx }
       - name: app
         configMap: { name: satmae-server }

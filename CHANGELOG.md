@@ -228,6 +228,17 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   5.8M params (12-layer/200/10-head). New v2 card, 8-check test.py, README, CLAUDE. Validation:
   **8 PASS / 0 FAIL**.
 
+### Non-text embed cluster → `/v1/science/embed` (domain embedders)
+Started hardening the genuine non-text embedders (image/audio/multimodal/gene-expression) — none
+fit OpenAI `/v1/embeddings` (text-only), so they standardize on `/v1/science/embed`. Several were
+found **parked** (`serving.kserve.io/stop: "true"` left by a prior session → 404, not 503); clearing
+that annotation is step one for each. Common work: RWO→RWX via cp-from-RWO, normalize the output to
+an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster were mislabeled as
+"embedding" but are really forecast/segment/retrieve/translate/generate — reclassified, not in this batch.)
+- **satmae:** RWO→RWX (cp-migrated, venv preserved); added an `embeddings` alias to the `cls_embedding`
+  output for cross-embedder consistency; v2 card (1024-dim ViT-L CLS); 6-check test.py; cleared the
+  stop annotation. Validation: **6 PASS / 0 FAIL**.
+
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
 Re-running the 29 chat LLMs through the gateway and tightening each per-model `test.py` from

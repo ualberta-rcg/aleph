@@ -151,7 +151,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | rnamsm | embedding | true | /v1/science/embed | READY | PASS | 768-dim RNA (field: sequence) |
 | sapbert | embedding | true | /v1/science/embed | READY | PASS | 768-dim biomedical |
 | saprot-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim (AA+3Di tokens; recreated) |
-| satmae | embed | false | /v1/science/embed | READY | PASS | HxW RGB -> cls embedding |
+| satmae | embed | false | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp-migrated); +embeddings field; 1024-dim CLS; 6/0 test; was parked (stop ann cleared) |
 | scgpt | embedding | true | /v1/embeddings | READY | FIXED | _encode needs src_key_padding_mask; 512-dim |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
@@ -315,6 +315,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | gena-lm-large | 6/3/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | DNA BERT-large; 1024-dim CLS |
 | astroclip | 9/0/0 | v2 (rewrote) | RWX | DOMAIN (was demo stub): real 1024-dim galaxy image+spectrum; weights_only (Py2.6) + upstream batch<2 bug fixed; NOT OpenAI /v1/embeddings |
 | labram | 8/0/0 | v2 (rewrote) | RWX (cp-migrated) | DOMAIN (was untrained random): real 200-dim EEG; from_pretrained(local,offline); n_times 1600->3000; LABRAM_CHANNEL_ORDER submodule import fix; NOT OpenAI /v1/embeddings |
+| satmae | 6/0/0 | v2 (rewrote) | RWX (cp-migrated) | DOMAIN non-text embed: 1024-dim satellite-image CLS; RWO→RWX; +embeddings field; was parked (stop ann); NOT OpenAI /v1/embeddings |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
