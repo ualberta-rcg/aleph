@@ -43,6 +43,9 @@ Also:
   dir so RKE2 doesn't auto-apply it. Pattern from `models/kandinsky-3/`.
 - `deploy-aleph/rke2-manifests/README.md` — the set's runbook: file list, site-config values,
   post-deploy customization checklist, follow-ups, verification commands.
+- `docs/AUDIT-PROMPT.md` — moved the reusable cluster-audit procedure out of the local working
+  dir into the repo, generalized to placeholders (no 230/232 IPs / user paths) per the
+  no-cluster-specifics convention; bakes in the kubectl-PATH gotcha for non-interactive SSH.
 
 Not done this round (called out in the README): capture the Warewulf overlay (on 172.26.92.10);
 resolve the double-Traefik (disable bundled `rke2-traefik` via RKE2 config); update
