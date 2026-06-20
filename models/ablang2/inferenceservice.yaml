@@ -179,6 +179,6 @@ spec:
           - { name: app, mountPath: /app }
     volumes:
       - name: model-data
-        persistentVolumeClaim: { claimName: ablang2-data }
+        persistentVolumeClaim: { claimName: ablang2-data-rwx }
       - name: app
         configMap: { name: ablang2-server }

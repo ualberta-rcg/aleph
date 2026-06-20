@@ -1,14 +1,15 @@
-# NOTE: AbLang-2 weights come from Zenodo (non-HF), so the RWX migration is DEFERRED to the last
-# batch (will cp from this RWO PVC to a new RWX one to avoid a slow Zenodo re-download). This file
-# matches the live bound PVC (ReadWriteOnce, nfs-client) for now — repo = live.
+# Venv + ablang2-paired weights persist on NFS (ReadWriteMany, nfs-models). NON-HF (Zenodo weights
+# via the ablang2 package) — migrated RWO→RWX 2026-06-19 by copying from the old RWO PVC (ablang2-data)
+# into this new RWX PVC (ablang2-data-rwx), NOT re-downloading (Zenodo is slow). The old ablang2-data
+# PVC is deleted after the copy + repoint.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ablang2-data
+  name: ablang2-data-rwx
   namespace: models
 spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-client
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 2Gi
