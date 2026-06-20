@@ -9,68 +9,58 @@ data:
   details.json: |
     {
       "id": "aion",
-      "type": "embed",
-      "description_short": "AION-base 300M astronomical multimodal foundation model. 39 data types from DESI, SDSS, Gaia, HSC.",
-      "description": "AION-base is a 300M parameter astronomical multimodal foundation model from Polymathic AI. Trained on 39 astronomical data types across surveys including DESI Legacy Survey, SDSS, Gaia, and HSC Wide. The encoder-decoder transformer (12 blocks, 768-dim, 12 heads) produces 768-dim embeddings from diverse astronomical inputs: multiband images, optical spectra, photometry, and catalogs. MIT license.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "status": "production",
+      "type": "embedding",
       "endpoints": {
         "primary": "/v1/science/embed",
+        "secondary": ["/v1/science/info"],
         "health": "/health"
       },
-      "owned_by": "polymathic-ai",
-      "source": "polymathic-ai/aion-base",
-      "source_url": "https://huggingface.co/polymathic-ai/aion-base",
-      "license": "MIT",
-      "parameters": "300M",
-      "precision": "fp32",
-      "architecture": "encoder-decoder transformer (12 blocks, 768-dim, 12 heads)",
-      "framework": "transformers + polymathic-aion",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "cpu_request": "2",
-        "memory_request": "4Gi",
-        "min_replicas": 0,
-        "max_replicas": 1,
-        "timeout": 300,
-        "pvc": "none (downloads every start)",
-        "image": "python:3.11-slim",
-        "venv": false
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "aion",
-        "api_name": "aion",
-        "gateway_type": "embed"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 minutes (venv-on-PVC; weights already downloaded)"
       },
-      "domain": "astronomy",
-      "subdomain": "multimodal",
-      "tags": ["science", "astronomy", "multimodal", "embed", "desi", "sdss", "gaia", "hsc"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "status": "production",
-      "status_note": "Real aion CodecManager API; verified 2026-06-05 (legacy_image + photometry -> 768-dim).",
-      "input_map": {
-        "modality": "legacy_image | photometry (also: hsc_image, desi_spectrum, sdss_spectrum)",
-        "flux": "legacy_image: nested [4,H,W] g,r,i,z bands (auto-cropped to 96x96)",
-        "flux_g/flux_r/flux_i/flux_z": "photometry: scalar fluxes (any subset)",
-        "num_encoder_tokens": "optional int, default 600"
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "output_map": {
-        "embedding": "768-dim float vector",
-        "dims": 768,
-        "modality": "input modality used"
-      },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_id": "polymathic-ai/aion-base",
-        "info_path": "/v1/science/info",
-        "deployment_mode": "RawDeployment"
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "AION-base 300M astronomical multimodal foundation model — 768-dim embeddings (images, spectra, photometry).",
+        "description": "AION-base (300M, Polymathic AI) is an astronomical multimodal foundation model trained on 39 astronomical data types across DESI Legacy Survey, SDSS, Gaia, HSC Wide. An encoder-decoder transformer (12 blocks, 768-dim, 12 heads) with a CodecManager that encodes typed modality objects (multiband images, optical spectra, photometry, catalogs) into a shared 768-dim embedding space (object-level vector = mean-pool over tokens). Non-text domain model: astronomical-array input, does NOT expose OpenAI /v1/embeddings; stays on /v1/science/embed. Output returns both `embedding`/`embeddings` (alias) + `dims`.",
+        "owned_by": "polymathic-ai",
+        "source": "polymathic-ai/aion-base",
+        "source_url": "https://huggingface.co/polymathic-ai/aion-base",
+        "license": "MIT",
+        "parameters": "300M",
+        "precision": "fp32",
+        "framework": "transformers + polymathic-aion (CodecManager)",
+        "domain": "astronomy",
+        "subdomain": "multimodal",
+        "tags": ["embedding", "science", "astronomy", "multimodal", "galaxy", "photometry", "desi", "sdss", "gaia", "cpu"],
+        "gpu": false,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "aion",
+          "modality": "legacy_image | hsc_image | photometry (default legacy_image)",
+          "image": "[[[band,...],...],...] multiband image (legacy: 4-band 96x96; resized if needed)",
+          "photometry": "scalar flux/magnitude vector (any subset)"
+        },
+        "embedding_dimensions": 768,
+        "pooling": "object-level mean-pool over tokens"
       }
     }

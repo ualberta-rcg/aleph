@@ -11,7 +11,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ablang2 | embedding | false | /v1/embeddings | READY | FIXED | embeddings+batch PASS; /v1/restore was broken, fixed (heavy/light pairs), now PASS |
 | aeneas | structure | true | /v1/science/predict | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (restoration+dating); real inference slow (JAX) |
 | agront | embedding | true | /v1/embeddings | READY | PASS | 1500-dim DNA |
-| aion | embed | false | /v1/science/embed | READY | FIXED | rewrote to real AION CodecManager API; legacy_image + photometry -> 768-dim; was non-functional |
+| aion | embed | false | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp); +embeddings alias; 768-dim multimodal; 6/0/1 test; was parked |
 | alphafold2 | structure-prediction | true | /v1/science/predict | READY | PASS | demo folds seq -> PDB. **NIM available:** `nvcr.io/nim/deepmind/alphafold2` (build.nvidia.com/deepmind/alphafold2) |
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |

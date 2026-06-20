@@ -247,6 +247,11 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   main runs `/data/venv/bin/python`. PVC was already RWX. **Dim is 768, not the docstring's [N,512]**
   — the real output is a flat 768-dim vector (demo path still returns [16,512]); v2 card corrected.
   7-check test.py. Validation: **7 PASS / 0 FAIL**.
+- **aion:** RWO→RWX (cp-migrated, venv + weights + warmed HF cache preserved); +`embeddings` alias
+  (server returned `embedding` singular); v2 card (768-dim multimodal). Test gotcha: the image input
+  field is `flux`/`data` (NOT `image`) — sending `image` silently fell back to the default zero
+  image (cos=1.0 distinctness failure). Also empty body defaults to a smoke image by design (200), so
+  the malformed check uses an unknown modality. Validation: **6 PASS / 1 EXP / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
