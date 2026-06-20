@@ -1,0 +1,12 @@
+# Venv + model persist on NFS (ReadWriteMany, nfs-models). Migrated RWO→RWX 2026-06-19.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rnamsm-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 5Gi
