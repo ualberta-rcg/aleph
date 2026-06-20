@@ -12,7 +12,8 @@ data:
       "status": "production",
       "type": "embedding",
       "endpoints": {
-        "primary": "/v1/science/embed",
+        "primary": "/v1/embeddings",
+        "secondary": ["/v1/science/embed"],
         "health": "/health"
       },
       "routing": {

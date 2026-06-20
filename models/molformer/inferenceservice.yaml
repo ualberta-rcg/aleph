@@ -67,20 +67,30 @@ data:
         embeddings = out.pooler_output.cpu().tolist() if hasattr(out, "pooler_output") and out.pooler_output is not None else out.last_hidden_state.mean(1).cpu().tolist()
         return {"embeddings": embeddings, "model": "molformer-xl", "dim": len(embeddings[0])}
 
+    @app.post("/v1/embeddings")
+    async def openai_embeddings(payload: dict):
+        # OpenAI-style: {model, input(str|list of SMILES)} -> {object, data:[{embedding}], model, usage}
+        import torch
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        inp = payload.get("input")
+        if inp is None:
+            inp = payload.get("smiles_list") or ([payload.get("smiles")] if payload.get("smiles") else None)
+        smiles_list = [inp] if isinstance(inp, str) else list(inp or [])
+        if not smiles_list or not smiles_list[0]:
+            return JSONResponse({"error": "provide 'input' (SMILES string or list)"}, 400)
+        enc = tokenizer(smiles_list, return_tensors="pt", padding=True, truncation=True, max_length=202)
+        enc = {k: v.to(DEVICE) for k, v in enc.items()}
+        with torch.no_grad():
+            out = model(**enc)
+        emb = out.pooler_output.cpu().tolist() if hasattr(out, "pooler_output") and out.pooler_output is not None else out.last_hidden_state.mean(1).cpu().tolist()
+        data = [{"object": "embedding", "index": i, "embedding": e} for i, e in enumerate(emb)]
+        pt = sum(len(s) for s in smiles_list)
+        return JSONResponse({"object": "list", "data": data, "model": payload.get("model", "molformer-xl"),
+                             "usage": {"prompt_tokens": pt, "total_tokens": pt}})
+
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: molformer-data
-  namespace: models
-spec:
-  accessModes: [ReadWriteMany]
-  storageClassName: nfs-client
-  resources:
-    requests:
-      storage: 15Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
