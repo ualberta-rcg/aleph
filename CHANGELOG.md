@@ -212,6 +212,22 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   (image+spec dim / shape / in-modal distinct cos 0.85 / cross-modal cos 0.28 / deterministic / modality
   echo / demo / malformed), README, CLAUDE. Validation: **9 PASS / 0 FAIL**.
 
+- **labram → real model (was serving an untrained random model):** the server's `*.pt` glob found
+  nothing (the HF repo ships `model.safetensors`+`config.json`), so it fell through to
+  `from_pretrained("braindecode/labram-pretrained")` which fails under `HF_HUB_OFFLINE=1` (snapshot
+  is in `/data/model`, not the HF cache), then to a **random-init model that reported READY**.
+  Made it real: load via `Labram.from_pretrained(MODEL_DIR)` (local dir, fully offline). Three more
+  real bugs, each from the actual error: (1) hardcoded `n_times=1600` was wrong — the braindecode
+  checkpoint's config specifies `n_times=3000` (15×200 patches) vs the original 935963004
+  LaBraM-Base's 1600; read `model.n_times` dynamically; (2) `LABRAM_CHANNEL_ORDER` lives in the
+  `braindecode.models.labram` submodule, NOT re-exported at `braindecode.models` in 1.5.2 →
+  `ImportError` (the inference 500); import from the submodule once at load time; (3) removed the
+  untrained fallback (would silently serve random embeddings). Migrated PVC RWO→RWX via
+  **cp-from-RWO** (preserved the slow torch+braindecode venv + HF snapshot; old `labram-data`
+  deleted). Verified 200-dim [CLS] embeddings via `return_features`. SJTU origin (not Tsinghua);
+  5.8M params (12-layer/200/10-head). New v2 card, 8-check test.py, README, CLAUDE. Validation:
+  **8 PASS / 0 FAIL**.
+
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
 Re-running the 29 chat LLMs through the gateway and tightening each per-model `test.py` from

@@ -91,7 +91,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
 | kandinsky-3 | text-to-image | true | /v1/images/generations | READY | PASS | RayService w/ in-tree autoscaler. Head on non-GPU kubeflow-head-node2 (proxy_location HeadOnly); GPU worker autoscales 0->3. VERIFIED: scale-up 0->1 on request, image gen ~24s (1024) PNG, scale-DOWN releases L40S after idle. Added missing download-job.yaml. 15min idle retention |
-| labram | embed | false | /v1/science/embed | READY | FAIL | ModuleNotFoundError: no models module; server stuck at model loading |
+| labram | embed | false | /v1/science/embed | READY | FIXED | Real model 2026-06-19 (was untrained random): from_pretrained(local dir, offline); n_times 1600->3000; LABRAM_CHANNEL_ORDER submodule import fix; 200-dim EEG; 8/0 test |
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
 | leandojo | embed | true | /v1/science/retrieve | READY | PASS | premise retrieval w/ scores |
 | ligandmpnn | design | false | /v1/design | READY | FIXED | checkpoints+args+optional-openfold; 1CRN design near-native PASS |
@@ -314,6 +314,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | rnamsm | 6/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | RNA MSA; 768-dim mean-pooled |
 | gena-lm-large | 6/3/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | DNA BERT-large; 1024-dim CLS |
 | astroclip | 9/0/0 | v2 (rewrote) | RWX | DOMAIN (was demo stub): real 1024-dim galaxy image+spectrum; weights_only (Py2.6) + upstream batch<2 bug fixed; NOT OpenAI /v1/embeddings |
+| labram | 8/0/0 | v2 (rewrote) | RWX (cp-migrated) | DOMAIN (was untrained random): real 200-dim EEG; from_pretrained(local,offline); n_times 1600->3000; LABRAM_CHANNEL_ORDER submodule import fix; NOT OpenAI /v1/embeddings |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs

@@ -11,11 +11,15 @@ metadata:
 data:
   server.py: |
     """
-    LaBraM: Large Brain Model pretrained on EEG signals (ICLR 2024).
-    Accepts multi-channel EEG windows + optional channel names, returns embeddings.
+    LaBraM: Large Brain Model pretrained on EEG signals (ICLR 2024, braindecode 1.5.2).
+    Accepts multi-channel EEG windows + optional channel names, returns 200-dim [CLS]
+    embeddings. Loaded via Labram.from_pretrained(<local MODEL_DIR>) — the HF snapshot
+    (model.safetensors + config.json) is pre-downloaded by the init container, so this
+    works fully offline (HF_HUB_OFFLINE=1).
+
     API: POST /v1/science/embed
-    Input: {"eeg": [[ch1_t0, ch1_t1, ...], ...], "ch_names": ["Fp1", "Fp2", ...], "sfreq": 200}
-    Returns: {"embeddings": [...], "model": "labram"}
+    Input: {"eeg": [[ch1_t0, ch1_t1, ...], ...], "ch_names": ["Fp1", "Fp2", ...]}
+    Returns: {"embeddings": [...], "model": "labram", "dim": 200}
     """
     import os, asyncio
     from fastapi import FastAPI
@@ -27,58 +31,36 @@ data:
     app = FastAPI()
     model = None
     DEVICE = "cpu"
-
-    # Default 21-channel subset from standard 10-20 (common BCI setup)
-    DEFAULT_CH_NAMES = [
-        "Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4",
-        "O1", "O2", "F7", "F8", "T3", "T4", "T5", "T6",
-        "Fz", "Cz", "Pz", "Oz", "A2"
-    ]
+    N_TIMES = None  # set at load time from the pretrained model (3000 for base)
+    CHANNEL_ORDER = None  # canonical 128-ch 10-20 order; imported at load time
 
     def load():
-        global model, DEVICE
+        global model, DEVICE, N_TIMES
         import torch
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Loading LaBraM on {DEVICE}...", flush=True)
         from braindecode.models import Labram
-
-        # Find checkpoint file
-        ckpt_path = None
-        import glob
-        for pattern in ["braindecode_labram_base.pt", "*.pt", "**/*.pt"]:
-            pts = glob.glob(os.path.join(MODEL_DIR, pattern), recursive=True)
-            if pts:
-                ckpt_path = pts[0]
-                break
-
-        if ckpt_path:
-            try:
-                state = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
-                n_chans = len(DEFAULT_CH_NAMES)
-                m = Labram(n_times=1600, n_chans=n_chans, n_outputs=2)
-                m.load_state_dict(state, strict=False)
-                m.to(DEVICE).eval()
-                model = m
-                print(f"LaBraM loaded from {ckpt_path}", flush=True)
-                return
-            except Exception as e:
-                print(f"Manual load failed: {e}", flush=True)
-
-        # Fallback: from_pretrained
+        # The HF snapshot (model.safetensors + config.json) is pre-downloaded to MODEL_DIR
+        # by the init container. Load from the LOCAL directory path so this works fully
+        # offline (HF_HUB_OFFLINE=1). The old code globbed for a *.pt that does not exist
+        # in this repo and fell through to an untrained random model — fixed here.
         try:
-            m = Labram.from_pretrained("braindecode/labram-pretrained")
-            m.to(DEVICE).eval()
+            m = Labram.from_pretrained(MODEL_DIR)
+            m = m.to(DEVICE).eval()
             model = m
-            print("LaBraM loaded via from_pretrained", flush=True)
-            return
+            N_TIMES = m.n_times
+            # Canonical 128-ch 10-20 order — lives in the labram submodule, NOT re-exported
+            # at braindecode.models (importing it there raises ImportError in 1.5.2).
+            from braindecode.models.labram import LABRAM_CHANNEL_ORDER
+            CHANNEL_ORDER = list(LABRAM_CHANNEL_ORDER)
+            print(f"LaBraM ready on {DEVICE} via from_pretrained({MODEL_DIR}) "
+                  f"(n_times={m.n_times}, n_chans={m.n_chans}, embed_dim={m.embed_dim}).",
+                  flush=True)
         except Exception as e:
-            print(f"from_pretrained failed: {e}", flush=True)
-
-        # Last resort: untrained model (for API testing)
-        m = Labram(n_times=200, n_chans=len(DEFAULT_CH_NAMES), n_outputs=2)
-        m.to(DEVICE).eval()
-        model = m
-        print("WARNING: LaBraM loaded WITHOUT pretrained weights", flush=True)
+            import traceback; traceback.print_exc()
+            # Do NOT fall back to an untrained model (would serve random embeddings).
+            # Leave model=None so the pod stays not-ready / endpoint returns 503.
+            print(f"LaBraM load FAILED ({e}); not serving (model=None).", flush=True)
 
     @app.on_event("startup")
     async def startup():
@@ -91,7 +73,7 @@ data:
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [{"id": "labram", "object": "model",
-                 "owned_by": "braindecode/Tsinghua", "type": "eeg-foundation"}]}
+                 "owned_by": "Jiang et al. (SJTU), via braindecode", "type": "eeg-foundation"}]}
 
     @app.post("/v1/science/embed")
     async def embed(request: dict):
@@ -105,12 +87,20 @@ data:
             import torch
             import numpy as np
             arr = np.array(eeg, dtype=np.float32)
+            if arr.ndim != 2:
+                raise ValueError("eeg must be 2D: [n_channels][n_times]")
             n_chans, n_times_raw = arr.shape
 
-            ch_names = request.get("ch_names", DEFAULT_CH_NAMES[:n_chans])
+            # Default to the canonical 128-channel order (any subset is valid); the model
+            # matches channel names case-insensitively to select position embeddings.
+            ch_names = request.get("ch_names") or CHANNEL_ORDER[:n_chans]
+            ch_names = list(ch_names)
+            if len(ch_names) != n_chans:
+                raise ValueError(f"len(ch_names)={len(ch_names)} != n_channels={n_chans}")
 
-            # Pad/truncate to model's expected n_times
-            n_times = 1600
+            # Pad/truncate to the pretrained model's expected n_times (3000 for the base
+            # checkpoint) — NOT a hardcoded value, which mismatched the learned embeddings.
+            n_times = N_TIMES or model.n_times
             if n_times_raw < n_times:
                 arr = np.pad(arr, ((0, 0), (0, n_times - n_times_raw)), mode='edge')
             elif n_times_raw > n_times:
@@ -127,26 +117,20 @@ data:
                 "n_channels": n_chans,
                 "n_times_raw": n_times_raw,
                 "n_times_used": n_times,
-                "ch_names": ch_names
+                "ch_names": ch_names,
             }
 
-        result = await asyncio.get_event_loop().run_in_executor(None, _infer)
-        return result
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(None, _infer)
+            return result
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, 400)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: labram-data
-  namespace: models
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: nfs-client
-  resources:
-    requests:
-      storage: 5Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -218,6 +202,6 @@ spec:
           - { name: app, mountPath: /app }
     volumes:
       - name: model-data
-        persistentVolumeClaim: { claimName: labram-data }
+        persistentVolumeClaim: { claimName: labram-data-rwx }
       - name: app
         configMap: { name: labram-server }

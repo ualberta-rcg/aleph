@@ -9,65 +9,74 @@ data:
   details.json: |
     {
       "id": "labram",
-      "status": "broken",
-      "type": "embed",
-      "description_short": "LaBraM Large Brain Model for EEG signals. BSD-3-Clause, braindecode/Tsinghua.",
-      "description": "LaBraM (Large Brain Model) is a foundation model pretrained on EEG signals from braindecode/Tsinghua. It accepts multi-channel EEG windows and returns patch embeddings. The model processes EEG time-series data with segment length of 200 samples, making it suitable for brain-computer interface, sleep staging, and clinical EEG analysis. BSD-3-Clause license. CPU-capable with scale-to-zero.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "status": "production",
+      "type": "embedding",
       "endpoints": {
         "primary": "/v1/science/embed",
         "health": "/health"
       },
-      "owned_by": "braindecode/Tsinghua",
-      "source": "braindecode/labram-pretrained",
-      "source_url": "https://huggingface.co/braindecode/labram-pretrained",
-      "license": "BSD-3-Clause",
-      "parameters": "N/A",
-      "precision": "fp32",
-      "architecture": "Patch-based transformer for EEG signals",
-      "framework": "braindecode + PyTorch",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "cpu_request": "4",
-        "memory_request": "4Gi",
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "timeout": 300,
-        "pvc": "labram-data (5Gi, RWO, inline)",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "labram",
-        "api_name": "labram",
-        "gateway_type": "embed"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
       },
-      "domain": "neuroscience",
-      "subdomain": "eeg",
-      "tags": ["science", "neuroscience", "eeg", "embed", "brain", "braindecode", "cpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "input_map": {
-        "eeg": "[[ch1_t0, ch1_t1, ...], [ch2_t0, ...]] — list of channels, each a list of samples",
-        "sfreq": "sampling frequency (default 200)"
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 minutes (venv-on-PVC; weights already downloaded)"
       },
-      "output_map": {
-        "embeddings": "patch embeddings from EEG window",
-        "model": "labram",
-        "n_channels": "number of input channels",
-        "n_times": "number of time samples"
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model",
-        "offline_mode": true
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "LaBraM: Large Brain Model for EEG (ICLR 2024) — 200-dim [CLS] embeddings from multi-channel EEG windows.",
+        "description": "LaBraM (Large Brain Model, Jiang/Zhao/Lu, SJTU, ICLR 2024 spotlight) is an EEG foundation model pretrained on ~2500h of EEG from ~20 datasets, shipped via braindecode (v1.5.2). It segments multi-channel EEG into 200-sample (1s @ 200Hz) channel patches, vector-quantizes them via a neural spectrum tokenizer (VQ-NSP), and encodes them with a BEiTv2-style 12-layer / 200-dim / 10-head windowed-attention transformer, yielding a 200-dim [CLS] embedding per window. Accepts an arbitrary subset of the canonical 128-channel 10-20 montage via ch_names (matched case-insensitively to select position embeddings; degrades gracefully to ~11 channels). Input is padded/truncated to the pretrained n_times=3000 (15x200 patches). Recommended input preprocessing: bandpass 0.1-75 Hz, notch 50 Hz, resample 200 Hz, unit uV. Use cases: BCI, abnormal/pathology detection, event classification, emotion recognition, sleep staging. This is a non-text domain model: it does NOT expose OpenAI /v1/embeddings (EEG-array input) and stays on /v1/science/embed. NOTE: the HF repo braindecode/labram-pretrained ships model.safetensors + config.json (NOT a .pt); load via Labram.from_pretrained(<local dir>).",
+        "owned_by": "Jiang et al. (SJTU), via braindecode",
+        "source": "braindecode/labram-pretrained",
+        "source_url": "https://huggingface.co/braindecode/labram-pretrained",
+        "license": "BSD-3-Clause",
+        "parameters": "5.8M (12-layer, hidden 200, MLP 800, 10-head windowed-attention transformer)",
+        "precision": "fp32",
+        "framework": "braindecode 1.5.2 + PyTorch",
+        "domain": "neuroscience",
+        "subdomain": "eeg-foundation-model",
+        "tags": [
+          "embedding",
+          "science",
+          "neuroscience",
+          "eeg",
+          "brain",
+          "foundation-model",
+          "braindecode",
+          "cpu"
+        ],
+        "gpu": false,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "labram",
+          "eeg": "[[ch1_t0,...], [ch2_t0,...], ...] — list of channels, each a list of samples (n_times; padded/truncated to 3000)",
+          "ch_names": "[\"Fp1\",\"Fp2\",...] — 10-20 channel names; defaults to the canonical 128-channel order"
+        },
+        "embedding_dimensions": 200,
+        "pooling": "cls_token (return_features)"
       }
     }
