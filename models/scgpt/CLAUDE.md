@@ -2,7 +2,9 @@
 
 ## What This Model Does
 
-scGPT (bowang-lab/scGPT) is a foundation model for single-cell gene expression data, trained on 33 million cells. Takes gene name + expression value pairs as input and returns 512-dimensional cell embeddings. Uses a TransformerModel architecture with gene tokenization via GeneVocab. Useful for cell type annotation, batch correction, gene perturbation prediction, and multi-omic integration. GPU accelerated with CPU fallback.
+scGPT (bowang-lab/scGPT) is a foundation model for single-cell gene expression data, trained on 33 million cells. Takes gene name + expression value pairs as input and returns 512-dimensional cell embeddings (mean-pooled). Uses a TransformerModel architecture with gene tokenization via GeneVocab. Useful for cell type annotation, batch correction, gene perturbation prediction, and multi-omic integration.
+
+**2026-06-19:** v2 Template-C card; added `/v1/science/embed` route alias (was `/v1/embeddings` only, OpenAI-style). Non-text (gene expression) → primary `/v1/science/embed`, `/v1/embeddings` kept secondary. Confirmed GPU (L40S slice 10 GiB, gpumem). 6-check test.py added.
 
 ## Source Repo
 

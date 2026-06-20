@@ -282,6 +282,11 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   only). v2 card (512-dim shared image+text space). 7-check test.py covering both modalities +
   cross-modal shared-space sanity (pure-stdlib PNG). Cleared the stop annotation. Validation:
   **7 PASS / 0 FAIL**.
+- **scgpt:** already RWX. Added `/v1/science/embed` alias (was `/v1/embeddings` OpenAI-style only).
+  v2 card; **corrected gpu:false→true** (the ISVC requests a HAMi L40S slice). 7-check test.py
+  (dim 512 / non-zero / distinctness / deterministic / batch x2 / echo / malformed). Cleared the
+  stop annotation. Validation: **7 PASS / 0 FAIL**. **This completes the 11-model non-text embed
+  cluster** — all on /v1/science/embed, v2 cards, test.py, RWX.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 

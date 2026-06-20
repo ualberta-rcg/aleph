@@ -152,7 +152,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | sapbert | embedding | true | /v1/science/embed | READY | PASS | 768-dim biomedical |
 | saprot-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim (AA+3Di tokens; recreated) |
 | satmae | embed | false | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp-migrated); +embeddings field; 1024-dim CLS; 6/0 test; was parked (stop ann cleared) |
-| scgpt | embedding | true | /v1/embeddings | READY | FIXED | _encode needs src_key_padding_mask; 512-dim |
+| scgpt | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias; GPU (was card said CPU); 512-dim; 7/0 test; was parked |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
 | scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper |

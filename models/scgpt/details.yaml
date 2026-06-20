@@ -11,70 +11,39 @@ data:
       "id": "scgpt",
       "status": "production",
       "type": "embedding",
-      "description_short": "scGPT single-cell gene expression embeddings",
-      "description": "scGPT (bowang-lab/scGPT) is a foundation model for single-cell gene expression data, trained on 33 million cells. Returns 512-dimensional cell embeddings from gene name + expression value pairs. Uses a TransformerModel architecture with gene tokenization via GeneVocab. Supports batch embedding of multiple cells. GPU accelerated with CPU fallback. Weights from tdc/scGPT on HuggingFace.",
-      "context_window": 512,
-      "max_completion_tokens": 0,
       "endpoints": {
-        "primary": "/v1/embeddings",
+        "primary": "/v1/science/embed",
+        "secondary": ["/v1/embeddings"],
         "health": "/health"
       },
-      "owned_by": "bowang-lab",
-      "source": "bowang-lab/scGPT",
-      "source_url": "https://github.com/bowang-lab/scGPT",
-      "license": "MIT",
-      "parameters": "50M",
-      "parameter_count": 50000000,
-      "precision": "fp32",
-      "architecture": "transformer (12 layers, 8 heads, 512 hidden dim)",
-      "framework": "custom",
-      "deployment": {
+      "routing": { "k8s_name": "scgpt", "no_stream": true, "upstream_model_id": null },
+      "limits": { "context_window": 512, "max_input_tokens": 512 },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "2-4 minutes (venv-on-PVC; weights already downloaded)" },
+      "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "scGPT (bowang-lab) — 512-dim cell embeddings from single-cell gene expression.",
+        "description": "scGPT (bowang-lab/scGPT) is a foundation model for single-cell gene-expression data, trained on 33M cells. Takes gene names + expression values per cell (tokenized via GeneVocab; unknown genes → <pad>) and returns a 512-dim cell embedding (mean-pooled). For cell-type classification, perturbation prediction, batch integration. Non-text domain model: gene-expression input; primary is /v1/science/embed (also OpenAI-style /v1/embeddings with `input` wrapping a cell dict). Response is OpenAI-format `data[].embedding`.",
+        "owned_by": "bowang-lab",
+        "source": "tdc/scGPT",
+        "source_url": "https://huggingface.co/tdc/scGPT",
+        "license": "Apache-2.0",
+        "parameters": "~51M",
+        "precision": "fp32",
+        "framework": "scgpt (TransformerModel) + PyTorch",
+        "domain": "transcriptomics",
+        "subdomain": "single-cell",
+        "tags": ["embedding", "science", "transcriptomics", "single-cell", "gene", "foundation", "gpu"],
         "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "startup_seconds": 180,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
-      "routing": {
-        "path_prefix": "/v1/",
-        "serialize": false,
-        "no_stream": true
-      },
-      "compatibility": {
-        "supports_streaming": false,
-        "supports_vision": false,
-        "reasoning_model": false,
-        "needs_json_fixing": false,
-        "strips_thinking": false
-      },
-      "domain": "transcriptomics",
-      "subdomain": "single-cell-embeddings",
-      "tags": ["embedding", "science", "single-cell", "genomics", "transcriptomics", "gpu"],
-      "content_types": ["json"],
-      "languages": [],
-      "tier": "production",
-      "input_map": {
-        "input": {
-          "type": "object or list[object]",
-          "required": true,
-          "description": "Cell dict(s) with 'genes' (list of gene names) and 'values' (list of expression values)",
-          "example": {"genes": ["CD3D", "IL7R", "CCR7"], "values": [3.5, 0.0, 1.2]}
-        }
-      },
-      "output_map": {
-        "model": {"type": "string", "description": "Model name (scgpt)"},
-        "data": {"type": "array", "description": "List of embedding objects with 512-dim vectors"}
-      },
-      "server_config": {
-        "inference_backend": "pytorch (scgpt TransformerModel)",
-        "model_path": "/data/model",
-        "batch_size": 1,
-        "embedding_dim": 512,
-        "dependencies": "torch==2.1.2 torchtext==0.16.2 scgpt numpy<2.0 fastapi uvicorn huggingface_hub ipython",
-        "pip_note": "torch pinned to 2.1.2 with cu121; numpy<2.0 pinned; scgpt unpinned; venv validated with import check",
-        "hf_source": "tdc/scGPT (weights), vocab.json bundled or from scgpt package"
+        "max_input_tokens": 512,
+        "input_format": {
+          "model": "scgpt",
+          "input": "{\"genes\":[\"TP53\",...], \"values\":[1.2,...]} (a cell dict) or a list of cell dicts"
+        },
+        "embedding_dimensions": 512,
+        "pooling": "mean-pool over token embeddings"
       }
     }
