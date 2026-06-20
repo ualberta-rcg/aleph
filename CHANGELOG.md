@@ -156,6 +156,11 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   needed): caduceus — v2 card (256-dim RCPS Mamba), removed stale inlined RWO PVC (live already RWX),
   added test + README. nucleotide-transformer — card already v2, split inlined PVC (matched live
   nfs-models), added test + README + CLAUDE. Both GPU, scale-to-zero. Validation: **7/2/0** each.
+- **gena-lm:** old-schema card rewritten to v2; migrated PVC RWO→RWX (nfs-models). DNA 768-dim,
+  server compliant. Added 9-check DNA-embed test.py + README. GPU, scale-to-zero. Validation: **7/2/0**.
+- **ablang2:** card already v2; split inlined PVC to `pvc.yaml` (**left RWO — non-HF Zenodo weights,
+  RWX migration deferred to the last batch** via cp-from-RWO). Added 8-check antibody-embed test.py
+  (480-dim) + README. CPU, scale-to-zero. Validation: **6/2/0**.
 - **Operational finding (documented in bge-m3/CLAUDE.md):** a single input well over the 8192-token
   limit **OOM-kills** the 8 Gi TEI pod (exitCode 137) during the fp32 forward pass and cascades 502s.
   TEI truncates per-sequence by default but the ~8k-token activation still exceeds 8 Gi. The test

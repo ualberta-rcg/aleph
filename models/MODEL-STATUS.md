@@ -304,6 +304,8 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | medcpt-article | 7/2/0 | v2 (rewrote) | RWX (RWO→RWX) | MedCPT article encoder; 768-dim, 512-tok; server compliant |
 | caduceus | 7/2/0 | v2 (rewrote) | RWX (split) | Mamba DNA; 256-dim RCPS; server compliant |
 | nucleotide-transformer | 7/2/0 | v2 (was v2) | RWX (split, nfs-models) | DNA 1024-dim; server compliant |
+| gena-lm | 7/2/0 | v2 (rewrote) | RWX (RWO→RWX) | DNA 768-dim; server compliant |
+| ablang2 | 6/2/0 | v2 (was v2) | RWO (deferred) | antibody 480-dim; non-HF Zenodo, RWX migration deferred |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs
