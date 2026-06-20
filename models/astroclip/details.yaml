@@ -9,69 +9,77 @@ data:
   details.json: |
     {
       "id": "astroclip",
-      "status": "broken",
-      "type": "embed",
-      "description_short": "AstroCLIP cross-modal CLIP for galaxy images and optical spectra. 512-dim joint embedding space.",
-      "description": "AstroCLIP is a cross-modal contrastive learning model from Polymathic AI that embeds galaxy images and optical spectra into a shared 512-dim space. Built on DINOv2 (image encoder) + spectrum transformer, it was trained on 90K galaxies from DESI using contrastive pre-training. The model enables cross-modal retrieval (find spectra matching an image and vice versa). MIT license.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "status": "production",
+      "type": "embedding",
       "endpoints": {
         "primary": "/v1/science/embed",
         "health": "/health"
       },
-      "owned_by": "polymathic-ai",
-      "source": "polymathic-ai/astroclip",
-      "source_url": "https://huggingface.co/polymathic-ai/astroclip",
-      "license": "MIT",
-      "parameters": "N/A",
-      "precision": "fp32",
-      "architecture": "DINOv2 image encoder + spectrum transformer, contrastive CLIP",
-      "framework": "Lightning + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S",
-        "cpu_request": "2",
-        "memory_request": "8Gi",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 180,
-        "pvc": "astroclip-data (inline)",
-        "image": "python:3.11",
-        "venv": false
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "astroclip",
-        "api_name": "astroclip",
-        "gateway_type": "embed"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
       },
-      "domain": "astronomy",
-      "subdomain": "multimodal",
-      "tags": ["science", "astronomy", "embed", "clip", "galaxy", "spectrum", "desi", "cross-modal", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
-      "input_map": {
-        "image": "[[[R,G,B], ...], ...] — (H, W, 3) galaxy image float array",
-        "spectrum": "[float, ...] — normalized flux per wavelength bin",
-        "modality": "image or spectrum (default: image)",
-        "demo": "boolean — returns 512-dim zero embedding"
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 minutes (venv-on-PVC; checkpoint already downloaded)"
       },
-      "output_map": {
-        "embeddings": "512-dim float vector",
-        "shape": "[512]",
-        "model": "astroclip",
-        "modality": "image or spectrum"
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "checkpoint": "/data/astroclip.ckpt",
-        "repo_path": "/data/src/astroclip",
-        "embedding_dim": 512
+      "param_translation": {
+        "thinking": {
+          "mode": "none"
+        }
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "AstroCLIP cross-modal CLIP for galaxy images and optical spectra. 1024-dim joint embedding space.",
+        "description": "AstroCLIP is a cross-modal contrastive learning model from Polymathic AI that embeds galaxy images (DESI Legacy Survey g,r,z cutouts) and optical spectra (DESI) into a shared 1024-dim space. Built on a DINOv2 image encoder + a masked-modeling spectrum transformer, aligned via cross-attention CLIP projection heads; trained on ~90K cross-matched galaxies. Enables in-modal and cross-modal similarity search, plus downstream redshift / property / morphology tasks. NOTE: the README states a 512-dim joint space, but the released checkpoint's ImageHead/SpectrumHead output is empirically 1024-dim (verified 2026-06-19). This is a non-text domain model: it does NOT expose OpenAI /v1/embeddings (image/spectrum input only) and stays on /v1/science/embed.",
+        "owned_by": "polymathic-ai",
+        "source": "polymathic-ai/astroclip",
+        "source_url": "https://huggingface.co/polymathic-ai/astroclip",
+        "license": "MIT",
+        "parameters": "370M",
+        "precision": "fp32",
+        "framework": "Lightning + PyTorch (DINOv2 image encoder + spectrum transformer)",
+        "domain": "astronomy",
+        "subdomain": "multimodal",
+        "tags": [
+          "embedding",
+          "science",
+          "astronomy",
+          "clip",
+          "galaxy",
+          "spectrum",
+          "desi",
+          "cross-modal",
+          "multimodal",
+          "gpu"
+        ],
+        "gpu": true,
+        "max_input_tokens": 0,
+        "input_format": {
+          "model": "astroclip",
+          "image": "[[[R,G,B],...],...] — (H, W, 3) galaxy image float array; 144x144 g,r,z cutout centered+cropped per README",
+          "spectrum": "[float, ...] — normalized flux per wavelength bin",
+          "modality": "image | spectrum (default: image)"
+        },
+        "embedding_dimensions": 1024,
+        "pooling": "cross-attention head (query token) + MLP"
       }
     }

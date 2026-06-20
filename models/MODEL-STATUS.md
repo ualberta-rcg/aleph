@@ -16,7 +16,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
 | arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
-| astroclip | embed | true | /v1/science/embed | READY | FAIL | AstroCLIP lib not installed; demo-only stub |
+| astroclip | embed | true | /v1/science/embed | READY | FIXED | Real model 2026-06-19 (was demo stub): venv-on-PVC + 1024-dim image/spectrum (not 512); fixed weights_only (PyTorch 2.6) + upstream batch<2 attentions[1] bug; 9/0 test |
 | astropt | embed | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim galaxy embeddings; needs >=32x32 image input |
 | astrosage | chat | true | /v1/chat/completions | READY | PASS | 14/14 ✅ via gateway; custom transformers server (not vLLM); 8B Llama-3.1; vGPU slice 16GB; no_stream; vision gating added (gateway-9ade05f) |
 | aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
@@ -313,6 +313,7 @@ pass.) Score = PASS / EXP (expected 4xx rejection) / FAIL. All committed to `mai
 | rnafm | 6/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | non-coding RNA; 640-dim mean-pooled |
 | rnamsm | 6/2/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | RNA MSA; 768-dim mean-pooled |
 | gena-lm-large | 6/3/0 | v2 (+/v1/embeddings) | RWX (RWO→RWX) | DNA BERT-large; 1024-dim CLS |
+| astroclip | 9/0/0 | v2 (rewrote) | RWX | DOMAIN (was demo stub): real 1024-dim galaxy image+spectrum; weights_only (Py2.6) + upstream batch<2 bug fixed; NOT OpenAI /v1/embeddings |
 
 **Fleet findings:** 47 PVCs were ReadWriteOnce (all on RWX-capable NFS) — migrating each to RWX as
 reached (re-download validates the path for others). SC drift: many live PVCs are `nfs-models` vs

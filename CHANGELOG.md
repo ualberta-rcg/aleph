@@ -197,6 +197,21 @@ model's HF repo page before authoring the card; (2) flat dir layout = `details.y
   suite skips this rather than restarting the always-on pod each run. Not fixed (memory-limit bump =
   service change, out of scope).
 
+- **astroclip → real model (was a demo stub):** the server fell back to a `{"_raw": True}` zero-vector
+  because the library never imported. Made it real with a venv-on-PVC init (cu126 torch preserved via
+  guarded venv, no `--clear`; DINOv2 + AstroCLIP both `--no-deps` per upstream; runtime deps added
+  explicitly since `astroclip/__init__.py`'s import chain needs `datasets`/`h5py`/`scikit-image`/etc.).
+  Four real bugs surfaced and fixed, each from the actual error: (1) wrong import `astroclip.model` →
+  `astroclip.models.AstroClipModel`; (2) PyTorch-2.6 `weights_only=True` default — the Lightning ckpt
+  stores full encoders, so `torch.load` is monkeypatched to **force** `weights_only=False` (Lightning's
+  `pl_load` passes it explicitly, so `setdefault` was a no-op); (3) upstream `CrossAttentionHead.forward`
+  does `return x, attentions[1]` on the `(batch,1,d)` attention *output* → `IndexError` for `batch<2`;
+  server duplicates single input to a batch of 2 and returns `emb[0]`; (4) **dim is 1024, not the 512 the
+  README claims** (ImageHead/SpectrumHead output, verified). Non-text domain model → stays on
+  `/v1/science/embed` (image/spectrum input, no OpenAI `/v1/embeddings`). New v2 card, 9-check test.py
+  (image+spec dim / shape / in-modal distinct cos 0.85 / cross-modal cos 0.28 / deterministic / modality
+  echo / demo / malformed), README, CLAUDE. Validation: **9 PASS / 0 FAIL**.
+
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
 Re-running the 29 chat LLMs through the gateway and tightening each per-model `test.py` from

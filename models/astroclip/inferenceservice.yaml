@@ -21,7 +21,7 @@ data:
       {"spectrum": [float, ...], "modality": "spectrum"}      # (wavelength_bins,) normalized flux
       {"demo": true}
     Returns:
-      {"embeddings": [...], "shape": [512], "model": "astroclip", "modality": "image|spectrum"}
+      {"embeddings": [...], "shape": [1024], "model": "astroclip", "modality": "image|spectrum"}
     """
     import os, asyncio
     from fastapi import FastAPI
@@ -40,21 +40,35 @@ data:
         import sys
         sys.path.insert(0, "/data/src/astroclip")
         try:
-            # Load checkpoint, patching DINOv2 file path keys
-            ckpt = torch.load("/data/astroclip.ckpt", map_location="cpu", weights_only=False)
-            state = ckpt.get("state_dict", ckpt)
-            # Fix DINOv2 path references embedded in checkpoint keys
-            fixed = {}
-            for k, v in state.items():
-                new_k = k.replace("image_encoder.dino.", "image_encoder.")
-                fixed[new_k] = v
-            from astroclip.model import AstroCLIP
-            m = AstroCLIP.load_from_checkpoint("/data/astroclip.ckpt", strict=False)
+            # PyTorch 2.6+ defaults torch.load to weights_only=True, but the AstroCLIP
+            # Lightning checkpoint stores full encoder modules (pickled objects), so it
+            # needs weights_only=False. Lightning's load_from_checkpoint forwards **kwargs
+            # to __init__, not torch.load, so we monkeypatch torch.load to flip the default
+            # for this process (checkpoint source is the official polymathic-ai/astroclip).
+            _orig_load = torch.load
+            def _load(*a, **kw):
+                # FORCE False — Lightning's pl_load explicitly passes weights_only=True,
+                # so setdefault would be a no-op. We trust the official checkpoint.
+                kw["weights_only"] = False
+                return _orig_load(*a, **kw)
+            torch.load = _load
+            # Official load path (per AstroCLIP README). The checkpoint stores the
+            # image/spectrum encoders via save_hyperparameters(), so load_from_checkpoint
+            # reconstructs them. strict=False tolerates any minor key drift.
+            from astroclip.models import AstroClipModel
+            m = AstroClipModel.load_from_checkpoint(
+                checkpoint_path="/data/astroclip.ckpt",
+                map_location="cpu",
+                strict=False,
+            )
             m = m.to(DEVICE).eval()
             model = m
-            print("AstroCLIP ready.", flush=True)
+            print(f"AstroCLIP ready on {DEVICE} "
+                  f"(image_encoder={type(m.image_encoder).__name__}, "
+                  f"spectrum_encoder={type(m.spectrum_encoder).__name__}).", flush=True)
         except Exception as e:
-            print(f"Full AstroCLIP load failed ({e}), storing raw ckpt.", flush=True)
+            import traceback; traceback.print_exc()
+            print(f"AstroCLIP load FAILED ({e}); falling back to demo-only.", flush=True)
             model = {"_raw": True}
 
     @app.on_event("startup")
@@ -90,8 +104,8 @@ data:
         if req.get("demo"):
             return {
                 "model": "astroclip",
-                "embeddings": [0.0] * 512,
-                "shape": [512],
+                "embeddings": [0.0] * 1024,
+                "shape": [1024],
                 "modality": req.get("modality", "image"),
                 "demo": True,
             }
@@ -108,17 +122,23 @@ data:
             if img.shape[-1] == 3:
                 img = img.permute(2, 0, 1)
             img = img.unsqueeze(0).to(DEVICE)
+            # Duplicate to a batch of 2: AstroCLIP's CrossAttentionHead.forward does
+            # `return x, attentions[1]` where attentions is the (batch,1,d) output, so it
+            # indexes the 2nd batch element and crashes for batch_size<2. Cross-attention
+            # is per-sample, so emb[0] == a true single-sample embedding. We take [0].
+            img = img.expand(2, *img.shape[1:])
             with torch.no_grad():
-                emb = model.image_encoder(img)
+                emb = model.image_encoder(img)[0]
         else:
             spectrum = req.get("spectrum")
             if spectrum is None:
                 raise ValueError("spectrum required for modality=spectrum")
             spec = torch.tensor(spectrum, dtype=torch.float32).unsqueeze(0).unsqueeze(-1).to(DEVICE)
+            spec = spec.expand(2, *spec.shape[1:])  # batch of 2 (see image comment)
             with torch.no_grad():
-                emb = model.spectrum_encoder(spec)
+                emb = model.spectrum_encoder(spec)[0]
 
-        emb_list = emb.squeeze(0).cpu().float().numpy().tolist()
+        emb_list = emb.cpu().float().numpy().tolist()
         return {
             "model": "astroclip",
             "embeddings": emb_list,
@@ -157,27 +177,46 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.astroclip-ready-v1
-            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
-            apt-get update -qq && apt-get install -y -qq git
-            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
-            pip install -q huggingface_hub fastapi uvicorn lightning
-            python3 -c "
+            SENTINEL=/data/.astroclip-ready-v3
+            if [ -f "$SENTINEL" ]; then echo "Venv + deps already set up."; exit 0; fi
+            # Download checkpoint if not on PVC (PVC recreation resilience)
+            if [ ! -f /data/astroclip.ckpt ]; then
+              echo "Downloading AstroCLIP checkpoint (~1.7GB)..."
+              pip install -q huggingface_hub
+              python3 -c "
             import os
             from huggingface_hub import hf_hub_download
-            # AstroCLIP main checkpoint (~1.7GB Lightning ckpt)
-            hf_hub_download(
-                repo_id='polymathic-ai/astroclip',
-                filename='astroclip.ckpt',
-                local_dir='/data',
-                local_dir_use_symlinks=False,
-                token=os.environ.get('HF_TOKEN'),
-            )
-            print('AstroCLIP checkpoint downloaded.')
+            hf_hub_download(repo_id='polymathic-ai/astroclip', filename='astroclip.ckpt', local_dir='/data', local_dir_use_symlinks=False, token=os.environ.get('HF_TOKEN'))
+            print('Checkpoint downloaded.')
             "
-            mkdir -p /data/src
-            git clone --depth=1 https://github.com/polymathic-ai/astroclip /data/src/astroclip 2>/dev/null || echo "Clone failed"
-            pip install -q -e /data/src/astroclip 2>/dev/null || echo "Install failed"
+            fi
+            VENV=/data/venv
+            apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1
+            # Create venv + install torch ONLY if not already present (preserves torch across
+            # restarts; for a true fresh start, delete the PVC and re-apply).
+            if [ ! -x "$VENV/bin/python" ]; then
+              echo "Creating venv at $VENV..."
+              python3 -m venv $VENV
+              $VENV/bin/pip install -U pip
+              echo "Installing torch + torchvision (cu126)..."
+              $VENV/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+            else
+              echo "Venv exists (torch preserved)."
+            fi
+            echo "Installing lightning + server deps..."
+            $VENV/bin/pip install lightning fastapi uvicorn huggingface_hub jaxtyping astropy scikit-learn
+            echo "Installing AstroCLIP runtime deps (needed by astroclip/__init__.py import chain)..."
+            $VENV/bin/pip install datasets h5py python-dotenv scikit-image joblib matplotlib aiohttp pillow tqdm wandb
+            echo "Installing DINOv2 (facebookresearch, pinned commit, --no-deps to avoid torch downgrade)..."
+            $VENV/bin/pip install --no-deps "dinov2 @ git+https://github.com/facebookresearch/dinov2.git@2302b6bf46953431b969155307b9bed152754069"
+            $VENV/bin/pip install fvcore omegaconf iopath
+            echo "Installing AstroCLIP library (--no-deps; runtime deps installed explicitly above)..."
+            # Clone if not on PVC (so a fresh/recreated PVC rebuilds itself)
+            if [ ! -d /data/src/astroclip/astroclip ]; then
+              mkdir -p /data/src
+              git clone --depth=1 https://github.com/PolymathicAI/AstroCLIP /data/src/astroclip
+            fi
+            $VENV/bin/pip install --no-deps -e /data/src/astroclip
             touch "$SENTINEL"
             echo "Setup complete."
         resources:
@@ -187,14 +226,9 @@ spec:
           - { name: model-data, mountPath: /data }
     containers:
       - name: kserve-container
-        image: python:3.11
-        command: ["bash", "-c"]
-        args:
-          - |
-            pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
-            pip install -q fastapi uvicorn lightning
-            pip install -q -e /data/src/astroclip 2>/dev/null || true
-            python /app/server.py
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python"]
+        args: ["/app/server.py"]
         env:
           - { name: HF_HOME, value: /tmp }
         ports:
