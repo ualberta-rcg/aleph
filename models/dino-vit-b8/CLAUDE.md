@@ -1,13 +1,33 @@
-# dino-vit-b8
+# dino-vit-b8 — DINO ViT-B/8 visual embeddings
 
-**Type**: Vision embedding (DINO ViT-B/8)
-**Endpoint**: POST /v1/vision/embed
-**Runtime**: CPU, venv on PVC
+DINO ViT-Base/8 (Meta, 86M) — self-supervised Vision Transformer. Patch size 8; **768-dim
+embedding** of a base64 image (resized 224×224, ImageNet-normalized). Served via ONNX Runtime (CPU).
 
-## Migration notes
-- Ported from 232. Already Knative + scale-to-zero + nfs-client PVC.
-- Only change: added `routing.k8s_name: dino-vit-b8` to details.yaml.
+## Source
+- HuggingFace: https://huggingface.co/onnx-community/vit_base_patch8_224.dino-ONNX
+- License: Apache-2.0
 
-## Validation
-- POST /v1/vision/embed with 1×1 white PNG → float array embedding. PASS.
-- Catalog: id=dino-vit-b8, type=embed, endpoint=/v1/vision/embed. PASS.
+## API — `POST /v1/science/embed` (NON-OpenAI domain endpoint, primary)
+Image input → does NOT expose OpenAI `/v1/embeddings`. `/v1/vision/embed` kept as a secondary alias.
+Body needs `"model": "dino-vit-b8"`:
+- `{"model":"dino-vit-b8", "image":"<base64 PNG/JPEG>"}` → 768-dim (data-url prefix optional)
+- Returns `{"model":"dino-vit-b8", "task":"embed", "embedding":..., "embeddings":...(alias), "dim":768}`.
+
+## Deployment
+- **CPU-only** (ONNX Runtime, CPUExecutionProvider, ~30s cold start).
+- **PVC**: `dino-vit-b8-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **Venv-on-PVC**: `/data/venv` (onnxruntime + Pillow + numpy, guarded).
+- **Scale-to-zero**: minReplicas 0, 15m retention.
+
+## Key files
+- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC
+- `details.yaml` — v2 card (Template C)
+- `pvc.yaml` — RWX PVC
+- `test.py` — 6-case gateway battery (dim 768 / non-zero / distinctness / deterministic / echo / malformed); generates a pure-stdlib PNG (no PIL in the gateway pod)
+
+## Notes
+- ONNX opset 17, input 224×224, ImageNet mean/std normalization, intra_op_num_threads=4.
+- Input is base64 (the server handles data-url `data:image/png;base64,...` prefix stripping).
+
+## Update reminder
+- Watch onnx-community for fp16/quantized variants.

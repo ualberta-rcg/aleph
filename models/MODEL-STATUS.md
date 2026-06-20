@@ -55,7 +55,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std); gpumem 45GB + max-model-len 8192; correct answers |
 | depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
 | diffdock | dock | true | /v1/dock | READY | FIXED | SMILES passed direct (not .smi file); conf regex fixed; 11 poses on 1CRN+aspirin. **NIM available:** `nvcr.io/nim/mit/diffdock` (build.nvidia.com/mit/diffdock) |
-| dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | image embedding |
+| dino-vit-b8 | embedding | false | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias (was /v1/vision/embed only); 768-dim ONNX; 6/0 test; was parked |
 | dnabert-2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-2-117m) |
 | dnabert-s | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-s) |
 | dust3r | 3d | true | /v1/science/reconstruct | READY | FIXED | downsample pointcloud (was 31MB>gateway); bbox+loss; 2 imgs OK |

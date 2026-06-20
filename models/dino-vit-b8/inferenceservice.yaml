@@ -54,13 +54,14 @@ data:
         return emb.tolist()
 
     @app.post("/v1/vision/embed")
+    @app.post("/v1/science/embed")
     async def visual_embed(request: dict):
         if session is None:
             return JSONResponse({"error": "model loading"}, 503)
         b64 = request.get("image", "")
         if "," in b64: b64 = b64.split(",", 1)[1]
         emb = await asyncio.get_event_loop().run_in_executor(None, _infer, base64.b64decode(b64))
-        return {"model": MODEL_NAME, "task": "embed", "embedding": emb, "dim": len(emb)}
+        return {"model": MODEL_NAME, "task": "embed", "embedding": emb, "embeddings": emb, "dim": len(emb)}
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)

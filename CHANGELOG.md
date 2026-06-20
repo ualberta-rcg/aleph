@@ -264,6 +264,10 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   (distinctness cos(dog,ocean)=0.29). Server returns `audio_embeddings`/`text_embeddings`
   (not `embeddings`); lenient on empty body (200 empty). Cleared the stop annotation.
   Validation: **7 PASS / 0 FAIL**.
+- **dino-vit-b8:** already RWX (ONNX CPU). Added a `/v1/science/embed` route alias (stacked
+  decorator; was `/v1/vision/embed` only) + an `embeddings` field. v2 card (768-dim ViT-B/8).
+  6-check test.py that generates a pure-stdlib PNG (no PIL in the gateway pod). Cleared the stop
+  annotation. Validation: **6 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
