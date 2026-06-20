@@ -259,6 +259,11 @@ an `embeddings` field, v2 card, image/array embed test.py. (6 in this cluster we
   (`data[].embedding`). Distinctness threshold relaxed — random-noise fMRI maps near-identically
   (this MAE isn't trained to discriminate noise); determinism is the real check. Validation:
   **6 PASS / 0 FAIL**.
+- **clap:** already v2-carded + RWX + served /v1/science/embed. Added 7-check test.py covering
+  both modalities (text 512-dim, audio 512-dim @48kHz) + cross-modal shared-space sanity
+  (distinctness cos(dog,ocean)=0.29). Server returns `audio_embeddings`/`text_embeddings`
+  (not `embeddings`); lenient on empty body (200 empty). Cleared the stop annotation.
+  Validation: **7 PASS / 0 FAIL**.
 
 ## 2026-06-18 — Retest campaign: harden chat-LLM test.py + README Testing sections
 
