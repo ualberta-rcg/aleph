@@ -52,35 +52,65 @@ spec:
               set -euo pipefail
               echo "=== Istio + mesh scaffolding bootstrap ==="
 
-              # Wait for cert-manager (deployed via RKE2 HelmChart).
+              # Wait for cert-manager to be GENUINELY ready (namespace exists + pods Ready).
+              # `kubectl wait --all` returns immediately on an empty namespace, which at a cold
+              # boot (cert-manager HelmChart still installing) breaks the intended ordering — so
+              # loop until it is really up instead of no-oping through.
               echo "--- Waiting for cert-manager ---"
-              kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=600s || true
+              for i in $(seq 1 60); do
+                if kubectl get namespace cert-manager >/dev/null 2>&1 && \
+                   kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=5s >/dev/null 2>&1; then
+                  break
+                fi
+                echo "  [$i/60] cert-manager not ready, retrying in 10s..."
+                sleep 10
+              done
 
-              # Clone kubeflow manifests.
+              # Clone kubeflow manifests, retrying until outbound egress/DNS is ready. At a cold
+              # boot the cluster DNS forwarder lags the Job start by a minute or two, so the first
+              # clone(s) fail with "Could not resolve host: github.com" and — with no retry — the
+              # Job exhausts backoffLimit and stays Failed forever. Retry instead of dying.
               cd /tmp
-              rm -rf /tmp/manifests
-              echo "--- Cloning kubeflow/manifests v1.11-branch ---"
-              git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git
+              echo "--- Cloning kubeflow/manifests v1.11-branch (retries until egress ready) ---"
+              for i in $(seq 1 40); do
+                rm -rf /tmp/manifests
+                if git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git; then
+                  break
+                fi
+                echo "  [$i/40] clone failed (egress/DNS not ready?), retrying in 15s..."
+                sleep 15
+              done
+              if [ ! -d /tmp/manifests/.git ]; then
+                echo "ERROR: could not clone kubeflow/manifests after retries"; exit 1
+              fi
               cd /tmp/manifests
 
-              # 1. cert-manager issuer (Kubeflow internal TLS).
-              echo "--- Step 1: cert-manager kubeflow issuer ---"
+              # 1. Kubeflow namespace FIRST. common/istio/istio-install/base and
+              #    common/istio/kubeflow-istio-resources/base both contain objects in the
+              #    `kubeflow` namespace, so it must exist before they are applied — otherwise
+              #    "namespaces kubeflow not found" aborts the whole Job under `set -e`.
+              #    (The old monolithic kubeflow-bootstrap applied kubeflow-namespace first;
+              #    splitting into per-component Jobs regressed this order.)
+              echo "--- Step 1: Kubeflow namespace ---"
+              kubectl apply -k common/kubeflow-namespace/base
+
+              # 2. cert-manager issuer (Kubeflow internal TLS).
+              echo "--- Step 2: cert-manager kubeflow issuer ---"
               kubectl apply -k common/cert-manager/kubeflow-issuer/base
 
-              # 2. Istio CRDs + namespace + control plane.
-              echo "--- Step 2: Istio ---"
+              # 3. Istio CRDs + namespace + control plane.
+              echo "--- Step 3: Istio ---"
               kubectl apply -k common/istio/istio-crds/base
               kubectl apply -k common/istio/istio-namespace/base
               kubectl apply -k common/istio/istio-install/base
               kubectl wait --for=condition=Ready pods --all -n istio-system --timeout=600s || true
 
-              # 3. cluster-local-gateway (the Knative mesh gateway).
-              echo "--- Step 3: cluster-local-gateway ---"
+              # 4. cluster-local-gateway (the Knative mesh gateway).
+              echo "--- Step 4: cluster-local-gateway ---"
               kubectl apply -k common/istio/cluster-local-gateway/base
 
-              # 4. Kubeflow namespace + roles + Istio Gateway/VS scaffolding.
-              echo "--- Step 4: Kubeflow namespace + roles + Istio resources ---"
-              kubectl apply -k common/kubeflow-namespace/base
+              # 5. Kubeflow roles + Istio Gateway/VS scaffolding (ns created in step 1).
+              echo "--- Step 5: Kubeflow roles + Istio resources ---"
               kubectl apply -k common/kubeflow-roles/base
               kubectl apply -k common/istio/kubeflow-istio-resources/base
 

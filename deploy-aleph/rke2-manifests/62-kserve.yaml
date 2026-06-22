@@ -53,14 +53,35 @@ spec:
               set -euo pipefail
               echo "=== KServe bootstrap ==="
 
-              # Wait for Knative (prerequisite).
+              # Wait for Knative to be GENUINELY ready (namespace exists + pods Ready), not just
+              # the namespace being momentarily empty. `kubectl wait --all` returns immediately on
+              # an empty namespace, which at a cold boot breaks the Knative→KServe ordering.
               echo "--- Waiting for Knative Serving ---"
-              kubectl wait --for=condition=Ready pods --all -n knative-serving --timeout=600s || true
+              for i in $(seq 1 60); do
+                if kubectl get namespace knative-serving >/dev/null 2>&1 && \
+                   kubectl wait --for=condition=Ready pods --all -n knative-serving --timeout=5s >/dev/null 2>&1; then
+                  break
+                fi
+                echo "  [$i/60] knative-serving not ready, retrying in 10s..."
+                sleep 10
+              done
 
+              # Clone kubeflow manifests, retrying until outbound egress/DNS is ready. At a cold
+              # boot the cluster DNS forwarder lags the Job start, so the first clone(s) fail with
+              # "Could not resolve host: github.com" and the Job exhausts backoffLimit and dies.
               cd /tmp
-              rm -rf /tmp/manifests
-              echo "--- Cloning kubeflow/manifests v1.11-branch ---"
-              git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git
+              echo "--- Cloning kubeflow/manifests v1.11-branch (retries until egress ready) ---"
+              for i in $(seq 1 40); do
+                rm -rf /tmp/manifests
+                if git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git; then
+                  break
+                fi
+                echo "  [$i/40] clone failed (egress/DNS not ready?), retrying in 15s..."
+                sleep 15
+              done
+              if [ ! -d /tmp/manifests/.git ]; then
+                echo "ERROR: could not clone kubeflow/manifests after retries"; exit 1
+              fi
               cd /tmp/manifests
 
               # 1. KServe CRDs (server-side — too large for normal apply). First pass registers

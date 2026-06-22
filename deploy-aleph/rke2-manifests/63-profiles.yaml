@@ -55,13 +55,26 @@ spec:
               echo "--- Waiting for kubeflow namespace ---"
               for i in $(seq 1 60); do
                 kubectl get namespace kubeflow >/dev/null 2>&1 && break
-                sleep 5
+                echo "  [$i/60] kubeflow namespace not found, retrying in 10s..."
+                sleep 10
               done
 
+              # Clone kubeflow manifests, retrying until outbound egress/DNS is ready. At a cold
+              # boot the cluster DNS forwarder lags the Job start, so the first clone(s) fail with
+              # "Could not resolve host: github.com" and the Job exhausts backoffLimit and dies.
               cd /tmp
-              rm -rf /tmp/manifests
-              echo "--- Cloning kubeflow/manifests v1.11-branch ---"
-              git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git
+              echo "--- Cloning kubeflow/manifests v1.11-branch (retries until egress ready) ---"
+              for i in $(seq 1 40); do
+                rm -rf /tmp/manifests
+                if git clone --depth=1 --branch v1.11-branch https://github.com/kubeflow/manifests.git; then
+                  break
+                fi
+                echo "  [$i/40] clone failed (egress/DNS not ready?), retrying in 15s..."
+                sleep 15
+              done
+              if [ ! -d /tmp/manifests/.git ]; then
+                echo "ERROR: could not clone kubeflow/manifests after retries"; exit 1
+              fi
               cd /tmp/manifests
 
               echo "--- Profiles ---"

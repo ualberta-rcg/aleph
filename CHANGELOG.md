@@ -3,6 +3,61 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-22 — Serving-stack Jobs survive cold boot + kubeflow-namespace ordering fix + drop managed Traefik
+
+After the 230 Warewulf redeploy, the four serving-stack bootstrap Jobs
+(`60-istio` / `61-knative` / `62-kserve` / `63-profiles`) all came up **Failed**, so
+**KServe never installed** (no `kserve-controller-manager`, no `models` namespace). Two
+distinct bugs, found and fixed via an in-place re-run on the live cluster:
+
+1. **Cold-boot clone death.** At boot the cluster DNS forwarder lags the Job start, so the
+   bare `git clone https://github.com/kubeflow/manifests.git` failed with
+   `Could not resolve host: github.com` on every attempt, exhausted `backoffLimit: 5`, and
+   the Job stayed Failed permanently. (`github.com` IS reachable from the node once networking
+   settles — purely a boot race.) The prerequisite `kubectl wait --for=condition=Ready pods
+   --all -n <ns>` also returns immediately on an empty namespace, so the intended
+   Istio→Knative→KServe→Profiles self-ordering didn't actually hold.
+2. **`kubeflow-namespace` applied too late (the actual blocker).** `common/istio/istio-install/base`
+   contains objects in the `kubeflow` namespace, but `60-istio` created `kubeflow-namespace`
+   only in its **last** step. So step 2 died on `namespaces "kubeflow" not found` and `set -e`
+   aborted the Job. With no `kubeflow` ns, KServe couldn't deploy its controller → its webhook
+   service was absent → every `ClusterServingRuntime` apply failed the missing-webhook
+   validation → KServe Job aborted. The old monolithic `kubeflow-bootstrap` applied
+   `kubeflow-namespace` first; splitting into per-component Jobs regressed the order. (The
+   clone-retry fix alone was NOT sufficient — the first in-place re-run still failed on this
+   until the order was corrected.)
+
+Fix (in `deploy-aleph/rke2-manifests/`):
+- `60-63`: replaced the bare `git clone` with a **retry-until-egress-ready loop**
+  (40 × 15 s ≈ 10 min) + a final guard; tightened each prerequisite wait to **loop until the
+  namespace exists AND its pods are Ready** (60 × 10 s) so the chain self-orders for real.
+- `60-istio`: apply `common/kubeflow-namespace/base` **first** (new step 1), ahead of
+  cert-manager issuer / istio-install / kubeflow-istio-resources.
+- **Dropped `40-traefik.yaml`.** It could not install over RKE2's bundled `rke2-traefik`
+  (`IngressClass "traefik" ... current value is "rke2-traefik"` → `helm-install-traefik` stuck).
+  The bundled `rke2-traefik` is now the sole ingress controller. (Decision; macvlan/public-IP
+  binding customized on the bundled Traefik later.)
+
+Validation: pushed the fixed Jobs to 230, deleted the Failed bootstrap Jobs so they re-ran.
+After both fixes all four Jobs went **Complete** (istio 20 s, knative 36 s, kserve 60 s,
+profiles 18 s); `kubeflow` + `models` namespaces Active; `kserve-controller-manager` 2/2
+Running, `kserve-localmodel-controller-manager` 2/2, `profiles-deployment` 3/3. The install
+logic is proven working on the live cluster; a fresh cold-boot redeploy is the final
+confirmation that the retry/ordering hold from power-on.
+
+Operational findings for the next redeploy (NOT code in this commit — Warewulf-overlay /
+site-config side):
+- **Stray `rancher.yaml` + `nfs.yaml` from the old cluster** are baked into the WW overlay's
+  `/etc/rancher/manifests/` and land in `server/manifests/` alongside the aleph set.
+  `rancher.yaml` re-installs **Rancher** (dropped by design; also incompatible with k8s
+  1.36 → `helm-install-rancher` CrashLoop) and duplicates the `cert-manager` HelmChart.
+  `nfs.yaml` re-creates the old `nfs-client` SC on `/kubeflow`, colliding with `30-nfs.yaml`'s
+  `nfs-models` on `/aleph` (both define HelmChart `nfs-provisioner` → only one SC wins; the
+  stray `nfs-client` won). **Remove both from the overlay** so only the aleph set ships.
+- **GPU nodes unlabeled:** neither `rack15-03` nor the new `rack05-16` has `gpu=on`, so the
+  HAMi device plugin isn't scheduled and no GPUs are advertised. Both nodes are 4× L40S
+  (8 GPUs total now, was 4) with driver 595.71.05. Post-deploy: `kubectl label node <n> gpu=on`.
+
 ## 2026-06-20 — Consolidate working docs + salvage ProteinMPNN source (pre-230-redeploy)
 
 230 is being destroyed and rebuilt with Warewulf + the modular RKE2 manifests. Pre-redeploy

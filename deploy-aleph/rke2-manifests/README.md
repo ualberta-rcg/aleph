@@ -12,7 +12,9 @@ step** (see below). The set will be refined iteratively.
 
 **Architecture:** cluster 232's front-door/TLS pattern, but **lean** — no full Kubeflow
 (no Dex / Central Dashboard / Pipelines / oauth2-proxy), no Rancher, no certbot. Just the
-serving stack: cert-manager + Istio/Knative/KServe + Tyk + Traefik, with HAMi + KubeRay + NFS.
+serving stack: cert-manager + Istio/Knative/KServe + Tyk, with HAMi + KubeRay + NFS.
+**Ingress uses RKE2's bundled `rke2-traefik`** — there is intentionally no managed Traefik
+manifest (see "Double-Traefik" resolution below).
 
 ## How RKE2 applies these
 
@@ -24,6 +26,34 @@ RKE2's helm-controller reconciles each `HelmChart`; the job-controller runs each
 Job. File-number prefixes are for humans (controllers reconcile independently of filename
 order).
 
+## ⚠ Before redeploy: strip stale files from the Warewulf overlay
+
+The WW overlay on `172.26.92.10` bakes `/etc/rancher/manifests/`, and `rke2-manifests.service`
+copies **everything** in it to `server/manifests/`. The old cluster's `rancher.yaml` and
+`nfs.yaml` are still in that overlay, so on the 2026-06-22 redeploy they landed next to this
+aleph set and caused three failures:
+
+- **`rancher.yaml`** re-installs **Rancher** (dropped by design) AND duplicates the
+  `cert-manager` HelmChart. Rancher is also `kubeVersion < 1.36.0` — incompatible with this
+  cluster, so `helm-install-rancher` CrashLoops forever.
+- **`nfs.yaml`** re-creates the old `nfs-client` StorageClass on `/kubeflow`. It collides with
+  `30-nfs.yaml` (both define `HelmChart/nfs-provisioner`); the stray `nfs-client` wins and the
+  intended `nfs-models` (`/aleph`, with the OneFS-safe mountOptions) never takes effect.
+
+**Fix on the WW server:** remove `rancher.yaml` and `nfs.yaml` from the overlay's
+`/etc/rancher/manifests/` so only this `00-63` set ships. (Both `/kubeflow` and `/aleph` exist
+on the OneFS backend, so `nfs-models`/`/aleph` is valid once the stray is gone.)
+
+## Cold-boot robustness (already baked in)
+
+The serving-stack Jobs (60–63) clone `github.com/kubeflow/manifests` at run time. At a cold
+boot the cluster DNS forwarder lags the Job start, so a bare `git clone` dies on
+`Could not resolve host: github.com`, exhausts `backoffLimit`, and the Job stays Failed (this
+is exactly what left KServe uninstalled on the first redeploy). The Jobs now **retry the clone
+until egress is ready** (≈10 min) and **loop until each prerequisite namespace exists + pods
+are Ready**, so the Istio→Knative→KServe→Profiles chain self-orders for real. `github.com` is
+reachable from the node once networking settles, so the retries converge fast on a warm cluster.
+
 ## File list
 
 | File | Installs | Source |
@@ -33,7 +63,6 @@ order).
 | `10-hami.yaml` | HAMi vGPU scheduler + device plugin | 230 `hami.yaml` verbatim |
 | `20-kuberay.yaml` | KubeRay operator 1.5.1 (pinned off GPU) | 230 `kuberay.yaml` + scheduling |
 | `30-nfs.yaml` | nfs-subdir provisioner → **`nfs-models`** SC (default, OneFS-safe) | 230 `nfs.yaml` + `storage/nfs-models-storageclass.yaml` merged |
-| `40-traefik.yaml` | Traefik (generic, service enabled) | 230/232 `traefik.yaml` minus macvlan |
 | `50-tyk-redis.yaml` | Bitnami Redis (ns `tyk`) | `04-install-tyk-gateway.sh` |
 | `51-tyk.yaml` | Tyk OSS gateway (ns `tyk`) | `configs/tyk-oss-values.yaml` |
 | `60-istio.yaml` | Job: Istio + Kubeflow mesh scaffolding | kubeflow/manifests v1.11 slice |
@@ -64,15 +93,18 @@ Istio ALLOW policy for `models` are in `62-kserve.yaml`.
 ## Post-deploy customization checklist
 
 1. **Label GPU nodes:** `kubectl label node <gpu-node> gpu=on` (HAMi device-plugin needs it).
+   On this cluster both workers are GPU nodes — `rack15-03` and `rack05-16` (4× L40S each,
+   8 GPUs total, driver 595.71.05). Without the label, `hami-device-plugin` won't schedule and
+   no GPUs are advertised (`allocatable.nvidia.com/gpu` stays `<none>`).
 2. **Wait for charts:** `kubectl get helmchart -A -w` → all `Resolved`.
 3. **NFS:** `kubectl get sc nfs-models` → default, mountOptions present.
 4. **Serving stack (4 self-ordering Jobs):** `kubectl get jobs -n kube-system` → the
    `istio/knative/kserve/profiles-bootstrap` jobs all `Complete`; then
    `kubectl get pods -n istio-system,knative-serving,kubeflow` Running. They chain
    automatically; a failed one retries until its prerequisite is up.
-5. **Traefik front door (customization, not manifests):** add the macvlan NetworkAttachmentDefinition
-   + public IP, rebind Traefik entrypoints to that IP, set the hostname + TLS (mirrors 232's
-   `rke2-manifests/traefik.yaml`). Also expose **port 80** for cert-manager HTTP-01.
+5. **Traefik front door (customization, not manifests):** the bundled `rke2-traefik` already
+   serves; add the macvlan NetworkAttachmentDefinition + public IP, rebind its entrypoints to
+   that IP, set the hostname + TLS. Also expose **port 80** for cert-manager HTTP-01.
 6. **cert-manager:** set a real `acme.email`; once port 80 is reachable, add a `Certificate` CR
    per endpoint hostname → `kubectl get certificate` → `Ready`.
 7. **Tyk:** inject the real admin secret from `.env` (`TYK_API_SECRET`) into
@@ -93,9 +125,12 @@ Istio ALLOW policy for `models` are in `62-kserve.yaml`.
 
 ## Follow-ups (the manifests "will get better")
 
-- **Double-Traefik:** RKE2 bundles `rke2-traefik`; deploying our own means two ingress
-  controllers. Recommended: disable the bundled one via RKE2 server config (WW overlay)
-  `disable: [rke2-traefik]` so only this managed Traefik serves the endpoint.
+- **Double-Traefik (resolved):** RKE2 bundles `rke2-traefik`, and a managed `40-traefik.yaml`
+  collided with it (`IngressClass "traefik" ... current value is "rke2-traefik"` → stuck
+  `helm-install-traefik`). Resolution: **dropped the managed manifest**; the bundled
+  `rke2-traefik` is the only ingress controller and serves the endpoint. If a managed Traefik
+  is ever wanted instead, disable the bundled one via RKE2 server config `disable: [rke2-traefik]`
+  in the WW overlay and re-add a Traefik HelmChart.
 - **Model PVC convention:** `models/CLAUDE.md` says `storageClassName: nfs-client`; with
   `nfs-models` now the default/only SC, update that convention (and existing model PVCs) to
   `nfs-models`.
