@@ -11,6 +11,10 @@ metadata:
   name: command-r-7b
   namespace: models
   annotations:
+    # Scale-down policy: surplus pods (above the first) wait 5m before terminating,
+    # then the last warm pod is held 15m before the final 1->0. scale-down-delay
+    # delays every scale-down decision; the retention period only governs the last pod.
+    autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     autoscaling.knative.dev/initial-scale: "0"
 spec:

@@ -3,6 +3,14 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — command-r-7b scale-down policy: 5m surplus delay + 15m last-pod retention
+
+Added `autoscaling.knative.dev/scale-down-delay: "5m"` to command-r-7b (kept
+`scale-to-zero-pod-retention-period: "15m"`). Effect after load stops: surplus pods (above the
+first) linger ~5m before terminating, then the last warm pod is held ~15m before 1->0 (~20m total
+to fully free GPUs). `scale-down-delay` gates every downward step (holds the max desired over a
+trailing 5m window); the retention period only governs the final pod. Rolled as revision 00003.
+
 ## 2026-06-23 — command-r-7b autoscaling tune + load test; fix gpt-oss stale min-scale=1
 
 ### command-r-7b autoscaling (repo + live)
