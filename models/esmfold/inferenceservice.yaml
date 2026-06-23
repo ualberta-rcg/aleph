@@ -75,6 +75,13 @@ metadata:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "900s"
 spec:
   predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
     minReplicas: 0
     scaleTarget: 3
     scaleMetric: concurrency

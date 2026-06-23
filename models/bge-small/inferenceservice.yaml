@@ -9,6 +9,13 @@ metadata:
   namespace: models
 spec:
   predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
     minReplicas: 1
     timeout: 600
     containers:

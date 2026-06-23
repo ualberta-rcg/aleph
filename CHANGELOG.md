@@ -3,6 +3,23 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — Pin all model InferenceServices to worker nodes (off control plane)
+
+The control-plane VMs (`aleph1/2/3`) carry no `NoSchedule` taint, so a CPU-only model predictor
+could land on a head. Models (inference workloads) must run only on workers; the control plane is
+for heads/infra (apiserver, etcd, istio, knative, kserve-controller, tyk, model-gateway — the
+gateway stays on the control plane by design).
+
+- Added a uniform `predictor.affinity.nodeAffinity` (required) to all 164 KServe
+  `models/*/inferenceservice.yaml`: `node-role.kubernetes.io/control-plane` `DoesNotExist`. This
+  keys off the built-in control-plane role label, so it needs no worker labeling and auto-covers
+  future nodes. GPU models already had `nodeSelector: gpu=on` (also worker-only); this makes the
+  policy explicit and uniform. Knative `kubernetes.podspec-affinity` is already enabled.
+- `speaches` (standalone GPU Deployment) and the GPU LLMs were already worker-only via `gpu=on`;
+  unchanged live (avoids restarting large checkpoints). Re-applied the 5 deployed CPU models
+  (`bge-small`, `bge-m3`, `multilingual-e5-small`, `bge-reranker-v2-m3`, `clap`) to roll the new
+  affinity in; pods stay on workers and Ready.
+
 ## 2026-06-23 — Fix StorageClass mistake: standardize on `nfs-models`, remove `nfs-client`
 
 Corrects the earlier same-day error where `nfs-client` was applied and made the default SC. The

@@ -24,6 +24,13 @@ metadata:
     serving.knative.dev/progress-deadline: "2400s"
 spec:
   predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
     minReplicas: 0
     scaleTarget: 4
     scaleMetric: concurrency

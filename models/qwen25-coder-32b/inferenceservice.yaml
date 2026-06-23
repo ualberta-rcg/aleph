@@ -13,6 +13,13 @@ metadata:
     serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
     minReplicas: 0
     maxReplicas: 2
     scaleTarget: 8
