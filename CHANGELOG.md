@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — Standardize scale-down policy across ALL models (5m surplus + 15m last pod)
+
+Applied the command-r-7b scale-down policy to every model: added
+`autoscaling.knative.dev/scale-down-delay: "5m"` and normalized
+`autoscaling.knative.dev/scale-to-zero-pod-retention-period` to `"15m"` on all **164** KServe
+`models/*/inferenceservice.yaml`. Effect: surplus pods (above the first) linger ~5m after load
+drops, then the last warm pod is held ~15m before 1->0.
+
+- Normalized mixed prior retentions (`900s`, `10m`, `30m`, `1800s`, `600s`) to a uniform `"15m"`.
+- The 4 always-on embedders (`bge-small`, `bge-m3`, `bge-reranker-v2-m3`, `xtts-v2`,
+  `minReplicas: 1`) got the annotations too for uniformity; scale-to-zero is inert there, but
+  `scale-down-delay` still governs any burst scale-down.
+- speaches is a plain Deployment (not Knative) and is unaffected.
+
 ## 2026-06-23 — command-r-7b scale-down policy: 5m surplus delay + 15m last-pod retention
 
 Added `autoscaling.knative.dev/scale-down-delay: "5m"` to command-r-7b (kept

@@ -10,6 +10,7 @@ metadata:
   name: qwen25-vl-72b-awq
   namespace: models
   annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     serving.knative.dev/progress-deadline: "2400s"
 spec:

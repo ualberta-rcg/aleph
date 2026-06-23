@@ -16,6 +16,7 @@ metadata:
   name: gemma-3-4b-it
   namespace: models
   annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
 spec:
   predictor:

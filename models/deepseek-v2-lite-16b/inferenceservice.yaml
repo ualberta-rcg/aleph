@@ -5,6 +5,7 @@ metadata:
   namespace: models
   annotations:
     serving.knative.dev/progress-deadline: "2400s"
+    autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     autoscaling.knative.dev/initial-scale: "0"
 spec:

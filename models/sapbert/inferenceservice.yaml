@@ -95,7 +95,8 @@ metadata:
   name: sapbert
   namespace: models
   annotations:
-    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
 spec:
   predictor:
     affinity:

@@ -8,6 +8,9 @@ kind: InferenceService
 metadata:
   name: bge-reranker-v2-m3
   namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
 spec:
   predictor:
     affinity:

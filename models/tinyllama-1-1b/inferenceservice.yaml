@@ -2,7 +2,8 @@ apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   annotations:
-    autoscaling.knative.dev/scale-to-zero-pod-retention-period: 15m
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
   name: tinyllama-1-1b
   namespace: models
 spec:
