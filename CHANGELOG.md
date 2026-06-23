@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — Deploy qwen35-122b; verify qwen3-235b scale-from-zero (GPU 4-card time-share)
+
+Cluster-state changes (manifests already in-repo, no file diff):
+- **qwen3-235b scale-from-zero verified:** woke it from `minReplicas: 0` by hitting the gateway
+  (clean 503 `model_scaled_to_zero` → Knative activator), loaded the 118 GB AWQ in ~6 min on the
+  free 4-card node, served HTTP 200. Its PVC was untouched by the nfs-models fix, so no re-download.
+- **Deployed qwen35-122b** (`Qwen/Qwen3.5-122B-A10B-FP8`, TP=4, whole 4-GPU node): applied
+  `pvc.yaml` (150Gi, nfs-models), ran `download-job.yaml` (39 shards / ~122 GB via hf_transfer to
+  the PVC), then `inferenceservice.yaml` + `details.yaml`. Verified HTTP 200 via the gateway.
+- **Capacity note:** qwen3-235b and qwen35-122b each need a whole 4-GPU node, but only one worker
+  node is free (the other runs command-r-7b + gpt-oss-120b = 3/4 cards). They **time-share**: both
+  are `minReplicas: 0`, so only one runs at a time and the other is `Unschedulable` until the first
+  scales to zero. Freed the node for 122b by scaling qwen3-235b's deployment to 0 after its test.
+
 ## 2026-06-23 — Pin all model InferenceServices to worker nodes (off control plane)
 
 The control-plane VMs (`aleph1/2/3`) carry no `NoSchedule` taint, so a CPU-only model predictor
