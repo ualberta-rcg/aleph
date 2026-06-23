@@ -97,7 +97,7 @@ spec:
   resources:
     requests:
       storage: 2Gi
-  storageClassName: nfs-client
+  storageClassName: nfs-models
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService

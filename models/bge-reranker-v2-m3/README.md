@@ -7,7 +7,7 @@ Multilingual **cross-encoder reranker** for second-stage re-ranking in RAG — s
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml             # RWX weights (nfs-client); ONNX export cached here too
+kubectl apply -f pvc.yaml             # RWX weights (nfs-models); ONNX export cached here too
 kubectl apply -f inferenceservice.yaml # TEI cpu-1.6, minReplicas: 1 (always-on)
 kubectl apply -f details.yaml          # Template-C card (type: reranker)
 ```
@@ -38,7 +38,7 @@ guardrails (chat→404, embed→424, unknown-model 404), catalog (type=reranker)
 | Precision | onnx-fp32 |
 | Parameters | ~568M (XLM-RoBERTa backbone) |
 | Scale | always-on (`minReplicas: 1`) |
-| Weights | PVC `bge-reranker-v2-m3-data` (RWX, nfs-client; ONNX cached) |
+| Weights | PVC `bge-reranker-v2-m3-data` (RWX, nfs-models; ONNX cached) |
 
 ## Model Highlights
 

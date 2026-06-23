@@ -168,7 +168,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: nfs-client
+  storageClassName: nfs-models
 EOF
 
   echo ""

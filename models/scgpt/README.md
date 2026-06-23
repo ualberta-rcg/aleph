@@ -13,7 +13,7 @@ primary. Serves `POST /v1/science/embed` (OpenAI-style `/v1/embeddings` kept as 
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + weights + vocab (nfs-client, already RWX)
+kubectl apply -f pvc.yaml              # RWX venv + weights + vocab (nfs-models, already RWX)
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -38,4 +38,4 @@ batch x2, model-echo, malformed.
 | Parameters | ~51M (12-layer, 8-head, 512 hidden) |
 | GPU | HAMi L40S slice 10 GiB (`nvidia.com/gpumem: 10240`) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `scgpt-data` (RWX, nfs-client, 15Gi) — venv + weights + vocab |
+| PVC | `scgpt-data` (RWX, nfs-models, 15Gi) — venv + weights + vocab |

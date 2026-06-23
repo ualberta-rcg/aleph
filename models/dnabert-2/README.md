@@ -8,7 +8,7 @@ server, CPU-only, scale-to-zero.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client)
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -42,7 +42,7 @@ unknown-model 404), catalog (type=embedding, ctx 512).
 | Parameters | ~117M |
 | Pins | torch 2.5.1+cpu, transformers 4.40.2, TORCHDYNAMO_DISABLE=1 |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `dnabert-2-data` (RWX, nfs-client, 5Gi) |
+| Weights | PVC `dnabert-2-data` (RWX, nfs-models, 5Gi) |
 
 ## Model Highlights
 

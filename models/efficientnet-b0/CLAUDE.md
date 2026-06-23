@@ -5,7 +5,7 @@
 **Runtime**: CPU, ONNX Runtime, venv on PVC
 
 ## Migration notes
-- Ported from 232. Already Knative + scale-to-zero + nfs-client PVC.
+- Ported from 232. Already Knative + scale-to-zero + nfs-models PVC.
 - Only change: added `routing.k8s_name: efficientnet-b0` to details.yaml.
 
 ## Validation

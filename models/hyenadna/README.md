@@ -8,7 +8,7 @@ FastAPI/transformers server, CPU-only, scale-to-zero. OpenAI-compliant `/v1/embe
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + model (nfs-client)
+kubectl apply -f pvc.yaml              # RWX venv + model (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -32,4 +32,4 @@ distinctness, long-seq (~4000 bp), guardrails, catalog.
 | Max input | 8192 bp (model supports 160K) |
 | Parameters | 6.5M (state-space / Hyena) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `hyenadna-data` (RWX, nfs-client) |
+| Weights | PVC `hyenadna-data` (RWX, nfs-models) |

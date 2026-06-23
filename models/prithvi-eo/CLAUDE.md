@@ -17,7 +17,7 @@ Body needs `"model": "prithvi-eo"`:
 
 ## Deployment
 - **GPU**: 1× L40S (shared HAMi slice).
-- **PVC**: `prithvi-eo-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **PVC**: `prithvi-eo-data` — **ReadWriteMany**, nfs-models (already RWX, `pvc.yaml`).
 - **Venv-on-PVC**: `/data/venv` (terratorch + torch cu126, guarded, sentinel `.prithvi-eo-ready-v3`).
 - **Scale-to-zero**: minReplicas 0, 15m retention.
 

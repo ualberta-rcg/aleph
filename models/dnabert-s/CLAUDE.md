@@ -12,7 +12,7 @@
   `MODEL_ID` env var now points to `/data/model` (local path).
 - Fixed: `endpoints` was a list (JSON array) → converted to dict for gateway compat.
 - Added `/v1/science/predict` alias in server (reads MODEL_ID from env).
-- PVC: dnabert-s-data (10Gi RWX, nfs-client).
+- PVC: dnabert-s-data (10Gi RWX, nfs-models).
 
 ## Key quirks
 - Uses custom BertModel + manifold instance mixup. `trust_remote_code=True` required.

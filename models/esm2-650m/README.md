@@ -8,7 +8,7 @@ scale-to-zero.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client) — downloaded once
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models) — downloaded once
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC, GPU slice
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -41,7 +41,7 @@ guardrails (chat→embed 404, unknown-model 404), catalog (type=embedding, ctx 1
 | Parameters | 650M (33-layer MLM transformer) |
 | GPU | HAMi slice 4 GiB (`nvidia.com/gpumem: 4096`) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `esm2-650m-data` (RWX, nfs-client, 15Gi) |
+| Weights | PVC `esm2-650m-data` (RWX, nfs-models, 15Gi) |
 
 ## Model Highlights
 

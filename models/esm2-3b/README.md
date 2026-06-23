@@ -8,7 +8,7 @@ start (~3-6 min). OpenAI-compliant `/v1/embeddings` (batch + usage).
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + model (nfs-client)
+kubectl apply -f pvc.yaml              # RWX venv + model (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -36,4 +36,4 @@ distinctness, encoding_format, guardrails, catalog.
 | Parameters | 3B (36 layers) |
 | GPU | HAMi slice 20 GiB (`nvidia.com/gpumem: 20480`) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `esm2-3b-data` (RWX, nfs-client) |
+| Weights | PVC `esm2-3b-data` (RWX, nfs-models) |

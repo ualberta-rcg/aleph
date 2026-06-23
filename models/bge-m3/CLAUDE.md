@@ -15,7 +15,7 @@ Template-C (`type: embedding`) exemplar for the embeddings pass.
 - GPU request: **none** (CPU-only; no HAMi slice, no gpu nodeSelector)
 
 ## Storage
-- PVC name: `bge-m3-data` (ReadWriteMany, nfs-client, 5Gi)
+- PVC name: `bge-m3-data` (ReadWriteMany, nfs-models, 5Gi)
 - Mount path: `/data` (init writes, server reads readOnly)
 - Warm-cache condition: `if [ -f /data/config.json ]` → skip download
 

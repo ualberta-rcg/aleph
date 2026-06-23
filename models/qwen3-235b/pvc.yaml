@@ -1,5 +1,5 @@
 # Qwen3-235B-A22B-Instruct-2507-AWQ weights (~118 GB, int4 AWQ) persist on NFS
-# (nfs-client default SC) so scale-from-zero cold starts skip the multi-hour
+# (nfs-models default SC) so scale-from-zero cold starts skip the multi-hour
 # re-download. Populated once by download-job.yaml. Pad 118 GB -> 160 Gi.
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -9,7 +9,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 160Gi

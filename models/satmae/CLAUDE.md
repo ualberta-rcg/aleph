@@ -15,7 +15,7 @@ Image input, not text → does NOT expose OpenAI `/v1/embeddings`. Body needs `"
 
 ## Deployment
 - **CPU-only** (~300M ViT-Large; runs on CPU, ~seconds/image).
-- **PVC**: `satmae-data-rwx` — **ReadWriteMany**, nfs-client, 5 Gi (`pvc.yaml`). Migrated
+- **PVC**: `satmae-data-rwx` — **ReadWriteMany**, nfs-models, 5 Gi (`pvc.yaml`). Migrated
   RWO→RWX 2026-06-19 via **cp-from-RWO** (preserved the venv + HF snapshot; old `satmae-data`
   deleted). Split out of the ISVC (was inline + RWO).
 - **Venv-on-PVC**: `/data/venv` (torch+torchvision+safetensors+timm, guarded). Main container

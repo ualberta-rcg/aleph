@@ -1,4 +1,4 @@
-# Venv + LaBraM weights persist on NFS (ReadWriteMany, nfs-client). Split out of the ISVC
+# Venv + LaBraM weights persist on NFS (ReadWriteMany, nfs-models). Split out of the ISVC
 # 2026-06-19 (was inline + RWO). Migrated RWO→RWX by copying the venv + HF snapshot
 # (model.safetensors + config.json) from the old RWO PVC (labram-data) into this new RWX
 # PVC (labram-data-rwx) — NOT re-downloaded, to preserve the slow torch+braindecode venv.
@@ -10,7 +10,7 @@ metadata:
   namespace: models
 spec:
   accessModes: ["ReadWriteMany"]
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 5Gi

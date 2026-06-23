@@ -16,7 +16,7 @@ Image+metadata input → does NOT expose OpenAI `/v1/embeddings`. Body needs `"m
 
 ## Deployment
 - **CPU-only** (~330M encoder; runs on CPU).
-- **PVC**: `clay-data-rwx` — **ReadWriteMany**, nfs-client, 8 Gi (`pvc.yaml`). Migrated RWO→RWX
+- **PVC**: `clay-data-rwx` — **ReadWriteMany**, nfs-models, 8 Gi (`pvc.yaml`). Migrated RWO→RWX
   2026-06-19 via **cp-from-RWO** (venv + checkpoint + cloned repo preserved; old `clay-data`
   deleted). Split out of the ISVC (was inline + RWO).
 - **Venv-on-PVC**: `/data/venv` (torch + lightning + einops + timm + vit-pytorch + claymodel

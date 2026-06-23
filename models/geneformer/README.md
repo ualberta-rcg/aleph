@@ -13,7 +13,7 @@ Serves `POST /v1/science/embed` (with `/v1/embed` as a secondary alias).
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + weights + tokenizer (nfs-client) — cp-migrated from old RWO
+kubectl apply -f pvc.yaml              # RWX venv + weights + tokenizer (nfs-models) — cp-migrated from old RWO
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, CPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -38,4 +38,4 @@ deterministic, model-echo, malformed.
 | Parameters | 104M (V2) |
 | GPU | none (CPU) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `geneformer-data-rwx` (RWX, nfs-client, 8Gi) — venv + weights + tokenizer |
+| PVC | `geneformer-data-rwx` (RWX, nfs-models, 8Gi) — venv + weights + tokenizer |

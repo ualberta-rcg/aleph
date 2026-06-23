@@ -13,7 +13,7 @@ Serves its domain endpoint `POST /v1/science/embed`.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client, already RWX)
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models, already RWX)
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC + venv-on-PVC init, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -38,4 +38,4 @@ model-echo, demo, malformed.
 | Parameters | 95M |
 | GPU | HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `astropt-data` (RWX, nfs-client) — venv + weights |
+| PVC | `astropt-data` (RWX, nfs-models) — venv + weights |

@@ -16,7 +16,7 @@ Serves its domain endpoint `POST /v1/science/embed`.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + HF snapshot (nfs-client) — cp-migrated from old RWO
+kubectl apply -f pvc.yaml              # RWX venv + HF snapshot (nfs-models) — cp-migrated from old RWO
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, CPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -41,7 +41,7 @@ deterministic (cos 1.0), channel subset, short-input padding (→3000), ch_names
 | Parameters | 5.8M (12-layer, hidden 200, MLP 800, 10-head) |
 | GPU | none (CPU) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `labram-data-rwx` (RWX, nfs-client, 5Gi) — venv + weights |
+| PVC | `labram-data-rwx` (RWX, nfs-models, 5Gi) — venv + weights |
 
 ## Cold start
 

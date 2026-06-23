@@ -21,7 +21,7 @@ AstroCLIP takes **image/spectrum input, not text**, so it does NOT expose OpenAI
 
 ## Deployment
 - **GPU**: 1× L40S via HAMi (`nvidia.com/gpumem: 10240`), `nodeSelector: gpu=on`
-- **PVC**: `astroclip-data` — **ReadWriteMany**, nfs-client, 10 Gi (`pvc.yaml`)
+- **PVC**: `astroclip-data` — **ReadWriteMany**, nfs-models, 10 Gi (`pvc.yaml`)
 - **Venv-on-PVC**: init builds `/data/venv` once (sentinel `/data/.astroclip-ready-v3`),
   cu126 torch preserved across restarts (venv creation guarded; `--clear` removed).
   Main container runs `/data/venv/bin/python /app/server.py`.

@@ -15,7 +15,7 @@ Template-C (`type: embedding`), custom-transformers-on-GPU.
 
 ## Storage
 - PVC `nucleotide-transformer-data` (**ReadWriteMany**, nfs-models, 15Gi) — split out of inferenceservice.yaml 2026-06-19.
-  NOTE: live PVC is on `nfs-models`; repo ISVC said `nfs-client` (SC immutable — matched live).
+  NOTE: live PVC is on `nfs-models`; repo ISVC said `nfs-models` (SC immutable — matched live).
 - Mount `/data` (venv + HF cache); app at `/app` (ConfigMap).
 
 ## Known quirks

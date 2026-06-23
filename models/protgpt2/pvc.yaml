@@ -5,7 +5,7 @@ metadata:
   namespace: models
 spec:
   accessModes: ["ReadWriteMany"]   # RWX — NFS-backed, supports many replicas
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 5Gi

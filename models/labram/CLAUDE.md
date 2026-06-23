@@ -23,7 +23,7 @@ EEG-array input, not text → does NOT expose OpenAI `/v1/embeddings`. Body need
 
 ## Deployment
 - **CPU-only** (model is ~5.8M params; runs fine on CPU, ~seconds/window).
-- **PVC**: `labram-data-rwx` — **ReadWriteMany**, nfs-client, 5 Gi (`pvc.yaml`). Migrated
+- **PVC**: `labram-data-rwx` — **ReadWriteMany**, nfs-models, 5 Gi (`pvc.yaml`). Migrated
   RWO→RWX 2026-06-19 by **cp-from-RWO** (preserved the slow torch+braindecode venv + the HF
   snapshot; NOT re-downloaded). Old `labram-data` (RWO) deleted after the copy + repoint.
 - **Venv-on-PVC**: `/data/venv` (torch + braindecode 1.5.2 + safetensors), guarded in init.

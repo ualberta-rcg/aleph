@@ -6,7 +6,7 @@
 **Runtime**: CPU, ONNX Runtime, venv on PVC
 
 ## Migration notes
-- Same pattern as yolov8n. Already Knative + scale-to-zero + nfs-client PVC.
+- Same pattern as yolov8n. Already Knative + scale-to-zero + nfs-models PVC.
 - Only change: added `routing.k8s_name: yolov8s` to details.yaml.
 - Init exports `yolov8s.pt` → `yolov8s.onnx`.
 

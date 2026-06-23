@@ -13,7 +13,7 @@ Serves its domain endpoint `POST /v1/science/embed`.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + HF snapshot (nfs-client) — cp-migrated from old RWO
+kubectl apply -f pvc.yaml              # RWX venv + HF snapshot (nfs-models) — cp-migrated from old RWO
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, CPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -38,7 +38,7 @@ deterministic, model-echo, malformed.
 | Parameters | ~300M (ViT-Large) |
 | GPU | none (CPU) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `satmae-data-rwx` (RWX, nfs-client, 5Gi) — venv + weights |
+| PVC | `satmae-data-rwx` (RWX, nfs-models, 5Gi) — venv + weights |
 
 ## Cold start
 ~2-4 min on first boot (venv + deps install once; HF snapshot pre-downloaded by init).

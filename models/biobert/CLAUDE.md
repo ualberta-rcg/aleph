@@ -18,7 +18,7 @@ extraction, search. Template-C (`type: embedding`) — custom-transformers-on-GP
 
 ## Storage
 - PVC name: `biobert-data` (**ReadWriteMany**, **nfs-models** SC, 15Gi) — split out of inferenceservice.yaml
-  2026-06-19. NOTE: live PVC is on `nfs-models` (the dedicated model-weights share), not `nfs-client`.
+  2026-06-19. NOTE: live PVC is on `nfs-models` (the dedicated model-weights share), not `nfs-models`.
 - Mount path: `/data` (venv + model; `HF_HOME=/data/hf_cache`). App at `/app` (ConfigMap).
 
 ## Known quirks

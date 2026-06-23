@@ -17,7 +17,7 @@ fMRI-array input → does NOT fit OpenAI `/v1/embeddings` (text-only). Also alia
 
 ## Deployment
 - **GPU**: 1× L40S (shared HAMi slice).
-- **PVC**: `brainlm-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **PVC**: `brainlm-data` — **ReadWriteMany**, nfs-models (already RWX, `pvc.yaml`).
 - **Venv-on-PVC**: `/data/venv` (transformers + torch, guarded). Main runs `/data/venv/bin/python`.
 - **Scale-to-zero**: minReplicas 0, 15m retention.
 

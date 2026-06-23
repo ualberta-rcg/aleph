@@ -8,7 +8,7 @@ Custom FastAPI/transformers server on a HAMi GPU slice, scale-to-zero. OpenAI-co
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-client)
+kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -33,4 +33,4 @@ distinctness, truncation, guardrails, catalog.
 | Precision | fp32 (SSM precision-sensitive) |
 | GPU | HAMi slice 10 GiB (`nvidia.com/gpumem: 10240`) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `caduceus-data` (RWX, nfs-client, 10Gi) |
+| Weights | PVC `caduceus-data` (RWX, nfs-models, 10Gi) |

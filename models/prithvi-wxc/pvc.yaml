@@ -8,4 +8,4 @@ spec:
   resources:
     requests:
       storage: 60Gi
-  storageClassName: nfs-client
+  storageClassName: nfs-models

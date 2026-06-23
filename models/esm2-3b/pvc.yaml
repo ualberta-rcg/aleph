@@ -6,7 +6,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       # ESM-2 3B weights ~12Gi; subPath `pysite` holds pip packages

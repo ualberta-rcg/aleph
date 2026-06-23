@@ -1,4 +1,4 @@
-# Venv + Clay Foundation Model weights persist on NFS (ReadWriteMany, nfs-client). Split out of
+# Venv + Clay Foundation Model weights persist on NFS (ReadWriteMany, nfs-models). Split out of
 # the ISVC 2026-06-19 (was inline + RWO). Migrated RWO→RWX by copying the venv + weights from the
 # old RWO PVC (clay-data) into this new RWX PVC (clay-data-rwx) — preserves the venv, no re-download.
 # Old clay-data PVC deleted after the copy + repoint.
@@ -9,7 +9,7 @@ metadata:
   namespace: models
 spec:
   accessModes: ["ReadWriteMany"]
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 8Gi

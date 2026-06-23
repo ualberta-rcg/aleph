@@ -14,7 +14,7 @@ Custom FastAPI/Lightning server on a HAMi GPU slice, scale-to-zero, venv-on-PVC.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX checkpoint + venv + cloned repo (nfs-client)
+kubectl apply -f pvc.yaml              # RWX checkpoint + venv + cloned repo (nfs-models)
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC + venv-on-PVC init, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -40,7 +40,7 @@ demo path, malformed-input handling.
 | Parameters | 370M |
 | GPU | HAMi slice 10 GiB (`nvidia.com/gpumem: 10240`) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `astroclip-data` (RWX, nfs-client, 10Gi) — checkpoint + venv + repo |
+| PVC | `astroclip-data` (RWX, nfs-models, 10Gi) — checkpoint + venv + repo |
 
 ## Cold start
 

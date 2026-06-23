@@ -14,7 +14,7 @@ for face verification/identification via `/v1/vision/face` (base64 image in).
   added `routing.k8s_name: arcface`.
 
 ## Resources
-- CPU req/limit 1/2; mem 1Gi/2Gi. PVC `arcface-data` 5Gi (RWX, nfs-client).
+- CPU req/limit 1/2; mem 1Gi/2Gi. PVC `arcface-data` 5Gi (RWX, nfs-models).
 
 ## Quirks
 - Input preprocessing: resize 112x112, RGB->BGR, (x-127.5)/128.0, NHWC.

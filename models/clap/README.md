@@ -12,7 +12,7 @@ embeddings and `POST /v1/classify` for zero-shot classification.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-client, already RWX)
+kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-models, already RWX)
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, CPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -37,7 +37,7 @@ deterministic, shared-space sanity, model-echo, malformed.
 | Parameters | larger_clap_general |
 | GPU | none (CPU, pinned torch 2.5.1) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `clap-data` (RWX, nfs-client) — venv + weights |
+| PVC | `clap-data` (RWX, nfs-models) — venv + weights |
 
 ## Notes
 - Pinned `torch==2.5.1` (CPU) + `transformers==4.46.3` + librosa/soundfile.

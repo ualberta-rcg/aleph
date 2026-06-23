@@ -15,7 +15,7 @@ Also `/v1/embeddings` (alias) + `POST /v1/classify` (zero-shot). Body needs `"mo
 
 ## Deployment
 - **GPU**: 1× L40S (shared HAMi slice).
-- **PVC**: `biomedclip-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **PVC**: `biomedclip-data` — **ReadWriteMany**, nfs-models (already RWX, `pvc.yaml`).
 - **Venv-on-PVC**: `/data/venv` (open_clip + torch, guarded).
 - **Scale-to-zero**: minReplicas 0, 15m retention.
 

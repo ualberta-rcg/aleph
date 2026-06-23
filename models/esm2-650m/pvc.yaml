@@ -1,7 +1,7 @@
 # Weights + venv persist on NFS (nfs-models SC, ReadWriteMany) so scale-from-zero cold starts
 # skip the ~2.5GB model re-download + venv rebuild. Split out of inferenceservice.yaml 2026-06-19.
 # NOTE: the live PVC is bound to `nfs-models` (the dedicated model-weights share), NOT the default
-# `nfs-client` SC — SC is immutable on a bound PVC, so this matches the live resource.
+# `nfs-models` SC — SC is immutable on a bound PVC, so this matches the live resource.
 # (server.py stays embedded as the esm2-650m-server ConfigMap in inferenceservice.yaml.)
 apiVersion: v1
 kind: PersistentVolumeClaim

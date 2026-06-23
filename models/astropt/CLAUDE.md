@@ -16,7 +16,7 @@ Galaxy image input → does NOT expose OpenAI `/v1/embeddings`. Body needs `"mod
 
 ## Deployment
 - **GPU**: 1× L40S via HAMi (`nvidia.com/gpumem: 8192`), `nodeSelector: gpu=on`.
-- **PVC**: `astropt-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **PVC**: `astropt-data` — **ReadWriteMany**, nfs-models (already RWX, `pvc.yaml`).
 - **Venv-on-PVC** (converted 2026-06-19): the old init installed torch into the **ephemeral
   container python** (the `/data` sentinel didn't persist deps), so the main container reinstalled
   cu126 torch on every wake. Now the init builds `/data/venv` on the PVC once (sentinel

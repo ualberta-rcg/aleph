@@ -15,7 +15,7 @@ Template-C (`type: reranker`) exemplar — the rerank test-harness reference.
 - GPU request: **none** (CPU-only; ORT backend)
 
 ## Storage
-- PVC name: `bge-reranker-v2-m3-data` (ReadWriteMany, nfs-client, 5Gi)
+- PVC name: `bge-reranker-v2-m3-data` (ReadWriteMany, nfs-models, 5Gi)
 - Mount path: `/data` (init writes HF weights + ONNX export, server reads readOnly)
 - Warm-cache condition: sentinel `/data/.onnx-ready` → skip download + ONNX export
 

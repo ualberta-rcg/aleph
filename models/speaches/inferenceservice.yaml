@@ -8,7 +8,7 @@ metadata:
   name: speaches-data
   namespace: models
 spec:
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   accessModes: [ReadWriteOnce]
   resources:
     requests:

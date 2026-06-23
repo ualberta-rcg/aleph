@@ -18,7 +18,7 @@ Template-C (`type: embedding`) — custom-transformers-server variant.
 - GPU request: **none** (CPU-only)
 
 ## Storage
-- PVC name: `multilingual-e5-small-data` (**ReadWriteMany**, nfs-client, 5Gi)
+- PVC name: `multilingual-e5-small-data` (**ReadWriteMany**, nfs-models, 5Gi)
 - Mount path: `/data` (init writes venv + model; server reads readOnly). App at `/app` (ConfigMap).
 - Warm-cache condition: `/data/venv/bin/python` imports sentencepiece + transformers==4.44.2 AND `/data/model/config.json` present
 

@@ -15,7 +15,7 @@ Body needs `"model": "dino-vit-b8"`:
 
 ## Deployment
 - **CPU-only** (ONNX Runtime, CPUExecutionProvider, ~30s cold start).
-- **PVC**: `dino-vit-b8-data` — **ReadWriteMany**, nfs-client (already RWX, `pvc.yaml`).
+- **PVC**: `dino-vit-b8-data` — **ReadWriteMany**, nfs-models (already RWX, `pvc.yaml`).
 - **Venv-on-PVC**: `/data/venv` (onnxruntime + Pillow + numpy, guarded).
 - **Scale-to-zero**: minReplicas 0, 15m retention.
 

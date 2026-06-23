@@ -3,6 +3,32 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — Fix StorageClass mistake: standardize on `nfs-models`, remove `nfs-client`
+
+Corrects the earlier same-day error where `nfs-client` was applied and made the default SC. The
+canonical storage is `nfs-models` (set up by the auto-applied `deploy-aleph/rke2-manifests/30-nfs.yaml`
+with OneFS-safe mountOptions, `defaultClass: true`). There is intentionally **no** separate
+`nfs-client` SC.
+
+### Repo
+- Swept `storageClassName: nfs-client` → `nfs-models` across all functional `models/*/pvc.yaml` and
+  inline-PVC `models/*/inferenceservice.yaml` (142 files), plus the test-model PVC in
+  `deploy-aleph/03-deploy-test-model.sh`.
+- Deleted the trap manifest `deploy-aleph/storage/nfs-client-storageclass.yaml`. Kept
+  `nfs-models-storageclass.yaml` as reference; `30-nfs.yaml` remains authoritative (Warewulf/RKE2
+  auto-deploy).
+- Fixed convention docs (`models/CLAUDE.md`, `deploy-aleph/rke2-manifests/README.md`) and the 65
+  per-model `README.md`/`CLAUDE.md` storage mentions to say `nfs-models`. (`MODEL-STATUS.md` SC-drift
+  note left as historical narrative.)
+
+### Cluster
+- Restored default: `kubectl patch sc nfs-models` → `is-default-class: "true"`, then deleted the
+  stray `nfs-client` SC.
+- Redeployed the 4 models that had been bound to `nfs-client` (SC is immutable on a bound PVC):
+  deleted + recreated the ISVC/PVC on `nfs-models` for `bge-m3`, `bge-reranker-v2-m3`, `clap`,
+  `multilingual-e5-small`; weights re-download on first start. Re-validated each via the public VIP
+  + Tyk key from the login node.
+
 ## 2026-06-23 — Run model test.py from the login node (public VIP + Tyk); qwen3-235b scheduling fix
 
 Two changes, made while validating the live 3-head aleph cluster (`aleph1/2/3` = .43/.44/.45)
@@ -52,10 +78,10 @@ node — including a fully **empty** one — so it never even started loading we
   accounting.) Updated the manifest's header comment accordingly.
 
 ### Cluster-state changes (applied live; manifests already in-repo, no file diff)
-- **StorageClass:** applied `deploy-aleph/storage/nfs-client-storageclass.yaml` and demoted
-  `nfs-models` from default — the live cluster only had `nfs-models (default)`, but every model PVC
-  references `nfs-client`. Now matches repo intent (`nfs-client` = sole default; identical
-  provisioner + OneFS-safe mount options).
+- **StorageClass (CORRECTED — see 2026-06-23 fix below):** I wrongly applied
+  `deploy-aleph/storage/nfs-client-storageclass.yaml` and demoted `nfs-models` from default. That
+  was a **mistake**: `nfs-models` (set up by the auto-applied `30-nfs.yaml`, OneFS-safe) is the
+  canonical/sole SC; `nfs-client` was never repo intent — only some stale model PVCs referenced it.
 - **Deployed 5 CPU models** (no GPU/HAMi slice): `bge-small`, `bge-m3`, `multilingual-e5-small`
   (embeddings), `bge-reranker-v2-m3` (rerank), `clap` (audio+text embed). Gotcha: deploying the
   ISVC/PVC is not enough — the gateway only routes a model once its **card ConfigMap**

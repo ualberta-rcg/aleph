@@ -35,7 +35,7 @@
 ## Audit Notes
 - Base variant of the Moirai family (vs moirai-large 311M, moirai-moe)
 - Uses /v1/forecast endpoint (not /v1/science/forecast like moirai-large)
-- NFS PVC (ReadWriteOnce with nfs-client storage class)
+- NFS PVC (ReadWriteOnce with nfs-models storage class)
 
 ## Update Reminder
 - Check for newer Moirai versions

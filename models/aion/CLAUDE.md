@@ -18,7 +18,7 @@ Astronomical-array input → does NOT expose OpenAI `/v1/embeddings`. Body needs
 
 ## Deployment
 - **CPU-only** (300M encoder-decoder; runs on CPU).
-- **PVC**: `aion-data-rwx` — **ReadWriteMany**, nfs-client, 8 Gi (`pvc.yaml`). Migrated RWO→RWX
+- **PVC**: `aion-data-rwx` — **ReadWriteMany**, nfs-models, 8 Gi (`pvc.yaml`). Migrated RWO→RWX
   2026-06-19 via **cp-from-RWO** (venv + weights + warmed HF cache preserved; old `aion-data`
   deleted). Split out of the ISVC (was inline + RWO).
 - **Venv-on-PVC**: init installs torch+torchvision+`polymathic-aion` into `/data/venv` and WARMS

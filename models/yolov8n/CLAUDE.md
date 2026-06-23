@@ -6,7 +6,7 @@
 **Runtime**: CPU, ONNX Runtime, venv on PVC
 
 ## Migration notes
-- Ported from 232. Already Knative + scale-to-zero + nfs-client PVC. No GPU nodeSelector.
+- Ported from 232. Already Knative + scale-to-zero + nfs-models PVC. No GPU nodeSelector.
 - Only change: added `routing.k8s_name: yolov8n` to details.yaml.
 - Init container exports `yolov8n.pt` → `yolov8n.onnx` on first cold start.
 

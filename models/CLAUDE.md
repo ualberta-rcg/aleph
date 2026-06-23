@@ -55,7 +55,7 @@ Each model directory should contain (as applicable):
 
 ## Storage conventions
 
-- Use `storageClassName: nfs-client` unless an exception is documented.
+- Use `storageClassName: nfs-models` (the default/only SC, OneFS-safe) unless an exception is documented.
 - Keep weights on PVC so cold starts avoid repeated downloads.
 - Init containers should short-circuit if model artifacts already exist.
 

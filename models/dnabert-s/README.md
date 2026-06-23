@@ -8,7 +8,7 @@ CPU-only (flash-attention issues on L40S), scale-to-zero.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + model (nfs-client)
+kubectl apply -f pvc.yaml              # RWX venv + model (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -32,4 +32,4 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 512 tokens |
 | Parameters | ~117M |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `dnabert-s-data` (RWX, nfs-client) |
+| Weights | PVC `dnabert-s-data` (RWX, nfs-models) |

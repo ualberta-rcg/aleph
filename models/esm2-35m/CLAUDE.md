@@ -14,7 +14,7 @@ Template-C (`type: embedding`), custom-transformers-on-GPU.
 - GPU: HAMi `nvidia.com/gpumem: 3072` (3 GiB slice, fp16)
 
 ## Storage
-- PVC `esm2-35m-data` (**ReadWriteMany**, nfs-client, 15Gi) — split out of inferenceservice.yaml 2026-06-19.
+- PVC `esm2-35m-data` (**ReadWriteMany**, nfs-models, 15Gi) — split out of inferenceservice.yaml 2026-06-19.
 - Mount `/data` (venv + HF cache via `HF_HOME=/data/hf_cache`); server code at `/app` (ConfigMap).
 
 ## Known quirks

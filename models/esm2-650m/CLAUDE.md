@@ -17,7 +17,7 @@ Template-C (`type: embedding`) — custom-transformers-server variant.
 - GPU request: `nvidia.com/gpu: 1` · HAMi `nvidia.com/gpumem: 4096` (4 GiB slice; model fp16 ~1.3 GiB)
 
 ## Storage
-- PVC name: `esm2-650m-data` (**ReadWriteMany**, nfs-client, 15Gi) — split out of inferenceservice.yaml 2026-06-19
+- PVC name: `esm2-650m-data` (**ReadWriteMany**, nfs-models, 15Gi) — split out of inferenceservice.yaml 2026-06-19
 - Mount path: `/data` (init writes venv + model; server reads readOnly). App at `/app` (ConfigMap).
 - Warm-cache condition: `/data/venv/bin/python` imports torch AND `/data/model/config.json` exists
 

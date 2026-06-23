@@ -7,7 +7,7 @@ multi-vector (ColBERT) retrieval from one model. 100+ languages, up to 8192 toke
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml             # RWX weights (nfs-client) — downloaded once, reused
+kubectl apply -f pvc.yaml             # RWX weights (nfs-models) — downloaded once, reused
 kubectl apply -f inferenceservice.yaml # TEI cpu-1.6, minReplicas: 1 (always-on)
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -40,7 +40,7 @@ usage, encoding_format (float + base64), truncation (>8192 tokens), multilingual
 | Precision | fp32 |
 | Parameters | ~568M (XLM-RoBERTa backbone) |
 | Scale | always-on (`minReplicas: 1`) |
-| Weights | PVC `bge-m3-data` (RWX, nfs-client) |
+| Weights | PVC `bge-m3-data` (RWX, nfs-models) |
 
 ## Model Highlights
 

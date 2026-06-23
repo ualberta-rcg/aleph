@@ -8,7 +8,7 @@ FastAPI/transformers server, CPU-only, scale-to-zero.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client)
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -32,4 +32,4 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 512 tokens |
 | Parameters | 110M (SciBERT backbone) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `specter2-data` (RWX, nfs-client) |
+| Weights | PVC `specter2-data` (RWX, nfs-models) |

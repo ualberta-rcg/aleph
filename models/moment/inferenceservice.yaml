@@ -145,7 +145,7 @@ metadata:
   namespace: models
 spec:
   accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 10Gi

@@ -6,7 +6,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       # HF hub cache for faster-whisper-large-v3 + Kokoro ONNX (~7Gi observed; room to grow)

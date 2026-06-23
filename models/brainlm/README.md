@@ -13,7 +13,7 @@ Serves `POST /v1/science/embed` (with `/v1/embeddings` as a secondary alias).
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-client, already RWX)
+kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-models, already RWX)
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -38,4 +38,4 @@ model-echo, malformed.
 | Parameters | 650M |
 | GPU | HAMi L40S slice |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `brainlm-data` (RWX, nfs-client) — venv + weights |
+| PVC | `brainlm-data` (RWX, nfs-models) — venv + weights |

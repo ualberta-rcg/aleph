@@ -79,7 +79,7 @@ metadata:
   name: chemgpt-19m-data
   namespace: models
 spec:
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   accessModes: [ReadWriteMany]
   resources:
     requests:

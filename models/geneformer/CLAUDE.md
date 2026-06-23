@@ -16,7 +16,7 @@ Body needs `"model": "geneformer"`:
 
 ## Deployment
 - **CPU-only** (104M transformer; runs on CPU).
-- **PVC**: `geneformer-data-rwx` — **ReadWriteMany**, nfs-client, 8 Gi (`pvc.yaml`). Migrated
+- **PVC**: `geneformer-data-rwx` — **ReadWriteMany**, nfs-models, 8 Gi (`pvc.yaml`). Migrated
   RWO→RWX 2026-06-19 via **cp-from-RWO** (venv + weights + tokenizer preserved; old
   `geneformer-data` deleted). Split out of the ISVC (was inline + RWO).
 - **Venv-on-PVC**: `/data/venv` (transformers + torch, guarded). Loads via `AutoModel(trust_remote_code)`.

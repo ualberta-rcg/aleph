@@ -136,9 +136,9 @@ Istio ALLOW policy for `models` are in `62-kserve.yaml`.
   `rke2-traefik` is the only ingress controller and serves the endpoint. If a managed Traefik
   is ever wanted instead, disable the bundled one via RKE2 server config `disable: [rke2-traefik]`
   in the WW overlay and re-add a Traefik HelmChart.
-- **Model PVC convention:** `models/CLAUDE.md` says `storageClassName: nfs-client`; with
-  `nfs-models` now the default/only SC, update that convention (and existing model PVCs) to
-  `nfs-models`.
+- **Model PVC convention (resolved):** all model PVCs and `models/CLAUDE.md` now use
+  `storageClassName: nfs-models`, which is the default/only SC (set up by `30-nfs.yaml` with the
+  OneFS-safe mountOptions). There is intentionally no separate `nfs-client` SC.
 - **Retire redundant files:** `deploy-aleph/storage/nfs-models-storageclass.yaml` is now baked
   into `30-nfs.yaml`; the `configs/` Tyk values are captured in `50/51-tyk*.yaml`; the
   `02-post-install.sh` patches are folded into `61/62`. Keep as reference or remove in a

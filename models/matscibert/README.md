@@ -10,7 +10,7 @@ Serves the **standard OpenAI `/v1/embeddings`** (primary); `/v1/science/embed` a
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client)
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -35,4 +35,4 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Parameters | 110M (BERT) |
 | GPU | HAMi slice 3 GiB (`nvidia.com/gpumem: 3072`) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `matscibert-data` (RWX, nfs-client, 15Gi) |
+| Weights | PVC `matscibert-data` (RWX, nfs-models, 15Gi) |

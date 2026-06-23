@@ -6,9 +6,9 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  # nfs-client default (OneFS-safe 128Ki wsize) so the ~5 GB torch venv + weights persist
+  # nfs-models default (OneFS-safe 128Ki wsize) so the ~5 GB torch venv + weights persist
   # across scale-to-zero. First cold start builds the venv (slow); later ones reuse it.
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 15Gi

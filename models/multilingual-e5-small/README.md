@@ -10,7 +10,7 @@ transformers server, CPU-only, scale-to-zero.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client)
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -44,7 +44,7 @@ truncation (>512 tokens), guardrails (chat→embed 404, unknown-model 404), cata
 | Precision | fp32 |
 | Parameters | ~118M (12-layer MiniLM) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `multilingual-e5-small-data` (RWX, nfs-client, 5Gi) |
+| Weights | PVC `multilingual-e5-small-data` (RWX, nfs-models, 5Gi) |
 
 ## Model Highlights
 

@@ -15,7 +15,7 @@ Template-C (`type: embedding`) — custom-transformers-server-on-GPU variant.
 - GPU request: `nvidia.com/gpu: 1` · HAMi `nvidia.com/gpumem: 10240` (10 GiB slice; fp16)
 
 ## Storage
-- PVC name: `esm1b-data` (**ReadWriteMany**, nfs-client, 5Gi) — migrated RWO→RWX 2026-06-19
+- PVC name: `esm1b-data` (**ReadWriteMany**, nfs-models, 5Gi) — migrated RWO→RWX 2026-06-19
   (was bound RWO, which capped the ISVC's `scaleTarget: 5` at 1 pod; recreated RWX).
 - Mount path: `/data` (venv + HF cache via `HF_HOME=/data/hf_cache`); app at `/app` (ConfigMap).
 

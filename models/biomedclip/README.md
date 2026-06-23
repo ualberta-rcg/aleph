@@ -12,7 +12,7 @@ for embeddings and `POST /v1/classify` for zero-shot.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-client, already RWX)
+kubectl apply -f pvc.yaml              # RWX venv + weights (nfs-models, already RWX)
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -37,4 +37,4 @@ shared-space sanity, model-echo, malformed.
 | Parameters | ~400M |
 | GPU | HAMi L40S slice |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `biomedclip-data` (RWX, nfs-client) — venv + weights |
+| PVC | `biomedclip-data` (RWX, nfs-models) — venv + weights |

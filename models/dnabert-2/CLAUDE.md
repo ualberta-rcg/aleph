@@ -17,7 +17,7 @@ genome annotation, regulatory/epigenomic tasks. Template-C (`type: embedding`), 
 - GPU request: **none** (CPU-only)
 
 ## Storage
-- PVC name: `dnabert-2-data` (**ReadWriteMany**, nfs-client, 5Gi)
+- PVC name: `dnabert-2-data` (**ReadWriteMany**, nfs-models, 5Gi)
 - Mount path: `/data` (init writes venv + model; server reads readOnly). App at `/app` (ConfigMap).
 - Warm-cache condition: sentinel `/data/venv/.pin-torch251` + `/data/model/config.json`
 

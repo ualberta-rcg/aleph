@@ -9,7 +9,7 @@ used. Custom FastAPI/transformers server on a HAMi GPU slice (fp16), scale-to-ze
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + HF cache (nfs-client)
+kubectl apply -f pvc.yaml              # RWX venv + HF cache (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC, GPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```

@@ -7,7 +7,7 @@ Custom FastAPI/transformers server, CPU-only, scale-to-zero.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client)
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -39,7 +39,7 @@ unknown-model 404), catalog (type=embedding, ctx 512).
 | Precision | fp32 |
 | Parameters | 110M (BERT-base) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `scibert-data` (RWX, nfs-client, 5Gi) |
+| Weights | PVC `scibert-data` (RWX, nfs-models, 5Gi) |
 
 ## Model Highlights
 

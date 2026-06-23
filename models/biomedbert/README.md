@@ -10,7 +10,7 @@ scale-to-zero.
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-client)
+kubectl apply -f pvc.yaml              # RWX weights + venv (nfs-models)
 kubectl apply -f inferenceservice.yaml # custom transformers server (ConfigMap server.py) + ISVC
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -39,7 +39,7 @@ distinctness, encoding_format, truncation (>512 tokens), guardrails (chat→embe
 | Precision | fp32 |
 | Parameters | 110M (BERT-base) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `biomedbert-data` (RWX, nfs-client) |
+| Weights | PVC `biomedbert-data` (RWX, nfs-models) |
 
 ## Model Highlights
 

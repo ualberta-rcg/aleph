@@ -13,7 +13,7 @@ Serves `POST /v1/science/embed` (with `/v1/vision/embed` as a secondary alias).
 ## Deployment
 
 ```bash
-kubectl apply -f pvc.yaml              # RWX venv + ONNX weights (nfs-client, already RWX)
+kubectl apply -f pvc.yaml              # RWX venv + ONNX weights (nfs-models, already RWX)
 kubectl apply -f inferenceservice.yaml # ConfigMap (server.py) + ISVC, CPU
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
@@ -38,4 +38,4 @@ model-echo, malformed. (Test generates a pure-stdlib PNG — no PIL needed in th
 | Parameters | 86M |
 | GPU | none (CPU, ONNX) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `dino-vit-b8-data` (RWX, nfs-client) — venv + ONNX weights |
+| PVC | `dino-vit-b8-data` (RWX, nfs-models) — venv + ONNX weights |

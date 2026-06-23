@@ -16,7 +16,7 @@ Template-C (`type: embedding`), custom-transformers-on-GPU.
 - GPU: HAMi `nvidia.com/gpumem: 3072` (3 GiB slice)
 
 ## Storage
-- PVC `matscibert-data` (**ReadWriteMany**, nfs-client, 15Gi) — split out of inferenceservice.yaml 2026-06-19.
+- PVC `matscibert-data` (**ReadWriteMany**, nfs-models, 15Gi) — split out of inferenceservice.yaml 2026-06-19.
 - Mount `/data` (venv + model + HF cache); server code at `/app` (ConfigMap).
 
 ## Known quirks

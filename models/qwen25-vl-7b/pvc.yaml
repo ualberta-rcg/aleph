@@ -1,5 +1,5 @@
-# Weights persist on NFS (nfs-client default SC = OneFS-safe 128Ki wsize) so scale-from-zero
-# cold starts skip the ~16GB re-download. See storage/nfs-client-storageclass.yaml.
+# Weights persist on NFS (nfs-models default SC = OneFS-safe 128Ki wsize) so scale-from-zero
+# cold starts skip the ~16GB re-download. See storage/nfs-models-storageclass.yaml.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -8,7 +8,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 40Gi

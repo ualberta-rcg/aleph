@@ -1,5 +1,5 @@
 # DeepSeek-R1 reasoning distilled into Llama-70B. Strong open chain-of-thought.
-# Weights (~140 GB) persist on NFS (nfs-client) so scale-from-zero cold starts skip
+# Weights (~140 GB) persist on NFS (nfs-models) so scale-from-zero cold starts skip
 # re-download. Populated once by download-job.yaml.
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -9,7 +9,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: nfs-client
+  storageClassName: nfs-models
   resources:
     requests:
       storage: 200Gi
