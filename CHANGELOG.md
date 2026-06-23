@@ -3,6 +3,65 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — Run model test.py from the login node (public VIP + Tyk); qwen3-235b scheduling fix
+
+Two changes, made while validating the live 3-head aleph cluster (`aleph1/2/3` = .43/.44/.45)
+end-to-end as a real user would: login node `.50` → MetalLB VIP `129.128.190.55` → Tyk
+(Bearer-key auth) → model-gateway → KServe/vLLM.
+
+### Model test.py: run from the login node, not just in-pod (8 models)
+The per-model `test.py` harnesses hard-coded `G = "http://localhost:8080"` and sent no auth, so
+they only ran via `kubectl exec` inside the gateway pod. Made them dual-mode without changing any
+test logic:
+- `G = os.environ.get("GW_URL", "http://localhost:8080")` — in-pod default unchanged.
+- `TYK_KEY` (when set) → `Authorization: Bearer <key>` header, injected in the shared `req()`
+  (and clap's direct `httpx.post`). Empty when unset, so in-pod runs are identical to before.
+- Files: `command-r-7b`, `gpt-oss-120b`, `qwen3-235b`, `bge-small`, `bge-m3`,
+  `multilingual-e5-small`, `bge-reranker-v2-m3`, `clap`.
+- Run from the login node: `GW_URL=http://129.128.190.55 TYK_KEY=<key> MODEL=<m> python3
+  models/<m>/test.py` (httpx required on the runner). NOTE: `MODEL` must match the dir — a stale
+  `MODEL` env makes a test target the wrong model.
+
+Validation (all via the public VIP + a real Tyk key, from the login node):
+command-r-7b 18/5/0, gpt-oss-120b 31/3/0, qwen3-235b 21/3/0, bge-small 9/2/0, bge-m3 9/2/0,
+multilingual-e5-small 9/2/0, bge-reranker-v2-m3 8/3/0, clap 7/0 (warm). Security verified: no key
+→ 401, wrong key → 403.
+
+### qwen3-235b: explicit nvidia.com/gpumem for HAMi exclusive-card scheduling
+`qwen3-235b` (4× L40S, TP=4) sat `Pending` with `0/4 ... CardInsufficientMemory` on every GPU
+node — including a fully **empty** one — so it never even started loading weights.
+
+- **Real root cause (operational, not the manifest): a stale hami-scheduler device cache.** A GPU
+  node that has had no successful GPU bind since boot keeps its handshake at `Requesting_` and the
+  scheduler's in-memory per-card memory accounting is wrong, so it phantom-rejects the empty cards.
+  `rack15-03` worked only because command-r-7b/gpt-oss-120b had warmed its cache.
+  `kubectl rollout restart deploy/hami-scheduler -n kube-system` rebuilt the accounting and the pod
+  scheduled immediately, loaded the 115 GiB AWQ checkpoint, and served (tested 200 OK via the VIP).
+  **Follow-up:** add a post-cold-boot `hami-scheduler` restart to the deploy automation, or the
+  first multi-GPU model to land on a freshly-booted empty node will phantom-fail until something
+  else warms that node's cache.
+- **Manifest change (defensive):** request `nvidia.com/gpu: "4"` **with an explicit
+  `nvidia.com/gpumem: "45000"`** (per card; just under the 46068 registered) instead of leaving
+  gpumem unset. On HAMi v2.9.0 the documented "exclusive card" path (gpu set, gpumem unset → 100%)
+  and `gpumem-percentage: 100` both take a broken code path (Project-HAMi/HAMi#1781:
+  `MemPercentagereq=100/101` → phantom `CardInsufficientMemory`). A concrete gpumem value uses the
+  normal memory-fit path (same as the other working models here). libvgpu then caps visible VRAM to
+  45000; `--gpu-memory-utilization 0.90` is relative to that. (On the 232 POC `nvidia.com/gpu`
+  alone "just works" because 232 runs the stock nvidia-device-plugin; aleph has no
+  nvidia-device-plugin — HAMi is the sole GPU plugin, so every request goes through its vGPU
+  accounting.) Updated the manifest's header comment accordingly.
+
+### Cluster-state changes (applied live; manifests already in-repo, no file diff)
+- **StorageClass:** applied `deploy-aleph/storage/nfs-client-storageclass.yaml` and demoted
+  `nfs-models` from default — the live cluster only had `nfs-models (default)`, but every model PVC
+  references `nfs-client`. Now matches repo intent (`nfs-client` = sole default; identical
+  provisioner + OneFS-safe mount options).
+- **Deployed 5 CPU models** (no GPU/HAMi slice): `bge-small`, `bge-m3`, `multilingual-e5-small`
+  (embeddings), `bge-reranker-v2-m3` (rerank), `clap` (audio+text embed). Gotcha: deploying the
+  ISVC/PVC is not enough — the gateway only routes a model once its **card ConfigMap**
+  (`models/<m>/details.yaml`, labelled `model-details=true`) is applied; the cards had to be applied
+  separately for the gateway to pick them up.
+
 ## 2026-06-23 — MetalLB public-VIP manifest + per-site overlay; Kubeflow Profiles dropped
 
 Packaging the MetalLB public-VIP work proven on cluster 230 (login `.50` → VIP `.55`,

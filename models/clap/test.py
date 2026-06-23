@@ -8,7 +8,9 @@ Run:  cat models/clap/test.py | kubectl exec -i -n models deploy/model-gateway -
 """
 import httpx, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "clap")
 EXP_DIM = 512
 SR = 48000
@@ -22,7 +24,7 @@ def record(icon, status, name, detail):
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:

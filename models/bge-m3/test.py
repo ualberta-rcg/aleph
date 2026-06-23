@@ -13,7 +13,9 @@ Run:  cat models/bge-m3/test.py | \
 """
 import base64, httpx, json, os, struct, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "bge-m3")
 EXP_DIM = 1024          # catalog.embedding_dimensions (BGE-M3 dense)
 MAX_INPUT = 8192        # catalog.max_input_tokens
@@ -21,7 +23,7 @@ results = []
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):

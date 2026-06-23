@@ -8,15 +8,19 @@ Run:  cat models/command-r-7b/test.py | \
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+# GW_URL: in-pod default is localhost:8080 (no auth). To run from the login node,
+# set GW_URL=http://129.128.190.55 (public VIP via Tyk) + TYK_KEY=<bearer key>.
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "command-r-7b")
 results = []
 
 
 def req(method, path, body=None, timeout=120, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
