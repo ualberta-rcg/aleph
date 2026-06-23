@@ -40,13 +40,13 @@ spec:
       enabled: false
     speaker:
       nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
+        node-role.kubernetes.io/control-plane: "true"   # RKE2 sets this label = "true" (vanilla k8s uses "")
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
     controller:
       nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
+        node-role.kubernetes.io/control-plane: "true"   # RKE2 sets this label = "true" (vanilla k8s uses "")
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
