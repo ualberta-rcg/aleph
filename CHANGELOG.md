@@ -3,6 +3,29 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — command-r-7b autoscaling tune + load test; fix gpt-oss stale min-scale=1
+
+### command-r-7b autoscaling (repo + live)
+- Added `maxReplicas: 4`, `scaleMetric: concurrency`, `scaleTarget: 5` to the predictor (was
+  unbounded with the Knative default target). Keeps it `minReplicas: 0` / on-demand.
+- Added `models/command-r-7b/loadtest.py` (async sustained-concurrency generator via the gateway).
+- **Load test (30 concurrent, ~170s, via VIP + Tyk):** 1576 requests, **0 errors**. Autoscaler
+  decided `desired=4` immediately (30 in-flight ÷ target 5 = 6, capped at 4). Throughput rose ~7→9
+  rps as replicas came online; the activator buffered during scale-up so nothing failed.
+- **Cold-GPU bind lag:** the 3 new replicas sat `Pending` ~100s before binding on `rack05-16`
+  (its HAMi scheduler cache had gone cold after the big models scaled down — same phenomenon as the
+  qwen3-235b note). Once warm, all 4 bound (3 on rack05-16, 1 on rack15-03).
+- **Scale-down observed:** after load stopped, `desired` held 4 for ~60–90s (stable window), then
+  dropped straight to 0 and pods went **4→1 in one step** (~2 min total). The last pod is then held
+  warm for the 15m `scale-to-zero-pod-retention-period` before 1→0. (So scale-down is automatic and
+  fast; the "15m" only governs the final warm-pod hold, not a per-pod ladder.)
+
+### Fix: gpt-oss-120b stuck always-on
+- gpt-oss-120b never scaled to zero because its **live revision had `min-scale=1`** (stale from an
+  earlier deploy) while the repo manifest already said `minReplicas: 0`. Re-applied the manifest to
+  roll a `min-scale=0` revision so it idles to zero like the others. (The `/v1/models` hits seen on
+  the pod were just kubelet probes + Prometheus `/metrics` scraping — not a wake loop.)
+
 ## 2026-06-23 — Deploy qwen35-122b; verify qwen3-235b scale-from-zero (GPU 4-card time-share)
 
 Cluster-state changes (manifests already in-repo, no file diff):

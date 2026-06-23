@@ -23,6 +23,12 @@ spec:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
     minReplicas: 0
+    maxReplicas: 4
+    # Scale up when avg in-flight requests per pod exceeds 5 (concurrency metric).
+    # 7B on one 32 GB L40S slice handles low double-digit concurrency comfortably;
+    # target 5 keeps latency low and makes on-demand scale-up responsive.
+    scaleMetric: concurrency
+    scaleTarget: 5
     timeout: 600
     nodeSelector:
       gpu: "on"
