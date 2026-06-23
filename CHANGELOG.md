@@ -3,6 +3,40 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — MetalLB public-VIP manifest + per-site overlay; Kubeflow Profiles dropped
+
+Packaging the MetalLB public-VIP work proven on cluster 230 (login `.50` → VIP `.55`,
+HTTP 200) so the real 3-head deployment can use it. Two layers, with the site-specific
+bits kept OUT of the auto-applied manifest so any cluster can use it:
+
+- **`rke2-manifests/40-metallb.yaml` (new, optional):** installs MetalLB only. Speaker +
+  controller + frr are **pinned to control-plane** (`nodeSelector` + the CP taint toleration),
+  and frr runs as a speaker sidecar (`frr.enabled: true`, `frrk8s: false`) so it is
+  constrained with the speaker. Carries **no VIP and no NIC** — those differ per cluster and
+  some clusters won't use MetalLB (delete the file to omit, like Profiles was).
+- **`overlays/` (new, sibling of `rke2-manifests/`):** the per-site node + VIP config.
+  RKE2 does **not** auto-apply it (kept outside the manifests dir on purpose). For Karim to
+  bake into the WW image overlay for the head nodes:
+  - `netplan/60-public-vip.yaml` — public NIC up/IP-free, VIP on a `dummy0` (netplan-native
+    equivalent of the proven `.55`-on-`lo`; netplan can't address `lo`), public subnet
+    on-link via the NIC (+ commented external default-route).
+  - `sysctl.d/99-public-vip.conf` — `rp_filter=0`, `arp_ignore=1`, `arp_announce=2`
+    (uses `all.*` so no NIC name is hard-coded).
+  - `metallb-vip.example.yaml` — `IPAddressPool` + `L2Advertisement` template (fill
+    VIP + NIC, `kubectl apply`).
+  - `README.md` — target paths, the proven recipe, fallbacks, resource caveat.
+- **`63-profiles.yaml` removed** — no full Kubeflow (only Istio/Knative/KServe).
+
+Key findings baked into the comments (also in memory `metallb-public-vip-recipe`):
+- **Destination routing works, source-policy doesn't** — kube-proxy un-DNATs the reply's
+  source to the VIP only in POSTROUTING (after the routing decision), so `ip rule from <vip>`
+  never fires; route the public subnet on-link via the NIC instead.
+- **`rp_filter` must be 0** — the reverse path for public sources is asymmetric, so
+  strict/loose silently drops the inbound SYN.
+- **Resource lesson:** MetalLB frr on the small 8-vCPU 230 head (CPU limits 283%
+  overcommitted) starved the control plane → CrashLoop. Pin to control-plane and size
+  heads ≥ 16 vCPU (16 GB RAM is plenty; the stack uses < 10 GB).
+
 ## 2026-06-22 — Serving-stack Jobs survive cold boot + kubeflow-namespace ordering fix + drop managed Traefik
 
 After the 230 Warewulf redeploy, the four serving-stack bootstrap Jobs

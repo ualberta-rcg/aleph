@@ -5,9 +5,9 @@ path and RKE2 applies them at boot, so the **next Warewulf deployment brings mos
 platform up automatically**.
 
 **This iteration's goal:** every component **installed and available**, in a default/ready
-state, **one file per component** (HAMi, KubeRay, NFS, cert-manager, Traefik, Tyk, and the
-serving stack split into Istio / Knative / KServe / Profiles). Site-specific wiring (macvlan
-public-IP, `gpu=on` labels, Tyk secret, cert hostnames) is a **post-deploy customization
+state, **one file per component** (HAMi, KubeRay, NFS, cert-manager, Traefik, Tyk, MetalLB, and the
+serving stack split into Istio / Knative / KServe). Site-specific wiring (MetalLB
+VIP/public NIC, `gpu=on` labels, Tyk secret, cert hostnames) is a **post-deploy customization
 step** (see below). The set will be refined iteratively.
 
 **Architecture:** cluster 232's front-door/TLS pattern, but **lean** — no full Kubeflow
@@ -63,12 +63,12 @@ reachable from the node once networking settles, so the retries converge fast on
 | `10-hami.yaml` | HAMi vGPU scheduler + device plugin | 230 `hami.yaml` verbatim |
 | `20-kuberay.yaml` | KubeRay operator 1.5.1 (pinned off GPU) | 230 `kuberay.yaml` + scheduling |
 | `30-nfs.yaml` | nfs-subdir provisioner → **`nfs-models`** SC (default, OneFS-safe) | 230 `nfs.yaml` + `storage/nfs-models-storageclass.yaml` merged |
+| `40-metallb.yaml` | MetalLB L2 install (speaker+frr **pinned to control-plane**; VIP/NIC are per-site → `../overlays/`) | new; **optional** |
 | `50-tyk-redis.yaml` | Bitnami Redis (ns `tyk`) | `04-install-tyk-gateway.sh` |
 | `51-tyk.yaml` | Tyk OSS gateway (ns `tyk`) | `configs/tyk-oss-values.yaml` |
 | `60-istio.yaml` | Job: Istio + Kubeflow mesh scaffolding | kubeflow/manifests v1.11 slice |
 | `61-knative.yaml` | Job: Knative Serving + `config-features` patch | kubeflow/manifests slice + post-install #1 |
 | `62-kserve.yaml` | Job: KServe + `models` ns + config + Istio allow-all | kubeflow/manifests slice + post-install #2–4 |
-| `63-profiles.yaml` | Job: Kubeflow Profiles (**optional**) | kubeflow/manifests slice |
 
 `../examples/ray-cluster-template.yaml` — RayCluster skeleton (head→non-GPU, worker→GPU,
 scale-to-zero). Lives **outside** this dir so RKE2 does **not** auto-apply it.
@@ -89,6 +89,7 @@ Istio ALLOW policy for `models` are in `62-kserve.yaml`.
 | `10-hami.yaml` | `scheduler.kubeScheduler.imageTag` (match cluster k8s version) | `v1.36.1` |
 | `01-cluster-issuer.yaml` | `acme.email` | `admin@alliancecan.ca` (maintainer `khoja1@ualberta.ca`) |
 | `51-tyk.yaml` | `global.secrets.APISecret` (placeholder → real) | from `.env` `TYK_API_SECRET` |
+| `../overlays/*` (metallb) | VIP, public NIC, subnet, gateway (per-site — NOT in the manifest) | `.55` / `enp6s19` / `129.128.190.48/28` / `129.128.190.49` |
 
 ## Post-deploy customization checklist
 
@@ -102,9 +103,11 @@ Istio ALLOW policy for `models` are in `62-kserve.yaml`.
    `istio/knative/kserve/profiles-bootstrap` jobs all `Complete`; then
    `kubectl get pods -n istio-system,knative-serving,kubeflow` Running. They chain
    automatically; a failed one retries until its prerequisite is up.
-5. **Traefik front door (customization, not manifests):** the bundled `rke2-traefik` already
-   serves; add the macvlan NetworkAttachmentDefinition + public IP, rebind its entrypoints to
-   that IP, set the hostname + TLS. Also expose **port 80** for cert-manager HTTP-01.
+5. **Public endpoint (MetalLB + node overlay, per-site → `../overlays/`):** bake the
+   `netplan/` + `sysctl.d/` onto the head nodes, then apply `overlays/metallb-vip.example.yaml`
+   filled with your VIP + NIC. A `type: LoadBalancer` Service then gets the VIP. `40-metallb.yaml`
+   only *installs* MetalLB (speaker+frr pinned to control-plane); the VIP/NIC are per-site. The
+   bundled `rke2-traefik` serves behind the VIP; also expose **port 80** for cert-manager HTTP-01.
 6. **cert-manager:** set a real `acme.email`; once port 80 is reachable, add a `Certificate` CR
    per endpoint hostname → `kubectl get certificate` → `Ready`.
 7. **Tyk:** inject the real admin secret from `.env` (`TYK_API_SECRET`) into
@@ -113,12 +116,14 @@ Istio ALLOW policy for `models` are in `62-kserve.yaml`.
 
 ## What is NOT here (by design)
 
-- **macvlan / public IP** — node customization (step 5).
+- **MetalLB VIP + public interface** — per-site; the node overlay (netplan + sysctl) and the
+  VIP config (`IPAddressPool`/`L2Advertisement`) live in `../overlays/` (step 5). The
+  `40-metallb.yaml` manifest only *installs* MetalLB — it carries no VIP or NIC.
 - **Rancher** — dropped; cert-manager kept.
 - **certbot** — cert-manager ACME replaces it (HTTP-01, port 80).
-- **Full Kubeflow** (Dex/dashboard/pipelines) — the serving Jobs install only
-  Istio/Knative/KServe. Kubeflow Profiles is an **opt-in file** (`63-profiles.yaml`) — delete
-  it to omit Profiles entirely.
+- **Full Kubeflow** (Dex/dashboard/pipelines/**Profiles**) — the serving Jobs install only
+  Istio/Knative/KServe. Kubeflow Profiles was removed (`63-profiles.yaml` deleted) — no full
+  Kubeflow by design.
 - **Warewulf overlay** (OS image, NVIDIA driver/toolkit, containerd nvidia runtime, RKE2
   install, `gpu=on` label) — lives on the WW server `172.26.92.10`, separate effort. These
   manifests assume nodes are already provisioned.
