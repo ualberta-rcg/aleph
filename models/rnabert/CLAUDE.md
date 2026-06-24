@@ -18,8 +18,13 @@ RNA-BERT from multimolecule is pre-trained on Rfam structured RNA alignments. ~8
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/rnabert/
+kubectl apply -f models/rnabert/pvc.yaml
+kubectl apply -f models/rnabert/inferenceservice.yaml
+kubectl apply -f models/rnabert/details.yaml
 kubectl get inferenceservice rnabert -n models
+
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/rnabert/test.py
 ```
 
 ## Gateway integration
