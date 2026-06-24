@@ -21,11 +21,15 @@ kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ## Testing
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/brainlm/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/brainlm/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Last run (2026-06-20): **6 PASS / 0 FAIL** — dim 1280, non-zero, distinctness, deterministic,
-model-echo, malformed.
+Last run (v2 deep pass 2026-06-24): **~10 checks, 0 FAIL** — dim 1280, non-zero, distinctness,
+deterministic, model-echo, malformed, norm, response fields, OpenAI structure.
 
 ## Key Configuration
 

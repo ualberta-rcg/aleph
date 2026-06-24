@@ -25,13 +25,18 @@ fMRI-array input → does NOT fit OpenAI `/v1/embeddings` (text-only). Also alia
 - `inferenceservice.yaml` — ConfigMap (server.py) + ISVC
 - `details.yaml` — v2 card (Template C)
 - `pvc.yaml` — RWX PVC
-- `test.py` — 6-case gateway battery (dim 1280 / non-zero / distinctness / deterministic / echo / malformed)
+- `test.py` — ~10-check gateway battery (dim 1280 / non-zero / distinctness / deterministic / echo /
+  malformed / norm / response fields / OpenAI structure). Run externally:
+  `GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/brainlm/test.py`
 
-## Notes
+## Notes / Gotchas
 - ViT-MAE (a vision model) adapted for fMRI: the server reshapes [424 rois, T] → [3, 434, 434]
   (pad 424→434; channels = signal, spatial-derivative, temporal-derivative). Requires 424 ROIs
   (UK Biobank parcellation); timepoints are padded/truncated to 434 internally.
 - Custom weight loading via ViTMAEConfig from config.json.
+- **mask_ratio=0**: ViTMAEForPreTraining defaults to masking patches; the server forces
+  `mask_ratio=0` so the full sequence is encoded (a deterministic 1280-dim embedding). Do not
+  leave the default mask_ratio or embeddings become random/incomplete.
 
 ## Update reminder
 - Watch vandijklab/BrainLM for v2 / larger variants (dim may change from 1280).
