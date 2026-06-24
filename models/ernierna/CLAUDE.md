@@ -7,7 +7,7 @@ ERNIE-RNA from multimolecule/Baidu is a structure-aware RNA foundation model (~8
 - **HF**: multimolecule/ernierna | **License**: AGPL-3.0 | **Params**: ~86M
 
 ## How the server works
-- `POST /v1/science/embed` -- RNA sequence(s) to embeddings
+- `POST /v1/embeddings` (OpenAI-shaped) and `POST /v1/science/embed` -- RNA sequence(s) to embeddings
 - Uses BertTokenizer (WordPiece) + ErnieRnaModel from multimolecule
 - Mean-pooled embeddings, max_length=1024
 
@@ -18,8 +18,13 @@ ERNIE-RNA from multimolecule/Baidu is a structure-aware RNA foundation model (~8
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/ernierna/
+kubectl apply -f models/ernierna/pvc.yaml
+kubectl apply -f models/ernierna/inferenceservice.yaml
+kubectl apply -f models/ernierna/details.yaml
 kubectl get inferenceservice ernierna -n models
+
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/ernierna/test.py
 ```
 
 ## Gateway integration
