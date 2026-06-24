@@ -91,9 +91,12 @@ kubectl logs -n models -l serving.kserve.io/inferenceservice=gemma-4-26b-a4b -c 
 curl http://gemma-4-26b-a4b-predictor.models.svc.cluster.local:8080/v1/chat/completions \
   -d '{"model":"gemma-4-26b-a4b","messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/gemma-4-26b-a4b/test.py
+
+# Or a direct chat request through the gateway VIP
+curl -X POST http://<GATEWAY_VIP>/v1/chat/completions \
+  -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \
   -d '{"model":"gemma-4-26b-a4b","messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
 ```
 

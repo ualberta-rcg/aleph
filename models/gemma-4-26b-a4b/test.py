@@ -1,4 +1,4 @@
-"""gemma-4-26b-a4b comprehensive gateway test (run inside the gateway pod).
+"""gemma-4-26b-a4b comprehensive gateway test.
 
 Google Gemma 4 26B A4B MoE (FP8, 1x L40S). Effort-mode reasoning (gemma4 parsers) WITH
 vision (multimodal). vLLM v0.20.2.
@@ -7,12 +7,18 @@ Vision variant of the standardized battery: image input must WORK (200 + descrip
 not be rejected. Otherwise: wake + full OpenAI/Anthropic + thinking on/off/budget/stream
 + meta-tasks + guardrails.
 
-Run:  cat models/gemma-4-26b-a4b/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/gemma-4-26b-a4b/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/gemma-4-26b-a4b/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "gemma-4-26b-a4b")
 HARD = ("A farmer has 17 sheep. All but 9 die. How many sheep are left? "
         "Take that number, multiply by 7, then subtract 4. Show your reasoning.")
@@ -23,8 +29,8 @@ results = []
 
 def req(method, path, body=None, timeout=300, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):

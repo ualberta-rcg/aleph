@@ -40,6 +40,10 @@ curl $GW/v1/messages -d '{"model":"gemma-4-26b-a4b","max_tokens":16000,
 ## Testing
 The 33-check vision battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/gemma-4-26b-a4b/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/gemma-4-26b-a4b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **31 PASS / 2 EXP / 0 FAIL** — image vision works, tools (gemma4 parser),
