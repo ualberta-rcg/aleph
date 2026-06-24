@@ -1,4 +1,4 @@
-"""oceangpt-30b comprehensive gateway test (run inside the gateway pod).
+"""oceangpt-30b comprehensive gateway test.
 
 Auto-detecting non-reasoning battery. Reads the model's capabilities (vision, tools)
 from the live /v1/models catalog and runs the checks that match: vision_works when
@@ -8,17 +8,23 @@ Otherwise the standard battery: wake, OpenAI features, meta-tasks, Anthropic, gu
 
 The wake() loop retries through 503 model_starting, so this works against a cold model.
 
-Run:  cat models/oceangpt-30b/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> MODEL=oceangpt-30b python3 models/oceangpt-30b/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/oceangpt-30b/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- env MODEL=oceangpt-30b python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "oceangpt-30b")
 results = []
 
 # ── detect capabilities from the live catalog ─────────────────────────────────
-_caps = httpx.get(f"{G}/v1/models", timeout=30).json()
+_caps = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS).json()
 _me = next((m for m in _caps.get("data", []) if m["id"] == MODEL), {})
 CAP = _me.get("capabilities", {})
 VISION = bool(CAP.get("vision"))
@@ -28,8 +34,8 @@ MAXOUT = int(_me.get("max_completion_tokens") or 8192) or 8192
 
 def req(method, path, body=None, timeout=180, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
