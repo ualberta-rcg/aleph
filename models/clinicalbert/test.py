@@ -3,12 +3,18 @@
 Embedding (Template C) battery for a custom transformers server (Bio_ClinicalBERT, CPU).
 768-dim mean-pooled embeddings of clinical text.
 
-Run:  cat models/clinicalbert/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/clinicalbert/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/clinicalbert/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "clinicalbert-110m")
 EXP_DIM = 768
 MAX_INPUT = 512
@@ -20,7 +26,7 @@ T3 = "HbA1c elevated at 9.2%; consider starting basal insulin."
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
