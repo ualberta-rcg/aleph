@@ -1,4 +1,4 @@
-# gpt-oss-20b adapted from POC (232) for cluster 230 / HAMi vGPU.
+# gpt-oss-20b on the GPU cluster / HAMi vGPU.
 # Reasoning model (harmony format, reasoning_effort low/med/high, native tools).
 #
 # Changes vs POC:

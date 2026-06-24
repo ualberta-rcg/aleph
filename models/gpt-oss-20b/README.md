@@ -33,6 +33,10 @@ curl $GW/v1/messages -d '{"model":"gpt-oss-20b","max_tokens":16000,
 ## Testing
 The 34-check battery runs inside the gateway pod (the first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/gpt-oss-20b/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/gpt-oss-20b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **31 PASS / 3 EXP / 0 FAIL** — managed thinking ON/OFF + token-budget + streaming reasoning, tools, Anthropic parity, truncation, meta-tasks, guardrails.
