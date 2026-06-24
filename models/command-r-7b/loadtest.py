@@ -4,7 +4,7 @@
 Holds CONC in-flight chat requests against the gateway for DURATION seconds,
 so Knative's concurrency metric exceeds the per-pod target and scales up.
 
-    GW_URL=http://129.128.190.55 TYK_KEY=<key> CONC=30 DURATION=150 \
+    GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> CONC=30 DURATION=150 \
         python3 models/command-r-7b/loadtest.py
 """
 import asyncio
@@ -13,7 +13,7 @@ import time
 
 import httpx
 
-GW = os.environ.get("GW_URL", "http://129.128.190.55")
+GW = os.environ.get("GW_URL", "http://localhost:8080")
 KEY = os.environ.get("TYK_KEY", "")
 MODEL = os.environ.get("MODEL", "command-r-7b")
 CONC = int(os.environ.get("CONC", "30"))

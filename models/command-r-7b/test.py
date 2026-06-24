@@ -8,8 +8,8 @@ Run:  cat models/command-r-7b/test.py | \
 """
 import httpx, json, os, time
 
-# GW_URL: in-pod default is localhost:8080 (no auth). To run from the login node,
-# set GW_URL=http://129.128.190.55 (public VIP via Tyk) + TYK_KEY=<bearer key>.
+# GW_URL: in-pod default is localhost:8080 (no auth). To run externally,
+# set GW_URL=http://<GATEWAY_VIP> (gateway VIP via Tyk) + TYK_KEY=<bearer key>.
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
