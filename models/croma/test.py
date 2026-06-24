@@ -4,11 +4,17 @@ Embedding battery for CROMA (antofuller/CROMA, GPU). Dual-encoder ViT producing
 GAP-pooled embeddings from SAR (Sentinel-1) and/or optical (Sentinel-2) imagery.
 Endpoint: /v1/embeddings. Returns OpenAI-format {data:[{embedding,...}]}.
 
-Run:  cat models/croma/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/croma/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/croma/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "croma")
 results = []
 
@@ -19,7 +25,7 @@ def record(icon, status, name, detail):
 
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
-    r = httpx.post(f"{G}/v1/embeddings", json=body, timeout=timeout)
+    r = httpx.post(f"{G}/v1/embeddings", json=body, timeout=timeout, headers=_HEADERS)
     try: return r, r.json()
     except Exception: return r, {}
 
@@ -115,7 +121,7 @@ def checks(dim):
     record("PASS" if r.status_code == 200 and present == required else "FAIL",
            r.status_code, "response fields", f"present={sorted(present)} required={sorted(required)}")
 
-    r = httpx.get(f"{G}/v1/models", timeout=30)
+    r = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS)
     try: mlist = r.json().get("data", [])
     except Exception: mlist = []
     found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
