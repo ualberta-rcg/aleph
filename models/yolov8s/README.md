@@ -21,15 +21,16 @@ Ultralytics YOLOv8 Small object detection model exported to ONNX.
 ## Example Usage
 
 ```bash
-curl -X POST "https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vision/detect" \
+curl -X POST "http://<GATEWAY_VIP>/v1/vision/detect" \
+  -H "Authorization: Bearer <TYK_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"model":"yolov8s","image":"<base64_png>"}'
 ```
 
+Run the full test battery externally:
+
 ```bash
-curl -X POST "https://kubeflow.vulcan.alliancecan.ca/serving/models/yolov8s/v1/vision/detect" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"yolov8s","image":"<base64_png>"}'
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/yolov8s/test.py
 ```
 
 ## Resource Requirements
