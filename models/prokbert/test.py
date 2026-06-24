@@ -1,14 +1,20 @@
-"""prokbert DNA-embedding gateway test (run inside the gateway pod).
+"""prokbert DNA-embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (ProkBERT-mini, GPU).
 384-dim mean-pooled embeddings of bacterial DNA sequences. No PVC (loads from HF hub, ephemeral).
 
-Run:  cat models/prokbert/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/prokbert/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/prokbert/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "prokbert")
 EXP_DIM = 384
 MAX_INPUT = 1024
@@ -20,7 +26,7 @@ S3 = "GCGCGCGCGCATATATATATGCGCGCGCGCATATATATAT"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)
