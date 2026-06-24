@@ -1,4 +1,4 @@
-# qwen2.5-vl-7b adapted from POC (232) for cluster 230 / HAMi vGPU.
+# qwen2.5-vl-7b on the GPU cluster / HAMi vGPU.
 # Multimodal: text + images + video (OCR, charts, document parsing, localization).
 #
 # Changes vs POC:
