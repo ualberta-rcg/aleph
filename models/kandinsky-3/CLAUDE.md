@@ -47,9 +47,12 @@ kubectl apply -f models/kandinsky-3/details.yaml
 kubectl get isvc,pods -n models | grep kandinsky-3
 kubectl logs -n models -l serving.kserve.io/inferenceservice=kandinsky-3 -c kserve-container -f
 
-# test through the gateway (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/images/generations \
-  -H "Content-Type: application/json" \
+# test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/kandinsky-3/test.py
+
+# or a direct image request through the gateway VIP
+curl -X POST http://<GATEWAY_VIP>/v1/images/generations \
+  -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \
   -d '{"model":"kandinsky-3","prompt":"a red fox in snow","n":1,"size":"1024x1024"}'
 ```
 

@@ -1,4 +1,4 @@
-"""kandinsky-3 comprehensive gateway test (run inside the gateway pod).
+"""kandinsky-3 comprehensive gateway test.
 
 Exercises the full OpenAI image surface for a KServe custom-predictor image model
 through the default gateway (no model-specific gateway code):
@@ -13,7 +13,11 @@ through the default gateway (no model-specific gateway code):
   - Catalog: model present (type=image) via /v1/models?all=true.
   - Guardrails: bad model 404, missing prompt handled.
 
-Run:  cat models/kandinsky-3/test.py | \\
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/kandinsky-3/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/kandinsky-3/test.py | \\
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, os, time, base64, struct
