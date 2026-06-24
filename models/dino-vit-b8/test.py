@@ -1,14 +1,19 @@
-"""dino-vit-b8 gateway test — comprehensive (run inside the gateway pod).
+"""dino-vit-b8 gateway test — comprehensive.
 
 768-dim DINO ViT-B/8 self-supervised visual embeddings via /v1/vision/embed.
 
-Run:
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/dino-vit-b8/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
   cat models/dino-vit-b8/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, math, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = "dino-vit-b8"
 EP = f"{G}/v1/vision/embed"
 EXP_DIM = 768
@@ -42,7 +47,7 @@ def png_b64(seed=7, w=224, h=224):
 
 
 def call(body, timeout=300):
-    return httpx.post(EP, json=body, timeout=timeout)
+    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS)
 
 
 def _cos(a, b):
@@ -158,7 +163,7 @@ def checks():
            "sequential 5-image batch", "all 200" if batch_ok else f"failed i={i}")
 
     # 13. backward-compat alias /v1/science/embed
-    r7 = httpx.post(f"{G}/v1/science/embed", json={"model": MODEL, "image": png_b64(50)}, timeout=120)
+    r7 = httpx.post(f"{G}/v1/science/embed", json={"model": MODEL, "image": png_b64(50)}, timeout=120, headers=_HEADERS)
     if r7.status_code == 200:
         d7 = r7.json()
         record("PASS" if len(_vec(d7)) == EXP_DIM else "FAIL",
@@ -167,12 +172,12 @@ def checks():
         record("EXP", r7.status_code, "alias /v1/science/embed", "may not be routed")
 
     # 14. guard — bad model
-    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60)
+    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60, headers=_HEADERS)
     record("EXP" if rg1.status_code == 404 else "FAIL",
            rg1.status_code, "guard bad model", rg1.text[:80])
 
     # 15. guard — missing image
-    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60)
+    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60, headers=_HEADERS)
     record("EXP" if rg2.status_code >= 400 else "FAIL",
            rg2.status_code, "guard missing image", rg2.text[:80])
 
