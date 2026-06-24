@@ -1,12 +1,17 @@
-"""efficientnet-b0 gateway test — comprehensive (run inside the gateway pod).
+"""efficientnet-b0 gateway test — comprehensive.
 
-Run:
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/efficientnet-b0/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
   cat models/efficientnet-b0/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = "efficientnet-b0"
 EP = f"{G}/v1/vision/classify"
 results = []
@@ -39,7 +44,7 @@ def png_b64(seed=7, w=224, h=224):
 
 
 def call(body, timeout=240):
-    return httpx.post(EP, json=body, timeout=timeout)
+    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS)
 
 
 # ── 1. Wake ──────────────────────────────────────────────────────────
@@ -167,12 +172,12 @@ def checks():
         record("FAIL", r7a.status_code, "determinism same image", "request failed")
 
     # 17. guard — bad model
-    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60)
+    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60, headers=_HEADERS)
     record("EXP" if rg1.status_code == 404 else "FAIL",
            rg1.status_code, "guard bad model", rg1.text[:80])
 
     # 18. guard — missing image
-    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60)
+    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60, headers=_HEADERS)
     record("EXP" if rg2.status_code >= 400 else "FAIL",
            rg2.status_code, "guard missing image", rg2.text[:80])
 
