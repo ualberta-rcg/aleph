@@ -21,6 +21,10 @@ The 10-check biomedical-embedding battery runs inside the gateway pod (first cal
 scaled-to-zero GPU model — cold start ~1–2 min):
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biobert/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/biobert/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
