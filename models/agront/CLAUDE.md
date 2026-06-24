@@ -9,10 +9,10 @@ embeddings from plant DNA via `/v1/embeddings` and `/v1/science/predict`.
 - `model_id = InstaDeepAI/agro-nucleotide-transformer-1b`; loads from `/data/model`.
 - cu121 torch, `transformers==4.46.3`, sentencepiece.
 
-## Migration changes vs 232 (significant)
-- 232 used `RawDeployment` + GPU-Operator nodeSelector `nvidia.com/gpu.product` and
+## Migration changes (significant)
+- Pre-migration used `RawDeployment` + GPU-Operator nodeSelector `nvidia.com/gpu.product` and
   downloaded ~4GB to ephemeral `/tmp` every cold start.
-- Converted to standard 230 pattern: Knative scale-to-zero, **PVC venv + weights**,
+- Converted to the standard Aleph pattern: Knative scale-to-zero, **PVC venv + weights**,
   HAMi `nodeSelector gpu: "on"` + `nvidia.com/gpu: 1` + `nvidia.com/gpumem: 8192`.
 - HF token via `secretKeyRef`. Server now reads `MODEL_DIR=/data/model`.
 
@@ -23,4 +23,5 @@ embeddings from plant DNA via `/v1/embeddings` and `/v1/science/predict`.
 - GPU 1 slice, gpumem 8192 MiB. CPU 2/4, mem 6Gi/12Gi. PVC `agront-data` 20Gi.
 
 ## Validation
-See [TEST.md](TEST.md). dim=1500 on both endpoints.
+See [test.py](test.py). dim=1500 on both endpoints.
+Run externally: `GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/agront/test.py`.

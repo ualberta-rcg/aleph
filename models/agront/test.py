@@ -4,12 +4,18 @@ Embedding (Template C) battery for a custom transformers server (AgroNT-1B plant
 1500-dim mean-pooled plant DNA embeddings. /v1/embeddings handler fixed to OpenAI-compliant
 (batch + usage + truncate) 2026-06-19.
 
-Run:  cat models/agront/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/agront/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/agront/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "agront")
 EXP_DIM = 1500
 MAX_INPUT = 1024
@@ -21,7 +27,7 @@ S3 = "GCGCGCGCGCATATATATATGCGCGCGCGCATATATATATGCGC"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)

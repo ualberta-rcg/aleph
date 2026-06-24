@@ -2,7 +2,7 @@
 # HuggingFace: InstaDeepAI/agro-nucleotide-transformer-1b (Apache-2.0)
 # Trained on 48 edible plant species, 6-mer tokenizer, 472.5B tokens
 # API: POST /v1/embeddings — plant DNA → 1500-dim embedding
-# Migrated to 230: Knative scale-to-zero, PVC venv+weights, HAMi GPU slice (gpumem 8192).
+# Aleph POC cluster: Knative scale-to-zero, PVC venv+weights, HAMi GPU slice (gpumem 8192).
 ---
 apiVersion: v1
 kind: ConfigMap
