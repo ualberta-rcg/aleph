@@ -23,6 +23,17 @@ data:
       "param_translation": { "thinking": { "mode": "none" } },
       "defaults": {},
       "custom_params": { "passthrough": true },
+      "input_map": {
+        "images": "list of base64-encoded PNG/JPEG biomedical images",
+        "texts": "list of text strings (figure captions, labels)",
+        "labels": "list of label strings (for /v1/classify only)"
+      },
+      "output_map": {
+        "image_embeddings": "list of 512-dim float vectors (one per image)",
+        "text_embeddings": "list of 512-dim float vectors (one per text)",
+        "classifications": "list of ranked [{label, score}] per image (/v1/classify)",
+        "model": "model id echo"
+      },
       "schema_version": 2,
       "catalog": {
         "description_short": "Microsoft BiomedCLIP — biomedical vision-language CLIP; shared 512-dim image+text embeddings.",

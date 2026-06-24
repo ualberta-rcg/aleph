@@ -11,60 +11,87 @@ data:
       "id": "megadetector",
       "status": "production",
       "type": "detect",
-      "description_short": "Microsoft MegaDetector v5 wildlife camera trap detector for animals, humans, and vehicles.",
-      "description": "MegaDetector v5 is a YOLOv5-based object detection model from Microsoft AI for Earth, specifically trained for wildlife camera trap images. It detects three categories: animals, humans, and vehicles with bounding boxes and confidence scores. Widely used in ecology, conservation biology, and biodiversity monitoring. Uses the megadetector pip package. CPU-capable.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/vision/detect",
         "health": "/health"
       },
-      "owned_by": "microsoft",
-      "source": "microsoft/MegaDetector",
-      "source_url": "https://github.com/microsoft/CameraTraps",
-      "license": "MIT",
-      "parameters": "~87M",
-      "precision": "float32",
-      "architecture": "YOLOv5-based camera trap detector",
-      "framework": "megadetector + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 120,
-        "pvc": "megadetector-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "megadetector",
-        "api_name": "megadetector",
-        "gateway_type": "detect"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
       },
-      "domain": "ecology",
-      "subdomain": "wildlife-monitoring",
-      "tags": ["science", "ecology", "wildlife", "detect", "camera-trap", "conservation", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
-        "image": "single base64-encoded JPEG/PNG image (preferred)",
-        "images": "optional array of base64 images for batch mode",
-        "threshold": "confidence threshold (default: 0.2)"
+        "image": {
+          "type": "string",
+          "required": false,
+          "format": "base64",
+          "description": "Single base64-encoded JPEG/PNG camera trap image"
+        },
+        "images": {
+          "type": "array",
+          "required": false,
+          "description": "Array of base64-encoded images for batch mode (alternative to 'image')"
+        },
+        "threshold": {
+          "type": "float",
+          "required": false,
+          "default": 0.2,
+          "description": "Confidence threshold for detections (0-1)"
+        }
       },
       "output_map": {
-        "detections": "array per image of [{category: animal|human|vehicle, bbox: [x,y,w,h] normalized, conf: float}]"
+        "model": {"type": "string", "description": "Model name (megadetector)"},
+        "threshold": {"type": "float", "description": "Threshold used for this request"},
+        "detections": {
+          "type": "array",
+          "description": "Nested array — one sub-array per input image, each containing detection objects",
+          "items": {
+            "type": "array",
+            "items": {
+              "category": "string — animal|human|vehicle",
+              "bbox": "[x, y, w, h] normalized 0-1 coordinates",
+              "conf": "float — confidence 0-1"
+            }
+          }
+        }
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model",
-        "checkpoint": "md_v5a.0.0.pt"
+      "catalog": {
+        "description_short": "Microsoft MegaDetector v5 — wildlife camera trap detector (animal/human/vehicle, GPU)",
+        "description": "MegaDetector v5 by Microsoft AI for Earth (~87M params, YOLOv5-based). Detects animals, humans, and vehicles in camera trap images. Widely used in ecology and conservation. Supports single or batch image input with configurable confidence threshold. GPU inference via PyTorch.",
+        "owned_by": "microsoft",
+        "source": "microsoft/MegaDetector",
+        "source_url": "https://github.com/microsoft/CameraTraps",
+        "license": "MIT",
+        "parameters": "~87M",
+        "precision": "fp32",
+        "framework": "pytorch",
+        "domain": "ecology",
+        "subdomain": "wildlife-monitoring",
+        "tags": ["science", "ecology", "wildlife", "detect", "camera-trap", "gpu"]
       }
     }

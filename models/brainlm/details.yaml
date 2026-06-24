@@ -29,6 +29,14 @@ data:
       "defaults": {},
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "fmri": "[[float]] — [n_rois=424, n_timepoints] fMRI ROI time-series (padded to 434x434 internally)",
+        "model_size": "string — '650M' (default)"
+      },
+      "output_map": {
+        "data": "[{index, embedding, object}] — OpenAI-format embedding list",
+        "model": "brainlm"
+      },
       "catalog": {
         "description_short": "BrainLM 650M fMRI foundation model (ViT-MAE) — 1280-dim brain-activity embeddings from 424-ROI time-series.",
         "description": "BrainLM (650M, vandijklab, ICLR 2024) is an fMRI foundation model based on ViT-MAE (Masked Autoencoder), trained on 6,700h of fMRI from UK Biobank + Human Connectome Project. Accepts fMRI ROI time-series (424 brain regions × timepoints), converts to a 3-channel 434×434 image (signal + spatial/temporal derivatives), and runs ViTMAEForPreTraining to extract a 1280-dim latent embedding (ViT-Huge hidden) per window. Downstream: disease classification, brain-state prediction, connectivity analysis. Non-text domain model: fMRI-array input, does NOT fit OpenAI /v1/embeddings (text-only) — primary is /v1/science/embed; /v1/embeddings kept as a secondary alias.",

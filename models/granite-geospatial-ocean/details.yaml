@@ -9,67 +9,61 @@ data:
   details.json: |
     {
       "id": "granite-geospatial-ocean",
-      "type": "classify",
-      "description_short": "IBM Granite Geospatial Ocean — Sentinel-3 ocean color foundation model. 16 bands, ViT MAE.",
-      "description": "IBM Granite Geospatial Ocean is a ViT MAE foundation model pretrained on 512K Sentinel-3 OLCI+SLSTR ocean images. It uses 16 spectral bands: OL1-OL12, OL16, OL17, OL18, OL21 + SLSTR SST. The 42x42 patch-based model generates 768-dim embeddings suitable for ocean color analysis, chlorophyll estimation, and water quality monitoring. Developed by IBM and STFC. Apache 2.0 license.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "status": "production",
+      "type": "embedding",
       "endpoints": {
         "primary": "/v1/science/embed",
         "health": "/health"
       },
-      "owned_by": "ibm-granite",
-      "source": "ibm-granite/granite-geospatial-ocean",
-      "source_url": "https://huggingface.co/ibm-granite/granite-geospatial-ocean",
-      "license": "Apache-2.0",
-      "parameters": "N/A (ViT-Base scale)",
-      "precision": "fp32",
-      "architecture": "ViT MAE (16 input channels, 42x42 image size, prithvi_eo_v2_300 backbone)",
-      "framework": "terratorch + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S",
-        "cpu_request": "2",
-        "memory_request": "8Gi",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 180,
-        "pvc": "granite-geospatial-ocean-data (inline)",
-        "image": "python:3.11",
-        "venv": false
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "granite-geospatial-ocean",
-        "api_name": "granite-geospatial-ocean",
-        "gateway_type": "classify"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "5-10 minutes (pip install on boot; no venv-on-PVC)"
       },
-      "domain": "earth-observation",
-      "subdomain": "ocean",
-      "tags": ["science", "earth-observation", "ocean", "embed", "sentinel-3", "olci", "slstr", "ocean-color", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
         "image": "[[[16 floats], ...], ...] — (C=16, H=42, W=42) Sentinel-3 bands",
-        "bands": "OL1-OL12, OL16, OL17, OL18, OL21, SLSTR SST",
         "demo": "boolean — returns synthetic 768-dim embeddings"
       },
       "output_map": {
         "embeddings": "[[float]] — (N, 768) embeddings",
-        "shape": "[N, 768]",
-        "model": "granite-geospatial-ocean"
+        "shape": "[N, D] — embedding shape",
+        "model": "granite-geospatial-ocean",
+        "demo": "boolean — present if demo mode used"
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "checkpoint": "/data/checkpoint.pt",
-        "config": "/data/config.yaml",
-        "backbone": "prithvi_eo_v2_300",
-        "image_size": "42x42"
+      "catalog": {
+        "description_short": "IBM Granite Geospatial Ocean — Sentinel-3 ocean color foundation model. 16 bands, ViT MAE.",
+        "description": "IBM Granite Geospatial Ocean is a ViT MAE foundation model pretrained on 512K Sentinel-3 OLCI+SLSTR ocean images. It uses 16 spectral bands: OL1-OL12, OL16, OL17, OL18, OL21 + SLSTR SST. The 42x42 patch-based model generates 768-dim embeddings suitable for ocean color analysis, chlorophyll estimation, and water quality monitoring. Developed by IBM and STFC. Apache 2.0 license.",
+        "owned_by": "ibm-granite",
+        "source": "ibm-granite/granite-geospatial-ocean",
+        "source_url": "https://huggingface.co/ibm-granite/granite-geospatial-ocean",
+        "license": "Apache-2.0",
+        "parameters": "N/A (ViT-Base scale)",
+        "precision": "fp32",
+        "framework": "terratorch + PyTorch",
+        "domain": "earth-observation",
+        "subdomain": "ocean",
+        "tags": ["embedding", "science", "earth-observation", "ocean", "sentinel-3", "olci", "slstr", "ocean-color", "gpu"],
+        "gpu": true,
+        "max_input_tokens": 0,
+        "embedding_dimensions": 768,
+        "pooling": "patch embeddings (ViT MAE)"
       }
     }

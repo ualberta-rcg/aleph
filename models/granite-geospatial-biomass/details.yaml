@@ -9,65 +9,58 @@ data:
   details.json: |
     {
       "id": "granite-geospatial-biomass",
+      "status": "production",
       "type": "classify",
-      "description_short": "IBM Granite Geospatial Biomass — above-ground biomass estimation from HLS imagery. Swin-B + UPerNet.",
-      "description": "IBM Granite Geospatial Biomass is an above-ground biomass estimation model fine-tuned from a Prithvi-EO backbone (Swin-B + UPerNet architecture) on GEDI L4A biomass labels across 15 biomes globally. It accepts 6-band HLS satellite imagery (Blue, Green, Red, NIR, SWIR1, SWIR2) and produces per-pixel biomass predictions in Mg/ha. The model was developed by IBM Research for carbon stock monitoring and deforestation tracking. Apache 2.0 license.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/predict",
         "health": "/health"
       },
-      "owned_by": "ibm-granite",
-      "source": "ibm-granite/granite-geospatial-biomass",
-      "source_url": "https://huggingface.co/ibm-granite/granite-geospatial-biomass",
-      "license": "Apache-2.0",
-      "parameters": "~350MB checkpoint",
-      "precision": "fp32",
-      "architecture": "Swin-B encoder + UPerNet decoder (fine-tuned from Prithvi-EO)",
-      "framework": "terratorch + LightningInferenceModel",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S",
-        "cpu_request": "2",
-        "memory_request": "8Gi",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 180,
-        "pvc": "granite-geospatial-biomass-data (inline)",
-        "image": "python:3.11",
-        "venv": false
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "granite-geospatial-biomass",
-        "api_name": "granite-geospatial-biomass",
-        "gateway_type": "classify"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "5-10 minutes (pip install on boot; no venv-on-PVC)"
       },
-      "domain": "earth-observation",
-      "subdomain": "biomass",
-      "tags": ["science", "earth-observation", "biomass", "classify", "hls", "gedi", "carbon", "forest", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
         "image": "[[[[6 floats], ...], ...], ...] — (C=6, H, W) HLS bands: Blue, Green, Red, NIR, SWIR1, SWIR2",
         "demo": "boolean — returns synthetic biomass map"
       },
       "output_map": {
         "biomass_map": "[[float]] — (H, W) predicted biomass Mg/ha per pixel",
-        "biomass_mean": "scene mean biomass in Mg/ha",
+        "biomass_mean": "float — scene mean biomass in Mg/ha",
         "model": "granite-geospatial-biomass"
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "config": "/data/config.yaml",
-        "checkpoint": "/data/biomass_model_lightning.ckpt",
-        "framework": "terratorch"
+      "catalog": {
+        "description_short": "IBM Granite Geospatial Biomass — above-ground biomass estimation from HLS imagery. Swin-B + UPerNet.",
+        "description": "IBM Granite Geospatial Biomass is an above-ground biomass estimation model fine-tuned from a Prithvi-EO backbone (Swin-B + UPerNet architecture) on GEDI L4A biomass labels across 15 biomes globally. It accepts 6-band HLS satellite imagery (Blue, Green, Red, NIR, SWIR1, SWIR2) and produces per-pixel biomass predictions in Mg/ha. The model was developed by IBM Research for carbon stock monitoring and deforestation tracking. Apache 2.0 license.",
+        "owned_by": "ibm-granite",
+        "source": "ibm-granite/granite-geospatial-biomass",
+        "source_url": "https://huggingface.co/ibm-granite/granite-geospatial-biomass",
+        "license": "Apache-2.0",
+        "parameters": "~350MB checkpoint",
+        "precision": "fp32",
+        "framework": "terratorch + LightningInferenceModel",
+        "domain": "earth-observation",
+        "subdomain": "biomass",
+        "tags": ["classify", "science", "earth-observation", "biomass", "hls", "gedi", "carbon", "forest", "gpu"],
+        "gpu": true,
+        "max_input_tokens": 0
       }
     }

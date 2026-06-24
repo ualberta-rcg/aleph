@@ -18,10 +18,20 @@ def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)
 
 
-def embed(body, timeout=300):
+def embed(body, ep="/v1/science/embed", timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+        r = httpx.post(f"{G}{ep}", json=body, timeout=timeout)
+        try: return r, r.json()
+        except Exception: return r, {}
+    except Exception:
+        return None, {}
+
+
+def classify(body, timeout=300):
+    body = {**body, "model": MODEL}
+    try:
+        r = httpx.post(f"{G}/v1/classify", json=body, timeout=timeout)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:
@@ -67,25 +77,94 @@ def wake_dim():
 
 
 def checks():
-    # image modality
+    # 2. image embedding dimension
     r, d = embed({"images": [png_b64(2)]}); v = _vec(d, "image_embeddings")
     record("PASS" if r.status_code == 200 and len(v) == EXP_DIM and not all(x == 0 for x in v) else "FAIL",
            r.status_code, "image + dim", f"dim={len(v)} zero={all(x==0 for x in v)} sample={[round(x,3) for x in v[:4]]}")
-    # text distinctness + deterministic
+
+    # 3. text distinctness
     _, d1 = embed({"texts": ["pneumonia on chest x-ray"]}); _, d2 = embed({"texts": ["normal brain MRI"]})
     v1, v2 = _vec(d1, "text_embeddings"), _vec(d2, "text_embeddings"); c = _cos(v1, v2) if v1 and v2 else 1.0
     record("PASS" if c < 0.999 else "FAIL", 200, "text distinctness", f"cos(a,b)={c:.5f}")
+
+    # 4. deterministic
     _, d1 = embed({"texts": ["same caption twice"]}); _, d2 = embed({"texts": ["same caption twice"]})
     v1, v2 = _vec(d1, "text_embeddings"), _vec(d2, "text_embeddings"); c = _cos(v1, v2) if v1 and v2 else 0.0
     record("PASS" if c > 0.9999 else "FAIL", 200, "deterministic", f"cos(x,x)={c:.5f}")
-    # shared space
+
+    # 5. shared space (image & text same dim)
     _, dt = embed({"texts": ["xray"]}); _, di = embed({"images": [png_b64(9)]})
     vt, vi = _vec(dt, "text_embeddings"), _vec(di, "image_embeddings")
     record("PASS" if len(vt) == len(vi) == EXP_DIM else "FAIL", 200, "shared space 512", f"text={len(vt)} image={len(vi)}")
+
+    # 6. model echo
     r, d = embed({"texts": ["echo"]})
     record("PASS" if r.status_code == 200 and d.get("model") == "biomedclip" else "FAIL", r.status_code, "model echo", f"model={d.get('model')!r}")
+
+    # 7. malformed input handled
     r, d = embed({})
     record("PASS" if r is not None and r.status_code < 600 else "FAIL", r.status_code if r else 0, "malformed handled", f"status={r.status_code if r else 'err'} (lenient)")
+
+    # 8. multi-image batch
+    r, d = embed({"images": [png_b64(10), png_b64(11)]})
+    ie = d.get("image_embeddings", [])
+    record("PASS" if r.status_code == 200 and len(ie) == 2 and all(len(e) == EXP_DIM for e in ie) else "FAIL",
+           r.status_code, "multi-image batch", f"count={len(ie)}")
+
+    # 9. multi-text batch
+    r, d = embed({"texts": ["pneumonia", "fracture", "normal"]})
+    te = d.get("text_embeddings", [])
+    record("PASS" if r.status_code == 200 and len(te) == 3 and all(len(e) == EXP_DIM for e in te) else "FAIL",
+           r.status_code, "multi-text batch", f"count={len(te)}")
+
+    # 10. image+text combined request
+    r, d = embed({"images": [png_b64(20)], "texts": ["chest x-ray"]})
+    has_both = "image_embeddings" in d and "text_embeddings" in d
+    record("PASS" if r.status_code == 200 and has_both else "FAIL",
+           r.status_code, "image+text combined", f"has_image={('image_embeddings' in d)} has_text={('text_embeddings' in d)}")
+
+    # 11. image determinism
+    _, d1 = embed({"images": [png_b64(42)]}); _, d2 = embed({"images": [png_b64(42)]})
+    v1, v2 = _vec(d1, "image_embeddings"), _vec(d2, "image_embeddings")
+    c = _cos(v1, v2) if v1 and v2 else 0.0
+    record("PASS" if c > 0.9999 else "FAIL", 200, "image deterministic", f"cos={c:.5f}")
+
+    # 12. different images produce different embeddings
+    _, d1 = embed({"images": [png_b64(1)]}); _, d2 = embed({"images": [png_b64(99)]})
+    v1, v2 = _vec(d1, "image_embeddings"), _vec(d2, "image_embeddings")
+    c = _cos(v1, v2) if v1 and v2 else 1.0
+    record("PASS" if c < 0.999 else "FAIL", 200, "image distinctness", f"cos={c:.5f}")
+
+    # 13. /v1/embeddings alias works
+    r, d = embed({"texts": ["alias test"]}, ep="/v1/embeddings")
+    v = _vec(d, "text_embeddings")
+    record("PASS" if r.status_code == 200 and len(v) == EXP_DIM else "FAIL",
+           r.status_code, "/v1/embeddings alias", f"dim={len(v)}")
+
+    # 14. zero-shot classify
+    r, d = classify({"images": [png_b64(5)], "labels": ["pneumonia", "normal", "fracture"]})
+    cl = d.get("classifications", [])
+    ok = r.status_code == 200 and len(cl) >= 1 and all("label" in c and "score" in c for c in cl[0])
+    record("PASS" if ok else "FAIL", r.status_code, "classify endpoint", f"classes={len(cl[0]) if cl else 0}")
+
+    # 15. classify requires images+labels
+    r, d = classify({"images": [png_b64(5)]})
+    record("PASS" if r is not None and r.status_code in (400, 500) else "FAIL",
+           r.status_code if r else 0, "classify validation", f"status={r.status_code if r else 'err'}")
+
+    # 16. health endpoint (gateway may not expose /health -> EXP)
+    try:
+        r = httpx.get(f"{G}/health", timeout=10)
+        d = r.json()
+        ok = r.status_code == 200 and d.get("status") == "ok"
+        record("PASS" if ok else "EXP", r.status_code, "health endpoint", f"status={d.get('status')}")
+    except Exception as e:
+        record("EXP", 0, "health endpoint", str(e))
+
+    # 17. embedding norm (CLIP embeddings are typically unit-normed or near)
+    _, d = embed({"texts": ["norm check"]}); v = _vec(d, "text_embeddings")
+    norm = math.sqrt(sum(x*x for x in v)) if v else 0
+    record("PASS" if 0.1 < norm < 1000 else "FAIL", 200, "embedding norm finite", f"L2={norm:.4f}")
 
 
 def summary():

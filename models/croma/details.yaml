@@ -10,66 +10,60 @@ data:
     {
       "id": "croma",
       "status": "production",
-      "type": "segment",
-      "description_short": "CROMA cross-modal remote sensing foundation model. SAR + optical paired satellite imagery. ~300M.",
-      "description": "CROMA (Cross-modal Remote sensing foundation model) is a self-supervised model pre-trained on paired SAR (Sentinel-1) and optical (Sentinel-2) satellite imagery. It produces patch embeddings from either or both modalities simultaneously. SAR input is 2-channel (VV, VH) and optical is 12-channel (Sentinel-2 bands). Useful for land classification, change detection, and crop mapping. Returns per-patch embeddings via the PretrainedCROMA interface.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
+      "type": "embedding",
       "endpoints": {
         "primary": "/v1/embeddings",
         "health": "/health"
       },
-      "owned_by": "antofuller",
-      "source": "antofuller/CROMA",
-      "source_url": "https://huggingface.co/antofuller/CROMA",
-      "license": "MIT",
-      "parameters": "~300M",
-      "precision": "fp32",
-      "architecture": "Dual-encoder ViT (SAR encoder + optical encoder, cross-modal attention)",
-      "framework": "PyTorch + CROMA repo",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "cpu_request": "2",
-        "memory_request": "4Gi",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "timeout": 120,
-        "pvc": "croma-data (5Gi, NFS, inline)",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "croma",
-        "api_name": "croma",
-        "gateway_type": "segment"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 minutes (venv-on-PVC; weights already downloaded)"
       },
-      "domain": "earth-observation",
-      "subdomain": "remote-sensing",
-      "tags": ["science", "earth-observation", "satellite", "segment", "sar", "sentinel-1", "sentinel-2", "cross-modal", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
         "sar_images": "list of [2, H, W] arrays — VV, VH channels (Sentinel-1 SAR)",
         "optical_images": "list of [12, H, W] arrays — Sentinel-2 MSI bands",
         "modality": "both|sar|optical (default: both)"
       },
       "output_map": {
-        "data": "list of {index, embedding, object} per input patch",
-        "model": "croma"
+        "data": "[{index, embedding, object}] — per-patch embeddings",
+        "model": "croma",
+        "object": "list"
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model",
-        "checkpoint": "CROMA_base.pt",
-        "repo_path": "/data/model/repo",
-        "image_resolution": 120
+      "catalog": {
+        "description_short": "CROMA cross-modal remote sensing foundation model. SAR + optical paired satellite imagery. ~300M.",
+        "description": "CROMA (Cross-modal Remote sensing foundation model) is a self-supervised model pre-trained on paired SAR (Sentinel-1) and optical (Sentinel-2) satellite imagery. It produces patch embeddings from either or both modalities simultaneously. SAR input is 2-channel (VV, VH) and optical is 12-channel (Sentinel-2 bands). Useful for land classification, change detection, and crop mapping. Returns per-patch embeddings via the PretrainedCROMA interface.",
+        "owned_by": "antofuller",
+        "source": "antofuller/CROMA",
+        "source_url": "https://huggingface.co/antofuller/CROMA",
+        "license": "MIT",
+        "parameters": "~300M",
+        "precision": "fp32",
+        "framework": "PyTorch + CROMA repo",
+        "domain": "earth-observation",
+        "subdomain": "remote-sensing",
+        "tags": ["embedding", "science", "earth-observation", "satellite", "sar", "sentinel-1", "sentinel-2", "cross-modal", "gpu"],
+        "gpu": true,
+        "max_input_tokens": 0,
+        "embedding_dimensions": "variable (GAP pooled)",
+        "pooling": "GAP (Global Average Pooling)"
       }
     }

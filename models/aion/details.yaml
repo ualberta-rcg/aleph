@@ -39,6 +39,23 @@ data:
       "defaults": {},
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "modality": "legacy_image | hsc_image | photometry (default legacy_image)",
+        "flux": "[[[band,...],...],...] — [4,H,W] multiband galaxy image (legacy_image modality)",
+        "bands": "[string] — band names e.g. ['DES-G','DES-R','DES-I','DES-Z']",
+        "num_encoder_tokens": "int — encoder token count (default 600)",
+        "flux_g": "float — g-band flux (photometry modality)",
+        "flux_r": "float — r-band flux (photometry modality)",
+        "flux_i": "float — i-band flux (photometry modality)",
+        "flux_z": "float — z-band flux (photometry modality)"
+      },
+      "output_map": {
+        "embedding": "[float] — 768-dim object-level embedding",
+        "embeddings": "[float] — alias for embedding",
+        "dims": "int — embedding dimensionality (768)",
+        "modality": "string — modality used",
+        "model": "aion-base"
+      },
       "catalog": {
         "description_short": "AION-base 300M astronomical multimodal foundation model — 768-dim embeddings (images, spectra, photometry).",
         "description": "AION-base (300M, Polymathic AI) is an astronomical multimodal foundation model trained on 39 astronomical data types across DESI Legacy Survey, SDSS, Gaia, HSC Wide. An encoder-decoder transformer (12 blocks, 768-dim, 12 heads) with a CodecManager that encodes typed modality objects (multiband images, optical spectra, photometry, catalogs) into a shared 768-dim embedding space (object-level vector = mean-pool over tokens). Non-text domain model: astronomical-array input, does NOT expose OpenAI /v1/embeddings; stays on /v1/science/embed. Output returns both `embedding`/`embeddings` (alias) + `dims`.",

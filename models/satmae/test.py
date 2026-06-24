@@ -38,7 +38,7 @@ class _LCG:
     def __init__(self, seed): self.s = seed & 0x7FFFFFFF
     def next(self):
         self.s = (1103515245 * self.s + 12345) & 0x7FFFFFFF
-        return self.s % 256  # 0-255 RGB
+        return self.s % 256
 
 
 def rand_img(seed, h=96, w=96):
@@ -63,7 +63,7 @@ def wake_dim():
             n = _dim(d)
             record("PASS" if n == EXP_DIM else "FAIL", 200, "WAKE + dim", f"attempts={attempt+1} dim={n} (exp {EXP_DIM})")
             return
-        if r.status_code in (503, 502, 404):
+        if r.status_code in (503, 502, 504, 404):
             time.sleep(5); continue
         record("FAIL", r.status_code, "WAKE + dim", f"body={r.text[:120]}"); return
     record("FAIL", 0, "WAKE + dim", "timed out")
@@ -107,6 +107,38 @@ def malformed():
     record("PASS" if 400 <= r.status_code < 600 else "FAIL", r.status_code, "malformed handled", f"status={r.status_code}")
 
 
+def embedding_norm():
+    r, d = embed({"image": rand_img(50)})
+    v = _vec(d)
+    if not v:
+        record("FAIL", r.status_code, "embedding norm", "no vector"); return
+    norm = math.sqrt(sum(x * x for x in v))
+    record("PASS" if 0.1 < norm < 1e6 else "FAIL", r.status_code, "embedding norm", f"L2={norm:.4f}")
+
+
+def response_fields():
+    r, d = embed({"image": rand_img(60)})
+    required = {"embeddings", "model"}
+    present = set(d.keys()) & required
+    ok = r.status_code == 200 and present == required
+    record("PASS" if ok else "FAIL", r.status_code, "response fields", f"present={sorted(present)} required={sorted(required)}")
+
+
+def health_endpoint():
+    r = httpx.get(f"{G}/v1/models", timeout=30)
+    try: mlist = r.json().get("data", [])
+    except Exception: mlist = []
+    found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "models list reachable", f"found={found} n_models={len(mlist)}")
+
+
+def large_image():
+    r, d = embed({"image": rand_img(70, h=224, w=224)})
+    v = _vec(d)
+    ok = r.status_code == 200 and len(v) == EXP_DIM
+    record("PASS" if ok else "FAIL", r.status_code, "large image (224x224)", f"dim={len(v)}")
+
+
 def summary():
     p = sum(1 for i, *_ in results if i == "PASS"); f = sum(1 for i, *_ in results if i == "FAIL")
     print(f"\n== {MODEL}: {p} PASS / {f} FAIL of {len(results)} ==", flush=True)
@@ -115,4 +147,5 @@ def summary():
 
 if __name__ == "__main__":
     wake_dim(); nonzero(); distinct(); deterministic(); model_echo(); malformed()
+    embedding_norm(); response_fields(); health_endpoint(); large_image()
     raise SystemExit(summary())

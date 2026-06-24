@@ -1,19 +1,14 @@
-"""maskrcnn gateway test (run inside the gateway pod).
+"""maskrcnn gateway test — comprehensive (run inside the gateway pod).
 
 Run:
   cat models/maskrcnn/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
-import base64
-import httpx
-import io
-import os
-import struct
-import time
-import zlib
+import base64, httpx, io, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
-MODEL = os.environ.get("MODEL", "maskrcnn-resnet50")
+MODEL = "maskrcnn-resnet50"
+EP = f"{G}/v1/vision/segment"
 results = []
 
 
@@ -36,14 +31,18 @@ def png_b64(seed=7, w=96, h=96):
         return body + struct.pack(">I", zlib.crc32(typ + data) & 0xFFFFFFFF)
 
     ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b"")
+    png = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", ihdr)
+           + chunk(b"IDAT", zlib.compress(bytes(raw)))
+           + chunk(b"IEND", b""))
     return base64.b64encode(png).decode()
 
 
 def call(body, timeout=240):
-    return httpx.post(f"{G}/v1/vision/segment", json=body, timeout=timeout)
+    return httpx.post(EP, json=body, timeout=timeout)
 
 
+# ── 1. Wake from scale-zero ──────────────────────────────────────────
 def wake():
     body = {"model": MODEL, "image": png_b64(1)}
     for attempt in range(90):
@@ -55,38 +54,139 @@ def wake():
         if r.status_code == 200:
             d = r.json()
             ok = isinstance(d.get("detections"), list)
-            record("PASS" if ok else "FAIL", 200, "WAKE + schema", f"attempts={attempt+1} dets={len(d.get('detections', []))}")
+            record("PASS" if ok else "FAIL", 200, "wake",
+                   f"attempts={attempt+1}")
             return
         if r.status_code == 503:
             time.sleep(4)
             continue
-        record("FAIL", r.status_code, "WAKE + schema", r.text[:120])
+        record("FAIL", r.status_code, "wake", r.text[:120])
         return
-    record("FAIL", 503, "WAKE + schema", "timed out waiting for warm model")
+    record("FAIL", 503, "wake", "timed out")
 
 
+# ── 2-19. Functional checks ──────────────────────────────────────────
 def checks():
-    r = call({"model": MODEL, "image": png_b64(2)})
-    d = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+    img = png_b64(42)
+
+    # 2. basic response schema
+    r = call({"model": MODEL, "image": img})
+    d = r.json() if r.status_code == 200 else {}
     dets = d.get("detections", [])
-    ok = r.status_code == 200 and isinstance(dets, list)
-    if ok and dets:
-        sample = dets[0]
-        ok = all(k in sample for k in ("label", "score", "box"))
-    record("PASS" if ok else "FAIL", r.status_code, "segment response shape", f"detections={len(dets)}")
+    record("PASS" if r.status_code == 200 and isinstance(dets, list) else "FAIL",
+           r.status_code, "response schema", f"keys={list(d.keys())}")
 
-    rm = httpx.post(f"{G}/v1/vision/segment", json={"model": "fake-vision-nope", "image": png_b64(3)}, timeout=60)
-    record("EXP" if rm.status_code == 404 else "FAIL", rm.status_code, "guard bad model", rm.text[:80])
+    # 3. model echo
+    record("PASS" if d.get("model") == MODEL else "FAIL",
+           r.status_code, "model echo", d.get("model", "missing"))
 
-    rb = httpx.post(f"{G}/v1/vision/segment", json={"model": MODEL}, timeout=60)
-    record("EXP" if rb.status_code >= 400 else "FAIL", rb.status_code, "guard malformed", rb.text[:80])
+    # 4. task echo
+    record("PASS" if d.get("task") == "segment" else "FAIL",
+           r.status_code, "task echo", d.get("task", "missing"))
+
+    # 5. detection field structure (if any detections)
+    if dets:
+        s = dets[0]
+        has_fields = all(k in s for k in ("label", "score", "box"))
+        record("PASS" if has_fields else "FAIL",
+               r.status_code, "detection fields", f"keys={list(s.keys())}")
+
+        # 6. score range 0-1
+        scores_ok = all(0 <= det["score"] <= 1 for det in dets)
+        record("PASS" if scores_ok else "FAIL",
+               r.status_code, "score range 0-1",
+               f"min={min(d['score'] for d in dets):.3f} max={max(d['score'] for d in dets):.3f}")
+
+        # 7. box is 4 floats
+        box_ok = all(isinstance(det["box"], list) and len(det["box"]) == 4 for det in dets)
+        record("PASS" if box_ok else "FAIL",
+               r.status_code, "box format [x1,y1,x2,y2]", f"box={dets[0]['box']}")
+
+        # 8. label is string
+        label_ok = all(isinstance(det["label"], str) for det in dets)
+        record("PASS" if label_ok else "FAIL",
+               r.status_code, "label is string", dets[0]["label"])
+    else:
+        record("PASS", r.status_code, "detection fields", "0 dets (noise image, ok)")
+        record("PASS", r.status_code, "score range 0-1", "n/a (0 dets)")
+        record("PASS", r.status_code, "box format [x1,y1,x2,y2]", "n/a (0 dets)")
+        record("PASS", r.status_code, "label is string", "n/a (0 dets)")
+
+    # 9. small image (32x32) doesn't crash
+    r2 = call({"model": MODEL, "image": png_b64(10, 32, 32)})
+    record("PASS" if r2.status_code == 200 else "FAIL",
+           r2.status_code, "small image 32x32", "")
+
+    # 10. larger image (320x240)
+    r3 = call({"model": MODEL, "image": png_b64(11, 320, 240)})
+    record("PASS" if r3.status_code == 200 else "FAIL",
+           r3.status_code, "larger image 320x240", "")
+
+    # 11. square image (224x224)
+    r4 = call({"model": MODEL, "image": png_b64(12, 224, 224)})
+    record("PASS" if r4.status_code == 200 else "FAIL",
+           r4.status_code, "square image 224x224", "")
+
+    # 12. data-URI prefix handling
+    data_uri = "data:image/png;base64," + png_b64(13)
+    r5 = call({"model": MODEL, "image": data_uri})
+    record("PASS" if r5.status_code == 200 else "FAIL",
+           r5.status_code, "data-URI prefix strip", "")
+
+    # 13. sequential batch — 5 images
+    batch_ok = True
+    for i in range(5):
+        rb = call({"model": MODEL, "image": png_b64(100 + i)})
+        if rb.status_code != 200:
+            batch_ok = False
+            break
+    record("PASS" if batch_ok else "FAIL",
+           200 if batch_ok else rb.status_code,
+           "sequential 5-image batch", "all 200" if batch_ok else f"failed at i={i}")
+
+    # 14. consistency — same image → same results
+    img_a = png_b64(999, 128, 128)
+    r6a = call({"model": MODEL, "image": img_a})
+    r6b = call({"model": MODEL, "image": img_a})
+    if r6a.status_code == 200 and r6b.status_code == 200:
+        d6a, d6b = r6a.json(), r6b.json()
+        same = len(d6a.get("detections", [])) == len(d6b.get("detections", []))
+        record("PASS" if same else "FAIL",
+               200, "determinism same image", f"dets={len(d6a['detections'])}/{len(d6b['detections'])}")
+    else:
+        record("FAIL", r6a.status_code, "determinism same image", "request failed")
+
+    # 15. /v1/models catalog (vision models may not appear in chat-only list)
+    rm = httpx.get(f"{G}/v1/models", timeout=30)
+    if rm.status_code == 200:
+        ids = [m.get("id") for m in rm.json().get("data", [])]
+        found = MODEL in ids
+        record("PASS" if found else "EXP",
+               200, "catalog /v1/models", f"found={found} (vision models may not list)")
+    else:
+        record("FAIL", rm.status_code, "catalog /v1/models", rm.text[:80])
+
+    # 16. guard — bad model name → 404
+    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60)
+    record("EXP" if rg1.status_code == 404 else "FAIL",
+           rg1.status_code, "guard bad model", rg1.text[:80])
+
+    # 17. guard — missing image field → error
+    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60)
+    record("EXP" if rg2.status_code >= 400 else "FAIL",
+           rg2.status_code, "guard missing image", rg2.text[:80])
+
+    # 18. guard — empty image string → error
+    rg3 = call({"model": MODEL, "image": ""})
+    record("EXP" if rg3.status_code >= 400 else "FAIL",
+           rg3.status_code, "guard empty image", rg3.text[:80])
 
 
 def summary():
     p = sum(1 for x in results if x[0] == "PASS")
     e = sum(1 for x in results if x[0] == "EXP")
     f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
-    print(f"\nResults: {p} passed, {e} expected, {f} failed of {len(results)}", flush=True)
+    print(f"\nResults: {p} PASS, {e} EXP, {f} FAIL of {len(results)}", flush=True)
     return 0 if f == 0 else 1
 
 

@@ -73,13 +73,18 @@ curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vis
 
 | File | Purpose |
 |------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ConfigMap + ISVC spec: init container + FastAPI container |
-| `kustomization.yaml` | Kustomize resources |
-| `pvc.yaml` | Dedicated PVC (maskrcnn-data) |
-
-**IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
+| `details.yaml` | ConfigMap with model metadata (schema v2, Template B Pattern 4) |
+| `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
+| `pvc.yaml` | Dedicated PVC (maskrcnn-data, 5Gi RWX) |
+| `test.py` | Gateway test barrage (18 checks) |
+| `README.md` | Model overview |
 
 ## HF / upstream I/O reference
+
 - Source: https://pytorch.org/vision/stable/models/mask_rcnn.html
-- Runtime mapping used here: base64 image in -> `detections[{label,score,box}]` out on `/v1/vision/segment`.
+- Model: `torchvision.models.detection.maskrcnn_resnet50_fpn_v2` with `weights="DEFAULT"` (COCO_V1)
+- Input: RGB tensor [C,H,W] in 0-1 range (any resolution)
+- Output: boxes `FloatTensor[N,4]`, labels `Int64Tensor[N]`, scores `Tensor[N]`, masks `UInt8Tensor[N,1,H,W]`
+- Server exposes: boxes + labels + scores (masks available in model but not serialized)
+- Confidence threshold: 0.5 (hardcoded in server, not configurable per-request)
+- COCO classes: 80 categories (person, bicycle, car, ...)

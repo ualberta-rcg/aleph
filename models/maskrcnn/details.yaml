@@ -9,74 +9,75 @@ data:
   details.json: |
     {
       "id": "maskrcnn-resnet50",
+      "status": "production",
       "type": "segment",
-      "description_short": "Mask R-CNN ResNet-50 FPN v2 — instance segmentation (80 COCO classes)",
-      "description": "Mask R-CNN ResNet-50 FPN v2 from torchvision. 46.4M params. Two-stage instance segmentation: detects objects and generates per-instance segmentation masks. 80 COCO classes. Runs on CPU via PyTorch (no ONNX export — uses torchvision weights directly). Returns bounding boxes with class labels, confidence scores, and binary masks. 47.4 mAP@50-95 on COCO.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/vision/segment",
         "health": "/health"
-      },
-      "owned_by": "torchvision",
-      "source": "torchvision.models.detection.maskrcnn_resnet50_fpn_v2",
-      "source_url": "https://pytorch.org/vision/stable/models/mask_rcnn.html",
-      "license": "BSD-3-Clause",
-      "parameters": "46.4M",
-      "parameter_count": 46400000,
-      "precision": "fp32",
-      "architecture": "cnn",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "startup_seconds": 60,
-        "container_image": "python:3.11-slim",
-        "timeout": 180
       },
       "routing": {
         "k8s_name": "maskrcnn",
         "no_stream": true,
         "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
-        "supports_vision": true,
-        "reasoning_model": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
       },
-      "domain": "computer-vision",
-      "subdomain": "instance-segmentation",
-      "tags": ["vision", "segment", "instance-segmentation", "coco", "onnx", "cpu"],
-      "content_types": ["image"],
-      "tier": "production",
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "image": {
           "type": "string",
           "required": true,
           "format": "base64",
-          "media_types": ["image/jpeg", "image/png"],
-          "max_size_bytes": 10485760,
-          "description": "Base64-encoded JPEG or PNG image"
+          "description": "Base64-encoded JPEG or PNG image (data-URI prefix stripped automatically)"
         }
       },
       "output_map": {
-        "model": "string",
-        "task": "string",
+        "model": {"type": "string", "description": "Model name (maskrcnn-resnet50)"},
+        "task": {"type": "string", "description": "Always \"segment\""},
         "detections": {
           "type": "array",
           "items": {
-            "label": "string (COCO class name)",
-            "score": "float (0-1 confidence)",
+            "label": "string — COCO class name (80 classes)",
+            "score": "float — confidence 0-1",
             "box": "[x1, y1, x2, y2] pixel coordinates"
-          }
+          },
+          "description": "Instances with score >= 0.5 (hardcoded threshold)"
         }
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "confidence_threshold": 0.5,
-        "framework_version": "torchvision",
-        "weights": "DEFAULT (COCO_V2)"
+      "catalog": {
+        "description_short": "Mask R-CNN ResNet-50 FPN v2 — instance segmentation (80 COCO classes, torchvision)",
+        "description": "Mask R-CNN ResNet-50 FPN v2 from torchvision (46.4M params). Two-stage instance segmentation trained on COCO. Detects objects and returns bounding boxes with class labels and confidence scores. 47.4 mAP@50-95 on COCO. Runs on CPU via PyTorch. Confidence threshold hardcoded at 0.5.",
+        "owned_by": "torchvision",
+        "source": "torchvision.models.detection.maskrcnn_resnet50_fpn_v2",
+        "source_url": "https://pytorch.org/vision/stable/models/mask_rcnn.html",
+        "license": "BSD-3-Clause",
+        "parameters": "46.4M",
+        "precision": "fp32",
+        "framework": "pytorch",
+        "domain": "computer-vision",
+        "subdomain": "instance-segmentation",
+        "tags": ["vision", "segment", "instance-segmentation", "coco", "cpu"]
       }
     }

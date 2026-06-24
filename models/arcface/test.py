@@ -1,17 +1,17 @@
-"""dino-vit-b8 gateway test — comprehensive (run inside the gateway pod).
+"""arcface gateway test — comprehensive (run inside the gateway pod).
 
-768-dim DINO ViT-B/8 self-supervised visual embeddings via /v1/vision/embed.
+512-dim ArcFace ResNet-100 face embeddings via /v1/vision/face.
 
 Run:
-  cat models/dino-vit-b8/test.py | \
+  cat models/arcface/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, math, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
-MODEL = "dino-vit-b8"
-EP = f"{G}/v1/vision/embed"
-EXP_DIM = 768
+MODEL = "arcface-resnet100"
+EP = f"{G}/v1/vision/face"
+EXP_DIM = 512
 results = []
 
 
@@ -20,7 +20,7 @@ def record(icon, status, name, detail):
     print(f"[{icon}] {status} | {name}: {detail}", flush=True)
 
 
-def png_b64(seed=7, w=224, h=224):
+def png_b64(seed=7, w=112, h=112):
     raw = bytearray()
     s = seed & 0x7FFFFFFF
     for _ in range(h):
@@ -52,10 +52,9 @@ def _cos(a, b):
 
 
 def _vec(d):
-    return d.get("embeddings") or d.get("embedding") or []
+    return d.get("embedding") or d.get("embeddings") or []
 
 
-# ── 1. Wake ──────────────────────────────────────────────────────────
 def wake():
     body = {"model": MODEL, "image": png_b64(1)}
     for attempt in range(90):
@@ -71,7 +70,7 @@ def wake():
             record("PASS" if ok else "FAIL", 200, "wake",
                    f"attempts={attempt+1} dim={len(v)}")
             return
-        if r.status_code == 503:
+        if r.status_code in (503, 502, 504, 404):
             time.sleep(4)
             continue
         record("FAIL", r.status_code, "wake", r.text[:120])
@@ -79,36 +78,38 @@ def wake():
     record("FAIL", 503, "wake", "timed out")
 
 
-# ── 2-17. Checks ────────────────────────────────────────────────────
 def checks():
     img = png_b64(42)
 
-    # 2. response schema
     r = call({"model": MODEL, "image": img})
     d = r.json() if r.status_code == 200 else {}
     v = _vec(d)
     record("PASS" if r.status_code == 200 and len(v) == EXP_DIM else "FAIL",
            r.status_code, "response schema + dim", f"dim={len(v)}")
 
-    # 3. model echo
     record("PASS" if d.get("model") == MODEL else "FAIL",
            r.status_code, "model echo", d.get("model", "missing"))
 
-    # 4. task echo
-    record("PASS" if d.get("task") == "embed" else "FAIL",
+    record("PASS" if d.get("task") == "face" else "FAIL",
            r.status_code, "task echo", d.get("task", "missing"))
 
-    # 5. all values are floats
     all_float = all(isinstance(x, (int, float)) for x in v) if v else False
     record("PASS" if all_float else "FAIL",
-           r.status_code, "all values are floats", "")
+           r.status_code, "all values floats", "")
 
-    # 6. non-zero
     non_zero = any(abs(x) > 1e-8 for x in v) if v else False
     record("PASS" if non_zero else "FAIL",
-           r.status_code, "embedding non-zero", f"sample={[round(x,3) for x in v[:4]]}")
+           r.status_code, "embedding non-zero", "")
 
-    # 7. distinctness
+    # L2-normalized check (should be ~1.0)
+    if v:
+        norm = math.sqrt(sum(x * x for x in v))
+        record("PASS" if 0.95 <= norm <= 1.05 else "FAIL",
+               r.status_code, "L2 norm ~1.0", f"norm={norm:.4f}")
+    else:
+        record("FAIL", r.status_code, "L2 norm ~1.0", "no embedding")
+
+    # distinctness
     r2 = call({"model": MODEL, "image": png_b64(99)})
     if r.status_code == 200 and r2.status_code == 200:
         v2 = _vec(r2.json())
@@ -118,7 +119,7 @@ def checks():
     else:
         record("FAIL", r2.status_code, "distinctness", "request failed")
 
-    # 8. determinism
+    # determinism
     r3 = call({"model": MODEL, "image": img})
     if r.status_code == 200 and r3.status_code == 200:
         v3 = _vec(r3.json())
@@ -128,25 +129,19 @@ def checks():
     else:
         record("FAIL", r3.status_code, "determinism", "request failed")
 
-    # 9. small image (32x32)
-    r4 = call({"model": MODEL, "image": png_b64(10, 32, 32)})
+    # different size image
+    r4 = call({"model": MODEL, "image": png_b64(10, 224, 224)})
     d4 = r4.json() if r4.status_code == 200 else {}
     record("PASS" if len(_vec(d4)) == EXP_DIM else "FAIL",
-           r4.status_code, "small image 32x32", "")
+           r4.status_code, "different size 224x224", "")
 
-    # 10. large image (512x512)
-    r5 = call({"model": MODEL, "image": png_b64(11, 512, 512)})
-    d5 = r5.json() if r5.status_code == 200 else {}
-    record("PASS" if len(_vec(d5)) == EXP_DIM else "FAIL",
-           r5.status_code, "large image 512x512", "")
-
-    # 11. data-URI prefix
+    # data-URI prefix
     data_uri = "data:image/png;base64," + png_b64(13)
-    r6 = call({"model": MODEL, "image": data_uri})
-    record("PASS" if r6.status_code == 200 else "FAIL",
-           r6.status_code, "data-URI prefix strip", "")
+    r5 = call({"model": MODEL, "image": data_uri})
+    record("PASS" if r5.status_code == 200 else "FAIL",
+           r5.status_code, "data-URI prefix strip", "")
 
-    # 12. sequential 5-image batch
+    # sequential batch
     batch_ok = True
     for i in range(5):
         rb = call({"model": MODEL, "image": png_b64(100 + i)})
@@ -157,26 +152,14 @@ def checks():
            200 if batch_ok else rb.status_code,
            "sequential 5-image batch", "all 200" if batch_ok else f"failed i={i}")
 
-    # 13. backward-compat alias /v1/science/embed
-    r7 = httpx.post(f"{G}/v1/science/embed", json={"model": MODEL, "image": png_b64(50)}, timeout=120)
-    if r7.status_code == 200:
-        d7 = r7.json()
-        record("PASS" if len(_vec(d7)) == EXP_DIM else "FAIL",
-               200, "alias /v1/science/embed", f"dim={len(_vec(d7))}")
-    else:
-        record("EXP", r7.status_code, "alias /v1/science/embed", "may not be routed")
-
-    # 14. guard — bad model
     rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60)
     record("EXP" if rg1.status_code == 404 else "FAIL",
            rg1.status_code, "guard bad model", rg1.text[:80])
 
-    # 15. guard — missing image
     rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60)
     record("EXP" if rg2.status_code >= 400 else "FAIL",
            rg2.status_code, "guard missing image", rg2.text[:80])
 
-    # 16. guard — empty image
     rg3 = call({"model": MODEL, "image": ""})
     record("EXP" if rg3.status_code >= 400 else "FAIL",
            rg3.status_code, "guard empty image", rg3.text[:80])

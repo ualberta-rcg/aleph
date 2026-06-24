@@ -38,6 +38,21 @@ data:
       "defaults": {},
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "pixels": "[[[band_values...],...],...] — [num_bands, H, W] reflectance",
+        "waves": "[float] — wavelengths in µm e.g. [0.665, 0.56, 0.49]",
+        "gsd": "float — ground sampling distance, meters (default 10.0)",
+        "lat": "float — center latitude (optional metadata)",
+        "lon": "float — center longitude (optional metadata)",
+        "time": "string — datetime string (optional metadata)"
+      },
+      "output_map": {
+        "embeddings": "[float] — CLS embedding vector",
+        "cls_embedding": "[float] — alias for embeddings",
+        "embedding_dim": "int — embedding dimensionality",
+        "n_bands": "int — number of input bands used",
+        "model": "clay"
+      },
       "catalog": {
         "description_short": "Clay Foundation Model ~330M geospatial MAE — any-band satellite-image CLS embeddings.",
         "description": "The Clay Foundation Model (large variant, ~330M) is a Masked Autoencoder that generates semantic embeddings from multi-band satellite imagery. Accepts any-band image patches ([bands,H,W]) with per-band wavelengths (µm), ground sampling distance (m), and optional geolocation/time metadata (encoded as sin/cos). The encoder produces a CLS-token embedding for land classification, change detection, environmental monitoring. Non-text domain model: image+metadata input, does NOT expose OpenAI /v1/embeddings; stays on /v1/science/embed. Output returns both `embeddings` and `cls_embedding` (alias) + `embedding_dim`.",

@@ -24,6 +24,20 @@ data:
       "defaults": {},
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "image": {
+          "type": "string",
+          "required": true,
+          "format": "base64",
+          "description": "Base64-encoded JPEG or PNG image (data-URI prefix stripped automatically)"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "Model name (dino-vit-b8)"},
+        "task": {"type": "string", "description": "Always \"embed\""},
+        "embedding": {"type": "array", "description": "768-dim float embedding vector (CLS token)"},
+        "dim": {"type": "integer", "description": "Embedding dimension (768)"}
+      },
       "catalog": {
         "description_short": "DINO ViT-B/8 (Meta) — self-supervised 768-dim visual embeddings via ONNX.",
         "description": "DINO ViT-Base/8 (Meta AI, 86M) — self-supervised Vision Transformer trained with no labels via self-distillation. Patch size 8 (fine-grained); produces a 768-dim embedding of an image (resized to 224x224, ImageNet-normalized). Served via ONNX Runtime on CPU. Excellent for image similarity, clustering, zero-shot retrieval, copy detection. Non-text domain model: base64 image input, does NOT expose OpenAI /v1/embeddings; primary is /v1/vision/embed (/v1/science/embed kept as a backward-compatible alias).",

@@ -9,68 +9,69 @@ data:
   details.json: |
     {
       "id": "zoobot-15m",
+      "status": "production",
       "type": "embedding",
-      "description_short": "Zoobot galaxy morphology image embedding encoder (ConvNext-Nano, 640-dim)",
-      "description": "Zoobot galaxy morphology encoder by M. Walmsley. 15M params. ConvNeXt-Nano backbone pre-trained on Galaxy Zoo volunteer classifications from millions of galaxies. Produces 640-dimensional embeddings for galaxy morphology classification, clustering, and similarity search. Uses timm library with HF Hub weights. CPU inference via PyTorch.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/vision/embed",
         "health": "/health"
-      },
-      "owned_by": "mwalmsley",
-      "source": "mwalmsley/zoobot-encoder-convnext_nano",
-      "source_url": "https://huggingface.co/mwalmsley/zoobot-encoder-convnext_nano",
-      "license": "Apache-2.0",
-      "parameters": "15M",
-      "parameter_count": 15000000,
-      "precision": "fp32",
-      "architecture": "cnn",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": false,
-        "gpu_count": 0,
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "startup_seconds": 60,
-        "container_image": "python:3.11-slim",
-        "timeout": 180
       },
       "routing": {
         "k8s_name": "zoobot",
         "no_stream": true,
         "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
-        "supports_vision": true,
-        "reasoning_model": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
       },
-      "domain": "astronomy",
-      "subdomain": "visual-embeddings",
-      "tags": ["vision", "embedding", "astronomy", "astrophysics", "galaxy", "science"],
-      "content_types": ["image"],
-      "tier": "production",
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "image": {
           "type": "string",
           "required": true,
           "format": "base64",
-          "media_types": ["image/jpeg", "image/png"],
-          "max_size_bytes": 10485760,
-          "description": "Base64-encoded JPEG or PNG galaxy image"
+          "description": "Base64-encoded JPEG or PNG galaxy image (data-URI prefix stripped automatically)"
         }
       },
       "output_map": {
-        "model": "string",
-        "task": "string",
-        "embedding": "[float x 640]",
-        "dim": "int (640)"
+        "model": {"type": "string", "description": "Model name (zoobot-15m)"},
+        "task": {"type": "string", "description": "Always \"embed\""},
+        "embedding": {"type": "array", "description": "640-dim float embedding vector for galaxy morphology"},
+        "dim": {"type": "integer", "description": "Embedding dimension (640)"}
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "input_size": 224,
-        "normalization": "ImageNet mean/std",
-        "model_source": "timm (hf_hub:mwalmsley/zoobot-encoder-convnext_nano)"
+      "catalog": {
+        "description_short": "Zoobot ConvNeXt-Nano galaxy morphology encoder (640-dim embedding, CPU)",
+        "description": "Zoobot encoder by M. Walmsley (15.6M params, ConvNeXt-Nano). Pre-trained on Galaxy Zoo volunteer classifications from millions of galaxies. Produces 640-dim embeddings for galaxy morphology classification, clustering, and similarity search. Uses timm with HF Hub weights. CPU inference via PyTorch.",
+        "owned_by": "mwalmsley",
+        "source": "mwalmsley/zoobot-encoder-convnext_nano",
+        "source_url": "https://huggingface.co/mwalmsley/zoobot-encoder-convnext_nano",
+        "license": "Apache-2.0",
+        "parameters": "15.6M",
+        "precision": "fp32",
+        "framework": "pytorch",
+        "domain": "astronomy",
+        "subdomain": "galaxy-morphology",
+        "tags": ["vision", "embedding", "astronomy", "galaxy", "science", "cpu"],
+        "embedding_dimensions": 640
       }
     }

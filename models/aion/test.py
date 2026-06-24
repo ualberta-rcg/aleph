@@ -11,7 +11,7 @@ import httpx, math, os, time
 G = "http://localhost:8080"
 MODEL = os.environ.get("MODEL", "aion")
 EXP_DIM = 768
-BANDS = 4  # legacy survey g,r,z + 1
+BANDS = 4
 results = []
 
 
@@ -54,35 +54,50 @@ def wake_dim():
             v = _vec(d); n = len(v)
             record("PASS" if n == EXP_DIM else "FAIL", 200, "WAKE + dim", f"attempts={attempt+1} dim={n} (exp {EXP_DIM})")
             return
-        if r.status_code in (503, 502, 404): time.sleep(5); continue
+        if r.status_code in (503, 502, 504, 404): time.sleep(5); continue
         record("FAIL", r.status_code, "WAKE + dim", f"body={r.text[:120]}"); return
     record("FAIL", 0, "WAKE + dim", "timed out")
 
 
 def checks():
-    # non-zero
     r, d = embed({"modality": "legacy_image", "flux": rand_img(2)}); v = _vec(d)
     record("PASS" if r.status_code == 200 and len(v) == EXP_DIM and not all(x == 0 for x in v) else "FAIL",
            r.status_code, "non-zero real", f"zero={all(x==0 for x in v)} sample={[round(x,3) for x in v[:4]]}")
-    # distinct
+
     _, d1 = embed({"modality": "legacy_image", "flux": rand_img(10)}); _, d2 = embed({"modality": "legacy_image", "flux": rand_img(20)})
     v1, v2 = _vec(d1), _vec(d2); c = _cos(v1, v2) if v1 and v2 else 1.0
     record("PASS" if c < 0.999 else "FAIL", 200, "distinctness", f"cos(a,b)={c:.5f}")
-    # deterministic
+
     img = rand_img(30); _, d1 = embed({"modality": "legacy_image", "flux": img}); _, d2 = embed({"modality": "legacy_image", "flux": img})
     v1, v2 = _vec(d1), _vec(d2); c = _cos(v1, v2) if v1 and v2 else 0.0
     record("PASS" if c > 0.9999 else "FAIL", 200, "deterministic", f"cos(x,x)={c:.5f}")
-    # modality echo
+
     r, d = embed({"modality": "legacy_image", "flux": rand_img(40)})
     record("PASS" if r.status_code == 200 and d.get("model") == "aion-base" else "FAIL", r.status_code, "model echo", f"model={d.get('model')!r} modality={d.get('modality')!r}")
-    # photometry modality (different input path)
-    r, d = embed({"modality": "photometry", "photometry": [0.1*i for i in range(12)]})
+
+    r, d = embed({"modality": "photometry", "flux_g": 1.0, "flux_r": 2.0, "flux_i": 3.0, "flux_z": 4.0})
     v = _vec(d)
     record("PASS" if r.status_code == 200 and len(v) == EXP_DIM else ("EXP" if r.status_code in (400, 422, 500) else "FAIL"),
            r.status_code, "photometry modality", f"dim={len(v)} (EXP if photometry schema differs)")
-    # malformed (unknown modality -> error path; note: empty body defaults to a smoke image by design)
+
     r, _ = embed({"modality": "totally_unknown_xyz"})
     record("PASS" if 400 <= r.status_code < 600 else "FAIL", r.status_code, "unknown-modality handled", f"status={r.status_code}")
+
+    r, d = embed({"modality": "legacy_image", "flux": rand_img(50)}); v = _vec(d)
+    norm = math.sqrt(sum(x*x for x in v)) if v else 0
+    record("PASS" if 0.1 < norm < 1e6 else "FAIL", r.status_code, "embedding norm", f"L2={norm:.4f}")
+
+    required = {"embeddings", "model", "dims"}
+    r, d = embed({"modality": "legacy_image", "flux": rand_img(60)})
+    present = set(d.keys()) & required
+    record("PASS" if r.status_code == 200 and present == required else "FAIL",
+           r.status_code, "response fields", f"present={sorted(present)} required={sorted(required)}")
+
+    r = httpx.get(f"{G}/v1/models", timeout=30)
+    try: mlist = r.json().get("data", [])
+    except Exception: mlist = []
+    found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "models list reachable", f"found={found} n_models={len(mlist)}")
 
 
 def summary():

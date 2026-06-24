@@ -10,11 +10,10 @@ import httpx, math, os, time
 
 G = "http://localhost:8080"
 MODEL = os.environ.get("MODEL", "clay")
-# Clay large encoder CLS dim; confirmed from the response `embedding_dim` if it differs.
 EXP_DIM = 1024
-BANDS = 4  # synthetic B/G/R/NIR
+BANDS = 4
 H = W = 32
-WAVES = [0.49, 0.56, 0.665, 0.84]  # µm
+WAVES = [0.49, 0.56, 0.665, 0.84]
 results = []
 
 
@@ -38,7 +37,7 @@ class _LCG:
     def __init__(self, s): self.s = s & 0x7FFFFFFF
     def nxt(self):
         self.s = (1103515245*self.s + 12345) & 0x7FFFFFFF
-        return round(((self.s % 3000)/1000.0), 3)  # 0-3 reflectance-ish
+        return round(((self.s % 3000)/1000.0), 3)
 
 
 def rand_cube(seed, bands=BANDS, h=H, w=W):
@@ -57,31 +56,51 @@ def wake_dim():
             n = len(_vec(d)); rd = d.get("embedding_dim", n)
             record("PASS" if n and n == rd else "FAIL", 200, "WAKE + dim", f"attempts={attempt+1} dim={n} embedding_dim={rd}")
             return n
-        if r.status_code in (503, 502, 404): time.sleep(5); continue
+        if r.status_code in (503, 502, 504, 404): time.sleep(5); continue
         record("FAIL", r.status_code, "WAKE + dim", f"body={r.text[:120]}"); return 0
     record("FAIL", 0, "WAKE + dim", "timed out"); return 0
 
 
 def checks(dim):
-    # non-zero
     r, d = embed({"pixels": rand_cube(2), "waves": WAVES}); v = _vec(d)
     record("PASS" if r.status_code == 200 and len(v) == dim and not all(x == 0 for x in v) else "FAIL",
            r.status_code, "non-zero real", f"zero={all(x==0 for x in v)} sample={[round(x,3) for x in v[:4]]}")
-    # distinct
+
     _, d1 = embed({"pixels": rand_cube(10), "waves": WAVES}); _, d2 = embed({"pixels": rand_cube(20), "waves": WAVES})
     e1, e2 = _vec(d1), _vec(d2)
     c = _cos(e1, e2) if e1 and e2 else 1.0
     record("PASS" if c < 0.999 else "FAIL", 200, "distinctness", f"cos(a,b)={c:.5f}")
-    # deterministic
+
     cube = rand_cube(30); _, d1 = embed({"pixels": cube, "waves": WAVES}); _, d2 = embed({"pixels": cube, "waves": WAVES})
     e1, e2 = _vec(d1), _vec(d2); c = _cos(e1, e2) if e1 and e2 else 0.0
     record("PASS" if c > 0.9999 else "FAIL", 200, "deterministic", f"cos(x,x)={c:.5f}")
-    # echo
+
     r, d = embed({"pixels": rand_cube(40), "waves": WAVES})
     record("PASS" if r.status_code == 200 and d.get("model") == MODEL else "FAIL", r.status_code, "model echo", f"model={d.get('model')!r}")
-    # malformed
+
     r, _ = embed({})
     record("PASS" if 400 <= r.status_code < 600 else "FAIL", r.status_code, "malformed handled", f"status={r.status_code}")
+
+    r, d = embed({"pixels": rand_cube(50), "waves": WAVES}); v = _vec(d)
+    norm = math.sqrt(sum(x*x for x in v)) if v else 0
+    record("PASS" if 0.1 < norm < 1e6 else "FAIL", r.status_code, "embedding norm", f"L2={norm:.4f}")
+
+    required = {"embeddings", "model"}
+    r, d = embed({"pixels": rand_cube(60), "waves": WAVES})
+    present = set(d.keys()) & required
+    record("PASS" if r.status_code == 200 and present == required else "FAIL",
+           r.status_code, "response fields", f"present={sorted(present)} required={sorted(required)}")
+
+    r = httpx.get(f"{G}/v1/models", timeout=30)
+    try: mlist = r.json().get("data", [])
+    except Exception: mlist = []
+    found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "models list reachable", f"found={found} n_models={len(mlist)}")
+
+    r, d = embed({"pixels": rand_cube(80), "waves": WAVES, "gsd": 10.0, "lat": 45.0, "lon": -73.5, "time": "2024-06-15"})
+    v = _vec(d)
+    record("PASS" if r.status_code == 200 and len(v) == dim else "FAIL",
+           r.status_code, "metadata pass (lat/lon/time)", f"dim={len(v)}")
 
 
 def summary():

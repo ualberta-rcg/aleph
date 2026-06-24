@@ -178,8 +178,9 @@ spec:
             # installed into the ephemeral container python, so the main container reinstalled
             # torch on every wake). Venv guarded; torch preserved across restarts.
             VENV=/data/venv
-            if [ ! -x "$VENV/bin/python" ]; then
-              echo "Creating venv..."
+            if [ ! -x "$VENV/bin/python" ] || ! $VENV/bin/python -c 'import astropt, huggingface_hub' 2>/dev/null; then
+              echo "Creating venv (clean)..."
+              rm -rf $VENV
               python3 -m venv $VENV
               $VENV/bin/pip install -U pip
               echo "Installing torch + torchvision (cu126)..."

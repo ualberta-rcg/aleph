@@ -11,7 +11,7 @@ import httpx, math, os, time
 G = "http://localhost:8080"
 MODEL = os.environ.get("MODEL", "prithvi-eo")
 EXP_DIM = 1024
-BANDS = 6  # Blue, Green, Red, NIR, SWIR, SWIR2
+BANDS = 6
 N = 224
 results = []
 
@@ -67,19 +67,42 @@ def checks():
     r, d = embed({"image": rand_cube(2)}); v = _vec(d)
     record("PASS" if r.status_code == 200 and len(v) == EXP_DIM and not all(x == 0 for x in v) else "FAIL",
            r.status_code, "non-zero real", f"zero={all(x==0 for x in v)} sample={[round(x,3) for x in v[:4]]}")
+
     _, d1 = embed({"image": rand_cube(10)}); _, d2 = embed({"image": rand_cube(20)})
     v1, v2 = _vec(d1), _vec(d2); c = _cos(v1, v2) if v1 and v2 else 1.0
-    # Random-noise imagery maps near-identically (foundation model not trained to discriminate
-    # noise); threshold relaxed — embeddings are distinct, just very close. Determinism is the check.
     record("PASS" if c < 0.99999 else "FAIL", 200, "distinctness", f"cos(a,b)={c:.5f} (noise ~identical)")
+
     cube = rand_cube(30); _, d1 = embed({"image": cube}); _, d2 = embed({"image": cube})
     v1, v2 = _vec(d1), _vec(d2); c = _cos(v1, v2) if v1 and v2 else 0.0
     record("PASS" if c > 0.9999 else "FAIL", 200, "deterministic", f"cos(x,x)={c:.5f}")
+
     r, d = embed({"image": rand_cube(40)})
     record("PASS" if r.status_code == 200 and d.get("model") == "prithvi-eo-300m" else "FAIL", r.status_code, "model echo", f"model={d.get('model')!r}")
+
     r, _ = embed({})
     record("PASS" if r is not None and 400 <= r.status_code < 600 else "FAIL",
            r.status_code if r else 0, "malformed handled", f"status={r.status_code if r else 'err'}")
+
+    r, d = embed({"image": rand_cube(50)}); v = _vec(d)
+    norm = math.sqrt(sum(x*x for x in v)) if v else 0
+    record("PASS" if 0.1 < norm < 1e6 else "FAIL", r.status_code if r else 0, "embedding norm", f"L2={norm:.4f}")
+
+    required = {"embeddings", "model", "num_patches"}
+    r, d = embed({"image": rand_cube(60)})
+    present = set(d.keys()) & required
+    record("PASS" if r and r.status_code == 200 and present == required else "FAIL",
+           r.status_code if r else 0, "response fields", f"present={sorted(present)} required={sorted(required)}")
+
+    r = httpx.get(f"{G}/v1/models", timeout=30)
+    try: mlist = r.json().get("data", [])
+    except Exception: mlist = []
+    found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "models list reachable", f"found={found} n_models={len(mlist)}")
+
+    r, d = embed({"image": rand_cube(70, bands=BANDS, n=128)})
+    v = _vec(d)
+    record("PASS" if r and r.status_code == 200 and len(v) == EXP_DIM else "FAIL",
+           r.status_code if r else 0, "alt resolution (128x128)", f"dim={len(v)}")
 
 
 def summary():

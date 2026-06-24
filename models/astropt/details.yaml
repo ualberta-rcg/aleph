@@ -38,6 +38,16 @@ data:
       "defaults": {},
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "image": "[[[R,G,B],...],...] — (H,W,3) galaxy image float [0,1] (patchified by GalaxyImageDataset)",
+        "demo": "boolean — returns (16,512) synthetic embeddings"
+      },
+      "output_map": {
+        "embeddings": "[[float]] or [float] — patch latents [N,512] (demo) or 768-dim flat vector (real)",
+        "shape": "[N, D] — embedding shape",
+        "model": "astropt-095m",
+        "demo": "boolean — present if demo mode used"
+      },
       "catalog": {
         "description_short": "AstroPT v2.0 95M autoregressive galaxy-image transformer — patch latent embeddings [N,512].",
         "description": "AstroPT v2.0 (95M, UniverseTBD/Smith42) is an autoregressive GPT trained on 8.6M galaxy images from SDSS/DESI. It patchifies a galaxy image and runs a causal-attention forward pass. The server returns a single 768-dim embedding vector (empirically verified 2026-06-19; the docstring/old card claimed [N,512] patch latents but the real output is a flat 768-dim vector — the demo path still returns a [16,512] synthetic array). Suitable for galaxy morphology, redshift estimation, similarity search. Non-text domain model: galaxy image input, does NOT expose OpenAI /v1/embeddings; stays on /v1/science/embed.",

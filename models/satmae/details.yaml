@@ -41,6 +41,16 @@ data:
       "defaults": {},
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "image": "[[[R,G,B],...],...] — HxW RGB image, values 0-255 (auto-resized to 224x224, fMoW-normalized)"
+      },
+      "output_map": {
+        "embeddings": "[float] — 1024-dim CLS embedding vector",
+        "cls_embedding": "[float] — alias for embeddings",
+        "patch_embeddings": "[[float]] — per-patch embedding vectors",
+        "dim": "int — embedding dimensionality (1024)",
+        "model": "satmae"
+      },
       "catalog": {
         "description_short": "SatMAE ViT-Large masked autoencoder pretrained on fMoW satellite imagery. 1024-dim CLS embeddings.",
         "description": "SatMAE is a Masked Autoencoder (ViT-Large) pretrained on functional Map of the World (fMoW) satellite imagery (MVRL). Zero-mask-ratio forward_encoder extracts the [CLS] token as a 1024-dim embedding of an RGB satellite image patch (auto-resized to 224x224, normalized with fMoW mean/std). Useful for satellite-image classification, retrieval, and change detection. Non-text domain model: image input only, does NOT expose OpenAI /v1/embeddings; stays on /v1/science/embed. Loaded offline via MaskedAutoencoderViT.from_pretrained(local dir).",

@@ -1,8 +1,8 @@
 """astropt galaxy-image embedding gateway test (run inside the gateway pod).
 
 Embedding (Template C) battery for a custom AstroPT server (UniverseTBD, GPU).
-Outputs PATCH-level latent embeddings [N, 512] (2D, not a single vector), via the domain
-/v1/science/embed endpoint. Non-text (galaxy image) → does NOT expose OpenAI /v1/embeddings.
+768-dim flat embedding vector from real galaxy images; demo returns [16,512].
+Via the domain /v1/science/embed endpoint. Non-text (galaxy image).
 
 Run:  cat models/astropt/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
@@ -10,7 +10,7 @@ import httpx, math, os, time
 
 G = "http://localhost:8080"
 MODEL = os.environ.get("MODEL", "astropt")
-EMB_DIM = 768  # real-image output is a 1D 768-dim vector (docstring's [N,512] is wrong; demo returns [16,512])
+EMB_DIM = 768
 results = []
 
 
@@ -43,7 +43,6 @@ def rand_img(seed, h=64, w=64):
 
 
 def _vec(d):
-    """Return the flat embedding vector. Real path = 1D 768 floats; demo = 2D [16,512] (flatten)."""
     e = d.get("embeddings")
     if isinstance(e, list) and e:
         if isinstance(e[0], list):
@@ -53,43 +52,58 @@ def _vec(d):
 
 
 def wake():
-    for attempt in range(90):  # first v2 boot builds venv (~5 min)
+    for attempt in range(90):
         r, d = embed({"image": rand_img(1)})
         if r.status_code == 200:
             v = _vec(d)
             ok = len(v) == EMB_DIM
             record("PASS" if ok else "FAIL", 200, "WAKE + dim", f"attempts={attempt+1} dim={len(v)} (exp {EMB_DIM})")
             return ok
-        if r.status_code in (503, 502, 404): time.sleep(5); continue
+        if r.status_code in (503, 502, 504, 404): time.sleep(5); continue
         record("FAIL", r.status_code, "WAKE + dim", f"body={r.text[:120]}"); return False
     record("FAIL", 0, "WAKE + dim", "timed out"); return False
 
 
 def checks():
-    # non-zero
     r, d = embed({"image": rand_img(2)}); v = _vec(d)
     record("PASS" if r.status_code == 200 and len(v) == EMB_DIM and not all(x == 0 for x in v) else "FAIL",
            r.status_code, "non-zero real", f"len={len(v)} zero={all(x==0 for x in v)} sample={[round(x,3) for x in v[:4]]}")
-    # distinct
+
     _, d1 = embed({"image": rand_img(10)}); _, d2 = embed({"image": rand_img(20)})
     v1, v2 = _vec(d1), _vec(d2)
     c = _cos(v1, v2) if v1 and v2 else 1.0
     record("PASS" if c < 0.999 else "FAIL", 200, "distinctness", f"cos(a,b)={c:.5f}")
-    # deterministic
+
     img = rand_img(30); _, d1 = embed({"image": img}); _, d2 = embed({"image": img})
     v1, v2 = _vec(d1), _vec(d2); c = _cos(v1, v2) if v1 and v2 else 0.0
     record("PASS" if c > 0.9999 else "FAIL", 200, "deterministic", f"cos(x,x)={c:.5f}")
-    # echo
+
     r, d = embed({"image": rand_img(40)})
     record("PASS" if r.status_code == 200 and d.get("model") == "astropt-095m" else "FAIL",
            r.status_code, "model echo", f"model={d.get('model')!r}")
-    # demo (returns 2D [16,512] → flattened 8192; just check demo flag + non-empty)
+
     r, d = embed({"demo": True}); v = _vec(d)
     record("PASS" if r.status_code == 200 and d.get("demo") and v else "FAIL",
            r.status_code, "demo path", f"demo={d.get('demo')} flatlen={len(v)}")
-    # malformed
+
     r, _ = embed({})
     record("PASS" if 400 <= r.status_code < 600 else "FAIL", r.status_code, "malformed handled", f"status={r.status_code}")
+
+    r, d = embed({"image": rand_img(50)}); v = _vec(d)
+    norm = math.sqrt(sum(x*x for x in v)) if v else 0
+    record("PASS" if 0.1 < norm < 1e6 else "FAIL", r.status_code, "embedding norm", f"L2={norm:.4f}")
+
+    required = {"embeddings", "model", "shape"}
+    r, d = embed({"image": rand_img(60)})
+    present = set(d.keys()) & required
+    record("PASS" if r.status_code == 200 and present == required else "FAIL",
+           r.status_code, "response fields", f"present={sorted(present)} required={sorted(required)}")
+
+    r = httpx.get(f"{G}/v1/models", timeout=30)
+    try: mlist = r.json().get("data", [])
+    except Exception: mlist = []
+    found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "models list reachable", f"found={found} n_models={len(mlist)}")
 
 
 def summary():

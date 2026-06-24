@@ -158,6 +158,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline-seconds: "1800"
 spec:
   predictor:
     affinity:
@@ -182,13 +183,13 @@ spec:
             set -e
             VENV=/data/venv
             export HF_HOME=/data/hf_cache
-            if [ ! -d $VENV/bin ] || ! $VENV/bin/python -c 'import aion, fastapi' 2>/dev/null; then
+            if [ ! -d $VENV/bin ] || ! $VENV/bin/python -c 'import aion, fastapi, safetensors' 2>/dev/null; then
               echo "Building venv (aion)..."
               python3 -m venv --clear $VENV
               $VENV/bin/pip install -U pip
               $VENV/bin/pip install \
                 --extra-index-url https://download.pytorch.org/whl/cpu \
-                torch==2.5.1 torchvision==0.20.1 fastapi uvicorn polymathic-aion
+                torch==2.5.1 torchvision==0.20.1 fastapi uvicorn polymathic-aion safetensors
               echo "venv done"
             else
               echo "venv OK"

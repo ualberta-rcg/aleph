@@ -8,6 +8,7 @@ metadata:
 data:
   details.json: |
     {
+      "schema_version": 2,
       "id": "mast3r",
       "type": "3d",
       "description_short": "MASt3R (ECCV 2024): grounding image matching in 3D with metric depth and feature matching for visual localization.",

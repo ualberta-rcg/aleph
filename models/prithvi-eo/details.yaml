@@ -24,6 +24,18 @@ data:
       "defaults": {},
       "custom_params": { "passthrough": true },
       "schema_version": 2,
+      "input_map": {
+        "image": "[[[band,...],...],...] shape (H,W,6) or (T,H,W,6) — 6-band Blue/Green/Red/NIR/SWIR/SWIR2; (H,W,6) replicated to T=1"
+      },
+      "output_map": {
+        "embeddings": "[float] — 1024-dim CLS embedding",
+        "cls_embedding": "[float] — alias for embeddings",
+        "cls_embedding_dim": "int — 1024",
+        "num_patches": "int — number of spatial patches",
+        "patch_embedding_dim": "int — per-patch dim (1024)",
+        "input_shape": "[T, H, W, C] — resolved input shape",
+        "model": "prithvi-eo-300m"
+      },
       "catalog": {
         "description_short": "IBM/NASA Prithvi-EO-2.0-300M — 1024-dim CLS embeddings from 6-band multi-temporal HLS satellite imagery.",
         "description": "Prithvi-EO-2.0-300M (IBM/NASA/JSC, 300M) is an earth-observation foundation model: a 3D ViT MAE pretrained on NASA HLS V2 satellite imagery. Accepts 6-band multispectral data (Blue, Green, Red, NIR, SWIR, SWIR2) with multi-temporal input (T time steps; a single (H,W,6) frame is replicated to T=1). forward_features extracts a 1024-dim CLS embedding (plus per-patch features). Use cases: land classification, change detection, environmental monitoring. Non-text domain model: image-cube input, does NOT expose OpenAI /v1/embeddings; primary is /v1/science/embed (/v1/embed kept as secondary). Output returns the full `embeddings`/`cls_embedding` (1024) + summary fields.",

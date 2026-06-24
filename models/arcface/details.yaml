@@ -46,6 +46,21 @@ data:
         "passthrough": true
       },
       "schema_version": 2,
+      "status": "production",
+      "input_map": {
+        "image": {
+          "type": "string",
+          "required": true,
+          "format": "base64",
+          "description": "Base64-encoded JPEG or PNG face image (data-URI prefix stripped automatically)"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "Model name (arcface-resnet100)"},
+        "task": {"type": "string", "description": "Always \"face\""},
+        "embedding": {"type": "array", "description": "512-dim L2-normalized face embedding vector"},
+        "dim": {"type": "integer", "description": "Embedding dimension (512)"}
+      },
       "catalog": {
         "description_short": "ArcFace ResNet-100 — face recognition embeddings (512-dim)",
         "description": "ArcFace ResNet-100 (DeepInsight) face recognition model. Produces 512-dim L2-normalized embeddings for face verification/identification (cosine similarity). Input images resized to 112x112, RGB->BGR normalized. ONNX/onnxruntime, CPU. Trained on MS1MV3 (99.83% LFW).",
