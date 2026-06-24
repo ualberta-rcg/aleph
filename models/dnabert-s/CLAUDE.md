@@ -5,13 +5,11 @@
 **Endpoints**: POST /v1/embeddings, POST /v1/science/predict
 **Runtime**: CPU, Python FastAPI, venv on PVC
 
-## Migration notes
-- Ported from 232. Changed: RawDeployment → Knative scale-to-zero; removed
-  `nvidia.com/gpu.present: "true"` nodeSelector (CPU model); added init container
-  with PVC for model cache; HF_HOME on PVC; HF_HUB_OFFLINE=1 at runtime;
-  `MODEL_ID` env var now points to `/data/model` (local path).
-- Fixed: `endpoints` was a list (JSON array) → converted to dict for gateway compat.
-- Added `/v1/science/predict` alias in server (reads MODEL_ID from env).
+## Deployment notes
+- Knative scale-to-zero; CPU-only (no GPU nodeSelector); init container builds the
+  model cache on a PVC; `HF_HOME` on PVC; `HF_HUB_OFFLINE=1` at runtime; `MODEL_ID`
+  env points to `/data/model` (local path).
+- `endpoints` is a dict (gateway compat); `/v1/science/predict` alias in server.
 - PVC: dnabert-s-data (10Gi RWX, nfs-models).
 
 ## Key quirks
