@@ -1,14 +1,20 @@
-"""hyenadna DNA-embedding gateway test (run inside the gateway pod).
+"""hyenadna DNA-embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (HyenaDNA medium-160k, CPU).
 256-dim mean-pooled long-range DNA embeddings. Server is OpenAI-compliant (batch + usage).
 
-Run:  cat models/hyenadna/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/hyenadna/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/hyenadna/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "hyenadna-6.5m")
 EXP_DIM = 256
 MAX_INPUT = 8192
@@ -20,7 +26,7 @@ S3 = "GCGCGCGCGCATATATATATGCGCGCGCGCATATATATAT"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)

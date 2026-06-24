@@ -44,7 +44,9 @@ Key info from source:
 
 ```bash
 # Deploy
-kubectl apply -k models/hyenadna/
+kubectl apply -f models/hyenadna/pvc.yaml
+kubectl apply -f models/hyenadna/inferenceservice.yaml
+kubectl apply -f models/hyenadna/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=hyenadna
@@ -52,10 +54,8 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=hyenadna
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=hyenadna -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"model":"hyenadna-6.5m","input":"ACGTACGTAAAGCTAGCTAG"}'
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/hyenadna/test.py
 ```
 
 ## Known Issues / Optimization Opportunities
