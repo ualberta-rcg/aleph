@@ -1,5 +1,7 @@
 # Knative Serving — RKE2 auto-deploy manifest (Job).
 #
+# APPLIES TO: all nodes (cluster-wide serving stack). No site values to fill.
+#
 # Per-component serving-stack Job (split out of the old monolithic kubeflow-bootstrap).
 # Applies the Knative Serving slice of kubeflow/manifests v1.11-branch (same as 230/232),
 # then patches config-features so KServe InferenceServices can use PVCs (model weights),

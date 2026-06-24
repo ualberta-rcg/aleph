@@ -1,0 +1,46 @@
+# Tyk API definitions — RKE2 auto-deploy manifest (ConfigMap).
+#
+# APPLIES TO: all nodes (cluster-wide). No site values to fill.
+#
+# Creates the ConfigMap that Tyk reads its API definition from. Mounted into the Tyk gateway
+# pod at /opt/tyk-gateway/apps (see extraVolumeMounts in 51-tyk.yaml) so Tyk auto-loads it.
+#
+# This file is the committed + auto-deployed form of gateway/tyk/model-gateway-api.json.
+# If the API definition changes, update both this manifest and that source file, then let
+# the WW overlay re-provision apply the new ConfigMap (or: kubectl apply -f 53-tyk-api-definitions.yaml
+# + kubectl rollout restart deploy/gateway-tyk-oss-tyk-gateway -n tyk).
+#
+# The definition:
+#   - Proxies all traffic (listen_path: /) to model-gateway.models.svc.cluster.local:80
+#   - Requires Bearer token auth (use_keyless: false, use_standard_auth: true)
+#   - Authorization header carries the Tyk key (OpenAI/Anthropic SDK compatible)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tyk-api-definitions
+  namespace: tyk
+data:
+  model-gateway.json: |
+    {
+      "name": "model-gateway",
+      "slug": "model-gateway",
+      "api_id": "model-gateway",
+      "org_id": "orgid",
+      "use_keyless": false,
+      "use_standard_auth": true,
+      "auth": { "auth_header_name": "Authorization" },
+      "version_data": {
+        "not_versioned": true,
+        "versions": {
+          "Default": { "name": "Default", "use_extended_paths": true }
+        }
+      },
+      "proxy": {
+        "listen_path": "/",
+        "target_url": "http://model-gateway.models.svc.cluster.local:80",
+        "strip_listen_path": false
+      },
+      "active": true,
+      "enable_context_vars": true,
+      "do_not_track": false
+    }

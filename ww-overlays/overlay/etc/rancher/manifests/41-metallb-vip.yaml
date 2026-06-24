@@ -1,0 +1,36 @@
+# MetalLB VIP pool — RKE2 auto-deploy manifest (IPAddressPool + L2Advertisement).
+#
+# APPLIES TO: HEAD/edge nodes (the VIP is L2-advertised out the public NIC on the heads).
+# SITE VALUES: __VIP__, __PUBLIC_NIC__  (see ww-overlays/SITE-VALUES.md)
+#
+# Tells MetalLB which IP to own and on which NIC to L2-advertise it. Paired with:
+#   - 40-metallb.yaml ............ installs MetalLB (must run first; provides the CRDs below)
+#   - etc/netplan/60-public-vip.yaml + etc/sysctl.d/99-public-vip.conf .. node NIC/ARP plumbing
+#   - 52-tyk-loadbalancer.yaml .... the LoadBalancer Service that consumes this pool
+#
+# A type=LoadBalancer Service with no loadBalancerIP gets the (single) IP from this pool, so the
+# Tyk LB ends up on __VIP__ automatically.
+#
+# !! CRD-RACE (expected, benign) !! These are metallb.io/v1beta1 custom resources that can only
+# apply AFTER 40-metallb.yaml's HelmChart installs the MetalLB CRDs. At a cold boot RKE2 applies
+# this file before the chart finishes, so the first apply logs "no matches for kind IPAddressPool"
+# -- RKE2's addon reconciler retries until the CRDs exist and it converges. No manual step.
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: public-vip
+  namespace: metallb-system
+spec:
+  addresses:
+    - __VIP__/32                   # e.g. 129.128.190.55/32 (a single IP, or a range)
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: public-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - public-vip
+  interfaces:
+    - __PUBLIC_NIC__               # e.g. enp6s19 (the head's public NIC)

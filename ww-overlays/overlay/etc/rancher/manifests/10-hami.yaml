@@ -1,18 +1,21 @@
 # HAMi — RKE2 auto-deploy manifest (vGPU scheduler + device plugin).
 #
+# APPLIES TO: GPU nodes (the device-plugin DaemonSet only schedules on nodes labeled gpu=on).
+#             The chart objects are cluster-wide but only do work where GPUs + the label exist.
+# SITE VALUES: __K8S_VERSION__  (see ww-overlays/SITE-VALUES.md)
+#
 # Source: cluster 230's /etc/rancher/manifests/hami.yaml. Replaces both nvidia-device-plugin
 # and the NVIDIA GPU Operator: HAMi provides the device plugin + the fractional-GPU scheduler
 # (binpack GPU policy; each L40S split into 10 vGPU slices).
 #
-# PREREQUISITES (Warewulf overlay / node customization — NOT handled by this manifest):
+# PREREQUISITES — handled by the Warewulf node image, NOT by this manifest:
 #   - NVIDIA driver + nvidia-container-cli on the GPU nodes.
-#   - containerd default runtime set to "nvidia" (the rke2-gpu overlay does this).
-#   - GPU nodes labeled  gpu=on   (else the device-plugin DaemonSet won't schedule):
-#         kubectl label node <gpu-node> gpu=on
+#   - containerd "nvidia" runtime + nvidia RuntimeClass (the rke2-gpu overlay sets these).
+#   - GPU nodes labeled  gpu=on  (baked by the WW image; without it the device-plugin
+#     DaemonSet won't schedule and nvidia.com/gpu stays absent).
 #
 # SITE-CONFIG: scheduler.kubeScheduler.imageTag MUST match the cluster's Kubernetes version
-# (HAMi ships a patched kube-scheduler). 230 is v1.36.1 — change this if the next deploy is a
-# different k8s minor.
+# (HAMi ships a patched kube-scheduler). Set __K8S_VERSION__ to e.g. v1.36.1.
 apiVersion: helm.cattle.io/v1
 kind: HelmChart
 metadata:
@@ -23,11 +26,10 @@ spec:
   chart: hami
   repo: https://project-hami.github.io/HAMi/
   valuesContent: |-
-    # kubeScheduler.imageTag is auto-set to the cluster Kubernetes version by CI.
     scheduler:
       kubeScheduler:
-        imageTag: "v1.36.1"
-    # Host provides the NVIDIA driver + toolkit; rke2-gpu overlay sets the
+        imageTag: "__K8S_VERSION__"
+    # Host provides the NVIDIA driver + toolkit; the WW GPU overlay sets the
     # containerd default runtime to "nvidia".
     devicePlugin:
       runtimeClassName: "nvidia"

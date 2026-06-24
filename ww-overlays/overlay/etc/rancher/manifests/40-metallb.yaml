@@ -1,0 +1,48 @@
+# MetalLB — RKE2 auto-deploy manifest (L2 load-balancer install for a public VIP).
+#
+# APPLIES TO: HEAD/edge nodes (speaker+frr+controller are pinned to control-plane nodes, where
+#             the public NIC lives). Skip this whole file if the cluster won't use MetalLB.
+#
+# This installs MetalLB ONLY. The VIP pool (IPAddressPool + L2Advertisement) is in the sibling
+# 41-metallb-vip.yaml, and the node-level NIC/ARP plumbing is the Warewulf node overlay
+# (ww-overlays/overlay/etc/netplan + etc/sysctl.d). Three layers, see ww-overlays/README.md.
+#
+# !! REGRESSION WATCH !! The control-plane nodeSelector value MUST be the string "true"
+# (RKE2 sets node-role.kubernetes.io/control-plane="true"; vanilla k8s uses ""). A stale
+# WW-staged copy of this file once shipped the empty-string "" value, so the speaker/controller
+# never scheduled and no VIP came up. Keep it "true" here AND in the baked WW overlay.
+#
+# frr runs as a SIDECAR in the speaker (frr.enabled: true, frrk8s.enabled: false), so it is
+# constrained with the speaker by the nodeSelector below. Lesson from the 230 POC: frr on a
+# small (8-vCPU) head alongside the full serving stack starved the control plane -> CrashLoop.
+# Use adequately-sized heads (>=16 vCPU) or dedicated edge nodes.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: metallb
+  namespace: kube-system
+spec:
+  repo: https://metallb.github.io/metallb
+  chart: metallb
+  targetNamespace: metallb-system
+  createNamespace: true
+  valuesContent: |-
+    crds:
+      enabled: true
+    # frr as a sidecar inside the speaker (constrained via speaker.nodeSelector).
+    frr:
+      enabled: true
+    frrk8s:
+      enabled: false
+    speaker:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"   # MUST be "true" on RKE2 (NOT "")
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+    controller:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"   # MUST be "true" on RKE2 (NOT "")
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule

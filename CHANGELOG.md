@@ -3,6 +3,49 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-24 — ww-overlays: consolidate RKE2 manifests + WW overlay into one canonical dir
+
+Restructured platform deployment artifacts into `ww-overlays/` — the single source of truth
+for the Warewulf overlay and RKE2 auto-deploy manifests.
+
+**What changed:**
+- New `ww-overlays/overlay/etc/rancher/manifests/` — all RKE2 auto-deploy manifests, moved
+  from `deploy-aleph/rke2-manifests/` and improved:
+  - All site-specific values tokenized (`__VIP__`, `__NFS_SERVER__`, `__K8S_VERSION__`, etc.)
+  - Per-file headers identify which node role each file targets (GPU workers / head / all)
+  - `41-metallb-vip.yaml` NEW — IPAddressPool + L2Advertisement as an auto-deploy manifest
+    (with CRD-race note; converges automatically via RKE2 reconciler retries)
+  - `52-tyk-loadbalancer.yaml` NEW — Tyk exposed as MetalLB LoadBalancer (port 80), not NodePort
+  - `53-tyk-api-definitions.yaml` NEW — Tyk API-def ConfigMap as a manifest (inlines
+    `gateway/tyk/model-gateway-api.json`); mounted automatically via `51-tyk.yaml` extraVolumes
+  - `51-tyk.yaml` — `TYK_GW_APPPATH` and `TYK_GW_ENABLEHASHEDKEYSLISTING` are now baked into
+    `tyk-gateway.gateway.extraEnvs` and `extraVolumes`/`extraVolumeMounts`; no post-deploy patch
+  - `63-model-gateway.yaml` NEW — gateway RBAC + Service + Deployment as a manifest;
+    pulls `rkhoja/aleph:latest` from Docker Hub CI automatically
+- New `ww-overlays/overlay/etc/netplan/` + `etc/sysctl.d/` — node VIP overlay (head nodes only),
+  moved from `deploy-aleph/overlays/` and tokenized
+- New `ww-overlays/SITE-VALUES.md` + `site.env.example` — one place listing every `__TOKEN__`,
+  which files use it, and the Aleph cluster example value
+- New `ww-overlays/post-deploy/` — what remains after boot: Tyk key creation, smoke test
+  script (`verify-test-model.sh`, from `03-deploy-test-model.sh`), and cert example
+
+**Deleted (superseded by manifests):**
+- `deploy-aleph/01-install.sh`, `02-post-install.sh`, `04-install-tyk-gateway.sh` — all
+  replaced by the self-ordering bootstrap Jobs (60–63) and Helm manifests (50–53)
+- `deploy-aleph/deploy.sh`, `gateway/remote-deploy.sh` — no longer needed; CI publishes the
+  gateway image and `kubectl rollout restart` is all that's required for updates
+- `gateway/tyk/nodeport.yaml` — replaced by `52-tyk-loadbalancer.yaml` (LoadBalancer, VIP:80)
+- `deploy-aleph/configs/` (tyk-oss-values, inferenceservice-config, tyk-api-proxy-istio) and
+  `deploy-aleph/storage/nfs-models-storageclass.yaml` — all folded into their respective manifests
+- `deploy-aleph/rke2-manifests/` and `deploy-aleph/overlays/` — moved into `ww-overlays/`
+
+**Impact:** fresh cluster provisioning is now fully declarative. Bake the WW overlay → provision
+nodes → everything comes up automatically (MetalLB, Tyk, NFS, Istio, Knative, KServe, gateway).
+Only post-deploy steps are: issue a Tyk key, smoke-test, apply model cards.
+
+**Validation:** live cluster `.43` (aleph1-3 + rack15-03, rack05-16) matches this manifest set.
+The existing running cluster requires no changes.
+
 ## 2026-06-24 — VL multimodal light pass: 7 vision-language chat models audited + tested
 
 - Light audit of all multimodal VL chat models: `qwen25-vl-3b`, `qwen25-vl-7b`,

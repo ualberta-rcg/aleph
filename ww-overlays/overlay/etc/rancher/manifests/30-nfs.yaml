@@ -1,0 +1,40 @@
+# NFS provisioner + nfs-models StorageClass — RKE2 auto-deploy manifest.
+#
+# APPLIES TO: all nodes (cluster-wide default StorageClass).
+# SITE VALUES: __NFS_SERVER__, __NFS_PATH__  (see ww-overlays/SITE-VALUES.md)
+#
+# One NFS component and ONE StorageClass (nfs-models, the default). There is intentionally no
+# separate nfs-client SC — nfs-models is the default AND the OneFS-safe one.
+#
+# WHY nfs-models (the mountOptions below): the OneFS/Isilon backend returns EIO on COMMIT for
+# write RPCs > 128 KiB over NFSv4.1/4.2; the default wsize/rsize=1Mi makes multi-GB safetensors
+# writes fail at close(). Capping rsize/wsize to 128Ki lets large writes succeed (~700 MB/s
+# verified). The SC mountOptions propagate to the dynamically-provisioned PVs.
+#
+# NOTE: nfs-subdir-external-provisioner is upstream-archived but still functional and is what
+# 230/232 run today. Swap to nfs-csi (sig-storage) in a future iteration if desired.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: nfs-provisioner
+  namespace: kube-system
+spec:
+  targetNamespace: nfs-provisioner
+  createNamespace: true
+  chart: nfs-subdir-external-provisioner
+  repo: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+  valuesContent: |-
+    nfs:
+      server: __NFS_SERVER__
+      path: __NFS_PATH__
+    storageClass:
+      name: nfs-models
+      defaultClass: true
+      reclaimPolicy: Delete
+      mountOptions:
+        - nfsvers=4.2
+        - rsize=131072
+        - wsize=131072
+        - hard
+        - timeo=600
+        - retrans=2

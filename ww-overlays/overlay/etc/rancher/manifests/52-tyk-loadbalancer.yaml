@@ -1,0 +1,32 @@
+# Tyk public exposure — RKE2 auto-deploy manifest (LoadBalancer Service via MetalLB).
+#
+# APPLIES TO: HEAD/edge nodes (the VIP is advertised there). No site values to fill — MetalLB
+#             auto-assigns the address from the 41-metallb-vip.yaml pool.
+#
+# NAME NOTE: the Service is named `tyk-gateway-nodeport` for historical reasons but is type
+# LoadBalancer. It is the REAL public entrypoint: clients hit the MetalLB VIP on port 80.
+# The nodePort (30808) is only the LB's backing port, kept for an internal NodePort fallback
+# (http://<any-node-ip>:30808) — it is NOT the primary access path.
+#
+# Replaces the old gateway/tyk/nodeport.yaml (type NodePort), which was drift and is removed.
+#
+# ORDER: this Service stays <pending> until 41-metallb-vip.yaml's pool exists; both are
+# auto-deployed, so it converges automatically. Selector matches the tyk-oss chart's gateway pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tyk-gateway-nodeport
+  namespace: tyk
+  labels:
+    app: gateway-tyk-oss-tyk-gateway
+spec:
+  type: LoadBalancer
+  selector:
+    app: gateway-tyk-oss-tyk-gateway
+    release: tyk-oss
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      nodePort: 30808
+      protocol: TCP

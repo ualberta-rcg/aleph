@@ -1,0 +1,22 @@
+# TLS Certificate — POST-DEPLOY example (copy + fill per endpoint hostname).
+#
+# Not auto-deployed: apply once Traefik + port 80 are reachable from the Internet so the ACME
+# HTTP-01 challenge can complete. Requires the letsencrypt-prod ClusterIssuer (01-cluster-issuer)
+# to be installed.
+#
+# SITE VALUES: __PUBLIC_HOSTNAME__ (DNS name pointed at the VIP, e.g. api.aleph.example.org)
+#
+#   kubectl apply -f certificate.example.yaml
+#   kubectl get certificate -n tyk   # -> Ready=True once the challenge passes
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: aleph-public-tls
+  namespace: tyk
+spec:
+  secretName: aleph-public-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - __PUBLIC_HOSTNAME__

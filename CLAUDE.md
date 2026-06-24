@@ -13,7 +13,8 @@ KServe/Knative + Tyk model-inference platform.
 |---|---|
 | `gateway/` | FastAPI inference gateway (OpenAI + Anthropic compatible), Dockerfile, k8s manifests, Tyk config |
 | `models/` | Per-model KServe `InferenceService` + `PVC` + `details.yaml` cards (LLMs, embeddings, rerank, TTS, science models) |
-| `deploy-aleph/` | Platform deploy: install scripts (RKE2 manifests, Istio/Knative/KServe, Tyk OSS), StorageClasses, `deploy.sh` |
+| `ww-overlays/` | Warewulf overlay + RKE2 auto-deploy manifests (baked into node image); site-value tokens + post-deploy steps |
+| `deploy-aleph/` | Legacy reference (superseded by `ww-overlays/`). Only `03-deploy-test-model.sh` → now `ww-overlays/post-deploy/verify-test-model.sh` |
 | `test/` | Deployment & verification tests (`full_test.py`, `test-model.sh`, `smoke.sh`); fixtures in `test/inputs/` |
 | `docs/` + `CHANGELOG.md` | Design + ops docs (`RUNBOOK`, `GATEWAY-DESIGN`, `GATEWAY-ARCHITECTURE`, `CHANGELOG`) |
 
@@ -46,7 +47,7 @@ sudo ssh root@172.26.92.43 "export PATH=\$PATH:/var/lib/rancher/rke2/bin; export
 
 ## Public Endpoint
 
-MetalLB L2 VIP at `129.128.190.55` on interface `enp6s19`. Tyk API gateway exposed as LoadBalancer on port 80 (NodePort 30808 also available). All model API traffic goes through Tyk (auth) → model-gateway (FastAPI) → KServe pods.
+MetalLB L2 VIP at `129.128.190.55` on interface `enp6s19`. Tyk API gateway exposed as LoadBalancer on port 80 (the primary endpoint). NodePort `30808` is the LB's backing port (also usable internally). All model API traffic goes through Tyk (auth) → model-gateway (FastAPI) → KServe pods.
 
 ## Warewulf + Stateless Nodes
 
@@ -115,7 +116,7 @@ Internet → MetalLB VIP (129.128.190.55:80) → Tyk OSS (auth, rate-limit)
 - **Gateway image**: `rkhoja/aleph:latest` (CI auto-builds on `main` push touching `gateway/**`, ~4 min)
 - **Gateway deploy**: `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>` or `kubectl rollout restart deploy/model-gateway -n models`
 - **Tyk keys**: `gateway/tyk/tyk-keys.sh` (create/list/inspect/revoke)
-- **Full deploy**: `GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha> ./gateway/remote-deploy.sh`
+- **Gateway update**: `kubectl rollout restart deploy/model-gateway -n models` (CI auto-builds `rkhoja/aleph:latest` on every `gateway/**` push)
 
 ## POC Reference Cluster (172.26.92.232)
 
@@ -150,9 +151,8 @@ kubectl create secret generic hf-token -n models \
 
 ### Tyk secret
 
-`gateway/tyk/tyk-keys.sh` and `deploy-aleph/04-install-tyk-gateway.sh` read
-`TYK_SECRET` / `TYK_API_SECRET` from the environment (no baked-in default). Export them
-(e.g. `set -a; source .env; set +a`) before running.
+`gateway/tyk/tyk-keys.sh` reads `TYK_SECRET` / `TYK_API_SECRET` from the environment. Export
+from `.env` (e.g. `set -a; source .env; set +a`) before running.
 
 ## Changelog-First Commit Process
 

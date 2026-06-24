@@ -11,15 +11,15 @@ guide so it can be reproduced on **any** equivalent cluster.
 > fill them in for your cluster. No cluster number appears in this file by design.
 >
 > Companion docs (this repo): [`GATEWAY-DESIGN.md`](GATEWAY-DESIGN.md) (design rationale),
-> [`GATEWAY-ARCHITECTURE.md`](GATEWAY-ARCHITECTURE.md) (card schema + handler map). The exact
-> command sequence run live is in `gateway/remote-deploy.sh`.
+> [`GATEWAY-ARCHITECTURE.md`](GATEWAY-ARCHITECTURE.md) (card schema + handler map). The
+> platform manifests (RKE2 auto-deploy + WW overlay) live in [`ww-overlays/`](../ww-overlays/).
 
 ---
 
 ## Architecture at a glance
 
 ```
-client ──HTTP──> <HEAD_IP>:30808 ──> Tyk (token auth/keys, Redis) ──> model-gateway (cards)
+client ──HTTP──> <VIP>:80 (MetalLB) ──> Tyk (token auth/keys, Redis) ──> model-gateway (cards)
                                                                        │
                                             ┌──────────────────────────┴───────────────────────────┐
                                             ▼ (Knative local gateway, Host: <isvc>-predictor)       ▼ (direct Service / RayService)
@@ -42,7 +42,8 @@ Find these on the target cluster first; every command below references them.
 
 | Placeholder | What it is | How to find it |
 |---|---|---|
-| `HEAD_IP` | control-plane node IP you'll expose the NodePort on | the CP VM address |
+| `VIP` | MetalLB public VIP (primary endpoint, port 80) | `kubectl get svc tyk-gateway-nodeport -n tyk -o jsonpath='{.status.loadBalancer.ingress[0].ip}'` |
+| `HEAD_IP` | a control-plane node IP (NodePort fallback :30808 if VIP unavailable) | any CP VM address |
 | `GPU_NODE` | a GPU worker hostname | `kubectl get nodes -l gpu=on` |
 | GPU node label | label HAMi device-plugin keys on | `gpu=on` (label it if missing — see gotcha #9) |
 | CP node label | control-plane selector | `node-role.kubernetes.io/control-plane=true` |
@@ -86,58 +87,36 @@ kubectl get deploy -n tyk                                                       
 
 ---
 
-## 1. Gateway image (Docker Hub)
+## 1. Gateway image (Docker Hub — auto-deployed)
 
-CI publishes the gateway to **`rkhoja/aleph`** on Docker Hub
-(workflow: `.github/workflows/deploy-gateway.yml`). Tags: moving `latest` and immutable
-`gateway-<shortsha>`.
+CI publishes the gateway to **`rkhoja/aleph`** on Docker Hub on every push to `main` touching
+`gateway/**` (workflow: `.github/workflows/deploy-gateway.yml`). Tags: moving `latest` and
+immutable `gateway-<shortsha>`.
+
+The Deployment (`ww-overlays/overlay/etc/rancher/manifests/63-model-gateway.yaml`) is part of
+the WW overlay auto-deploy set — it comes up automatically when the cluster boots. To roll out
+a new build after a push:
 
 ```bash
-# Default: pull rkhoja/aleph:latest (imagePullPolicy: IfNotPresent in deployment.yaml)
-kubectl apply -f gateway/k8s/deployment.yaml
+kubectl rollout restart deploy/model-gateway -n models
+kubectl rollout status  deploy/model-gateway -n models
 
-# Or pin a CI build for reproducibility:
+# Pin a specific CI build if needed:
 kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>
-kubectl rollout status deploy/model-gateway -n models
 ```
-
-From a login node, `./deploy-aleph/deploy.sh` ships manifests and applies everything (no local build).
-
-<details>
-<summary>Appendix: local build + containerd import (dev / air-gapped only)</summary>
-
-Build on the control-plane host, then import into **RKE2's** containerd (not the host's — see
-gotcha #1). Requires docker or podman on the CP node. Set `imagePullPolicy: Never` and a local
-tag like `model-gateway:<tag>` only for this path.
-
-```bash
-cd gateway
-podman build -t model-gateway:0.3 .
-podman save model-gateway:0.3 -o /tmp/gw.tar
-CTR="ctr --address /run/k3s/containerd/containerd.sock -n k8s.io"
-$CTR images import /tmp/gw.tar
-$CTR images tag localhost/model-gateway:0.3 docker.io/library/model-gateway:0.3
-```
-
-</details>
 
 ## 2. Gateway RBAC + Service + Deployment
 
-```bash
-kubectl create namespace models --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f gateway/k8s/rbac.yaml       # SA + Role: configmaps & inferenceservices get/list/watch
-kubectl apply -f gateway/k8s/service.yaml    # ClusterIP :80 -> :8080
-kubectl apply -f gateway/k8s/deployment.yaml # image rkhoja/aleph:latest, imagePullPolicy: IfNotPresent
-```
+**Auto-deployed** by `ww-overlays/overlay/etc/rancher/manifests/63-model-gateway.yaml` as part
+of the RKE2 auto-deploy set. No manual apply needed on a fresh cluster.
 
-Key deployment choices (in `gateway/k8s/deployment.yaml`):
+Key deployment choices (from `gateway/k8s/deployment.yaml`, now baked into `63-model-gateway.yaml`):
 - **Pinned to control-plane / non-GPU nodes:** `nodeSelector node-role.kubernetes.io/control-plane: "true"`
-  + nodeAffinity `gpu NotIn [on]`. Keeps it off GPU workers; covers all future CP VMs.
-- `image: rkhoja/aleph:latest` from Docker Hub (`imagePullPolicy: IfNotPresent`). Container name is **`gateway`** (matters for `kubectl set image`).
+  + nodeAffinity `gpu NotIn [on]`. Keeps it off GPU workers; covers all CP VMs.
+- `image: rkhoja/aleph:latest` from Docker Hub (`imagePullPolicy: Always`).
 - Istio sidecar via pod label `sidecar.istio.io/inject: "true"`.
 
-The gateway needs `gateway/cards/` applied (next step) before `/readyz` goes green
-(readiness requires ≥1 card).
+The gateway needs at least one card applied (next step) before `/readyz` goes green.
 
 ## 3. Model cards (the discovery mechanism)
 
@@ -174,8 +153,7 @@ Two changes vs a normal GPU-operator manifest, both in `models/command-r-7b/infe
    Secret for non-test), then every restart/cold-start reuses the weights.
 
 ```bash
-kubectl apply -f deploy-aleph/storage/nfs-models-storageclass.yaml      # once per cluster
-kubectl apply -f models/command-r-7b/pvc.yaml
+kubectl apply -f models/command-r-7b/pvc.yaml    # nfs-models SC auto-deployed (30-nfs.yaml)
 kubectl apply -f models/command-r-7b/inferenceservice.yaml
 kubectl get isvc command-r-7b -n models -w        # wait for READY=True (first run pulls ~9GB vLLM image)
 ```
@@ -207,46 +185,27 @@ Every non-streaming chat / embeddings / messages response (and the final Anthrop
   Those need a metrics source (DCGM exporter or the HAMi metrics endpoint); wire that in to
   populate `gpu_util_pct` / `vram_used_mib` later.
 
-## 5. Tyk wiring
+## 5. Tyk wiring (auto-deployed)
 
-A fresh `tyk-oss` Helm install has **no** API-definitions ConfigMap mounted, and
-`TYK_GW_APPPATH` points at an empty scratch emptyDir. So we must (a) create the ConfigMap,
-(b) **mount it**, (c) point APPPATH at the mount, (d) enable key listing, (e) NodePort.
+Tyk is fully configured by the WW-overlay manifests — no manual steps on a fresh cluster:
 
+| Manifest | What it does |
+|---|---|
+| `50-tyk-redis.yaml` | Installs Redis (Bitnami) |
+| `51-tyk.yaml` | Installs Tyk OSS; bakes in `TYK_GW_APPPATH`, `ENABLEHASHEDKEYSLISTING`, and the api-defs volume mount |
+| `52-tyk-loadbalancer.yaml` | LoadBalancer Service → MetalLB assigns the VIP |
+| `53-tyk-api-definitions.yaml` | ConfigMap with `model-gateway.json` (token auth, proxies to `model-gateway.models.svc:80`) |
+
+API definition: `gateway/tyk/model-gateway-api.json` — `use_keyless:false`, `use_standard_auth:true`,
+`listen_path:/`, target `http://model-gateway.models.svc.cluster.local:80`. The committed source
+is inlined into `53-tyk-api-definitions.yaml`.
+
+Verify Tyk loaded the API definition:
 ```bash
-TYK_DEPLOY=gateway-tyk-oss-tyk-gateway              # `kubectl get deploy -n tyk`
-TYK_CTR=$(kubectl get deploy $TYK_DEPLOY -n tyk -o jsonpath='{.spec.template.spec.containers[0].name}')
-
-# 5a. API definition -> ConfigMap
-kubectl create configmap tyk-api-definitions -n tyk \
-  --from-file=model-gateway.json=gateway/tyk/model-gateway-api.json \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# 5b. env overrides: read defs from the mount + allow key listing
-kubectl set env deploy/$TYK_DEPLOY -n tyk \
-  TYK_GW_APPPATH=/opt/tyk-gateway/apps \
-  TYK_GW_ENABLEHASHEDKEYSLISTING=true
-
-# 5c. MOUNT the ConfigMap at the APPPATH (the step the fresh install lacks)
-kubectl patch deploy $TYK_DEPLOY -n tyk --type=strategic -p '{"spec":{"template":{"spec":{
-  "volumes":[{"name":"api-defs","configMap":{"name":"tyk-api-definitions"}}],
-  "containers":[{"name":"'"$TYK_CTR"'","volumeMounts":[{"name":"api-defs","mountPath":"/opt/tyk-gateway/apps"}]}]}}}}'
-
-# 5d. Expose Tyk on the host IP (no LB/public IP)
-kubectl apply -f gateway/tyk/nodeport.yaml          # NodePort 30808 -> Tyk :8080
-
-# 5e. Roll (the patch/env changes already trigger a rollout; this ensures it)
-kubectl rollout status deploy/$TYK_DEPLOY -n tyk --timeout=120s
-# Expect logs: "Loading API Specification ... model-gateway.json" -> "Detected 1 APIs"
-#              -> "Checking security policy: Token"
+kubectl logs -n tyk deploy/gateway-tyk-oss-tyk-gateway | grep -i "Detected\|model-gateway"
+# Expect: "Loading API Specification from /opt/tyk-gateway/apps/model-gateway.json"
+#         "Detected 1 APIs" and "Checking security policy: Token"
 ```
-
-> 5b/5c are patches on a Helm-managed Deployment — **fold them into Helm values**
-> (`tyk-gateway.gateway.extraEnvs` + an `extraVolumes`/`extraVolumeMounts` for the ConfigMap)
-> on a real cluster so chart upgrades don't revert them.
-
-`gateway/tyk/model-gateway-api.json` uses `use_keyless:false` + `use_standard_auth:true`
-(token auth), `listen_path:/`, target `http://model-gateway.models.svc.cluster.local:80`.
 
 ---
 
@@ -264,7 +223,7 @@ label) and `meta_data` (arbitrary map). Issue one key per user and stamp the use
 on it; the key string is the bearer token the user puts in their client.
 
 ```bash
-TYK=http://<HEAD_IP>:30808
+TYK=http://<VIP>           # MetalLB VIP on port 80 (primary). Fallback: http://<HEAD_IP>:30808
 SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk -o jsonpath='{.data.APISecret}' | base64 -d)
 
 # Issue a key bound to a user (Tyk generates the key string):
@@ -300,8 +259,8 @@ Verified lifecycle: no key → `401`; valid key → `200`; after `DELETE` → `4
 in-memory **session cache (~10s)**, so a revoked key may keep working for a few seconds —
 expected, not a bug.
 
-> **Listing had to be enabled** via `TYK_GW_ENABLEHASHEDKEYSLISTING=true` (§5b). Like the APPPATH
-> override, move it into the Helm values so a chart upgrade keeps it.
+> `TYK_GW_ENABLEHASHEDKEYSLISTING=true` and `TYK_GW_APPPATH` are now baked into `51-tyk.yaml`
+> via `extraEnvs` — no manual override needed.
 >
 > Per-user **rate limit / quota** go in `access_rights.model-gateway.limit`
 > (`rate`, `per`, `quota_max`, `quota_renewal_rate`). To get the username into model logs for
@@ -311,7 +270,7 @@ expected, not a bug.
 ### Verify
 
 ```bash
-U=http://<HEAD_IP>:30808
+U=http://<VIP>       # MetalLB VIP port 80 — primary endpoint
 S=<TYK_SECRET>
 
 # make a key
@@ -327,8 +286,9 @@ curl -s $U/v1/messages -H "Authorization: Bearer $K" -H "Content-Type: applicati
   -d '{"model":"command-r-7b","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}'   # Anthropic
 ```
 
-OpenAI SDK: `base_url="http://<HEAD_IP>:30808/v1"`, `api_key=<tyk key>`.
-Anthropic SDK: `base_url="http://<HEAD_IP>:30808"` (it appends `/v1/messages`), `api_key=<tyk key>`.
+OpenAI SDK: `base_url="http://<VIP>/v1"`, `api_key=<tyk key>`.
+Anthropic SDK: `base_url="http://<VIP>"` (it appends `/v1/messages`), `api_key=<tyk key>`.
+NodePort fallback (internal): `http://<HEAD_IP>:30808` (same Tyk gateway, port 30808).
 
 ### Gotchas we hit (read before redeploying)
 
@@ -362,13 +322,21 @@ Anthropic SDK: `base_url="http://<HEAD_IP>:30808"` (it appends `/v1/messages`), 
 ### Teardown (to redo cleanly)
 
 ```bash
-kubectl delete -f models/command-r-7b/inferenceservice.yaml
-kubectl delete cm command-r-7b-details -n models
-kubectl delete -f gateway/k8s/deployment.yaml -f gateway/k8s/service.yaml -f gateway/k8s/rbac.yaml
+# Remove a specific model:
+kubectl delete isvc <model> -n models
+kubectl delete cm <model>-details -n models
+
+# Remove all model cards:
 kubectl delete cm -n models -l model-details=true
-kubectl delete -f gateway/tyk/nodeport.yaml
-kubectl delete cm tyk-api-definitions -n tyk     # then restart Tyk
-# Tyk keys persist in Redis; delete via the admin API if needed.
+
+# Tyk keys persist in Redis; delete via the admin API if needed (tyk-keys.sh revoke-user <user>).
+
+# The gateway Deployment, RBAC, Service, Tyk LB svc, and api-def ConfigMap are managed by
+# the WW-overlay manifests — they are re-applied automatically on the next RKE2 reconcile.
+# To force-remove them manually (e.g. to test a full rebuild):
+kubectl delete -f ww-overlays/overlay/etc/rancher/manifests/63-model-gateway.yaml
+kubectl delete -f ww-overlays/overlay/etc/rancher/manifests/52-tyk-loadbalancer.yaml
+kubectl delete -f ww-overlays/overlay/etc/rancher/manifests/53-tyk-api-definitions.yaml
 ```
 
 ---

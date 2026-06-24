@@ -1,9 +1,11 @@
 # Istio + Kubeflow mesh scaffolding — RKE2 auto-deploy manifest (Job).
 #
+# APPLIES TO: all nodes (cluster-wide serving stack). No site values to fill.
+#
 # One of the per-component serving-stack Jobs (split out of the old monolithic
 # kubeflow-bootstrap). Applies the Istio slice of kubeflow/manifests v1.11-branch — the SAME
 # overlays running on 230/232 — plus the Kubeflow namespace/roles/Istio-resources scaffolding
-# that the rest of the stack (Knative, KServe, Profiles) depends on.
+# that the rest of the stack (Knative, KServe) depends on.
 #
 # Installs: cert-manager kubeflow issuer, Istio (CRDs + namespace + control plane +
 # cluster-local-gateway), kubeflow namespace + roles + Istio Gateway/VS resources.
@@ -89,8 +91,6 @@ spec:
               #    common/istio/kubeflow-istio-resources/base both contain objects in the
               #    `kubeflow` namespace, so it must exist before they are applied — otherwise
               #    "namespaces kubeflow not found" aborts the whole Job under `set -e`.
-              #    (The old monolithic kubeflow-bootstrap applied kubeflow-namespace first;
-              #    splitting into per-component Jobs regressed this order.)
               echo "--- Step 1: Kubeflow namespace ---"
               kubectl apply -k common/kubeflow-namespace/base
 

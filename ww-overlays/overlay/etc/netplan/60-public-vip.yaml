@@ -1,0 +1,33 @@
+# netplan — public VIP interface for MetalLB.
+#
+# APPLIES TO: HEAD/edge nodes ONLY (the nodes that own the public NIC / advertise the VIP).
+#             Do NOT bake this onto GPU workers.
+# TARGET PATH on node: /etc/netplan/60-public-vip.yaml   Apply: netplan apply
+# SITE VALUES: __PUBLIC_NIC__, __PUBLIC_SUBNET__, __PUBLIC_GW__, __VIP__  (see SITE-VALUES.md)
+#
+# Recipe (proven, cluster 230): public NIC UP but IP-free (unnumbered) — MetalLB owns the VIP at
+# L2; VIP carried on a dummy interface (local address, loopback-equivalent — netplan cannot
+# address `lo`); public subnet on-link via the NIC (DESTINATION routing — replies to public
+# hosts route out the NIC by destination, which is what actually works).
+#
+# Fallbacks if this netplan is rejected on your distro:
+#   - dummy rejected:           ip addr add __VIP__/32 dev lo
+#   - on-link route rejected:   ip route add __PUBLIC_SUBNET__ dev __PUBLIC_NIC__
+network:
+  version: 2
+  ethernets:
+    __PUBLIC_NIC__:
+      dhcp4: false
+      dhcp6: false
+      addresses: []                # IP-free (unnumbered) — MetalLB owns the VIP at L2
+      routes:
+        - to: __PUBLIC_SUBNET__    # on-link via this NIC (destination routing)
+          scope: link
+        # Optional — EXTERNAL (Internet) clients only: make this NIC the default gw.
+        # Safe: the cluster subnet stays on the cluster NIC's connected route.
+        # - to: default
+        #   via: __PUBLIC_GW__
+  dummy:
+    dummy0:
+      addresses:
+        - __VIP__/32               # VIP as a local address so replies source from it

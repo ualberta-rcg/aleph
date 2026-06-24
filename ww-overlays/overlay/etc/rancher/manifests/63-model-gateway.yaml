@@ -1,0 +1,130 @@
+# model-gateway — RKE2 auto-deploy manifest (RBAC + Service + Deployment).
+#
+# APPLIES TO: all nodes (cluster-wide; runs on control-plane VMs only via nodeSelector).
+# No site values to fill — image is published to Docker Hub by CI on every gateway/** push.
+#
+# The model-gateway is the card-driven FastAPI inference gateway:
+#   MetalLB VIP :80 → Tyk (auth) → model-gateway :8080 → KServe pods (HAMi vGPU)
+#
+# IMAGE: rkhoja/aleph:latest (CI auto-builds on main pushes touching gateway/**; ~4 min).
+#        imagePullPolicy: Always so a rollout restart picks up new builds automatically.
+#        To pin a specific build: kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>
+#
+# PREREQUISITE: the `models` namespace is created by 62-kserve.yaml. If this manifest
+# applies before that Job completes, k8s will retry — safe, converges automatically.
+#
+# The gateway is pinned to control-plane (non-GPU) VMs so it never competes with model pods
+# for GPU-node resources. Stateless: all state is in K8s ConfigMaps/ISVCs via K8s Watches.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: model-gateway
+  namespace: models
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: model-gateway
+  namespace: models
+rules:
+  # Cards: the gateway watches model detail ConfigMaps for live routing table updates.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Live model state (ready, replicas, host).
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["inferenceservices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: model-gateway
+  namespace: models
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: model-gateway
+subjects:
+  - kind: ServiceAccount
+    name: model-gateway
+    namespace: models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-gateway
+  namespace: models
+  labels:
+    app: model-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: model-gateway
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway
+  namespace: models
+  labels:
+    app: model-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model-gateway
+  template:
+    metadata:
+      labels:
+        app: model-gateway
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: model-gateway
+      # Pinned to control-plane (non-GPU) nodes — covers all CP VMs (HA or single).
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: gpu
+                    operator: NotIn
+                    values: ["on"]
+      containers:
+        - name: gateway
+          image: rkhoja/aleph:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MODELS_NAMESPACE
+              value: models
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15

@@ -1,5 +1,7 @@
 # cert-manager — RKE2 auto-deploy manifest.
 #
+# APPLIES TO: all nodes (cluster-wide component). No site values to fill.
+#
 # Source: split out of cluster 230's /etc/rancher/manifests/rancher.yaml (which bundled
 # cert-manager + Rancher). We keep cert-manager and DROP Rancher (not needed here).
 #

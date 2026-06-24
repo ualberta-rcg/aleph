@@ -1,5 +1,7 @@
 # KServe — RKE2 auto-deploy manifest (Job).
 #
+# APPLIES TO: all nodes (cluster-wide serving stack). No site values to fill.
+#
 # Per-component serving-stack Job (split out of the old monolithic kubeflow-bootstrap).
 # Applies the KServe slice of kubeflow/manifests v1.11-branch (same as 230/232) with the
 # server-side apply the KServe CRDs need, then configures it and stands up the `models`
@@ -96,7 +98,6 @@ spec:
               kubectl apply --server-side --force-conflicts -k applications/kserve/kserve 2>&1 | tail -5 || true
 
               # 3. KServe config — ingress via Istio gateways + direct PVC mount for model weights.
-              #    (Folds in deploy-aleph/configs/inferenceservice-config.yaml.)
               echo "--- Step 3: inferenceservice-config ---"
               cat <<'EOF' | kubectl apply -f -
               apiVersion: v1

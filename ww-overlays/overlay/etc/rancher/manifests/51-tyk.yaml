@@ -1,0 +1,82 @@
+# Tyk OSS gateway — RKE2 auto-deploy manifest (API-key auth + routing in front of KServe).
+#
+# APPLIES TO: all nodes (cluster-wide component).
+# SITE VALUES: __TYK_API_SECRET__  (see ww-overlays/SITE-VALUES.md)
+#
+# Sits behind the public VIP (52-tyk-loadbalancer.yaml); proxies to the model-gateway / KServe.
+# Pump + operator off.
+#
+# SECRET: global.secrets.APISecret is the admin API secret. The chart materializes it into
+# Secret `secrets-tyk-oss-tyk-gateway` (key `APISecret`). Set __TYK_API_SECRET__ from .env
+# (TYK_API_SECRET) before baking — never commit a real secret.
+#
+# API definitions are loaded POST-DEPLOY (ww-overlays/post-deploy/post-deploy.sh ->
+# gateway/remote-deploy.sh): the model-gateway API def ConfigMap is created and mounted at
+# /opt/tyk-gateway/apps. The two env overrides below USED to be a manual `kubectl set env`
+# patch; they are now baked into the chart values:
+#   - TYK_GW_APPPATH .................... read API defs from the ConfigMap mount (the Helm
+#                                        default points at an empty scratch emptyDir -> 0 APIs)
+#   - TYK_GW_ENABLEHASHEDKEYSLISTING ... allow GET /tyk/keys (off by default)
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: tyk-oss
+  namespace: kube-system
+spec:
+  targetNamespace: tyk
+  createNamespace: true
+  chart: tyk-oss
+  repo: https://helm.tyk.io/public/helm/charts/
+  valuesContent: |-
+    global:
+      components:
+        pump: false
+        operator: false
+      secrets:
+        APISecret: "__TYK_API_SECRET__"
+      redis:
+        addrs:
+          - tyk-redis-master.tyk.svc.cluster.local:6379
+        passSecret:
+          name: tyk-redis
+          keyName: redis-password
+        enableCluster: false
+      tls:
+        gateway: false
+      servicePorts:
+        gateway: 8080
+    tyk-gateway:
+      gateway:
+        kind: Deployment
+        replicaCount: 1
+        hostName: ""
+        enablePathPrefixMatching: true
+        # Baked-in env overrides (formerly a post-deploy `kubectl set env` patch).
+        extraEnvs:
+          - name: TYK_GW_APPPATH
+            value: /opt/tyk-gateway/apps
+          - name: TYK_GW_ENABLEHASHEDKEYSLISTING
+            value: "true"
+        # Mount the API definitions ConfigMap (53-tyk-api-definitions.yaml) so Tyk reads it
+        # at /opt/tyk-gateway/apps (the APPPATH above). optional: true so Tyk starts even if
+        # the CM lands after the pod does — it will reload on the next restart.
+        extraVolumes:
+          - name: api-defs
+            configMap:
+              name: tyk-api-definitions
+              optional: true
+        extraVolumeMounts:
+          - name: api-defs
+            mountPath: /opt/tyk-gateway/apps
+      service:
+        type: ClusterIP
+        port: 8080
+      ingress:
+        enabled: false
+      resources:
+        requests: { cpu: 100m, memory: 128Mi }
+        limits:   { cpu: 500m, memory: 256Mi }
+      log:
+        level: "info"
+    tyk-pump:
+      enabled: false
