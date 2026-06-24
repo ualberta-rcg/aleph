@@ -35,6 +35,10 @@ curl $GW/v1/chat/completions -d '{"model":"phi-4-reasoning",
 ## Testing
 The 31-check budget battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/phi-4-reasoning/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/phi-4-reasoning/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **26 PASS / 5 EXP / 0 FAIL** — managed thinking ON (budget) / OFF (strip+cap),

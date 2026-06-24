@@ -5,7 +5,7 @@
 Microsoft Phi-4-reasoning 14B — chain-of-thought reasoning model (math, science, code).
 Native format: **Thought** block then **Solution** block. 32K context. Whole single L40S.
 
-**Status on cluster 230:** `production` / **PASS** (OpenAI + Anthropic via gateway).
+**Status:** `production` / **PASS** (OpenAI + Anthropic via gateway).
 
 ## Runtime
 
