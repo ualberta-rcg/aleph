@@ -13,27 +13,32 @@ Ankh is a T5-based protein language model from ElnaggarLab (TUM). Produces embed
 - Loads T5EncoderModel from HuggingFace cache
 - `POST /v1/embeddings` -- accepts `input` or `sequences` (protein strings)
 - Automatically spaces amino acids for T5 tokenizer
-- Mean-pooled embeddings, fp16 on GPU
+- Mean-pooled embeddings, **fp32** on GPU (see gotcha below)
 
 ## Our config vs source
 - venv-on-PVC pattern, torch>=2.6 with CUDA
 - Pre-downloads model in init container
-- GPU shared (L40S-SHARED), minReplicas: 0
-- 5Gi PVC
+- GPU HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`), minReplicas: 0
+- PVC `ankh-data` (RWX, nfs-models; migrated from RWO)
 
 ## Deploy/update/test commands
 ```bash
-kubectl apply -k models/ankh/
+kubectl apply -f models/ankh/pvc.yaml
+kubectl apply -f models/ankh/inferenceservice.yaml
+kubectl apply -f models/ankh/details.yaml
 kubectl get inferenceservice ankh -n models
+
+# Test (external via gateway VIP + Tyk auth)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/ankh/test.py
+# Or inside the gateway pod (no auth):
+cat models/ankh/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
 ## Gateway integration
-- MODEL_TYPES: `"ankh": "embedding"`
-- Not in MODEL_METADATA (needs adding)
-- KServe custom model (uses /v1/ prefix)
+- type `embedding` (details.yaml schema v2); KServe custom model (uses /v1/ prefix).
 
-## Known Issues
-- No pip version pins (torch, transformers unpinned)
-
-## IMPORTANT
-- Do NOT modify inferenceservice.yaml unless explicitly asked
+## Known Issues / Gotchas
+- **fp16 → NaN**: T5 encoders overflow to NaN in fp16. The server runs **fp32** and sanitizes
+  NaN→0. Do NOT switch to fp16/half precision. (This was the FIX recorded in MODEL-STATUS.)
+- No pip version pins (torch, transformers unpinned).
+- Last run (2026-06-19): **8 PASS / 2 EXP / 0 FAIL**.
