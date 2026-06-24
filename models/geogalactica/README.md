@@ -55,6 +55,10 @@ kubectl apply -f inferenceservice.yaml
 ## Testing
 The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/geogalactica/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/geogalactica/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **19 PASS / 4 EXP / 0 FAIL (base OPT — slow cold-start, patient wake)**
