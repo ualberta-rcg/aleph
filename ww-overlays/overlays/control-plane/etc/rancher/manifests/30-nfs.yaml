@@ -11,8 +11,8 @@
 # writes fail at close(). Capping rsize/wsize to 128Ki lets large writes succeed (~700 MB/s
 # verified). The SC mountOptions propagate to the dynamically-provisioned PVs.
 #
-# NOTE: nfs-subdir-external-provisioner is upstream-archived but still functional and is what
-# 230/232 run today. Swap to nfs-csi (sig-storage) in a future iteration if desired.
+# NOTE: nfs-subdir-external-provisioner is upstream-archived but still functional. Swap to
+# nfs-csi (sig-storage) in a future iteration if desired.
 apiVersion: helm.cattle.io/v1
 kind: HelmChart
 metadata:

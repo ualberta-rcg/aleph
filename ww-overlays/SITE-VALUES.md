@@ -1,54 +1,58 @@
 # Aleph — Site Values
 
-Fill in these tokens before baking the Warewulf overlay. Every placeholder appears as
-`__TOKEN__` in the files listed below. Replace each one with the real value for your site,
-then bake the `ww-overlays/overlay/` tree into your Warewulf image.
+Fill in these tokens before baking the overlays. Every placeholder appears as `__TOKEN__`
+in the files listed below. Replace each with the real value for your site, then bake each
+overlay (`ww-overlays/overlays/<role>/`) into the Warewulf image for that node role.
 
 A shell-var version for scripting: `ww-overlays/site.env.example`.
+
+All paths below are relative to `ww-overlays/overlays/control-plane/` unless noted (that is
+the only overlay carrying tokens; `common` and `gpu-worker` have none).
 
 ---
 
 ## Tokens and where they appear
 
-| Token | Files | Aleph example | Notes |
+| Token | Files (under overlays/control-plane/) | Example value | Notes |
 |---|---|---|---|
-| `__K8S_VERSION__` | `10-hami.yaml` | `v1.36.1` | Must match cluster Kubernetes version exactly. HAMi ships a patched kube-scheduler pinned to this version. |
-| `__NFS_SERVER__` | `30-nfs.yaml` | `manage.storage.data.vulcan.local` | The NFS server hostname or IP for model weight storage. |
-| `__NFS_PATH__` | `30-nfs.yaml` | `/aleph` | NFS export path. The provisioner creates subdirs here per PVC. |
-| `__VIP__` | `41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | `129.128.190.55` | The public IP MetalLB will own. Must be routable to the head nodes' public NIC. |
-| `__PUBLIC_NIC__` | `41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | `enp6s19` | The head node NIC on the public VLAN. Run `ip link` on the head node to confirm. |
-| `__PUBLIC_SUBNET__` | `etc/netplan/60-public-vip.yaml` | `129.128.190.48/28` | The public subnet, on-link via `__PUBLIC_NIC__` for destination routing. |
-| `__PUBLIC_GW__` | `etc/netplan/60-public-vip.yaml` | `129.128.190.49` | Public gateway IP (only needed for Internet clients, see commented block in netplan). |
-| `__ACME_EMAIL__` | `01-cluster-issuer.yaml` | `admin@alliancecan.ca` | Email for Let's Encrypt ACME registration. Used for cert expiry notices. |
-| `__TYK_API_SECRET__` | `51-tyk.yaml` | *(set from .env)* | Tyk gateway admin secret. Also used by `gateway/tyk/tyk-keys.sh`. **Never commit the real value.** See `.env` / `.env.example`. |
+| `__K8S_VERSION__` | `etc/rancher/manifests/10-hami.yaml` | `v1.36.1` | Must match cluster Kubernetes version exactly. HAMi ships a patched kube-scheduler pinned to this version. |
+| `__NFS_SERVER__` | `etc/rancher/manifests/30-nfs.yaml` | *(your NFS host)* | The NFS server hostname or IP for model-weight storage. |
+| `__NFS_PATH__` | `etc/rancher/manifests/30-nfs.yaml` | *(your export path)* | NFS export path. The provisioner creates subdirs here per PVC. |
+| `__VIP__` | `etc/rancher/manifests/41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | *(your public IP)* | The public IP MetalLB will own. Must be routable to the control-plane public NIC. |
+| `__PUBLIC_NIC__` | `etc/rancher/manifests/41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | *(your public NIC)* | The control-plane NIC on the public VLAN. Run `ip link` on the node to confirm. |
+| `__PUBLIC_SUBNET__` | `etc/netplan/60-public-vip.yaml` | *(e.g. a.b.c.0/28)* | The public subnet, on-link via `__PUBLIC_NIC__` for destination routing. |
+| `__PUBLIC_GW__` | `etc/netplan/60-public-vip.yaml` | *(your public gw)* | Public gateway IP (only needed for Internet clients, see commented block in netplan). |
+| `__ACME_EMAIL__` | `etc/rancher/manifests/01-cluster-issuer.yaml` | *(your ops email)* | Email for Let's Encrypt ACME registration. Used for cert expiry notices. |
+| `__TYK_API_SECRET__` | `etc/rancher/manifests/51-tyk.yaml` | *(set from .env)* | Tyk gateway admin secret. Also used by `gateway/tyk/tyk-keys.sh`. **Never commit the real value.** See `.env` / `.env.example`. |
+
+> Fill in the example column with your own values in `site.env` — keep concrete site values
+> out of the committed manifests (they stay tokenized).
 
 ---
 
-## Applicability by node role
+## Which overlay goes on which node
 
-| File | HEAD/edge nodes | GPU workers | Notes |
-|---|---|---|---|
-| `00-cert-manager.yaml` | ✓ | – | Cluster-wide; only meaningful on CP nodes |
-| `01-cluster-issuer.yaml` | ✓ | – | Cluster-wide |
-| `10-hami.yaml` | – | ✓ | Device-plugin DaemonSet only runs where `gpu=on` label exists (baked by WW GPU image) |
-| `30-nfs.yaml` | ✓ | – | Cluster-wide StorageClass |
-| `40-metallb.yaml` | ✓ | – | Speaker+controller pinned to control-plane nodes |
-| `41-metallb-vip.yaml` | ✓ | – | HEAD/edge only — VIP L2-advertised out `__PUBLIC_NIC__` |
-| `50-tyk-redis.yaml` | ✓ | – | Cluster-wide |
-| `51-tyk.yaml` | ✓ | – | Cluster-wide |
-| `52-tyk-loadbalancer.yaml` | ✓ | – | Gets VIP from MetalLB pool |
-| `53-tyk-api-definitions.yaml` | ✓ | – | Cluster-wide |
-| `60-istio.yaml` | ✓ | – | Cluster-wide serving stack |
-| `61-knative.yaml` | ✓ | – | Cluster-wide serving stack |
-| `62-kserve.yaml` | ✓ | – | Cluster-wide serving stack |
-| `63-model-gateway.yaml` | ✓ | – | Runs on CP nodes (nodeSelector) |
-| `etc/netplan/60-public-vip.yaml` | ✓ HEAD only | – | Node-level NIC plumbing; **not** applied to GPU workers |
-| `etc/sysctl.d/99-public-vip.conf` | ✓ HEAD only | – | Node-level ARP/rp_filter; **not** applied to GPU workers |
+| Overlay | Baked on | Tokens to fill |
+|---|---|---|
+| `overlays/common/` | all nodes | none |
+| `overlays/control-plane/` | control-plane nodes | all of the tokens above |
+| `overlays/gpu-worker/` | GPU workers | none |
 
-> The manifests directory (`etc/rancher/manifests/`) is only read by `rke2-server` (control-plane nodes).
-> GPU workers run `rke2-agent` which does not process this directory. All manifests are cluster-wide
-> objects applied once by the first server node; the applicability column above describes which
-> *workloads* land on which node type, not which node needs the file.
+### What each overlay contains
+
+| Overlay / file | Applies to | Purpose |
+|---|---|---|
+| `common/etc/sysctl.d/90-inotify.conf` | all nodes | Raise `fs.inotify.max_user_instances` for dense-pod nodes (optional polish) |
+| `control-plane/etc/rancher/manifests/*` | control-plane (RKE2 applies cluster-wide) | The full auto-deploy set (see README table) |
+| `control-plane/etc/netplan/60-public-vip.yaml` | control-plane only | Public NIC / VIP plumbing for MetalLB L2 |
+| `control-plane/etc/sysctl.d/99-public-vip.conf` | control-plane only | `rp_filter=0`, ARP suppress for the VIP |
+| `gpu-worker/etc/systemd/system/nvidia-persistenced.service` | GPU workers | Enable NVIDIA persistence mode at boot (optional polish) |
+
+> `etc/rancher/manifests/` is read only by `rke2-server` (control-plane) nodes; `rke2-agent`
+> (GPU workers) ignores it. The manifests are cluster-wide objects applied once by a server
+> node — "applies to" in the README describes which *workloads* land where, not which node
+> needs the file. HAMi's device-plugin DaemonSet, for example, is declared in the
+> control-plane overlay but only schedules pods on `gpu=on` GPU workers.
 
 ---
 
@@ -56,5 +60,5 @@ A shell-var version for scripting: `ww-overlays/site.env.example`.
 
 **`40-metallb.yaml` nodeSelector:** the value MUST be the string `"true"` (not `""`).
 RKE2 sets `node-role.kubernetes.io/control-plane="true"`; vanilla Kubernetes uses `""`.
-A stale WW-overlay copy of this file once shipped `""`, so the MetalLB speaker and controller
+A stale overlay copy of this file once shipped `""`, so the MetalLB speaker and controller
 never scheduled and no VIP came up. Always verify this after any overlay update.

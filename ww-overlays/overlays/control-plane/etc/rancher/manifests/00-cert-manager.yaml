@@ -2,9 +2,6 @@
 #
 # APPLIES TO: all nodes (cluster-wide component). No site values to fill.
 #
-# Source: split out of cluster 230's /etc/rancher/manifests/rancher.yaml (which bundled
-# cert-manager + Rancher). We keep cert-manager and DROP Rancher (not needed here).
-#
 # cert-manager is required by the ClusterIssuer (01-cluster-issuer.yaml) that issues the
 # endpoint TLS certs via Let's Encrypt HTTP-01. It must be Ready before that issuer validates.
 apiVersion: helm.cattle.io/v1

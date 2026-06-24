@@ -4,8 +4,8 @@
 #             the public NIC lives). Skip this whole file if the cluster won't use MetalLB.
 #
 # This installs MetalLB ONLY. The VIP pool (IPAddressPool + L2Advertisement) is in the sibling
-# 41-metallb-vip.yaml, and the node-level NIC/ARP plumbing is the Warewulf node overlay
-# (ww-overlays/overlay/etc/netplan + etc/sysctl.d). Three layers, see ww-overlays/README.md.
+# 41-metallb-vip.yaml, and the node-level NIC/ARP plumbing is the control-plane node overlay
+# (ww-overlays/overlays/control-plane/etc/netplan + etc/sysctl.d). Three layers, see README.md.
 #
 # !! REGRESSION WATCH !! The control-plane nodeSelector value MUST be the string "true"
 # (RKE2 sets node-role.kubernetes.io/control-plane="true"; vanilla k8s uses ""). A stale
@@ -13,9 +13,9 @@
 # never scheduled and no VIP came up. Keep it "true" here AND in the baked WW overlay.
 #
 # frr runs as a SIDECAR in the speaker (frr.enabled: true, frrk8s.enabled: false), so it is
-# constrained with the speaker by the nodeSelector below. Lesson from the 230 POC: frr on a
-# small (8-vCPU) head alongside the full serving stack starved the control plane -> CrashLoop.
-# Use adequately-sized heads (>=16 vCPU) or dedicated edge nodes.
+# constrained with the speaker by the nodeSelector below. frr is resource-heavy: on a small
+# (8-vCPU) head alongside the full serving stack it can starve the control plane -> CrashLoop.
+# Use adequately-sized control-plane nodes (>=16 vCPU) or dedicated edge nodes.
 apiVersion: helm.cattle.io/v1
 kind: HelmChart
 metadata:

@@ -4,9 +4,8 @@
 #             The chart objects are cluster-wide but only do work where GPUs + the label exist.
 # SITE VALUES: __K8S_VERSION__  (see ww-overlays/SITE-VALUES.md)
 #
-# Source: cluster 230's /etc/rancher/manifests/hami.yaml. Replaces both nvidia-device-plugin
-# and the NVIDIA GPU Operator: HAMi provides the device plugin + the fractional-GPU scheduler
-# (binpack GPU policy; each L40S split into 10 vGPU slices).
+# Replaces both nvidia-device-plugin and the NVIDIA GPU Operator: HAMi provides the device
+# plugin + the fractional-GPU scheduler (binpack GPU policy; each L40S split into 10 vGPU slices).
 #
 # PREREQUISITES — handled by the Warewulf node image, NOT by this manifest:
 #   - NVIDIA driver + nvidia-container-cli on the GPU nodes.

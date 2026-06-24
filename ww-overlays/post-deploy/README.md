@@ -5,13 +5,15 @@ site-specific fill-ins that need external prereqs (DNS, port 80) or because they
 one-time verifications.
 
 **Everything else is fully automated.** Once the Warewulf image is baked with the tokens
-filled in `ww-overlays/overlay/` and nodes are provisioned, the entire platform comes up:
+filled in `ww-overlays/overlays/` and nodes are provisioned, the entire platform comes up:
 MetalLB, Tyk, NFS, cert-manager, Istio, Knative, KServe, and the model-gateway.
 
 ## 1. Issue a Tyk API key (required to use the gateway)
 
 ```bash
-VIP=129.128.190.55   # __VIP__
+# Discover the VIP MetalLB assigned to Tyk (or use your __VIP__ directly):
+VIP=$(kubectl get svc tyk-gateway-nodeport -n tyk \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk \
   -o jsonpath='{.data.APISecret}' | base64 -d)
 

@@ -3,7 +3,7 @@
 # APPLIES TO: all nodes (cluster-wide serving stack). No site values to fill.
 #
 # Per-component serving-stack Job (split out of the old monolithic kubeflow-bootstrap).
-# Applies the KServe slice of kubeflow/manifests v1.11-branch (same as 230/232) with the
+# Applies the KServe slice of kubeflow/manifests v1.11-branch with the
 # server-side apply the KServe CRDs need, then configures it and stands up the `models`
 # namespace ready to serve. Folds in the former 02-post-install.sh steps so KServe is fully
 # working, not just installed:

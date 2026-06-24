@@ -3,9 +3,9 @@
 # APPLIES TO: all nodes (cluster-wide serving stack). No site values to fill.
 #
 # One of the per-component serving-stack Jobs (split out of the old monolithic
-# kubeflow-bootstrap). Applies the Istio slice of kubeflow/manifests v1.11-branch — the SAME
-# overlays running on 230/232 — plus the Kubeflow namespace/roles/Istio-resources scaffolding
-# that the rest of the stack (Knative, KServe) depends on.
+# kubeflow-bootstrap). Applies the Istio slice of kubeflow/manifests v1.11-branch, plus the
+# Kubeflow namespace/roles/Istio-resources scaffolding that the rest of the stack
+# (Knative, KServe) depends on.
 #
 # Installs: cert-manager kubeflow issuer, Istio (CRDs + namespace + control plane +
 # cluster-local-gateway), kubeflow namespace + roles + Istio Gateway/VS resources.

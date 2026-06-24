@@ -22,7 +22,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - __VIP__/32                   # e.g. 129.128.190.55/32 (a single IP, or a range)
+    - __VIP__/32                   # a single IP (a.b.c.d/32) or a range; see SITE-VALUES.md
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
@@ -33,4 +33,4 @@ spec:
   ipAddressPools:
     - public-vip
   interfaces:
-    - __PUBLIC_NIC__               # e.g. enp6s19 (the head's public NIC)
+    - __PUBLIC_NIC__               # the control-plane public NIC; see SITE-VALUES.md

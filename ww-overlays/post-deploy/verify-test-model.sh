@@ -18,7 +18,7 @@
 set -euo pipefail
 
 MODE="${1:-cpu}"
-GW="http://$(kubectl get svc tyk-gateway-nodeport -n tyk -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo '129.128.190.55')"
+GW="${GW_URL:-http://$(kubectl get svc tyk-gateway-nodeport -n tyk -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)}"
 TYK_KEY="${TYK_KEY:-}"
 
 if [ -z "$TYK_KEY" ]; then

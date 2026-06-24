@@ -3,6 +3,35 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-24 — ww-overlays: split into per-node-type overlays + scrub + polish
+
+Reworked `ww-overlays/` from a single flat `overlay/` tree into three per-node-type
+Warewulf overlays, matching how Warewulf assigns overlays per node:
+
+- `ww-overlays/overlays/common/` — baked on ALL nodes
+  - `etc/sysctl.d/90-inotify.conf` NEW (optional polish): raise
+    `fs.inotify.max_user_instances` 128 -> 1024 for dense KServe/Knative pod nodes
+- `ww-overlays/overlays/control-plane/` — baked on control-plane nodes
+  - `etc/rancher/manifests/*` — the full RKE2 auto-deploy set (moved here; RKE2 reads
+    this dir only on server nodes)
+  - `etc/netplan/60-public-vip.yaml` + `etc/sysctl.d/99-public-vip.conf` — public VIP plumbing
+- `ww-overlays/overlays/gpu-worker/` — baked on GPU workers
+  - `etc/systemd/system/nvidia-persistenced.service` (+ enable symlink) NEW (optional
+    polish): turn on NVIDIA persistence mode at boot (L40S ship with it Disabled);
+    cuts GPU cold-start latency and avoids driver-unload churn between pods
+
+Also in `ww-overlays/` only:
+- Scrubbed all retired-cluster/provisioning references and hardcoded site values from the
+  overlay files, headers, and docs — everything is tokenized with `__TOKEN__`s, concrete
+  values live only in `SITE-VALUES.md` / `site.env.example` (now a blank-to-fill template)
+- Rewrote `README.md` for the three-overlay model with a node-assignment table; updated
+  `SITE-VALUES.md` paths to `overlays/<role>/...`
+- `post-deploy/` discovers the VIP via the Tyk LoadBalancer status (no hardcoded IP); the
+  smoke test honors `GW_URL`
+
+Note: references to prior clusters elsewhere in the repo (docs/CLAUDE.md) are intentionally
+left untouched — this change is scoped to `ww-overlays/`.
+
 ## 2026-06-24 — ww-overlays: consolidate RKE2 manifests + WW overlay into one canonical dir
 
 Restructured platform deployment artifacts into `ww-overlays/` — the single source of truth

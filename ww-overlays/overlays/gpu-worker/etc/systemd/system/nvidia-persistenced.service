@@ -1,0 +1,29 @@
+# NVIDIA persistence mode — GPU worker overlay (OPTIONAL polish).
+#
+# APPLIES TO: GPU worker nodes only.
+# TARGET PATH on node: /etc/systemd/system/nvidia-persistenced.service
+# SITE VALUES: none.
+#
+# Why: persistence mode keeps the NVIDIA driver loaded when no client (CUDA context)
+# is running. Without it the driver unloads/reloads between pods, adding seconds of
+# cold-start latency and churn. L40S workers ship with persistence Disabled by default,
+# so this oneshot turns it on at boot.
+#
+# This uses `nvidia-smi -pm 1` (no extra package). If the nvidia-persistenced daemon
+# is later baked into the image, prefer that and drop this unit.
+#
+# Enabled via the symlink in multi-user.target.wants/ alongside this file. To remove
+# this polish, delete both this file and that symlink from the overlay.
+[Unit]
+Description=Enable NVIDIA persistence mode
+After=local-fs.target
+Before=rke2-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/nvidia-smi -pm 1
+ExecStop=/usr/bin/nvidia-smi -pm 0
+
+[Install]
+WantedBy=multi-user.target

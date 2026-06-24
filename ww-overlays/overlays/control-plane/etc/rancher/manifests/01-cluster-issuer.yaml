@@ -4,8 +4,8 @@
 # SITE VALUES: __ACME_EMAIL__  (see ww-overlays/SITE-VALUES.md)
 #
 # cert-manager ACME, HTTP-01 challenge served on port 80 through the Traefik ingress class.
-# This issues the endpoint TLS certs from within the cluster (no external certbot machine,
-# unlike cluster 232's manual flow) and auto-renews them.
+# This issues the endpoint TLS certs from within the cluster (no external certbot machine)
+# and auto-renews them.
 #
 # READY STATE: cert-manager (00-cert-manager.yaml) must be up first, and port 80 must be
 # reachable at the endpoint (Traefik must be exposed). Until then the issuer shows Ready=False

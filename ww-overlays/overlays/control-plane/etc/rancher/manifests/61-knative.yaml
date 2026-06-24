@@ -3,7 +3,7 @@
 # APPLIES TO: all nodes (cluster-wide serving stack). No site values to fill.
 #
 # Per-component serving-stack Job (split out of the old monolithic kubeflow-bootstrap).
-# Applies the Knative Serving slice of kubeflow/manifests v1.11-branch (same as 230/232),
+# Applies the Knative Serving slice of kubeflow/manifests v1.11-branch,
 # then patches config-features so KServe InferenceServices can use PVCs (model weights),
 # init containers (downloaders), node selectors (GPU placement), and the nvidia runtime class.
 #
