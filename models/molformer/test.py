@@ -1,14 +1,20 @@
-"""molformer molecular-embedding gateway test (run inside the gateway pod).
+"""molformer molecular-embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (IBM MoLFormer-XL, GPU).
 768-dim molecular embeddings from SMILES, via the standard OpenAI /v1/embeddings endpoint
-(added 2026-06-19; /v1/science/embed kept as secondary).
+(/v1/science/embed kept as secondary).
 
-Run:  cat models/molformer/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/molformer/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/molformer/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "molformer")
 EXP_DIM = 768
 MAX_INPUT = 202
@@ -20,7 +26,7 @@ S3 = "c1ccccc1"                        # benzene
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)
