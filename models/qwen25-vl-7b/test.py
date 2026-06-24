@@ -162,6 +162,14 @@ def vision_works():
     r, d, m = oai(_vision_body())
     record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI vision work", safe(m, 30))
 
+def vision_multi_image():
+    r, d, m = oai({"model": MODEL, "max_tokens": 40,
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "How many images do you see? Just the number."},
+                {"type": "image_url", "image_url": {"url": _PX}},
+                {"type": "image_url", "image_url": {"url": _PX}}]}]})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI vision multi-image", safe(m, 40))
+
 def vision_rejected():
     r = req("POST", "/v1/chat/completions", _vision_body())
     record("EXP" if r.status_code == 400 else "FAIL", r.status_code, "Guard: vision rejected",
@@ -249,8 +257,8 @@ def guard_embed():
              "messages": [{"role": "user", "content": "test"}]})
     if r2.status_code in (400, 422):
         record("EXP", r2.status_code, "Guard: embed via chat", "rejected (non-chat)")
-    elif r2.status_code == 503:
-        record("SKIP", r2.status_code, "Guard: embed via chat", "embed model cold — can't verify")
+    elif r2.status_code in (503, 404):
+        record("SKIP", r2.status_code, "Guard: embed via chat", "embed model cold/gone — can't verify")
     else:
         record("FAIL", r2.status_code, "Guard: embed via chat", f"unexpected code={r2.status_code}")
 
@@ -279,10 +287,12 @@ print("=" * 66, flush=True)
 for t in [wake, stream, temp0, temp_topk, stop_seq, system, max_tokens, truncation, usage, resources,
           tools_works if TOOLS else tools_rejected,
           vision_works if VISION else vision_rejected,
+          vision_multi_image if VISION else None,
           meta_title, meta_tags, meta_followups,
           ant_basic, ant_stream, ant_system, ant_temp0, ant_stop,
           ant_vision_works if VISION else ant_vision_rejected,
           guard_embed, guard_badmodel, catalog]:
+    if t is None: continue
     try:
         t()
     except Exception as e:

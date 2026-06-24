@@ -59,8 +59,12 @@ data:
         "temperature": { "type": "float", "required": false, "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature" },
         "top_p": { "type": "float", "required": false, "default": 0.8, "description": "Nucleus sampling threshold" },
         "stream": { "type": "boolean", "required": false, "default": false, "description": "Enable streaming responses" },
-        "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)" },
-        "image": { "type": "string", "required": false, "description": "Base64-encoded image or URL (dynamic-resolution, up to 5/prompt)" }
+        "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty" },
+        "presence_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Presence penalty" },
+        "top_k": { "type": "integer", "required": false, "default": -1, "description": "Top-k sampling (-1 = disabled)" },
+        "stop": { "type": "array|string", "required": false, "description": "Stop sequence(s)" },
+        "seed": { "type": "integer", "required": false, "description": "Random seed for reproducibility" },
+        "image": { "type": "string", "required": false, "description": "Base64-encoded image or URL via image_url in messages (dynamic-resolution, up to 5/prompt)" }
       },
       "output_map": {
         "id": { "type": "string", "description": "Chat completion ID" },

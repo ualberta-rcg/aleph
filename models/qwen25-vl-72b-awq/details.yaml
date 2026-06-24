@@ -103,12 +103,34 @@ data:
           "type": "float",
           "required": false,
           "default": 0.0,
-          "description": "Frequency penalty (0-2)"
+          "description": "Frequency penalty"
+        },
+        "presence_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Presence penalty"
+        },
+        "top_k": {
+          "type": "integer",
+          "required": false,
+          "default": -1,
+          "description": "Top-k sampling (-1 = disabled)"
+        },
+        "stop": {
+          "type": "array|string",
+          "required": false,
+          "description": "Stop sequence(s)"
+        },
+        "seed": {
+          "type": "integer",
+          "required": false,
+          "description": "Random seed for reproducibility"
         },
         "image": {
           "type": "string",
           "required": false,
-          "description": "Base64-encoded image or URL"
+          "description": "Base64-encoded image or URL via image_url in messages (dynamic-resolution, up to 20/prompt)"
         }
       },
       "output_map": {

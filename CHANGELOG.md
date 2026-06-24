@@ -3,6 +3,27 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-24 — VL multimodal light pass: 7 vision-language chat models audited + tested
+
+- Light audit of all multimodal VL chat models: `qwen25-vl-3b`, `qwen25-vl-7b`,
+  `qwen25-vl-72b`, `qwen25-vl-72b-awq`, `medgemma-27b-it`, `gemma-3-4b-it`, `gemma-4-26b-a4b`.
+- **details.yaml**: Added missing vLLM-supported `input_map` params across all 7 models:
+  `presence_penalty`, `top_k` (where absent), `stop`, `seed`. Corrected image limit descriptions
+  (Qwen supports up to 20 images/prompt, not 4).
+- **test.py**: Added `vision_multi_image` check (2-image prompt) to all 7 models. Fixed
+  `guard_embed` test bug: 404 (embed model scaled-to-zero, route gone) now treated as SKIP
+  instead of FAIL.
+- **Deployed, tested, and scaled down** each model one-by-one on cluster .43:
+  - `qwen25-vl-3b`: 22 PASS / 2 EXP / 0 FAIL
+  - `qwen25-vl-7b`: 23 PASS / 1 EXP / 0 FAIL (after guard_embed fix)
+  - `qwen25-vl-72b`: 22 PASS / 2 EXP / 0 FAIL
+  - `qwen25-vl-72b-awq`: 22 PASS / 2 EXP / 0 FAIL (after guard_embed fix)
+  - `medgemma-27b-it`: 22 PASS / 2 EXP / 0 FAIL (after guard_embed fix)
+  - `gemma-3-4b-it`: 22 PASS / 2 EXP / 0 FAIL (after guard_embed fix)
+  - `gemma-4-26b-a4b`: 32 PASS / 2 EXP / 0 FAIL
+- **PVC + download** created for `qwen25-vl-72b` (145 GB BF16) and `qwen25-vl-72b-awq` (75 GB AWQ).
+- Updated `MODEL-STATUS.md` main table + capability matrix with new test tallies.
+
 ## 2026-06-23 — Vision endpoint phase: HF I/O audit + test.py coverage for 9 CV models
 
 - Ran the vision-model sweep with HF/upstream I/O validation (reference) and runtime-as-truth

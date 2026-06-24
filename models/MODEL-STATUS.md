@@ -74,8 +74,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image). **NIM available (FCN2):** `nvcr.io/nim/nvidia/fourcastnet` (build.nvidia.com/nvidia/fourcastnet, L40S-tested) |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | galileo pip package import conflicts with cloned repo; server stuck at model loading |
-| gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
-| gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8; managed thinking (toggle: enable_thinking, not reasoning_effort) + vision + tools; 32-check test 30/2/0 ✅ 2026-06-18. (NIM alt: nvcr.io/nim/google/gemma-4-31b-it) |
+| gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1; 4B vision-language; 65K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/stop/seed input_map, +multi-image test) |
+| gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8; managed thinking + vision + tools; 32/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/stop/seed input_map, +multi-image test). (NIM alt: nvcr.io/nim/google/gemma-4-31b-it) |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
 | geneformer | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp); +/v1/science/embed alias; 768-dim (256 was V1-10M; V2-104M is 768 — my version-conflation, docs correct); input=gene_ids; 6/0 test |
@@ -107,7 +107,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mattersim | force-field | true | /v1/science/predict | READY | PASS | water -14.07 eV + forces + per-atom |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
-| medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | 27B dense TP2 ~20tok/s; v0.20.2 (fixed --limit-mm-per-prompt JSON); full GPUs + --disable-custom-all-reduce; correct medical answers |
+| medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2; 27B medical multimodal; vision (chest X-ray, derm, fundus, histo); 32K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/top_k/stop/seed input_map, +multi-image test) |
 | medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
 | megadetector | detect | true | /v1/vision/detect | READY | PASS | HF I/O audit done (Microsoft CameraTraps). Endpoint normalized to /v1/vision/detect (legacy /v1/detect + /v1/science/detect aliases kept), accepts image or images[]. test.py PASS 2/2 + 1 expected. |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
@@ -135,9 +135,10 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | protgpt2 | generate | true | /v1/completions | READY | PASS | de novo protein generation (recreated) |
 | pubmedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id pubmedbert) |
 | qwen25-coder-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense code specialist; no reasoning parser; tools (hermes parser); 131K native ctx deployed at 32K; 22/22 gateway test ✅ 2026-06-11; cold start ~90s; vision correctly rejected |
-| qwen25-vl-3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1 gpumem 24GB; 3B dense + ViT (36 layers, GQA 16Q/2KV); vision (dynamic-res, video, OCR, 4 img/prompt); no tools, no reasoning; 4K ctx; init container for HF download; 18/18 gateway test ✅ 2026-06-11; cold start ~120s |
-| qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1 gpumem 32GB; 7B dense + ViT (28 layers, GQA 28Q/4KV); vision (dynamic-res, video, 20 images/prompt) + tools (hermes, forced); no reasoning; 65K ctx; init container for HF download; 22/22 gateway test ✅ 2026-06-11; cold start ~120s |
-| qwen25-vl-72b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 72.2B dense VLM; vision (dynamic-res images, video, 5 img/prompt); no tools, no reasoning; 131K native ctx deployed at 32K; 22/22 gateway test ✅ 2026-06-11; cold start ~285s; limit-mm-per-prompt=5 images |
+| qwen25-vl-3b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1 gpumem 24GB; 3B dense + ViT; vision (dynamic-res, video, OCR, 20 img/prompt); no tools; 64K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/top_k/stop/seed input_map, +multi-image test) |
+| qwen25-vl-7b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1 gpumem 32GB; 7B dense + ViT; vision (dynamic-res, video, 20 img/prompt) + tools (hermes); 65K ctx; 23/1/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/top_k/stop/seed input_map, +multi-image test) |
+| qwen25-vl-72b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 72.2B dense VLM; vision (dynamic-res, video, 5 img/prompt); 32K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/top_k/stop/seed input_map, +multi-image test) |
+| qwen25-vl-72b-awq | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 72B AWQ 4-bit; vision; 65K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass) |
 | qwen3-235b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-device; 235B-A22B AWQ int4 MoE (22B active, 128 experts); non-thinking Instruct-2507 variant; tools (hermes parser); no reasoning parser (non-thinking); awq_marlin quantization; 131K ctx; 21/21 gateway test ✅ 2026-06-11; vision correctly rejected; ~4min cold start; **NIM available:** `nvcr.io/nim/qwen/qwen3-235b-a22b` |
 | qwen3-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.8B dense; managed thinking (qwen3 parser, effort mode, enable_thinking toggle) + tools (hermes); 33-check test 30/3/0 ✅ 2026-06-18; vision rejected |
 | qwen35-122b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-node; 122B FP8 MoE (10B active); managed thinking (toggle enable_thinking) + tools (qwen3_coder); language-model-only (vision off); 131K ctx; DEPLOYED on 230 (weights on PVC); 28-check test 25/3/0 ✅ 2026-06-18 |
@@ -225,13 +226,13 @@ retained in the local working dir.)
 | r1-distill-llama-70b | always-on | deepseek_r1 | — | — | v2 † | 20/5 (25) |
 | glm-4-32b | none | — | glm4_0414 (plugin) | — | v2 | 15/19 |
 | qwen25-coder-32b | none | — | hermes | — | v2 | 22/22 |
-| qwen25-vl-72b | none | — | — | ✅ | v2 | 22/22 |
-| qwen25-vl-72b-awq | none | — | — | ✅ | v2 | 16/18 |
-| qwen25-vl-7b | none | — | hermes | ✅ | v2 | 22/22 |
-| qwen25-vl-3b | none | — | — | ✅ | v2 | 18/18 |
-| gemma-4-26b-a4b | toggle | gemma4 | gemma4 | ✅ | v2 | 30/2 (32) |
-| gemma-3-4b-it | none | — | — | ✅ | v2 | 17/20 |
-| medgemma-27b-it | none | — | — | ✅ | v2 | 17/20 |
+| qwen25-vl-72b | none | — | — | ✅ | v2 | 22/2 (25) |
+| qwen25-vl-72b-awq | none | — | — | ✅ | v2 | 22/2 (25) |
+| qwen25-vl-7b | none | — | hermes | ✅ | v2 | 23/1 (25) |
+| qwen25-vl-3b | none | — | — | ✅ | v2 | 22/2 (25) |
+| gemma-4-26b-a4b | toggle | gemma4 | gemma4 | ✅ | v2 | 32/2 (34) |
+| gemma-3-4b-it | none | — | — | ✅ | v2 | 22/2 (25) |
+| medgemma-27b-it | none | — | — | ✅ | v2 | 22/2 (25) |
 | deepseek-v2-lite-16b | none | — | — | — | v2 | 14/14 |
 | command-r-7b | none | — | — | — | v2 | 16/16 |
 | openbiollm-70b | none | — | — | — | v2 | 14/14 |

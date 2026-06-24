@@ -126,6 +126,14 @@ def vision():
     ok = r.status_code == 200 and len(m.get("content") or "") > 0
     record("PASS" if ok else "FAIL", r.status_code, "OAI vision (image works)", safe(m, 40))
 
+def vision_multi_image():
+    r, d, m = oai({"model": MODEL, "max_tokens": 40, "reasoning_effort": "none",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "How many images do you see? Just the number."},
+                {"type": "image_url", "image_url": {"url": RED_PNG}},
+                {"type": "image_url", "image_url": {"url": RED_PNG}}]}]})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI vision multi-image", safe(m, 40))
+
 def max_tokens():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}],
                   "reasoning_effort": "none", "max_tokens": 8192})
@@ -310,7 +318,7 @@ def catalog():
 # ── run ───────────────────────────────────────────────────────────────────────
 print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (vision)", flush=True)
 print("=" * 66, flush=True)
-for t in [wake, stream, temp0, temp_topk, top_p, stop_seq, system, tools_oai, vision, max_tokens, truncation,
+for t in [wake, stream, temp0, temp_topk, top_p, stop_seq, system, tools_oai, vision, vision_multi_image, max_tokens, truncation,
           usage, resources, think_on_medium, think_on_high, think_off, think_budget, think_stream,
           meta_title, meta_tags, meta_followups,
           ant_basic, ant_stream, ant_system, ant_temp0, ant_topk, ant_stop, ant_tools,

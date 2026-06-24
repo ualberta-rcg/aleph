@@ -120,12 +120,28 @@ data:
           "type": "float",
           "required": false,
           "default": 0.0,
-          "description": "Frequency penalty (0-2)"
+          "description": "Frequency penalty"
+        },
+        "presence_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Presence penalty"
+        },
+        "stop": {
+          "type": "array|string",
+          "required": false,
+          "description": "Stop sequence(s)"
+        },
+        "seed": {
+          "type": "integer",
+          "required": false,
+          "description": "Random seed for reproducibility"
         },
         "image": {
           "type": "string",
           "required": false,
-          "description": "Base64-encoded image or URL. Up to 16 images per prompt."
+          "description": "Base64-encoded image or URL via image_url in messages. Up to 16 images per prompt."
         }
       },
       "output_map": {
