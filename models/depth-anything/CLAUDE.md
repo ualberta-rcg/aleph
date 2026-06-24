@@ -39,19 +39,18 @@ Key info from source:
 ## Deploy / Update / Test
 
 ```bash
-# Deploy
-kubectl apply -k models/depth-anything/
+kubectl apply -f models/depth-anything/pvc.yaml
+kubectl apply -f models/depth-anything/inferenceservice.yaml
+kubectl apply -f models/depth-anything/details.yaml
 
-# Check status
+# Status / logs
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=depth-anything
-
-# Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=depth-anything -c kserve-container -f
 
-# Test (public) — need a base64-encoded image
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vision/depth \
-  -H "Content-Type: application/json" \
-  -d '{"model":"depth-anything-v2","image":"<base64_encoded_jpeg>"}'
+# Test (external via gateway VIP + Tyk auth)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/depth-anything/test.py
+# Or inside the gateway pod (no auth):
+cat models/depth-anything/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
 ## Known Issues / Optimization Opportunities
@@ -72,10 +71,11 @@ curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vis
 
 | File | Purpose |
 |------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ConfigMap + ISVC spec: init container + FastAPI container |
-| `kustomization.yaml` | Kustomize resources |
-| `pvc.yaml` | Dedicated PVC (depth-anything-data) |
+| `details.yaml` | Model card (schema v2, type: depth) |
+| `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
+| `pvc.yaml` | PVC `depth-anything-data` (RWX, nfs-models) |
+| `test.py` | Gateway test battery (~15 checks; 2026-06-24 deep pass, 0 FAIL) |
+| `README.md` | Model overview |
 
 **IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
 
