@@ -1,14 +1,19 @@
-"""arcface gateway test — comprehensive (run inside the gateway pod).
+"""arcface gateway test — comprehensive.
 
 512-dim ArcFace ResNet-100 face embeddings via /v1/vision/face.
 
-Run:
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/arcface/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
   cat models/arcface/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, math, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = "arcface-resnet100"
 EP = f"{G}/v1/vision/face"
 EXP_DIM = 512
@@ -42,7 +47,7 @@ def png_b64(seed=7, w=112, h=112):
 
 
 def call(body, timeout=300):
-    return httpx.post(EP, json=body, timeout=timeout)
+    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS)
 
 
 def _cos(a, b):
@@ -152,11 +157,11 @@ def checks():
            200 if batch_ok else rb.status_code,
            "sequential 5-image batch", "all 200" if batch_ok else f"failed i={i}")
 
-    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60)
+    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60, headers=_HEADERS)
     record("EXP" if rg1.status_code == 404 else "FAIL",
            rg1.status_code, "guard bad model", rg1.text[:80])
 
-    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60)
+    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60, headers=_HEADERS)
     record("EXP" if rg2.status_code >= 400 else "FAIL",
            rg2.status_code, "guard missing image", rg2.text[:80])
 

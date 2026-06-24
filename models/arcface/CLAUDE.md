@@ -9,7 +9,7 @@ for face verification/identification via `/v1/vision/face` (base64 image in).
   `onnx-community/arcface-onnx` (`arcface.onnx`). No HF token needed (public).
 - Pinned `onnxruntime==1.19.2`.
 
-## Migration changes vs 232
+## Migration changes
 - Already Knative+PVC+init; only pinned onnxruntime, converted card to v2,
   added `routing.k8s_name: arcface`.
 
@@ -21,4 +21,5 @@ for face verification/identification via `/v1/vision/face` (base64 image in).
 - Output already L2-normalized; compare with cosine similarity.
 
 ## Validation
-See [TEST.md](TEST.md). dim=512, normalized.
+See [test.py](test.py). dim=512, normalized (v2 deep pass 2026-06-24: 15 checks, 0 FAIL).
+Run externally: `GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/arcface/test.py`.
