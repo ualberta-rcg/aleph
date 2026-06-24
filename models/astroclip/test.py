@@ -5,12 +5,18 @@ Embedding (Template C) battery for a custom Lightning server (Polymathic AI Astr
 via the domain /v1/science/embed endpoint. AstroCLIP is non-text (image/spectrum input), so
 it does NOT expose OpenAI /v1/embeddings and stays on /v1/science/embed.
 
-Run:  cat models/astroclip/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/astroclip/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/astroclip/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "astroclip")
 EXP_DIM = 1024
 results = []
@@ -24,7 +30,7 @@ def record(icon, status, name, detail):
 def science_embed(body, timeout=300):
     """POST /v1/science/embed through the gateway (model field required by catch-all)."""
     body = {**body, "model": MODEL}
-    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
     try:
         return r, r.json()
     except Exception:
