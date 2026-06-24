@@ -1,13 +1,19 @@
-"""totalsegmentator CT scan segmentation gateway test (run inside the gateway pod).
+"""totalsegmentator CT scan segmentation gateway test.
 
 Segmentation battery for TotalSegmentator (wasserth, GPU).
 Accepts ct_array (3D HU array) + spacing + fast flag, returns segmentation + structure info.
 
-Run:  cat models/totalsegmentator/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/totalsegmentator/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/totalsegmentator/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "totalsegmentator")
 EP = "/v1/science/segment"
 results = []
@@ -20,7 +26,7 @@ def record(icon, status, name, detail):
 def seg(body, timeout=600):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}{EP}", json=body, timeout=timeout)
+        r = httpx.post(f"{G}{EP}", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:
@@ -121,7 +127,7 @@ def checks():
 
     # 13. health endpoint
     try:
-        r = httpx.get(f"{G}/health", timeout=10)
+        r = httpx.get(f"{G}/health", timeout=10, headers=_HEADERS)
         d = r.json()
         ok = r.status_code == 200 and d.get("status") == "ok"
         record("PASS" if ok else "EXP", r.status_code, "health endpoint", f"status={d.get('status')}")
@@ -130,7 +136,7 @@ def checks():
 
     # 14. v1/models endpoint
     try:
-        r = httpx.get(f"{G}/v1/models", timeout=10)
+        r = httpx.get(f"{G}/v1/models", timeout=10, headers=_HEADERS)
         d = r.json()
         ids = [m.get("id") for m in d.get("data", [])]
         record("PASS" if "totalsegmentator" in ids else "EXP",
