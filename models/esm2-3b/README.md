@@ -19,6 +19,10 @@ The 9-check protein-embedding battery runs inside the gateway pod (first call wa
 cold start ~3-6 min):
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/esm2-3b/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/esm2-3b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 

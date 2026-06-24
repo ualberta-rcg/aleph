@@ -49,10 +49,9 @@ ESM-2 3B (facebook/esm2_t36_3B_UR50D) is Meta's large protein language model tra
 
 ```bash
 # Deploy
-kubectl apply -k models/esm2-3b/
-
-# Force update (if ConfigMap changed)
-kubectl apply --server-side --force-conflicts -k models/esm2-3b/
+kubectl apply -f models/esm2-3b/pvc.yaml
+kubectl apply -f models/esm2-3b/inferenceservice.yaml
+kubectl apply -f models/esm2-3b/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=esm2-3b
@@ -60,10 +59,8 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=esm2-3b
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=esm2-3b -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"model":"esm2-3b","input":"MKTVRQERLKSIVRILERSKEPVSGAQ"}'
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/esm2-3b/test.py
 ```
 
 ## Known Issues / Optimization Opportunities
