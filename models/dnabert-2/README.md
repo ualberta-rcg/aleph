@@ -23,6 +23,10 @@ The 10-check DNA-embedding battery runs inside the gateway pod (first call wakes
 scaled-to-zero model — cold start ~30–60s):
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/dnabert-2/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/dnabert-2/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 

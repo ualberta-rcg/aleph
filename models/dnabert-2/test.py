@@ -1,15 +1,21 @@
-"""dnabert-2 (dnabert-2-117m) DNA-embedding gateway test (run inside the gateway pod).
+"""dnabert-2 (dnabert-2-117m) DNA-embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (DNABERT-2, CPU).
 Input = DNA sequences (ACGT); output = 768-dim mean-pooled embeddings.
 Covers WAKE/dim, batch, model-echo, usage, distinctness, truncation, guardrails, catalog.
 
-Run:  cat models/dnabert-2/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/dnabert-2/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/dnabert-2/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "dnabert-2-117m")
 EXP_DIM = 768
 MAX_INPUT = 512
@@ -21,7 +27,7 @@ S3 = "GCGCGCGCGCATATATATATGCGCGCGCGCATATATATAT"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
