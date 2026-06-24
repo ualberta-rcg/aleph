@@ -16,6 +16,9 @@ CrystaLLM-pi_base (~25M, GPT-2 architecture) generates crystal structures in **C
 ## Deploy / test
 ```bash
 kubectl apply -f models/crysta-llm/        # details.yaml + inferenceservice.yaml + pvc.yaml
+# Test (external via gateway VIP + Tyk auth)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> MODEL=crysta-llm python3 models/crysta-llm/test.py
+# Or in-pod (no auth):
 cat models/crysta-llm/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- env MODEL=crysta-llm python3 -
 ```
 Last result: **5 pass / 1 expected / 0 fail** (custom generation battery: wake + NaCl/LiFePO4/MgO generation, temperature, num_samples, health, catalog).
