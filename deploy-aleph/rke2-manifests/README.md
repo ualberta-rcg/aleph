@@ -5,14 +5,14 @@ path and RKE2 applies them at boot, so the **next Warewulf deployment brings mos
 platform up automatically**.
 
 **This iteration's goal:** every component **installed and available**, in a default/ready
-state, **one file per component** (HAMi, KubeRay, NFS, cert-manager, Traefik, Tyk, MetalLB, and the
+state, **one file per component** (HAMi, NFS, cert-manager, Traefik, Tyk, MetalLB, and the
 serving stack split into Istio / Knative / KServe). Site-specific wiring (MetalLB
 VIP/public NIC, `gpu=on` labels, Tyk secret, cert hostnames) is a **post-deploy customization
 step** (see below). The set will be refined iteratively.
 
 **Architecture:** cluster 232's front-door/TLS pattern, but **lean** — no full Kubeflow
 (no Dex / Central Dashboard / Pipelines / oauth2-proxy), no Rancher, no certbot. Just the
-serving stack: cert-manager + Istio/Knative/KServe + Tyk, with HAMi + KubeRay + NFS.
+serving stack: cert-manager + Istio/Knative/KServe + Tyk, with HAMi + NFS.
 **Ingress uses RKE2's bundled `rke2-traefik`** — there is intentionally no managed Traefik
 manifest (see "Double-Traefik" resolution below).
 
@@ -61,7 +61,6 @@ reachable from the node once networking settles, so the retries converge fast on
 | `00-cert-manager.yaml` | cert-manager (CRDs on) | split from 230 `rancher.yaml`; **Rancher dropped** |
 | `01-cluster-issuer.yaml` | Let's Encrypt `ClusterIssuer` (ACME HTTP-01 via traefik) | new |
 | `10-hami.yaml` | HAMi vGPU scheduler + device plugin | 230 `hami.yaml` verbatim |
-| `20-kuberay.yaml` | KubeRay operator 1.5.1 (pinned off GPU) | 230 `kuberay.yaml` + scheduling |
 | `30-nfs.yaml` | nfs-subdir provisioner → **`nfs-models`** SC (default, OneFS-safe) | 230 `nfs.yaml` + `storage/nfs-models-storageclass.yaml` merged |
 | `40-metallb.yaml` | MetalLB L2 install (speaker+frr **pinned to control-plane**; VIP/NIC are per-site → `../overlays/`) | new; **optional** |
 | `50-tyk-redis.yaml` | Bitnami Redis (ns `tyk`) | `04-install-tyk-gateway.sh` |
@@ -69,9 +68,6 @@ reachable from the node once networking settles, so the retries converge fast on
 | `60-istio.yaml` | Job: Istio + Kubeflow mesh scaffolding | kubeflow/manifests v1.11 slice |
 | `61-knative.yaml` | Job: Knative Serving + `config-features` patch | kubeflow/manifests slice + post-install #1 |
 | `62-kserve.yaml` | Job: KServe + `models` ns + config + Istio allow-all | kubeflow/manifests slice + post-install #2–4 |
-
-`../examples/ray-cluster-template.yaml` — RayCluster skeleton (head→non-GPU, worker→GPU,
-scale-to-zero). Lives **outside** this dir so RKE2 does **not** auto-apply it.
 
 **Serving-stack Jobs (60–63):** split from the old monolithic `kubeflow-bootstrap` into one
 Job per component, each with its own ServiceAccount and **self-ordering** via internal waits
@@ -159,7 +155,7 @@ done
 kubectl get helmchart -A -w                       # → all Resolved
 kubectl get sc nfs-models                         # → default, OneFS mountOptions
 kubectl get clusterissuer letsencrypt-prod        # → Ready (after cert-manager up + :80)
-kubectl get pods -n cert-manager,traefik,tyk,kuberay,nfs-provisioner
+kubectl get pods -n cert-manager,traefik,tyk,nfs-provisioner
 kubectl get jobs -n kube-system                   # → istio/knative/kserve/profiles-bootstrap Complete
 kubectl logs -n kube-system job/kserve-bootstrap  # → "KServe bootstrap complete"
 kubectl get pods -n istio-system,knative-serving,kubeflow

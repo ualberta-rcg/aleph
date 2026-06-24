@@ -30,7 +30,7 @@ Deliverables per model dir (ensure all four exist and match the working model):
   something small**. The models work — we document them, we don't reconfigure them.
   Anything bigger → skip-and-note (§6).
 - **Never eager.** `minReplicas: 0` on every ISVC; leave it at 0 when done. Don't-touch
-  exceptions: `speaches` (always-on Deployment), `kandinsky-3` (RayService).
+  exceptions: `speaches` (always-on Deployment).
 - **vLLM `vllm/vllm-openai:v0.20.2`** where applicable; no `--enforce-eager`.
 - **Fix-only, don't remake.** Skip-and-note anything complicated.
 - **Single branch.** Commit straight to `main` in `aleph` — never create a branch.

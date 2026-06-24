@@ -78,7 +78,6 @@ This cluster does **NOT** use the NVIDIA GPU Operator. Instead:
 | Namespace | Purpose |
 |---|---|
 | kube-system | Core + HAMI scheduler/device-plugin, RKE2 components |
-| kuberay | KubeRay operator (Ray clusters on K8s) |
 | cert-manager | TLS cert automation |
 | nfs-provisioner | NFS dynamic PV provisioning |
 | traefik | RKE2 Traefik ingress |
@@ -86,7 +85,6 @@ This cluster does **NOT** use the NVIDIA GPU Operator. Instead:
 ### Key pods (kube-system)
 - `hami-scheduler` — HAMI vGPU scheduler (2/2 containers)
 - `hami-device-plugin-*` — on each GPU node (requires `gpu=on` label)
-- `kuberay-operator` — manages RayCluster CRDs
 
 ## POC Reference Cluster (172.26.92.232)
 

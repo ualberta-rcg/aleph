@@ -1,0 +1,272 @@
+# FLUX.1-dev: 12B rectified-flow text-to-image transformer (black-forest-labs/FLUX.1-dev).
+# Standard KServe InferenceService custom predictor (diffusers FastAPI server), wired exactly
+# like kandinsky-3: gateway-discovered, reachable at flux-1-dev-predictor, Knative scale-to-zero
+# on the 5m/15m policy. GATED model -> requires the hf-token secret.
+#
+# Big model (~34 GB resident: 12B transformer + T5-XXL + CLIP + VAE, bf16) -> give it a WHOLE
+# L40S: nvidia.com/gpu: 1 with NO nvidia.com/gpumem, so HAMi binds a tenant-free physical card
+# (full 48 GB, no vGPU interception). Deps + weights stage once onto the NFS PVC.
+# API: POST /v1/images/generations (OpenAI-style) -> {data:[{b64_json}]}.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flux-1-dev-server
+  namespace: models
+data:
+  server.py: |
+    """FLUX.1-dev diffusers server (KServe custom predictor).
+
+    OpenAI-style image API:
+      POST /v1/images/generations  {prompt, n, size, num_inference_steps, guidance_scale,
+                                     max_sequence_length, negative_prompt, true_cfg_scale, seed}
+      POST /v1/images/edits        {prompt, image(b64), strength, ...}
+      GET  /v1/models
+      GET  /health
+    """
+    import os, io, base64, time, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/flux-1-dev")
+    app = FastAPI()
+    t2i = None
+    i2i = None
+
+    def parse_size(size_str):
+        try:
+            w, h = str(size_str).lower().split("x")
+            return int(w), int(h)
+        except Exception:
+            return 1024, 1024
+
+    def load():
+        global t2i, i2i
+        import torch
+        from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
+        print(f"Loading FLUX.1-dev from {MODEL_DIR} ...", flush=True)
+        t2i = AutoPipelineForText2Image.from_pretrained(
+            MODEL_DIR, torch_dtype=torch.bfloat16
+        ).to("cuda")
+        try:
+            i2i = AutoPipelineForImage2Image.from_pipe(t2i)
+        except Exception as e:
+            print(f"img2img init failed: {e}", flush=True)
+            i2i = None
+        print("FLUX.1-dev ready.", flush=True)
+
+    @app.on_event("startup")
+    async def _startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        # 503 until the pipeline is resident so Knative gates traffic on real readiness.
+        if t2i is None:
+            return JSONResponse({"status": "loading", "model": "flux-1-dev"}, 503)
+        return {"status": "ok", "model": "flux-1-dev"}
+
+    @app.get("/v1/models")
+    async def models():
+        return {"object": "list", "data": [
+            {"id": "flux-1-dev", "object": "model", "owned_by": "black-forest-labs"}
+        ]}
+
+    def _png_b64(img):
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+    def _gen(req):
+        import torch
+        prompt = req.get("prompt", "")
+        n = min(int(req.get("n", 1)), 4)
+        width, height = parse_size(req.get("size", "1024x1024"))
+        width = int(req.get("width", width))
+        height = int(req.get("height", height))
+        steps = int(req.get("num_inference_steps", 50))
+        guidance = float(req.get("guidance_scale", 3.5))
+        max_seq = int(req.get("max_sequence_length", 512))
+        seed = req.get("seed")
+        # FLUX.1-dev is guidance-distilled; negative_prompt only applies with true_cfg_scale>1.
+        negative = req.get("negative_prompt")
+        true_cfg = float(req.get("true_cfg_scale", 1.0))
+        out = []
+        for i in range(n):
+            kwargs = dict(prompt=prompt, num_inference_steps=steps, guidance_scale=guidance,
+                          width=width, height=height, max_sequence_length=max_seq,
+                          true_cfg_scale=true_cfg)
+            if negative:
+                kwargs["negative_prompt"] = negative
+            if seed is not None:
+                kwargs["generator"] = torch.Generator(device="cpu").manual_seed(int(seed) + i)
+            with torch.inference_mode():
+                img = t2i(**kwargs).images[0]
+            out.append(_png_b64(img))
+        return out
+
+    def _edit(req):
+        import torch
+        from PIL import Image
+        if i2i is None:
+            raise RuntimeError("img2img pipeline not available")
+        prompt = req.get("prompt", "")
+        image_b64 = req.get("image", "")
+        if image_b64.startswith("data:"):
+            image_b64 = image_b64.split(",", 1)[1]
+        image = Image.open(io.BytesIO(base64.b64decode(image_b64))).convert("RGB")
+        n = min(int(req.get("n", 1)), 4)
+        steps = int(req.get("num_inference_steps", 50))
+        strength = float(req.get("strength", 0.6))
+        guidance = float(req.get("guidance_scale", 3.5))
+        max_seq = int(req.get("max_sequence_length", 512))
+        seed = req.get("seed")
+        out = []
+        for i in range(n):
+            kwargs = dict(prompt=prompt, image=image, num_inference_steps=steps,
+                          strength=strength, guidance_scale=guidance,
+                          max_sequence_length=max_seq)
+            if seed is not None:
+                kwargs["generator"] = torch.Generator(device="cpu").manual_seed(int(seed) + i)
+            with torch.inference_mode():
+                img = i2i(**kwargs).images[0]
+            out.append(_png_b64(img))
+        return out
+
+    @app.post("/v1/images/generations")
+    async def generations(request: dict):
+        if t2i is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        try:
+            imgs = await asyncio.get_event_loop().run_in_executor(None, _gen, request)
+            return {"created": int(time.time()),
+                    "data": [{"b64_json": b, "revised_prompt": None} for b in imgs]}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    @app.post("/v1/images/edits")
+    async def edits(request: dict):
+        if t2i is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        try:
+            imgs = await asyncio.get_event_loop().run_in_executor(None, _edit, request)
+            return {"created": int(time.time()),
+                    "data": [{"b64_json": b, "revised_prompt": None} for b in imgs]}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: flux-1-dev
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "3600s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 3
+    scaleTarget: 1
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.flux-1-dev-ready-v1
+            VENV=/data/venv
+            if [ ! -f "$SENTINEL" ] || [ ! -x "$VENV/bin/python" ]; then
+              echo "Building venv + downloading weights ..."
+              rm -rf "$VENV"
+              python3 -m venv "$VENV"
+              "$VENV/bin/pip" install -q -U pip
+              "$VENV/bin/pip" install -q torch --index-url https://download.pytorch.org/whl/cu126
+              "$VENV/bin/pip" install -q \
+                "diffusers>=0.31.0" "transformers>=4.43.0" "accelerate>=0.31.0" \
+                "huggingface_hub>=0.24.0" pillow sentencepiece safetensors protobuf \
+                fastapi uvicorn
+              "$VENV/bin/python" - <<'PY'
+            import os
+            from pathlib import Path
+            from huggingface_hub import snapshot_download
+            d = Path("/data/flux-1-dev")
+            if (d / "model_index.json").is_file():
+                print("weights present, skipping download", flush=True)
+            else:
+                d.mkdir(parents=True, exist_ok=True)
+                print("downloading black-forest-labs/FLUX.1-dev (diffusers format) ...", flush=True)
+                # Skip the ~24GB single-file originals; diffusers loads the sharded subfolders.
+                snapshot_download(repo_id="black-forest-labs/FLUX.1-dev",
+                                  local_dir=str(d), token=os.environ.get("HF_TOKEN"),
+                                  ignore_patterns=["flux1-dev.safetensors", "ae.safetensors"])
+                print("download finished", flush=True)
+            PY
+              touch "$SENTINEL"
+              echo "setup complete"
+            else
+              echo "venv + weights already present"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 8Gi }
+          limits: { cpu: "4", memory: 16Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/flux-1-dev }
+          - { name: HF_HOME, value: /tmp/hf }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        # Whole L40S (no nvidia.com/gpumem) -> HAMi binds a tenant-free physical card, full 48 GB,
+        # no vGPU interception. FLUX bf16 is ~34 GB resident; full residency fits, no offload.
+        resources:
+          requests: { cpu: "4", memory: 32Gi, nvidia.com/gpu: "1" }
+          limits: { cpu: "8", memory: 64Gi, nvidia.com/gpu: "1" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 60
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          failureThreshold: 80
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: flux-1-dev-data }
+      - name: app
+        configMap: { name: flux-1-dev-server }

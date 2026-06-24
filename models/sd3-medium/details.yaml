@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sd3-medium-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "sd3-medium",
+      "status": "production",
+      "type": "image",
+      "endpoints": {
+        "primary": "/v1/images/generations",
+        "edit": "/v1/images/edits",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "sd3-medium",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "~1-2 minutes (pod schedule + fp16 weight load from NFS PVC; first ever start longer while the venv + weights stage)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "prompt": {"type": "string", "required": true, "description": "Text prompt for image generation"},
+        "negative_prompt": {"type": "string", "required": false, "default": "", "description": "What to avoid (real CFG, honored)"},
+        "n": {"type": "integer", "required": false, "default": 1, "description": "Number of images (max 4)"},
+        "size": {"type": "string", "required": false, "default": "1024x1024", "description": "WxH, e.g. 1024x1024"},
+        "num_inference_steps": {"type": "integer", "required": false, "default": 28, "description": "Denoising steps (SD3 default 28)"},
+        "guidance_scale": {"type": "float", "required": false, "default": 7.0, "description": "Classifier-free guidance scale (SD3 default 7.0)"},
+        "max_sequence_length": {"type": "integer", "required": false, "default": 256, "description": "Max T5 prompt token length (up to 512)"},
+        "seed": {"type": "integer", "required": false, "description": "Deterministic seed"},
+        "image": {"type": "string", "required": false, "description": "img2img only (POST /v1/images/edits): source image as base64"},
+        "strength": {"type": "float", "required": false, "default": 0.6, "description": "img2img only: how much to transform the source image (0-1)"}
+      },
+      "output_map": {
+        "created": {"type": "integer", "description": "Unix timestamp"},
+        "data": {"type": "array", "description": "List of {b64_json: base64-encoded PNG image}"}
+      },
+      "catalog": {
+        "description_short": "Stability AI Stable Diffusion 3 Medium 2B MMDiT text-to-image (GPU)",
+        "description": "Stable Diffusion 3 Medium (stabilityai/stable-diffusion-3-medium) is a 2B Multimodal Diffusion Transformer (MMDiT) text-to-image model by Stability AI, with improved image quality, typography, and complex-prompt understanding. Three fixed text encoders: OpenCLIP-ViT/G, CLIP-ViT/L, and T5-XXL. Served as a standard KServe InferenceService custom predictor (FastAPI + diffusers, fp16) on a single L40S vGPU slice, with Knative scale-to-zero (0->3 on demand, releases the GPU ~15m after idle). OpenAI-compatible /v1/images/generations (img2img via /v1/images/edits). Stability AI Community License (free for research/non-commercial and commercial use under $1M revenue).",
+        "owned_by": "stabilityai",
+        "source": "stabilityai/stable-diffusion-3-medium",
+        "source_url": "https://huggingface.co/stabilityai/stable-diffusion-3-medium",
+        "license": "Stability AI Community License",
+        "parameters": "2B MMDiT (+ OpenCLIP-G, CLIP-L, T5-XXL text encoders, VAE)",
+        "precision": "fp16",
+        "framework": "diffusers",
+        "domain": "image-generation",
+        "subdomain": "text-to-image",
+        "tags": ["image-generation", "text-to-image", "img2img", "gpu", "diffusion", "sd3", "stability-ai", "kserve"]
+      }
+    }

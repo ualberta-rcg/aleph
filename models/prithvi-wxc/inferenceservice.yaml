@@ -1,7 +1,7 @@
 # Prithvi-WxC 2.3B: NASA-IBM Weather-Climate Foundation Model
 # ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M — Apache 2.0, 2.3B params, 28.4GB
 # Trained on MERRA-2 reanalysis, 160 variables, global 0.5° grid
-# Uses Ray Serve for heavy model management (too large for standard KServe init pattern)
+# Standard KServe InferenceService custom predictor (weights staged to the PVC by the init container).
 # API: POST /v1/science/forecast → MERRA-2 atmospheric state → forecast
 ---
 apiVersion: serving.kserve.io/v1beta1

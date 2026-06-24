@@ -3,6 +3,105 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — Image-model gateway test plans + full Ray removal from the repo
+
+- **Comprehensive gateway `test.py` for all 3 image models** (`kandinsky-3`, `flux-1-dev`,
+  `sd3-medium`), modeled on `gpt-oss-120b/test.py` and run inside the gateway pod against the
+  default gateway (OpenAI image surface, no model-specific gateway code). Each exercises:
+  scale-from-zero WAKE (retry through 503), `/v1/images/generations` over sizes (square +
+  non-square), `n>1`, low/high steps, `guidance_scale`, `negative_prompt`, seed determinism
+  (identical bytes for same seed; different seeds differ), per-model knobs
+  (`quality=hd` / `max_sequence_length` / `true_cfg_scale`), `/v1/images/edits` img2img,
+  per-image PNG validation (magic bytes + IHDR width/height, no PIL in pod), `/v1/models?all=true`
+  catalog presence, and a bad-model 404 guard.
+  - **Verified on cluster (.43): 18 passed / 1 expected / 0 failed for each of the three models.**
+- **Ray fully removed from the repo.** No model uses Ray anymore (`kandinsky-3` converted;
+  `graphcast` and `prithvi-wxc` were mislabeled — both are KServe). Deleted the KubeRay operator
+  manifest `deploy-aleph/rke2-manifests/20-kuberay.yaml` and `deploy-aleph/examples/ray-cluster-template.yaml`,
+  and scrubbed stale Ray/KubeRay references across `CLAUDE.md`, `models.md`, `model-usage.md`,
+  `models/MODEL-STATUS.md`, the rke2-manifests `README.md`, and the `prithvi-wxc` ISVC comment.
+  Added `flux-1-dev` + `sd3-medium` rows to the status tables.
+
+## 2026-06-23 — Add Stable Diffusion 3 Medium (stabilityai) as a KServe image model
+
+New model `sd3-medium` — Stability AI Stable Diffusion 3 Medium, 2B MMDiT text-to-image — wired
+exactly like kandinsky-3 / flux-1-dev (KServe InferenceService custom predictor, diffusers FastAPI
+server), so it's gateway-discovered, scale-to-zero, **zero gateway changes**.
+
+- `models/sd3-medium/` : `inferenceservice.yaml` (ConfigMap `sd3-medium-server` FastAPI/diffusers
+  `server.py` + ISVC), `details.yaml` (v2 Template B card), `pvc.yaml` (`sd3-medium-data`,
+  `nfs-models`, 80Gi), `CLAUDE.md`.
+- **HAMi vGPU slice** (not a whole card): `nvidia.com/gpu: 1` + `nvidia.com/gpumem: 24576`. fp16
+  resident ~16 GB (2B MMDiT + T5-XXL + CLIP-G/L + VAE), so a 24 GB slice fits and leaves the rest
+  of the L40S shareable.
+- **GATED** via the `hf-token` secret. **License: Stability AI Community License** (free for
+  research/non-commercial and commercial use under $1M revenue). diffusers loads the
+  `stable-diffusion-3-medium-diffusers` repo (not the original-format one).
+- Deps + weights staged once onto the NFS PVC (venv `/data/venv`, weights `/data/sd3-medium`,
+  sentinel `/data/.sd3-medium-ready-v1`); survives WW reprovision, no re-pip on cold start.
+- Defaults from the HF card: `num_inference_steps 28`, `guidance_scale 7.0`,
+  `max_sequence_length 256` (T5, up to 512), 1024×1024; real CFG so `negative_prompt` is honored;
+  img2img `strength 0.6` via `/v1/images/edits`.
+- Scaling: `minReplicas 0`, `maxReplicas 3`, `scaleMetric concurrency`, `scaleTarget 1`, 5m/15m.
+- **Verified on cluster (.43):** ISVC `Ready=True` (first cold start ~6m: venv + ~23 GB weight
+  download + model load); card loaded by the gateway (`[CARD] loaded sd3-medium (type=image)`);
+  generation **through the default gateway** (`POST /v1/images/generations`) → HTTP 200, ~4.2s for
+  20 steps @ 1024×1024. Gateway untouched.
+
+## 2026-06-23 — Add FLUX.1-dev (black-forest-labs) as a KServe image model
+
+New model `flux-1-dev` — Black Forest Labs FLUX.1-dev, 12B rectified-flow text-to-image — wired
+exactly like the converted kandinsky-3 (KServe InferenceService custom predictor, diffusers
+FastAPI server), so it's gateway-discovered, scale-to-zero, **zero gateway changes**.
+
+- `models/flux-1-dev/` : `inferenceservice.yaml` (ConfigMap `flux-1-dev-server` FastAPI/diffusers
+  `server.py` + ISVC), `details.yaml` (v2 Template B card), `pvc.yaml` (`flux-1-dev-data`,
+  `nfs-models`, 100Gi), `CLAUDE.md`.
+- **Whole L40S**: `nvidia.com/gpu: 1`, **no `nvidia.com/gpumem`** (HAMi binds a full physical
+  card, no vGPU interception). bf16 full residency ~34 GB; no CPU offload → fast.
+- **GATED** model via the `hf-token` secret. **License: FLUX.1-dev Non-Commercial** (flagged in
+  the card `license` + a `non-commercial` tag).
+- Deps + weights staged once onto the NFS PVC (venv `/data/venv`, weights `/data/flux-1-dev`,
+  sentinel-guarded); download skips the ~24 GB single-file originals (`flux1-dev.safetensors`,
+  `ae.safetensors`) since diffusers loads the sharded subfolders (~36 GB).
+- Defaults from the HF card: `num_inference_steps 50`, `guidance_scale 3.5`,
+  `max_sequence_length 512`, 1024×1024; guidance-distilled (negative_prompt only with
+  `true_cfg_scale>1`); img2img `strength 0.6` via `/v1/images/edits`.
+- Scaling: `minReplicas 0`, `maxReplicas 3`, `scaleMetric concurrency`, `scaleTarget 1`, 5m/15m.
+- **Verified on cluster (.43):** ISVC `Ready=True` (first cold start ~7m: venv 7 GB + 36 GB
+  weight download + model load); generation **through the default gateway** → HTTP 200, ~1.67 MB
+  PNG, ~11.4s for 20 steps @ 1024×1024. Gateway untouched.
+
+## 2026-06-23 — kandinsky-3: convert RayService → KServe InferenceService (drop Ray)
+
+Replaced the kandinsky-3 RayService with a standard **KServe InferenceService custom predictor**
+so it behaves like every other model — discovered by the gateway, reachable at
+`kandinsky-3-predictor`, Knative scale-to-zero on the cluster 5m/15m policy, with **zero gateway
+changes**. Ray earned no keep: kandinsky is a single diffusers pipeline on one L40S (no model
+parallelism / serve DAG / cross-replica batching), and the Ray version's `runtime_env` pip on
+every cold start was the bulk of its ~4m cold start. Wiring mirrors `gpt-oss-120b`; custom-server
+shape mirrors `surya`.
+
+- **`inferenceservice.yaml`** (new, single file): `kandinsky-3-server` ConfigMap (FastAPI/uvicorn
+  diffusers `server.py`, port 8080, `/v1/images/generations` + `/v1/images/edits` + `/v1/models` +
+  `/health` returning 503 until the pipeline is resident) **+** the ISVC. `minReplicas 0`,
+  `maxReplicas 3`, `scaleMetric concurrency`, `scaleTarget 1`, control-plane-excluded, `gpu=on`,
+  1× L40S HAMi vGPU slice (`nvidia.com/gpu: 1` + `nvidia.com/gpumem: 40960`).
+- **Deps + weights staged once onto the NFS PVC** by the init container (venv `/data/venv`,
+  weights `/data/kandinsky-3`, sentinel `/data/.kandinsky-ready-v1`). PVC is OneFS/NFS, so it
+  survives Warewulf reprovisioning **and** avoids re-pip on cold start (first start ~5m incl. venv
+  build; later cold starts skip it → ~1-2m).
+- **Card** `details.yaml` rebuilt to the v2 Template B (custom server) schema, key-order exact;
+  `type: image`, standard `routing.k8s_name: kandinsky-3` (no special backend). Params corrected
+  from HF: **~11.9B** (Flan-UL2 text encoder 8.6B + U-Net 3B + MoVQ 267M), repo
+  `kandinsky-community/kandinsky-3`, `guidance_scale` default 3.0 (model default).
+- Removed `rayservice.yaml`, `serve.py`/`server-configmap.yaml`, `download-job.yaml`; CLAUDE.md
+  rewritten for the KServe deployment.
+- **Verified on cluster (.43):** ISVC `Ready=True`; scale-from-zero cold start to ready;
+  end-to-end generation **through the default gateway** (`POST /v1/images/generations` → HTTP 200,
+  ~874 KB PNG, ~11s warm); concurrency scale-up to a 2nd replica observed; no gateway code touched.
+- **Gateway untouched** (commits to main rebuild the gateway Docker image — none warranted here).
+
 ## 2026-06-23 — Standardize scale-down policy across ALL models (5m surplus + 15m last pod)
 
 Applied the command-r-7b scale-down policy to every model: added

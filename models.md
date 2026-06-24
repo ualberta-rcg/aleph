@@ -72,6 +72,7 @@ Deployment status, capabilities, and operational notes for each model in the Ale
 | `gemma-3-4b-it` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `gemma-4-26b-a4b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `gena-lm` | Embedding | Transformers + PyTorch | READY | PASS | `/v1/embeddings` |
+| `flux-1-dev` | Image | KServe custom (diffusers) | READY | PASS | `/v1/images/generations` |
 | `gena-lm-large` | Embedding | Transformers + PyTorch | READY | FIXED | `/v1/science/embed` |
 | `geneformer` | Embedding | Transformers + PyTorch | READY | PASS | `/v1/embed` |
 | `geogalactica` | Chat | vLLM | NOT-READY | FAIL | `/v1/chat/completions` |
@@ -82,11 +83,11 @@ Deployment status, capabilities, and operational notes for each model in the Ale
 | `gpt-oss-20b` | Chat | vLLM | READY | PASS | `/v1/chat/completions` |
 | `granite-geospatial-biomass` | Classify | terratorch + LightningInferenceModel | READY | FIXED | `/v1/science/predict` |
 | `granite-geospatial-ocean` | Classify | terratorch + PyTorch | READY | FIXED | `/v1/science/embed` |
-| `graphcast` | Forecast | Ray Serve | READY | PASS | `/v1/science/predict` |
+| `graphcast` | Forecast | KServe custom (JAX) | READY | PASS | `/v1/science/predict` |
 | `hyenadna` | Embedding | pytorch | READY | PASS | `/v1/embeddings` |
 | `ithaca` | Predict | JAX + FastAPI | READY | FIXED | `/v1/science/predict` |
 
-| `kandinsky-3` | Image | Ray Serve | READY | PASS | `/v1/images/generations` |
+| `kandinsky-3` | Image | KServe custom (diffusers) | READY | PASS | `/v1/images/generations` |
 | `labram` | Embed | braindecode + PyTorch | READY | FAIL | `/v1/science/embed` |
 | `lag-llama` | Forecast | lag-llama + GluonTS + PyTorch | READY | FIXED | `/v1/science/forecast` |
 | `leandojo` | Embed | Transformers + PyTorch | READY | PASS | `/v1/science/retrieve` |
@@ -151,6 +152,7 @@ Deployment status, capabilities, and operational notes for each model in the Ale
 | `scibert` | Embedding | pytorch | READY | PASS | `/v1/embeddings` |
 | `science-embed` | Embedding | Transformers + PyTorch | NO-ISVC | CANCELLED | `/v1/embeddings` |
 | `scincl` | Embedding | pytorch | READY | PASS | `/v1/embeddings` |
+| `sd3-medium` | Image | KServe custom (diffusers) | READY | PASS | `/v1/images/generations` |
 | `seisbench` | Classify | seisbench + PyTorch | READY | PASS | `/v1/science/detect` |
 | `speaches` | Standalone | standalone | READY | PASS | `/v1/audio/speech, /v1/audio/transcriptions` |
 | `specter2` | Embedding | pytorch | READY | PASS | `/v1/embeddings` |
@@ -2752,7 +2754,7 @@ Best for earth-observation classification. Not generation or embedding-only pipe
 
 Best for time-series / weather forecasting. Not chat, static embeddings.
 
-**Status:** READY **Test:** PASS **Type:** Forecast **Runtime:** Ray Serve  
+**Status:** READY **Test:** PASS **Type:** Forecast **Runtime:** KServe custom (JAX)  
 **Primary endpoint:** `/v1/science/predict` **Model path:** `models/graphcast/`
 
 ### Overview
@@ -2772,7 +2774,7 @@ Best for time-series / weather forecasting. Not chat, static embeddings.
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| Ray Serve | no | CPU | scale-to-zero | 1–3 min |
+| KServe custom (JAX) | no | CPU | scale-to-zero | 1–3 min |
 
 ### Notes
 
@@ -2849,16 +2851,16 @@ Best for Ithaca — ancient Greek inscription restoration, dating, and geolocati
 
 **Kandinsky 3 text-to-image and image-to-image generation**
 
-Best for text-to-image and image edit at 1024px. Not chat, vision understanding, low-latency without Ray cold start.
+Best for text-to-image and image edit at 1024px. Not chat, vision understanding, low-latency under cold start.
 
-**Status:** READY **Test:** PASS **Type:** Image **Runtime:** Ray Serve  
+**Status:** READY **Test:** PASS **Type:** Image **Runtime:** KServe custom (diffusers)  
 **Primary endpoint:** `/v1/images/generations` **Model path:** `models/kandinsky-3/`
 
 ### Overview
 
 | Gateway id | Upstream | Parameters | Precision | License | Domain | Best for | Not for |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `kandinsky-3` | `ai-forever/Kandinsky-3` | ~5B | fp16 | Apache-2.0 | image-generation | text-to-image and image edit at 1024px | chat, vision understanding, low-latency  |
+| `kandinsky-3` | `kandinsky-community/kandinsky-3` | ~11.9B | fp16 | Apache-2.0 | image-generation | text-to-image and image edit at 1024px | chat, vision understanding, low-latency  |
 
 ### Capabilities
 
@@ -2871,12 +2873,12 @@ Best for text-to-image and image edit at 1024px. Not chat, vision understanding,
 
 | Engine | GPU | Allocation | Scale | Cold start |
 | --- | --- | --- | --- | --- |
-| Ray Serve | yes | HAMi GPU slice | always-on | ~180s |
+| KServe custom (diffusers FastAPI) | yes | HAMi vGPU slice (gpu1/gpumem40960) | scale-to-zero 5m/15m | ~1–2 min |
 
 ### Notes
 
-- RayService with in-tree autoscaler; head pinned to CPU node, GPU workers scale 0→3.
-- Verified: scale-up on request, ~24s PNG at 1024, scale-down releases L40S after idle.
+- Converted RayService → KServe InferenceService custom predictor; Knative scale-to-zero 0→3 on demand, gateway-discovered (zero gateway changes).
+- Verified via gateway: 18/19 test.py pass (sizes, n>1, steps, guidance, negative, quality=hd, seed determinism, img2img).
 
 ## `labram`
 

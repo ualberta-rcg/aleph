@@ -2431,8 +2431,8 @@ curl -s -X POST "$GW/v1/images/generations" -H "Content-Type: application/json" 
 
 ### Quirks
 
-- RayService with in-tree autoscaler; head pinned to CPU node, GPU workers scale 0→3.
-- Verified: scale-up on request, ~24s PNG at 1024, scale-down releases L40S after idle.
+- KServe InferenceService custom predictor (diffusers); Knative scale-to-zero 0→3 on demand, gateway-discovered.
+- Verified via gateway: 18/19 test.py pass (sizes, n>1, steps, guidance, negative, quality=hd, seed determinism, img2img).
 - Test status: **PASS** (READY).
 
 ## `labram`

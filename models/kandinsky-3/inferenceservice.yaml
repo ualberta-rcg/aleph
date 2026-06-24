@@ -1,0 +1,268 @@
+# Kandinsky-3: text-to-image + image-to-image (kandinsky-community/kandinsky-3).
+# Converted from a RayService to a standard KServe InferenceService custom predictor
+# (diffusers FastAPI server) so it behaves like every other model: discovered by the
+# gateway, reachable at kandinsky-3-predictor, Knative scale-to-zero with the cluster
+# 5m/15m policy. Wiring mirrors gpt-oss-120b; custom-server shape mirrors surya.
+#
+# Deps + weights are staged ONCE onto the NFS PVC (venv at /data/venv, weights at
+# /data/kandinsky-3) by the init container. The PVC is OneFS/NFS (not node-local), so
+# this survives Warewulf reprovisioning AND avoids re-pip on every cold start.
+# API: POST /v1/images/generations (OpenAI-style) -> {data:[{b64_json}]}.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kandinsky-3-server
+  namespace: models
+data:
+  server.py: |
+    """Kandinsky-3 diffusers server (KServe custom predictor).
+
+    OpenAI-style image API:
+      POST /v1/images/generations  {prompt, n, size, num_inference_steps, guidance_scale, seed, quality}
+      POST /v1/images/edits        {prompt, image(b64), strength, ...}
+      GET  /v1/models
+      GET  /health
+    """
+    import os, io, base64, time, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/kandinsky-3")
+    app = FastAPI()
+    t2i = None
+    i2i = None
+
+    def parse_size(size_str):
+        try:
+            w, h = str(size_str).lower().split("x")
+            return int(w), int(h)
+        except Exception:
+            return 1024, 1024
+
+    def load():
+        global t2i, i2i
+        import torch
+        from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
+        print(f"Loading Kandinsky-3 from {MODEL_DIR} ...", flush=True)
+        t2i = AutoPipelineForText2Image.from_pretrained(
+            MODEL_DIR, variant="fp16", torch_dtype=torch.float16
+        ).to("cuda")
+        try:
+            i2i = AutoPipelineForImage2Image.from_pipe(t2i)
+        except Exception as e:
+            print(f"img2img init failed: {e}", flush=True)
+            i2i = None
+        print("Kandinsky-3 ready.", flush=True)
+
+    @app.on_event("startup")
+    async def _startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        # Return 503 until the pipeline is resident so Knative gates traffic on the
+        # real model-ready state (httpGet readiness only checks the status code).
+        if t2i is None:
+            return JSONResponse({"status": "loading", "model": "kandinsky-3"}, 503)
+        return {"status": "ok", "model": "kandinsky-3"}
+
+    @app.get("/v1/models")
+    async def models():
+        return {"object": "list", "data": [
+            {"id": "kandinsky-3", "object": "model", "owned_by": "kandinsky-community"}
+        ]}
+
+    def _png_b64(img):
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+    def _gen(req):
+        import torch
+        prompt = req.get("prompt", "")
+        negative = req.get("negative_prompt", "")
+        n = min(int(req.get("n", 1)), 4)
+        width, height = parse_size(req.get("size", "1024x1024"))
+        width = int(req.get("width", width))
+        height = int(req.get("height", height))
+        steps = int(req.get("num_inference_steps", 25))
+        guidance = float(req.get("guidance_scale", 3.0))
+        seed = req.get("seed")
+        if req.get("quality") == "hd":
+            steps = max(steps, 50)
+        out = []
+        for i in range(n):
+            kwargs = dict(prompt=prompt, negative_prompt=negative,
+                          num_inference_steps=steps, guidance_scale=guidance,
+                          width=width, height=height)
+            if seed is not None:
+                kwargs["generator"] = torch.Generator(device="cpu").manual_seed(int(seed) + i)
+            with torch.inference_mode():
+                img = t2i(**kwargs).images[0]
+            out.append(_png_b64(img))
+        return out
+
+    def _edit(req):
+        import torch
+        from PIL import Image
+        if i2i is None:
+            raise RuntimeError("img2img pipeline not available")
+        prompt = req.get("prompt", "")
+        negative = req.get("negative_prompt", "")
+        image_b64 = req.get("image", "")
+        if image_b64.startswith("data:"):
+            image_b64 = image_b64.split(",", 1)[1]
+        image = Image.open(io.BytesIO(base64.b64decode(image_b64))).convert("RGB")
+        n = min(int(req.get("n", 1)), 4)
+        steps = int(req.get("num_inference_steps", 25))
+        strength = float(req.get("strength", 0.75))
+        guidance = float(req.get("guidance_scale", 3.0))
+        seed = req.get("seed")
+        out = []
+        for i in range(n):
+            kwargs = dict(prompt=prompt, negative_prompt=negative, image=image,
+                          num_inference_steps=steps, strength=strength,
+                          guidance_scale=guidance)
+            if seed is not None:
+                kwargs["generator"] = torch.Generator(device="cpu").manual_seed(int(seed) + i)
+            with torch.inference_mode():
+                img = i2i(**kwargs).images[0]
+            out.append(_png_b64(img))
+        return out
+
+    @app.post("/v1/images/generations")
+    async def generations(request: dict):
+        if t2i is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        try:
+            imgs = await asyncio.get_event_loop().run_in_executor(None, _gen, request)
+            return {"created": int(time.time()),
+                    "data": [{"b64_json": b, "revised_prompt": None} for b in imgs]}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    @app.post("/v1/images/edits")
+    async def edits(request: dict):
+        if t2i is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        try:
+            imgs = await asyncio.get_event_loop().run_in_executor(None, _edit, request)
+            return {"created": int(time.time()),
+                    "data": [{"b64_json": b, "revised_prompt": None} for b in imgs]}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: kandinsky-3
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "1800s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 3
+    scaleTarget: 1
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            SENTINEL=/data/.kandinsky-ready-v1
+            VENV=/data/venv
+            # Build the dependency venv on the PVC once (NFS-backed, survives WW reprovision).
+            if [ ! -f "$SENTINEL" ] || [ ! -x "$VENV/bin/python" ]; then
+              echo "Building venv + downloading weights ..."
+              rm -rf "$VENV"
+              python3 -m venv "$VENV"
+              "$VENV/bin/pip" install -q -U pip
+              "$VENV/bin/pip" install -q torch --index-url https://download.pytorch.org/whl/cu126
+              "$VENV/bin/pip" install -q \
+                "diffusers==0.29.2" "transformers>=4.35.0,<4.50.0" "accelerate>=0.26.0" \
+                "huggingface_hub>=0.23.0" pillow sentencepiece safetensors protobuf \
+                fastapi uvicorn
+              "$VENV/bin/python" - <<'PY'
+            import os
+            from pathlib import Path
+            from huggingface_hub import snapshot_download
+            d = Path("/data/kandinsky-3")
+            if (d / "model_index.json").is_file():
+                print("weights present, skipping download", flush=True)
+            else:
+                d.mkdir(parents=True, exist_ok=True)
+                print("downloading kandinsky-community/kandinsky-3 ...", flush=True)
+                snapshot_download(repo_id="kandinsky-community/kandinsky-3",
+                                  local_dir=str(d), token=os.environ.get("HF_TOKEN"))
+                print("download finished", flush=True)
+            PY
+              touch "$SENTINEL"
+              echo "setup complete"
+            else
+              echo "venv + weights already present"
+            fi
+        resources:
+          requests: { cpu: "2", memory: 6Gi }
+          limits: { cpu: "4", memory: 12Gi }
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/kandinsky-3 }
+          - { name: HF_HOME, value: /tmp/hf }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        # Single-GPU (TP=1) -> HAMi vGPU slice: nvidia.com/gpu + nvidia.com/gpumem.
+        resources:
+          requests: { cpu: "2", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "40960" }
+          limits: { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "40960" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 40
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          failureThreshold: 60
+        volumeMounts:
+          - { name: model-data, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: model-data
+        persistentVolumeClaim: { claimName: kandinsky-3-data }
+      - name: app
+        configMap: { name: kandinsky-3-server }

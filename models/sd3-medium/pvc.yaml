@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sd3-medium-data
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 80Gi

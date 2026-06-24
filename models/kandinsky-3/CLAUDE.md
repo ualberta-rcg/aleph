@@ -1,101 +1,71 @@
-# Kandinsky-3 -- Model Context
+# kandinsky-3 — Model Context
 
-## What This Model Does
+Kandinsky 3.0 (`kandinsky-community/kandinsky-3`), ~11.9B text-to-image diffusion model
+(Sber AI): Flan-UL2 text encoder 8.6B + Latent Diffusion U-Net 3B + Sber-MoVQGAN 267M.
+fp16 via diffusers `AutoPipeline`. Text-to-image + image-to-image (img2img).
 
-Kandinsky-3 (ai-forever/Kandinsky-3) is a text-to-image diffusion model by Sber AI. Generates images from text prompts and supports image-to-image editing. Uses HuggingFace diffusers `AutoPipelineForText2Image` and `AutoPipelineForImage2Image` with fp16 variant. Deployed via Ray Serve (not KServe) with a dedicated head pod (no GPU) + GPU worker architecture. OpenAI-compatible `/v1/images/generations` endpoint.
+## Serving (standard KServe custom predictor)
 
-## Source Repo
+Converted from a RayService to a **KServe InferenceService** so it behaves like every other
+model on the cluster — discovered by the gateway, reachable at `kandinsky-3-predictor`,
+Knative scale-to-zero with the cluster 5m/15m policy, **zero gateway changes**. Wiring
+mirrors `gpt-oss-120b`; the custom-server shape mirrors `surya`.
 
-**HuggingFace**: [ai-forever/Kandinsky-3](https://huggingface.co/ai-forever/Kandinsky-3)
+- Single file `inferenceservice.yaml` holds both the `kandinsky-3-server` ConfigMap (the
+  FastAPI/uvicorn `server.py`) and the InferenceService.
+- Custom predictor: `python:3.11` container runs `/data/venv/bin/python /app/server.py` on
+  port 8080. Endpoints: `POST /v1/images/generations`, `POST /v1/images/edits`,
+  `GET /v1/models`, `GET /health` (returns 503 until the pipeline is resident so Knative
+  gates traffic on real readiness).
+- **Deps + weights staged once onto the NFS PVC** by the init container: venv at
+  `/data/venv`, weights at `/data/kandinsky-3`, guarded by `/data/.kandinsky-ready-v1`.
+  PVC is OneFS/NFS (not node-local), so this survives Warewulf reprovisioning **and** avoids
+  re-pip on every cold start (the main cost that made the Ray version slow).
+- GPU: single L40S HAMi vGPU slice — `nvidia.com/gpu: 1` + `nvidia.com/gpumem: 40960` (TP=1
+  fractional recipe per `models/CLAUDE.md`).
+- Scaling: `minReplicas 0`, `maxReplicas 3`, `scaleMetric concurrency`, `scaleTarget 1`;
+  `scale-down-delay 5m` + `scale-to-zero-pod-retention-period 15m`.
 
-- **License**: Apache-2.0
-- **Architecture**: Latent diffusion model (diffusers-based)
-- **Recommended**: diffusers `AutoPipelineForText2Image` with `variant="fp16"`, `torch_dtype=torch.float16`
-- **Model size**: ~5B parameters (large UNet + text encoders)
+## Gateway integration
 
-## How The Server Works
+- Card `details.yaml` (`kandinsky-3-details`, v2 schema — Template B / custom server):
+  `type: image`, `routing.k8s_name: kandinsky-3` (standard Knative-host routing, no special
+  backend). The generic catch-all `/v1/{path}` handler forwards `/v1/images/generations`
+  through the knative-local-gateway like any other model.
+- Scale-to-zero cold-start guard, `/v1/models` listing, and resource footprint all come for
+  free from the gateway's existing KServe/Knative code.
 
-- **Pattern**: Ray Serve (NOT KServe InferenceService)
-- **K8s resource**: `RayService` (ray.io/v1) instead of InferenceService
-- **Image**: `rayproject/ray:2.44.1-py311-gpu` (not python:3.11-slim)
-- **Architecture**: Two Ray deployments:
-  - `APIIngress` (head pod, no GPU): FastAPI app that handles HTTP routing
-  - `Kandinsky3` (GPU worker, 1x L40S): Loads diffusers pipelines, runs inference
-- **PVC**: `kandinsky-3-data` (50Gi, NFS) -- stores model weights (must be pre-populated via download-job.yaml)
-- **Health**: `/healthz` on the ingress
-- **GPU**: 1x L40S (dedicated, not time-sliced)
-- **CPU offload**: `enable_model_cpu_offload()` for memory management
-- **Dependencies**: Declared in Ray Serve `runtime_env` (pip list in rayservice.yaml)
-- **Service**: Ray Serve exposes port 8000; K8s Service `kandinsky-serve-svc` (auto-created by Ray operator)
-
-## Our Config vs Source Recommendations
-
-| Aspect | Source | Our Config | Notes |
-|--------|--------|-----------|-------|
-| Precision | fp16 | fp16 (variant="fp16") | Correct |
-| Pipeline | AutoPipelineForText2Image | Same + AutoPipelineForImage2Image | Both supported |
-| Image size | Variable | 1024x1024 default | Configurable |
-| Steps | 25-50 | 25 default, 50 for "hd" quality | Reasonable |
-| Guidance | 4.0 default | 4.0 default | Matches source |
-| Max images | Variable | 4 per request | Safety limit |
-
-## Gateway Integration
-
-- **NOT an InferenceService**: This is a Ray Serve deployment
-- **Registered in EXTRA_MODELS**: `{"backend": "http://kandinsky-serve-svc.models.svc.cluster.local:8000", "health_path": "/v1/models"}`
-- **MODEL_TYPE**: image
-- **GPU_MODELS**: yes
-- **Always-on**: minReplicas=1, maxReplicas=1 (Ray worker)
-- **NOT in KSERVE_CUSTOM_MODELS**: Handled via EXTRA_MODELS routing
-
-## Deploy / Update / Test
+## Deploy / update / test
 
 ```bash
-# Deploy (requires download-job to have populated PVC first)
-kubectl apply -k models/kandinsky-3/
+# 1. PVC  2. ISVC (creates the server ConfigMap + InferenceService; init stages venv+weights)
+kubectl apply -f models/kandinsky-3/pvc.yaml
+kubectl apply -f models/kandinsky-3/inferenceservice.yaml
+kubectl apply -f models/kandinsky-3/details.yaml
 
-# Force update
-kubectl apply --server-side --force-conflicts -k models/kandinsky-3/
+# status / logs
+kubectl get isvc,pods -n models | grep kandinsky-3
+kubectl logs -n models -l serving.kserve.io/inferenceservice=kandinsky-3 -c kserve-container -f
 
-# Check status
-kubectl get rayservice -n models kandinsky
-kubectl get pods -n models -l ray.io/cluster=kandinsky
-
-# Logs
-kubectl logs -n models -l ray.io/cluster=kandinsky -c ray-worker -f
-
-# Test (public)
+# test through the gateway (public)
 curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/images/generations \
   -H "Content-Type: application/json" \
-  -d '{"model":"kandinsky-3","prompt":"a cat sitting on a windowsill","n":1,"size":"1024x1024"}'
+  -d '{"model":"kandinsky-3","prompt":"a red fox in snow","n":1,"size":"1024x1024"}'
 ```
 
-## Known Issues / Optimization Opportunities
-
-1. **Always-on GPU**: minReplicas=1 means a dedicated L40S is permanently allocated. Ray Serve does not natively support scale-to-zero like KServe/Knative.
-
-2. **Large PVC**: 50Gi PVC is needed for the model weights. The download-job.yaml must be run before deploying the RayService.
-
-3. **CPU offload overhead**: `enable_model_cpu_offload()` moves model weights between CPU and GPU for each request, adding latency. Using full GPU residency would be faster but requires more VRAM.
-
-4. **Ray Serve complexity**: More complex than KServe deployments. Requires Ray operator to be installed and running.
-
-5. **No init container for weights**: Model weights must be pre-populated via a separate download-job.yaml. If PVC is empty, the deployment will fail.
-
-6. **Single replica**: maxReplicas=1 means no horizontal scaling. If throughput is needed, would need to increase replicas and GPU allocation.
-
-7. **ConfigMap mounted as subPath**: `serve-code` ConfigMap mounted as subPath files, which means ConfigMap changes require pod restart to take effect.
+Editing `server.py` (inside `inferenceservice.yaml`) requires a new revision / pod restart
+to take effect (mounted as a subPath ConfigMap). Bump the `SENTINEL` suffix if you change
+the venv dependency set so the init container rebuilds it.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `rayservice.yaml` | Ray Serve config (head + worker specs) |
-| `serve.py` | Ray Serve application code (APIIngress + Kandinsky3 deployments) |
-| `kustomization.yaml` | Kustomize resources + configMapGenerator |
-| `pvc.yaml` | Dedicated PVC (kandinsky-3-data, 50Gi NFS) |
-| `download-job.yaml` | One-time job to download model weights to PVC |
-| `README.md` | Original documentation |
+| `inferenceservice.yaml` | ConfigMap `kandinsky-3-server` (FastAPI diffusers `server.py`) + the KServe InferenceService |
+| `details.yaml` | Model card ConfigMap (`kandinsky-3-details`, v2 schema, `model-details: "true"`) |
+| `pvc.yaml` | Dedicated PVC (`kandinsky-3-data`, NFS `nfs-models`) for the venv + weights |
 
-**IMPORTANT: When changing this model's deployment config (rayservice.yaml, serve.py), update details.yaml to match.**
+No `kustomization.yaml`, no RayService, no separate download job — plain `kubectl apply -f`
+per the repo convention (`models/CLAUDE.md`).
+
+**IMPORTANT: when changing the server or ISVC config, update `details.yaml` to match.**
