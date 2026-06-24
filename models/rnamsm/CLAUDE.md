@@ -18,8 +18,13 @@ RNA-MSM from multimolecule is an MSA transformer-based RNA model (~96M). Trained
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/rnamsm/
+kubectl apply -f models/rnamsm/pvc.yaml
+kubectl apply -f models/rnamsm/inferenceservice.yaml
+kubectl apply -f models/rnamsm/details.yaml
 kubectl get inferenceservice rnamsm -n models
+
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/rnamsm/test.py
 ```
 
 ## Gateway integration
