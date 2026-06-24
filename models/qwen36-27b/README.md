@@ -29,6 +29,10 @@ curl $GW/v1/chat/completions -d '{"model":"qwen36-27b","reasoning_effort":"high"
 ## Testing
 The 31-check vision+tools battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/qwen36-27b/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/qwen36-27b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **29 PASS / 2 EXP / 0 FAIL** — image vision works, tools, managed thinking
