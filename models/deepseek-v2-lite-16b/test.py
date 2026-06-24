@@ -1,8 +1,16 @@
-import urllib.request, json, time
+import urllib.request, json, time, os
+
+# Gateway base URL + optional Tyk auth. In-pod default is localhost:8080 (no auth).
+# Externally: GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/deepseek-v2-lite-16b/test.py
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
 
 def post(path, body):
     data = json.dumps(body).encode()
-    req = urllib.request.Request(f"http://localhost:8080{path}", data=data, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if _KEY:
+        headers["Authorization"] = f"Bearer {_KEY}"
+    req = urllib.request.Request(f"{G}{path}", data=data, headers=headers)
     try:
         r = urllib.request.urlopen(req, timeout=120)
         return r.status, r.read().decode(), r.headers.get("Content-Type", "")
