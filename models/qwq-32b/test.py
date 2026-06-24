@@ -1,4 +1,4 @@
-"""qwq-32b comprehensive gateway test (run inside the gateway pod).
+"""qwq-32b comprehensive gateway test.
 
 QwQ-32B (32.5B dense, FP16, TP2). **Always-on** reasoning (deepseek_r1 parser, <think> blocks;
 no thinking toggle). Tools (hermes). Text-only. vLLM v0.20.2.
@@ -7,12 +7,18 @@ Always-on variant: the gateway exposes reasoning by default; on reasoning_effort
 it STRIPS the reasoning + caps max_tokens (the model can't stop thinking, so OFF reduces what fits
 — content may be short/empty, the documented quirk).
 
-Run:  cat models/qwq-32b/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/qwq-32b/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/qwq-32b/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "qwq-32b")
 HARD = ("A farmer has 17 sheep. All but 9 die. How many sheep are left? "
         "Take that number, multiply by 7, then subtract 4.")
@@ -21,8 +27,8 @@ results = []
 
 def req(method, path, body=None, timeout=300, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
