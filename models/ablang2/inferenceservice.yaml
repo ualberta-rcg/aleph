@@ -1,6 +1,6 @@
 # AbLang-2: Antibody language model for paratope/CDR restoration
 # CPU only (48M params), scale-to-zero. pip install ablang2; weights from Zenodo.
-# Migrated from POC 232. HAMi cluster 230: nfs-models SC, no HF token needed
+# Aleph POC cluster: nfs-models SC, no HF token needed
 # (weights come from Zenodo, not HuggingFace). API: POST /v1/embeddings, /v1/restore
 ---
 apiVersion: v1

@@ -18,11 +18,13 @@ embeddings (`/v1/embeddings`) + CDR/masked-position restoration (`/v1/restore`).
 - Embedding API (`ablang.tokenizer` + `ablang.AbRep(...).last_hidden_states`) is unchanged.
 
 ## Resources
-- CPU req/limit 1/2; mem 2Gi/4Gi. PVC `ablang2-data` 2Gi (weights ~158MB + venv).
+- CPU req/limit 1/2; mem 2Gi/4Gi. PVC `ablang2-data-rwx` 2Gi RWX (weights ~158MB + venv).
 - No HF token needed (weights from Zenodo, not HuggingFace).
+- PVC migrated RWO→RWX (2026-06-19) by copying from old `ablang2-data` (avoid slow Zenodo re-download).
 
 ## Validation
-See [TEST.md](TEST.md). Embeddings single+batch verified, dim=480, ctx=512.
+See [test.py](test.py). Embeddings single+batch verified, dim=480, ctx=512.
+Run externally: `GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/ablang2/test.py`.
 
 ## Notes
 - Paired model expects `VH|VL`; single chains still embed (mean-pooled).

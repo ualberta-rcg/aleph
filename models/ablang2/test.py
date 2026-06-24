@@ -1,14 +1,20 @@
-"""ablang2 antibody-embedding gateway test (run inside the gateway pod).
+"""ablang2 antibody-embedding gateway test.
 
 Embedding (Template C) battery for a custom server (AbLang-2 antibody LM, CPU).
 480-dim mean-pooled antibody/protein-sequence embeddings. Server compliant (batch + usage).
-NOTE: AbLang-2 weights come from Zenodo (non-HF); RWX migration deferred (cp-from-RWO, last batch).
+NOTE: AbLang-2 weights come from Zenodo (non-HF); served from an RWX PVC.
 
-Run:  cat models/ablang2/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/ablang2/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/ablang2/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "ablang2")
 EXP_DIM = 480
 MAX_INPUT = 512
@@ -21,7 +27,7 @@ H3 = "EIVLTQSPATLSLSPGERATLSCRASQSVSSSYLAWYQQKPGQAPRLLIYGASTRATGIPARFSGSGSGTDFTL
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)
