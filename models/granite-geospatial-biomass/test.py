@@ -1,14 +1,20 @@
-"""granite-geospatial-biomass above-ground biomass gateway test (run inside the gateway pod).
+"""granite-geospatial-biomass above-ground biomass gateway test.
 
 Classification battery for IBM Granite Geospatial Biomass (GPU/demo mode). Swin-B + UPerNet
 fine-tuned on GEDI L4A + HLS imagery across 15 biomes. 6 bands (Blue,Green,Red,NIR,SWIR1,SWIR2).
 Endpoint: /v1/science/predict. Returns biomass_map, biomass_mean.
 
-Run:  cat models/granite-geospatial-biomass/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/granite-geospatial-biomass/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/granite-geospatial-biomass/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "granite-geospatial-biomass")
 BANDS = 6
 results = []
@@ -20,7 +26,7 @@ def record(icon, status, name, detail):
 
 def predict(body, timeout=300):
     body = {**body, "model": MODEL}
-    r = httpx.post(f"{G}/v1/science/predict", json=body, timeout=timeout)
+    r = httpx.post(f"{G}/v1/science/predict", json=body, timeout=timeout, headers=_HEADERS)
     try: return r, r.json()
     except Exception: return r, {}
 
@@ -84,7 +90,7 @@ def checks():
     record("PASS" if r.status_code == 200 and present == required else "FAIL",
            r.status_code, "response fields", f"present={sorted(present)} required={sorted(required)}")
 
-    r = httpx.get(f"{G}/v1/models", timeout=30)
+    r = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS)
     try: mlist = r.json().get("data", [])
     except Exception: mlist = []
     found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
