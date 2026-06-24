@@ -1,13 +1,19 @@
-"""medsam medical image segmentation gateway test (run inside the gateway pod).
+"""medsam medical image segmentation gateway test.
 
 Segmentation battery for MedSAM (flaviagiammarino/medsam-vit-base, GPU).
 Accepts image (HxW RGB array) + bounding box prompts, returns masks + scores.
 
-Run:  cat models/medsam/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/medsam/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/medsam/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "medsam")
 EP = "/v1/science/segment"
 results = []
@@ -20,7 +26,7 @@ def record(icon, status, name, detail):
 def seg(body, timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}{EP}", json=body, timeout=timeout)
+        r = httpx.post(f"{G}{EP}", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:
@@ -125,7 +131,7 @@ def checks():
 
     # 14. health endpoint (gateway returns 404 for /health — expected)
     try:
-        r = httpx.get(f"{G}/health", timeout=10)
+        r = httpx.get(f"{G}/health", timeout=10, headers=_HEADERS)
         d = r.json() if r.status_code == 200 else {}
         if r.status_code == 200 and d.get("status") == "ok":
             record("PASS", r.status_code, "health endpoint", f"status={d.get('status')}")
