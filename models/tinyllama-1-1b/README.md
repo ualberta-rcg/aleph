@@ -25,6 +25,9 @@ curl $GW/v1/chat/completions -H 'Content-Type: application/json' -d '{
 The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
 cat models/tinyllama-1-1b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/tinyllama-1-1b/test.py
 ```
 Last run (2026-06-18): **18 PASS / 4 EXP / 0 FAIL (CPU/llama.cpp — model-echo only)**
 
