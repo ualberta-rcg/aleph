@@ -1,14 +1,20 @@
-"""prithvi-eo satellite embedding gateway test (run inside the gateway pod).
+"""prithvi-eo satellite embedding gateway test.
 
 Embedding (Template C) battery for a custom Prithvi-EO-2.0-300M server (IBM/NASA, GPU).
 1024-dim CLS embeddings from 6-band multi-temporal HLS satellite imagery, via the domain
 /v1/science/embed endpoint. Non-text (image cube) → does NOT expose OpenAI /v1/embeddings.
 
-Run:  cat models/prithvi-eo/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/prithvi-eo/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/prithvi-eo/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "prithvi-eo")
 EXP_DIM = 1024
 BANDS = 6
@@ -23,7 +29,7 @@ def record(icon, status, name, detail):
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:
@@ -93,7 +99,7 @@ def checks():
     record("PASS" if r and r.status_code == 200 and present == required else "FAIL",
            r.status_code if r else 0, "response fields", f"present={sorted(present)} required={sorted(required)}")
 
-    r = httpx.get(f"{G}/v1/models", timeout=30)
+    r = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS)
     try: mlist = r.json().get("data", [])
     except Exception: mlist = []
     found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
