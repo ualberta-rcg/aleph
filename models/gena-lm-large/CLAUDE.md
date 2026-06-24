@@ -19,8 +19,13 @@ GENA-LM-large from AIRI Institute is a 340M DNA BERT trained on hg38+T2T human g
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/gena-lm-large/
+kubectl apply -f models/gena-lm-large/pvc.yaml
+kubectl apply -f models/gena-lm-large/inferenceservice.yaml
+kubectl apply -f models/gena-lm-large/details.yaml
 kubectl get inferenceservice gena-lm-large -n models
+
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/gena-lm-large/test.py
 ```
 
 ## Gateway integration
