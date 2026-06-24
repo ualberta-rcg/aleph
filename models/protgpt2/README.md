@@ -28,6 +28,10 @@ curl $GW/v1/completions -H 'Content-Type: application/json' -d '{
 ## Testing
 The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/protgpt2/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/protgpt2/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **6 PASS / 1 EXP / 0 FAIL (custom /v1/completions)**

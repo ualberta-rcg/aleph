@@ -1,22 +1,28 @@
-"""protgpt2 custom generation test (run inside the gateway pod).
+"""protgpt2 custom generation test.
 
 ProtGPT2 (nferruz/ProtGPT2, ~1.5B) generates novel protein sequences (amino-acid strings)
 from scratch or a partial prompt. Custom (non-OpenAI) endpoint POST /v1/completions.
 NOT a chat model: no tools / vision / meta / anthropic battery. Wake retries 503.
 
-Run:  cat models/protgpt2/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> MODEL=protgpt2 python3 models/protgpt2/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/protgpt2/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- env MODEL=protgpt2 python3 -
 """
 import httpx, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "protgpt2")
 results = []
 AA = set("ACDEFGHIKLMNPQRSTVWY*X")
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
@@ -96,7 +102,7 @@ def health():
 
 
 def catalog():
-    r = httpx.get(f"{G}/v1/models?all=true", timeout=30)
+    r = httpx.get(f"{G}/v1/models?all=true", timeout=30, headers=_HEADERS)
     m = next((x for x in r.json().get("data", []) if x["id"] == MODEL), None)
     if not m:
         record("FAIL", 0, "Catalog entry", "not found"); return
