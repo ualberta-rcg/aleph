@@ -1,16 +1,22 @@
-"""labram EEG embedding gateway test (run inside the gateway pod).
+"""labram EEG embedding gateway test.
 
 Embedding (Template C) battery for a custom braindecode server (LaBraM, CPU).
 200-dim [CLS] embeddings of multi-channel EEG windows, via the domain /v1/science/embed
 endpoint. LaBraM is non-text (EEG-array input), so it does NOT expose OpenAI /v1/embeddings
 and stays on /v1/science/embed.
 
-Run:  cat models/labram/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/labram/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/labram/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "labram")
 EXP_DIM = 200
 N_TIMES = 2000  # server pads/truncates to the pretrained 3000
@@ -24,7 +30,7 @@ def record(icon, status, name, detail):
 
 def science_embed(body, timeout=300):
     body = {**body, "model": MODEL}
-    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
     try:
         return r, r.json()
     except Exception:
