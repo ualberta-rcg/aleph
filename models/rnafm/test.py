@@ -1,13 +1,19 @@
-"""rnafm RNA-embedding gateway test (run inside the gateway pod).
+"""rnafm RNA-embedding gateway test.
 
 Embedding (Template C) battery for a custom server (multimolecule RNA-FM, GPU).
-Mean-pooled RNA embeddings. OpenAI /v1/embeddings added 2026-06-19; /v1/science/embed kept.
+Mean-pooled RNA embeddings (OpenAI /v1/embeddings; /v1/science/embed kept).
 
-Run:  cat models/rnafm/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/rnafm/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/rnafm/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "rnafm")
 EXP_DIM = 640   # RNA-FM 100M hidden size
 MAX_INPUT = 1024
@@ -19,7 +25,7 @@ R3 = "GCGCGCGCGCAUAUAUAUGCGCGCGCGCAUAUAUAU"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)

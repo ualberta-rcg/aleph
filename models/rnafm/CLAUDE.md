@@ -18,8 +18,13 @@ RNA-FM from multimolecule is a 100M parameter foundation model trained on 23.7M 
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/rnafm/
+kubectl apply -f models/rnafm/pvc.yaml
+kubectl apply -f models/rnafm/inferenceservice.yaml
+kubectl apply -f models/rnafm/details.yaml
 kubectl get inferenceservice rnafm -n models
+
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/rnafm/test.py
 ```
 
 ## Gateway integration
