@@ -15,6 +15,10 @@ kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ## Testing
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biomed-roberta/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/biomed-roberta/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
