@@ -77,3 +77,7 @@ curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vis
 | `pvc.yaml` | Dedicated PVC (retinanet-data) |
 
 **IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
+
+## HF / upstream I/O reference
+- Source: https://pytorch.org/vision/stable/models/retinanet.html
+- Runtime mapping used here: base64 image in -> `detections[{label,score,box}]` out on `/v1/vision/detect`.

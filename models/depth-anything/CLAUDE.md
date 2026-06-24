@@ -78,3 +78,7 @@ curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vis
 | `pvc.yaml` | Dedicated PVC (depth-anything-data) |
 
 **IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
+
+## HF / upstream I/O reference
+- Source: https://huggingface.co/onnx-community/depth-anything-v2-small
+- Runtime mapping used here: base64 image -> `depth_png_base64` + `depth_grid_64` + `stats` on `/v1/vision/depth`.

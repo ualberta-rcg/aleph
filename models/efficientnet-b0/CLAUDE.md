@@ -11,3 +11,7 @@
 ## Validation
 - POST /v1/vision/classify with 1×1 white PNG → ranked predictions (class_id, score). PASS.
 - Catalog: id=efficientnet-b0, type=classify, endpoint=/v1/vision/classify. PASS.
+
+## HF / upstream I/O reference
+- Source: https://huggingface.co/onnx/EfficientNet-Lite4
+- Runtime mapping used here: base64 image (+ optional `top_k`) -> `predictions[{rank,class_id,label,score}]`.

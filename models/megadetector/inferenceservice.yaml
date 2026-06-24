@@ -1,7 +1,7 @@
 # MegaDetector: wildlife camera trap detection model (Microsoft/AI for Earth)
 # YOLOv5-based detector for animals, humans, vehicles in camera trap images.
 # Widely used in ecology, conservation biology, biodiversity monitoring.
-# pip install megadetector. CPU-capable. API: POST /v1/detect
+# pip install megadetector. CPU-capable. API: POST /v1/vision/detect
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -13,8 +13,8 @@ data:
     """
     MegaDetector: wildlife camera trap detector (Microsoft AI for Earth, v5).
     Detects animals, humans, vehicles with bounding boxes and confidence scores.
-    API: POST /v1/detect
-    Input: {"images": ["base64_encoded_jpg...", ...], "threshold": 0.2}
+    API: POST /v1/vision/detect
+    Input: {"image": "base64..." } or {"images": ["base64...", ...]}, threshold optional.
     Returns: {"detections": [[{"category": "animal"|"human"|"vehicle",
                                 "bbox": [x, y, w, h],  # normalized [0,1]
                                 "conf": 0.95}]], ...]}
@@ -58,6 +58,7 @@ data:
              "owned_by": "microsoft-ai4earth", "type": "wildlife-detection"}
         ]}
 
+    @app.post("/v1/vision/detect")
     @app.post("/v1/detect")
     @app.post("/v1/science/detect")
     async def detect(request: dict):
@@ -67,6 +68,8 @@ data:
         try:
             result = await loop.run_in_executor(None, _detect, request)
             return result
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, 400)
         except Exception as e:
             import traceback; traceback.print_exc()
             return JSONResponse({"error": str(e)}, 500)
@@ -76,6 +79,10 @@ data:
         import io
 
         images_b64 = req.get("images", [])
+        if not images_b64 and req.get("image"):
+            images_b64 = [req.get("image")]
+        if not images_b64:
+            raise ValueError("'image' or non-empty 'images' is required")
         threshold = req.get("threshold", 0.2)
 
         all_detections = []

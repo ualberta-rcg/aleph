@@ -3,6 +3,42 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-23 — Vision endpoint phase: HF I/O audit + test.py coverage for 9 CV models
+
+- Ran the vision-model sweep with HF/upstream I/O validation (reference) and runtime-as-truth
+  alignment for these 9 models:
+  - `maskrcnn`, `efficientnet-b0`, `depth-anything`, `zoobot`, `dino-vit-b8`
+  - `yolov8n`, `yolov8s`, `retinanet`, `megadetector`
+- Added missing per-model gateway tests:
+  - `models/maskrcnn/test.py`, `models/efficientnet-b0/test.py`, `models/depth-anything/test.py`,
+    `models/zoobot/test.py`, `models/yolov8n/test.py`, `models/yolov8s/test.py`,
+    `models/retinanet/test.py`, `models/megadetector/test.py`
+  - Updated `models/dino-vit-b8/test.py` to use `/v1/vision/embed` as primary endpoint.
+- Added missing READMEs:
+  - `models/maskrcnn/README.md`, `models/efficientnet-b0/README.md`,
+    `models/depth-anything/README.md`, `models/retinanet/README.md`,
+    `models/megadetector/README.md`
+- Added HF/upstream I/O reference notes to all 9 model `CLAUDE.md` files and refreshed existing
+  READMEs where present.
+- Safe endpoint/type normalizations:
+  - `dino-vit-b8` card: primary endpoint -> `/v1/vision/embed`, `/v1/science/embed` kept as alias.
+  - `zoobot` card: `type` normalized from `classify` to `embedding`.
+  - `megadetector`: new primary endpoint `/v1/vision/detect`; legacy `/v1/detect` +
+    `/v1/science/detect` kept; request now accepts either `image` or `images[]`; card updated.
+- Removed stray `kustomization.yaml` from all 9 target model dirs to follow the flat-file repo
+  convention.
+- Verified on cluster (.43) through the default gateway (`deploy/model-gateway`):
+  - `maskrcnn` 2 PASS / 2 EXP
+  - `efficientnet-b0` 2 PASS / 2 EXP
+  - `depth-anything` 2 PASS / 2 EXP
+  - `zoobot` 2 PASS / 2 EXP
+  - `dino-vit-b8` 6 PASS / 0 FAIL
+  - `yolov8n` 2 PASS / 1 EXP
+  - `yolov8s` 2 PASS / 1 EXP
+  - `retinanet` 2 PASS / 1 EXP
+  - `megadetector` 2 PASS / 1 EXP
+- Updated `models/MODEL-STATUS.md` entries for all 9 models with the new endpoint/type/test state.
+
 ## 2026-06-23 — Image-model gateway test plans + full Ray removal from the repo
 
 - **Comprehensive gateway `test.py` for all 3 image models** (`kandinsky-3`, `flux-1-dev`,

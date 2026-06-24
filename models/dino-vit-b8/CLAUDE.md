@@ -31,3 +31,7 @@ Body needs `"model": "dino-vit-b8"`:
 
 ## Update reminder
 - Watch onnx-community for fp16/quantized variants.
+
+## HF / upstream I/O reference
+- Source: https://huggingface.co/onnx-community/vit_base_patch8_224.dino-ONNX
+- Runtime mapping used here: base64 image -> embedding (dim 768) on `/v1/vision/embed` (alias `/v1/science/embed`).

@@ -78,3 +78,7 @@ curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vis
 | `pvc.yaml` | Dedicated PVC (zoobot-data) |
 
 **IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
+
+## HF / upstream I/O reference
+- Source: https://huggingface.co/mwalmsley/zoobot-encoder-convnext_nano
+- Runtime mapping used here: base64 galaxy image -> `embedding` (dim 640) on `/v1/vision/embed`.

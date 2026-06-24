@@ -53,14 +53,14 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
 | crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std); gpumem 45GB + max-model-len 8192; correct answers |
-| depth-anything | depth | false | /v1/vision/depth | READY | FIXED | fixed k8s_name 404 + PNG output; PASS |
+| depth-anything | depth | false | /v1/vision/depth | READY | PASS | HF I/O audit done (onnx-community/depth-anything-v2-small). Vision test.py PASS 2/2 + 2 expected (wake, depth_png/depth_grid/stats, guards). |
 | diffdock | dock | true | /v1/dock | READY | FIXED | SMILES passed direct (not .smi file); conf regex fixed; 11 poses on 1CRN+aspirin. **NIM available:** `nvcr.io/nim/mit/diffdock` (build.nvidia.com/mit/diffdock) |
-| dino-vit-b8 | embedding | false | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias (was /v1/vision/embed only); 768-dim ONNX; 6/0 test; was parked |
+| dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | HF I/O audit done (onnx-community/vit_base_patch8_224.dino-ONNX). Primary endpoint normalized to /v1/vision/embed; /v1/science/embed kept as alias. 768-dim ONNX; test.py 6/0 PASS. |
 | dnabert-2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-2-117m) |
 | dnabert-s | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-s) |
 | dust3r | 3d | true | /v1/science/reconstruct | READY | FIXED | downsample pointcloud (was 31MB>gateway); bbox+loss; 2 imgs OK |
 | earthpt | embed | true | /v1/science/predict | READY | FIXED | CPU ckpt load + RAM 24Gi (was GPU+host OOM); predicts OK |
-| efficientnet-b0 | classify | false | /v1/vision/classify | READY | FIXED | lite4: fixed preproc+double-softmax+labels; minibus 0.63 |
+| efficientnet-b0 | classify | false | /v1/vision/classify | READY | PASS | HF I/O audit done (onnx/EfficientNet-Lite4). test.py PASS 2/2 + 2 expected (wake, top_k schema, guards). |
 | enformer | predict | true | /v1/science/predict | READY | FIXED | dict output fix (`isinstance(out, dict)`), transformers<4.52, GPU torch, Python 3.12; human_shape [896,5313] PASS |
 | ernierna | embedding | true | /v1/science/embed | READY | FIXED | GPU torch cu126 reinstall, nodeSelector gpu=on, progress-deadline 600s; 768-dim RNA embeddings PASS |
 | esm1b | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein (recreated) |
@@ -100,7 +100,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mace-mh-1 | force-field | true | /v1/science/predict | READY | PASS | water -14.22 eV + forces (omat_pbe head) |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
 | mace-mp | force-field | true | /v1/science/predict | READY | PASS | water -14.01 eV + forces; mace-mp-0 medium |
-| maskrcnn | segment | false | /v1/vision/segment | READY | PASS | id=maskrcnn-resnet50; person 0.999 + mask |
+| maskrcnn | segment | false | /v1/vision/segment | READY | PASS | HF I/O audit done (torchvision Mask R-CNN). test.py PASS 2/2 + 2 expected (wake, detection schema, guards). |
 | mast3r | 3d | true | /v1/science/match | READY | FIXED | use /v1/science/match; numpy (not tensor) fix; 473 matches |
 | matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | mattergen | generate | true | /v1/science/generate | NO-ISVC | FAIL | Knative rejects ISVC: timeoutSeconds 1500 > max 600; predictor never created; gateway 404 |
@@ -109,7 +109,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
 | medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | 27B dense TP2 ~20tok/s; v0.20.2 (fixed --limit-mm-per-prompt JSON); full GPUs + --disable-custom-all-reduce; correct medical answers |
 | medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
-| megadetector | detect | true | /v1/detect | READY | PASS | bbox detections w/ conf |
+| megadetector | detect | true | /v1/vision/detect | READY | PASS | HF I/O audit done (Microsoft CameraTraps). Endpoint normalized to /v1/vision/detect (legacy /v1/detect + /v1/science/detect aliases kept), accepts image or images[]. test.py PASS 2/2 + 1 expected. |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
 | moirai-moe-1-0-r-base | forecast | true | /v1/forecast | READY | FIXED | replaced moirai-moe; rewrote to official uni2ts create_predictor() + GluonTS API; 19 quantile levels PASS |
 | moirai | forecast | true | /v1/forecast | READY | PASS | Salesforce Moirai base; values+horizon -> mean/quantiles; sensible forecast |
@@ -146,7 +146,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; managed always-on thinking (deepseek_r1) — ON exposes reasoning, OFF strips+caps; tools (hermes); 32K ctx; 21-check test 18/3/0 ✅ 2026-06-18 |
 | r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-node; tokenizer_class patch; managed always-on reasoning (deepseek_r1) — ON exposes, OFF strips+caps; 25-check 20/5/0 ✅ 2026-06-18 |
 | r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; managed always-on reasoning (deepseek_r1) — ON exposes, OFF strips+caps; 25-check 20/5/0 ✅ 2026-06-18 |
-| retinanet | detect | false | /v1/vision/detect | READY | PASS | id=retinanet-resnet50; bus 0.95 |
+| retinanet | detect | false | /v1/vision/detect | READY | PASS | HF I/O audit done (torchvision RetinaNet). test.py PASS 2/2 + 1 expected (wake, detection schema, guards). |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | READY | PASS | 120-dim RNA (recreated) |
 | rnafm | embedding | true | /v1/science/embed | READY | PASS | 640-dim RNA (recreated) |
@@ -176,9 +176,9 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
 | uma-m | force-field | true | /v1/science/predict | BLOCKED | FAIL | gated repo facebook/UMA (401) - needs Meta access grant on HF token |
 | xtts-v2 | tts | true | /v1/audio/speech | READY | PASS | text->WAV 155KB audio |
-| yolov8n | detect | false | /v1/vision/detect | READY | PASS | person 0.89 on bus.jpg |
-| yolov8s | detect | false | /v1/vision/detect | READY | PASS | person 0.91 on bus.jpg |
-| zoobot | embedding | false | /v1/vision/embed | READY | PASS | id=zoobot-15m; galaxy embedding |
+| yolov8n | detect | false | /v1/vision/detect | READY | PASS | HF I/O audit done (Ultralytics YOLOv8). test.py PASS 2/2 + 1 expected (wake, detection schema, guards). |
+| yolov8s | detect | false | /v1/vision/detect | READY | PASS | HF I/O audit done (Ultralytics YOLOv8). test.py PASS 2/2 + 1 expected (wake, detection schema, guards). |
+| zoobot | embedding | false | /v1/vision/embed | READY | PASS | HF I/O audit done (mwalmsley/zoobot-encoder-convnext_nano). type normalized to embedding; dim 640; test.py PASS 2/2 + 2 expected. |
 
 ## NIM-eligible models not yet deployed
 

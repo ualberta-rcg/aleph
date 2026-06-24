@@ -9,8 +9,8 @@ data:
   details.json: |
     {
       "id": "zoobot-15m",
-      "type": "classify",
-      "description_short": "Zoobot galaxy morphology encoder (ConvNext-Nano, 640-dim)",
+      "type": "embedding",
+      "description_short": "Zoobot galaxy morphology image embedding encoder (ConvNext-Nano, 640-dim)",
       "description": "Zoobot galaxy morphology encoder by M. Walmsley. 15M params. ConvNeXt-Nano backbone pre-trained on Galaxy Zoo volunteer classifications from millions of galaxies. Produces 640-dimensional embeddings for galaxy morphology classification, clustering, and similarity search. Uses timm library with HF Hub weights. CPU inference via PyTorch.",
       "context_window": 0,
       "max_completion_tokens": 0,
@@ -47,8 +47,8 @@ data:
         "reasoning_model": false
       },
       "domain": "astronomy",
-      "subdomain": "galaxy-morphology",
-      "tags": ["vision", "classify", "embed", "astronomy", "astrophysics", "galaxy", "science"],
+      "subdomain": "visual-embeddings",
+      "tags": ["vision", "embedding", "astronomy", "astrophysics", "galaxy", "science"],
       "content_types": ["image"],
       "tier": "production",
       "input_map": {

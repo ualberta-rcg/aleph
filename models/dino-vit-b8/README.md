@@ -32,10 +32,17 @@ model-echo, malformed. (Test generates a pure-stdlib PNG — no PIL needed in th
 | Setting | Value |
 |---------|-------|
 | Backend | custom FastAPI + ONNX Runtime (CPUExecutionProvider) |
-| Endpoint | `POST /v1/science/embed` (domain; base64 image; `/v1/vision/embed` secondary) |
+| Endpoint | `POST /v1/vision/embed` (primary; `/v1/science/embed` backward-compatible alias) |
 | Embedding dim | 768 (ViT-B/8 CLS) |
 | Input | `image` base64 PNG/JPEG (resized 224×224, ImageNet-normalized) |
 | Parameters | 86M |
 | GPU | none (CPU, ONNX) |
 | Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
 | PVC | `dino-vit-b8-data` (RWX, nfs-models) — venv + ONNX weights |
+
+## HF / upstream I/O reference
+
+- Source: <https://huggingface.co/onnx-community/vit_base_patch8_224.dino-ONNX>
+- Task family: image embedding (DINO ViT-B/8).
+- Input: base64 RGB image (preprocessed to 224x224 with ImageNet normalization).
+- Output: single 768-dim embedding vector.

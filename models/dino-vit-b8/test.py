@@ -1,7 +1,8 @@
 """dino-vit-b8 visual embedding gateway test (run inside the gateway pod).
 
-Embedding (Template C) battery for a custom DINO ViT-B/8 ONNX server (Meta, CPU).
-768-dim self-supervised embeddings of a base64 image, via the domain /v1/science/embed endpoint.
+Embedding battery for a custom DINO ViT-B/8 ONNX server (Meta, CPU).
+768-dim self-supervised embeddings of a base64 image, via /v1/vision/embed
+(/v1/science/embed is retained as a backward-compatible alias).
 Non-text (image) → does NOT expose OpenAI /v1/embeddings.
 
 Run:  cat models/dino-vit-b8/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
@@ -21,7 +22,7 @@ def record(icon, status, name, detail):
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+        r = httpx.post(f"{G}/v1/vision/embed", json=body, timeout=timeout)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:

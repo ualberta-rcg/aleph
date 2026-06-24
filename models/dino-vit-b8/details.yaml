@@ -12,8 +12,8 @@ data:
       "status": "production",
       "type": "embedding",
       "endpoints": {
-        "primary": "/v1/science/embed",
-        "secondary": ["/v1/vision/embed"],
+        "primary": "/v1/vision/embed",
+        "secondary": ["/v1/science/embed"],
         "health": "/health"
       },
       "routing": { "k8s_name": "dino-vit-b8", "no_stream": true, "upstream_model_id": null },
@@ -26,7 +26,7 @@ data:
       "schema_version": 2,
       "catalog": {
         "description_short": "DINO ViT-B/8 (Meta) — self-supervised 768-dim visual embeddings via ONNX.",
-        "description": "DINO ViT-Base/8 (Meta AI, 86M) — self-supervised Vision Transformer trained with no labels via self-distillation. Patch size 8 (fine-grained); produces a 768-dim embedding of an image (resized to 224×224, ImageNet-normalized). Served via ONNX Runtime on CPU. Excellent for image similarity, clustering, zero-shot retrieval, copy detection. Non-text domain model: base64 image input, does NOT expose OpenAI /v1/embeddings; primary is /v1/science/embed (/v1/vision/embed kept as a secondary alias).",
+        "description": "DINO ViT-Base/8 (Meta AI, 86M) — self-supervised Vision Transformer trained with no labels via self-distillation. Patch size 8 (fine-grained); produces a 768-dim embedding of an image (resized to 224x224, ImageNet-normalized). Served via ONNX Runtime on CPU. Excellent for image similarity, clustering, zero-shot retrieval, copy detection. Non-text domain model: base64 image input, does NOT expose OpenAI /v1/embeddings; primary is /v1/vision/embed (/v1/science/embed kept as a backward-compatible alias).",
         "owned_by": "facebook",
         "source": "onnx-community/vit_base_patch8_224.dino-ONNX",
         "source_url": "https://huggingface.co/onnx-community/vit_base_patch8_224.dino-ONNX",

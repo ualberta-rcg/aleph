@@ -55,6 +55,12 @@ curl -X POST "https://kubeflow.vulcan.alliancecan.ca/serving/models/zoobot/v1/vi
 | `pvc.yaml` | `zoobot-data` dedicated PVC |
 | `configmap.yaml` | Vision server config (`server.py`) |
 | `inferenceservice.yaml` | KServe predictor spec |
-| `kustomization.yaml` | Kustomize bundle |
 | `server.py` | Local copy of server logic used to build config |
+
+## HF / upstream I/O reference
+
+- Source: <https://huggingface.co/mwalmsley/zoobot-encoder-convnext_nano>
+- Task family: galaxy morphology image embedding (ConvNeXt encoder).
+- Input: base64 RGB image.
+- Output: single 640-dim embedding vector (`embedding` + `dim`).
 

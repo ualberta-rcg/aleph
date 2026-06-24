@@ -16,7 +16,7 @@ data:
       "context_window": 0,
       "max_completion_tokens": 0,
       "endpoints": {
-        "primary": "/v1/detect",
+        "primary": "/v1/vision/detect",
         "health": "/health"
       },
       "owned_by": "microsoft",
@@ -54,7 +54,8 @@ data:
       "content_types": ["application/json"],
       "tier": 2,
       "input_map": {
-        "images": "array of base64-encoded JPEG/PNG images",
+        "image": "single base64-encoded JPEG/PNG image (preferred)",
+        "images": "optional array of base64 images for batch mode",
         "threshold": "confidence threshold (default: 0.2)"
       },
       "output_map": {

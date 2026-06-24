@@ -13,3 +13,7 @@
 ## Validation
 - POST /v1/vision/detect with 1×1 white PNG → empty detections. PASS.
 - Catalog: id=yolov8s, type=detect, endpoint=/v1/vision/detect. PASS.
+
+## HF / upstream I/O reference
+- Source: https://docs.ultralytics.com/models/yolov8/
+- Runtime mapping used here: base64 image -> `detections[{label,score,box}]` on `/v1/vision/detect`.

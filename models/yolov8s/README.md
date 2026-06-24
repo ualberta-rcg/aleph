@@ -56,6 +56,12 @@ curl -X POST "https://kubeflow.vulcan.alliancecan.ca/serving/models/yolov8s/v1/v
 | `pvc.yaml` | `yolov8s-data` dedicated PVC |
 | `configmap.yaml` | Vision server config (`vision_server.py`) |
 | `inferenceservice.yaml` | KServe predictor spec |
-| `kustomization.yaml` | Kustomize bundle |
 | `vision_server.py` | Local copy of server logic used to build config |
+
+## HF / upstream I/O reference
+
+- Source: <https://docs.ultralytics.com/models/yolov8/>
+- Task family: COCO object detection (YOLOv8s, 80 classes).
+- Input: base64 RGB image.
+- Output: `detections[]` with `{label, score, box}`.
 

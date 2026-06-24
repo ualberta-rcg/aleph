@@ -43,3 +43,7 @@
 ## Update Reminder
 - Check for MegaDetector v6 releases
 - Monitor microsoft/CameraTraps for updates
+
+## HF / upstream I/O reference
+- Source: https://github.com/microsoft/CameraTraps
+- Runtime mapping used here: `image` (or `images[]`) + optional `threshold` -> batched `detections[{category,bbox,conf}]` on `/v1/vision/detect`.
