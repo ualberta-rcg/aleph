@@ -54,10 +54,9 @@ scGPT (bowang-lab/scGPT) is a foundation model for single-cell gene expression d
 
 ```bash
 # Deploy
-kubectl apply -k models/scgpt/
-
-# Force update
-kubectl apply --server-side --force-conflicts -k models/scgpt/
+kubectl apply -f models/scgpt/pvc.yaml
+kubectl apply -f models/scgpt/inferenceservice.yaml
+kubectl apply -f models/scgpt/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=scgpt
@@ -65,9 +64,12 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=scgpt
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=scgpt -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings \
-  -H "Content-Type: application/json" \
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/scgpt/test.py
+
+# Or a direct request through the gateway VIP
+curl -X POST http://<GATEWAY_VIP>/v1/science/embed \
+  -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \
   -d '{"model":"scgpt","input":{"genes":["CD3D","IL7R","CCR7","CD8A"],"values":[3.5,0.0,1.2,0.8]}}'
 ```
 

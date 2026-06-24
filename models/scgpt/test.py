@@ -1,14 +1,20 @@
-"""scgpt single-cell embedding gateway test (run inside the gateway pod).
+"""scgpt single-cell embedding gateway test.
 
 Embedding (Template C) battery for a custom scGPT server (bowang-lab, CPU).
 512-dim cell embeddings from gene name + expression pairs, via the domain /v1/science/embed
 endpoint (OpenAI-style; also /v1/embeddings). Non-text (gene expression).
 
-Run:  cat models/scgpt/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/scgpt/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/scgpt/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "scgpt")
 EXP_DIM = 512
 GENES = ["TP53", "BRCA1", "EGFR", "MYC", "CD4", "CD8A", "IL6", "TNF", "GAPDH", "ACTB"]
@@ -22,7 +28,7 @@ def record(icon, status, name, detail):
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:

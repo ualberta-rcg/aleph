@@ -20,18 +20,16 @@ RNA/DNA splice-site embedding model for sequence analysis.
 ## Example Usage
 
 ```bash
-curl -X POST "https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings" \
-  -H "Content-Type: application/json" \
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/splicebert/test.py
+
+# Or a direct request through the gateway VIP
+curl -X POST "http://<GATEWAY_VIP>/v1/embeddings" \
+  -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \
   -d '{
     "model": "splicebert-86m",
     "input": ["A sample splice-site sequence"]
   }'
-```
-
-```bash
-curl -X POST "https://kubeflow.vulcan.alliancecan.ca/serving/models/splicebert/v1/embeddings" \
-  -H "Content-Type: application/json" \
-  -d '{"input": ["Direct route embedding test"]}'
 ```
 
 ## Resource Requirements

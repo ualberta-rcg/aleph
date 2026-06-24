@@ -18,7 +18,9 @@ SaProt 650M from Westlake University combines amino acid and 3Di structure token
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/saprot-650m/
+kubectl apply -f models/saprot-650m/pvc.yaml
+kubectl apply -f models/saprot-650m/inferenceservice.yaml
+kubectl apply -f models/saprot-650m/details.yaml
 kubectl get inferenceservice saprot-650m -n models
 ```
 

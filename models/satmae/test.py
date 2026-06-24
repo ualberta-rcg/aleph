@@ -1,15 +1,21 @@
-"""satmae satellite-image embedding gateway test (run inside the gateway pod).
+"""satmae satellite-image embedding gateway test.
 
 Embedding (Template C) battery for a custom MAE server (MVRL SatMAE ViT-Large, CPU).
 1024-dim [CLS] embeddings of RGB satellite image patches, via the domain /v1/science/embed
 endpoint. Non-text (image input) → does NOT expose OpenAI /v1/embeddings.
 
-Run:  cat models/satmae/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/satmae/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/satmae/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "satmae")
 EXP_DIM = 1024
 results = []
@@ -22,7 +28,7 @@ def record(icon, status, name, detail):
 
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
-    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
     try:
         return r, r.json()
     except Exception:
@@ -125,7 +131,7 @@ def response_fields():
 
 
 def health_endpoint():
-    r = httpx.get(f"{G}/v1/models", timeout=30)
+    r = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS)
     try: mlist = r.json().get("data", [])
     except Exception: mlist = []
     found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False

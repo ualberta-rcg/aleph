@@ -1,16 +1,22 @@
-"""scibert (scibert-110m) scientific-text embedding gateway test (run inside the gateway pod).
+"""scibert (scibert-110m) scientific-text embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (AllenAI SciBERT, CPU).
 Input = scientific text; output = 768-dim mean-pooled embeddings. Covers:
   - WAKE/dim (768), batch, model-echo, usage, distinctness, encoding_format, truncation
     (>512 tokens), guardrails, catalog.
 
-Run:  cat models/scibert/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/scibert/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/scibert/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "scibert-110m")
 EXP_DIM = 768           # SciBERT base
 MAX_INPUT = 512
@@ -22,7 +28,7 @@ T3 = "We trained a convolutional network on ImageNet."
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):

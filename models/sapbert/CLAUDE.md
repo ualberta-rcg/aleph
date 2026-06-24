@@ -33,15 +33,16 @@ Key info from source:
 
 - **k8s ISVC name**: `sapbert`
 - **API model ID**: `sapbert` (no mapping in ISVC_NAME_MAP)
-- **MODEL_TYPE**: defaults to "chat" — needs update to "embedding"
-- **KSERVE_CUSTOM_MODELS**: not listed — needs addition
+- **MODEL_TYPE**: embedding (schema-v2 card)
 - **Scale-to-zero**: minReplicas=0, scaleTarget=1, 10m retention
 
 ## Deploy / Update / Test
 
 ```bash
 # Deploy
-kubectl apply -k models/sapbert/
+kubectl apply -f models/sapbert/pvc.yaml
+kubectl apply -f models/sapbert/inferenceservice.yaml
+kubectl apply -f models/sapbert/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=sapbert
@@ -49,10 +50,8 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=sapbert
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=sapbert -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/science/embed \
-  -H "Content-Type: application/json" \
-  -d '{"model":"sapbert","text":"myocardial infarction"}'
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/sapbert/test.py
 ```
 
 ## Known Issues / Optimization Opportunities

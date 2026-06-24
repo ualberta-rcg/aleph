@@ -43,7 +43,9 @@ Key info from source:
 
 ```bash
 # Deploy
-kubectl apply -k models/splicebert/
+kubectl apply -f models/splicebert/pvc.yaml
+kubectl apply -f models/splicebert/inferenceservice.yaml
+kubectl apply -f models/splicebert/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=splicebert
@@ -51,10 +53,8 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=splicebert
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=splicebert -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"model":"splicebert-86m","input":"AUGCUAGCUAGCUAAGCUAGCUAAGC"}'
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/splicebert/test.py
 ```
 
 ## Known Issues / Optimization Opportunities

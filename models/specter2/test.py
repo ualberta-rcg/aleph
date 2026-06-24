@@ -1,14 +1,20 @@
-"""specter2 (specter2-110m) scientific-paper-embedding gateway test (run inside the gateway pod).
+"""specter2 (specter2-110m) scientific-paper-embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (AllenAI SPECTER2, CPU).
 768-dim mean-pooled embeddings of paper text (title + abstract).
 
-Run:  cat models/specter2/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/specter2/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/specter2/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "specter2-110m")
 EXP_DIM = 768
 MAX_INPUT = 512
@@ -19,7 +25,7 @@ P2 = "Title: CRISPR-Cas9 Genome Editing. Abstract: A versatile tool for precise 
 P3 = "Title: Climate Modeling. Abstract: Coupled atmosphere-ocean general circulation models."
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)
