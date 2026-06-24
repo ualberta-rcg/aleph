@@ -17,62 +17,62 @@ Key info from source:
 
 ## How The Server Works
 
-- **Pattern**: Custom FastAPI embedding server with HuggingFace Transformers
-- **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`
-- **Init container**: Creates venv, installs torch+transformers (CPU), downloads model from HF to PVC
-- **ConfigMap**: `clinical-longformer-server` — server code embedded in inferenceservice.yaml
-- **PVC**: `clinical-longformer-data` — stores venv + model weights (5Gi)
-- **Health**: Custom `/health` endpoint
-- **GPU**: 1x shared L40S via time-slicing
-- **Env vars**: `MODEL_DIR=/data/model`, `HF_HUB_OFFLINE=1`
-- **Pooling**: CLS token with global attention mask (Longformer-specific)
-- **Output**: Custom `/v1/science/embed` response format
+- **Pattern**: Custom FastAPI + `transformers` LongformerModel, venv-on-PVC.
+- **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`.
+- **Init container**: creates venv, installs torch+transformers, downloads model to PVC.
+- **ConfigMap**: `clinical-longformer-server` (server code embedded in inferenceservice.yaml).
+- **PVC**: `clinical-longformer-data` — RWX, nfs-models (venv + weights; migrated RWO→RWX).
+- **GPU**: HAMi slice (`gpu: "on"`, `nvidia.com/gpumem: 10240`).
+- **Env**: `MODEL_DIR=/data/model`, `HF_HUB_OFFLINE=1`.
+- **Pooling**: [CLS] token with global attention (Longformer-specific) → 768-dim.
+
+## API
+
+- **Primary**: `POST /v1/embeddings` (OpenAI-compliant) — added 2026-06-19.
+- **Secondary**: `POST /v1/science/embed` (domain endpoint, kept for back-compat).
+- **Health**: `GET /health`.
 
 ## Gateway Integration
 
 - **k8s ISVC name**: `clinical-longformer`
-- **API model ID**: `clinical-longformer` (no mapping in ISVC_NAME_MAP)
-- **MODEL_TYPE**: defaults to "chat" — needs update to "embedding"
-- **KSERVE_CUSTOM_MODELS**: not listed — needs addition
-- **CONTEXT_WINDOWS**: should be 4096
-- **Scale-to-zero**: minReplicas=0, scaleTarget=1, 10m retention
+- **API model ID**: `clinical-longformer`
+- **type**: `embedding`, context_window 4096 (details.yaml schema v2)
+- **Scale-to-zero**: minReplicas=0, 10m retention.
 
 ## Deploy / Update / Test
 
 ```bash
-# Deploy
-kubectl apply -k models/clinical-longformer/
+kubectl apply -f models/clinical-longformer/pvc.yaml
+kubectl apply -f models/clinical-longformer/inferenceservice.yaml
+kubectl apply -f models/clinical-longformer/details.yaml
 
-# Check status
+# Status / logs
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=clinical-longformer
-
-# Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=clinical-longformer -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/science/embed \
-  -H "Content-Type: application/json" \
-  -d '{"model":"clinical-longformer","text":"Patient presents with chest pain. ECG shows ST elevation. Troponin elevated."}'
+# Test (external via gateway VIP + Tyk auth)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/clinical-longformer/test.py
+# Or inside the gateway pod (no auth):
+cat models/clinical-longformer/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-## Known Issues / Optimization Opportunities
+## Known Issues / Gotchas
 
-1. **4096-token context**: Longformer uses more memory at 4096 tokens. GPU is justified for this model.
-
-2. **HF_TOKEN plaintext**: Token stored as plaintext env var (intentional per docs).
-
-3. **No PVC storageClassName**: PVC missing storageClassName.
-
-4. **Gateway registration incomplete**: Model not in MODEL_TYPES, MODEL_METADATA, KSERVE_CUSTOM_MODELS, or CONTEXT_WINDOWS in gateway.py.
-
-5. **Longformer global attention**: Server correctly sets global attention on CLS token. This is correct per Longformer architecture.
+1. **Longformer global attention on CLS**: the server sets a global-attention mask on the CLS
+   token (required by Longformer for a meaningful pooled embedding). Do not remove it.
+2. **4096-token context**: more memory at full context; the 10 GiB GPU slice covers it. On CPU,
+   inference is slow (~2 min) — the model is on a GPU slice for this reason.
+3. **Dual endpoint**: `/v1/embeddings` primary; `/v1/science/embed` kept — keep in sync.
+4. Last run (2026-06-19): **8 PASS / 2 EXP / 0 FAIL**.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ConfigMap + PVC + ISVC spec |
-| `kustomization.yaml` | Kustomize resources |
+| `details.yaml` | Model card (schema v2, type: embedding) |
+| `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
+| `pvc.yaml` | PVC `clinical-longformer-data` (RWX, nfs-models) |
+| `test.py` | Gateway test battery (10 checks) |
+| `README.md` | Model overview |
 
 **IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
