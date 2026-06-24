@@ -1,11 +1,11 @@
 # Qwen3-235B-A22B-Instruct-2507-AWQ — large MoE, 235B total / 22B active, int4 AWQ ~118 GB.
-# Ported from POC (232) to cluster 230 / HAMi. 4x L40S tensor parallel.
+# Ported from the POC reference cluster to this cluster / HAMi. 4x L40S tensor parallel.
 # Source repo: QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ (232's tclf90/... was removed
 # from HF; QuantTrio is the maintained, vLLM-compatible AWQ replacement).
 #
 # Changes vs POC (232):
 #   - Runtime: kserve/huggingfaceserver -> raw vLLM (vllm/vllm-openai:v0.20.2), matching
-#     the rest of 230's LLM fleet.
+#     the rest of this cluster's LLM fleet.
 #   - nodeSelector: gpu: "on" only (unpinned). Takes 4 whole cards (a whole GPU node).
 #   - HAMi 4-card recipe on v2.9.0: nvidia.com/gpu: "4" + an EXPLICIT nvidia.com/gpumem (45000
 #     MiB/card, just under the 46068 registered). Leaving gpumem UNSET (the documented "exclusive"
