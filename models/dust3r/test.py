@@ -1,12 +1,17 @@
-"""dust3r gateway test — comprehensive (run inside the gateway pod).
+"""dust3r gateway test — comprehensive.
 
-Run:
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/dust3r/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
   cat models/dust3r/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = "dust3r"
 EP = f"{G}/v1/science/reconstruct"
 results = []
@@ -39,7 +44,7 @@ def png_b64(seed=7, w=64, h=64):
 
 
 def call(body, timeout=300):
-    return httpx.post(EP, json=body, timeout=timeout)
+    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS)
 
 
 # ── 1. Wake ──────────────────────────────────────────────────────────
@@ -164,7 +169,7 @@ def checks():
            rg1.status_code, "guard <2 images", rg1.text[:80])
 
     # 14. guard — bad model
-    rg2 = httpx.post(EP, json={"model": "fake-nope-999", "images": [img1, img2]}, timeout=60)
+    rg2 = httpx.post(EP, json={"model": "fake-nope-999", "images": [img1, img2]}, timeout=60, headers=_HEADERS)
     record("EXP" if rg2.status_code == 404 else "FAIL",
            rg2.status_code, "guard bad model", rg2.text[:80])
 
