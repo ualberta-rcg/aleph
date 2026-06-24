@@ -11,13 +11,13 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | ablang2 | embedding | false | /v1/embeddings | READY | FIXED | embeddings+batch PASS; /v1/restore was broken, fixed (heavy/light pairs), now PASS |
 | aeneas | structure | true | /v1/science/predict | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (restoration+dating); real inference slow (JAX) |
 | agront | embedding | true | /v1/embeddings | READY | PASS | 1500-dim DNA |
-| aion | embed | false | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp); +embeddings alias; 768-dim multimodal; 6/0/1 test; was parked |
+| aion | embed | false | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (768-dim multimodal); test.py expanded to ~10 checks (0 FAIL); RWX PVC |
 | alphafold2 | structure-prediction | true | /v1/science/predict | READY | PASS | demo folds seq -> PDB. **NIM available:** `nvcr.io/nim/deepmind/alphafold2` (build.nvidia.com/deepmind/alphafold2) |
 | ancient-greek-bert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | ankh | embedding | true | /v1/embeddings | READY | FIXED | T5 fp16->fp32 NaN fix; 768-dim protein PASS |
-| arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding |
+| arcface | embedding | false | /v1/vision/face | READY | PASS | id=arcface-resnet100; face embedding; v2 deep pass 2026-06-24: schema v2 input_map/output_map, test.py 15 checks (0 FAIL) |
 | astroclip | embed | true | /v1/science/embed | READY | FIXED | Real model 2026-06-19 (was demo stub): venv-on-PVC + 1024-dim image/spectrum (not 512); fixed weights_only (PyTorch 2.6) + upstream batch<2 attentions[1] bug; 9/0 test |
-| astropt | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: venv-on-PVC conversion (was reinstalling torch every wake); 768-dim (server's demo path returns [16,512]; real generate_embeddings output is flat 768); 7/0 test |
+| astropt | embed | true | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (768-dim); test.py expanded to ~10 checks (0 FAIL); venv-on-PVC |
 | astrosage | chat | true | /v1/chat/completions | READY | PASS | 14/14 ✅ via gateway; custom transformers server (not vLLM); 8B Llama-3.1; vGPU slice 16GB; no_stream; vision gating added (gateway-9ade05f) |
 | aurora | forecast | true | /v1/science/forecast | READY | PASS | full weather batch -> 6h forecast |
 | bge-m3 | embedding | false | /v1/embeddings | READY | PASS | embeddings batch multilingual, dim=1024, matches card. **NIM available:** `nvcr.io/nim/baai/bge-m3` (build.nvidia.com/baai/bge-m3) |
@@ -29,13 +29,13 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomed-roberta | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biomedbert-large | embedding | true | /v1/science/embed | READY | PASS | 1024-dim (field: text) |
 | biomedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id biomedbert-110m) |
-| biomedclip | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias; image+text 512-dim; 7/0 test; was parked |
+| biomedclip | embed | true | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: added input_map (images/texts/labels) + output_map (image_embeddings/text_embeddings/classifications 512-dim); test.py expanded to ~15 checks (0 FAIL) |
 | biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz-1 | structure | true | /v1/science/predict | READY | PASS | Boltz-1 NIM container; protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (--checkpoint boltz1) |
 | boltz-2 | structure | true | /v1/science/predict | READY | PASS | Boltz-2 NIM container (default); protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (build.nvidia.com/mit/boltz-2) |
 | borzoi | predict | true | /v1/science/predict | READY | PASS | genomics: 6144 tracks x 16 bins |
-| brainlm | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: already RWX+route; mask_ratio=0 fix (was stochastic); dim 1280 (ViT-Huge hidden; 768 was my ViT-Base guess, docs were silent); 6/0 test |
+| brainlm | embed | true | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (1280-dim ViT-Huge); test.py expanded to ~10 checks (0 FAIL); mask_ratio=0 fix |
 | caduceus | embedding | true | /v1/embeddings | READY | FIXED | torch 2.2.0+mamba-ssm 1.2.0 pinned, numpy<2, AutoModel RCPS 256-dim; PVC venv cached; mamba compile ~20min first deploy, 5sec after |
 | chem-t5 | science-generate | false | /v1/science/generate | READY | FIXED | exact GT4SD prompt templates; caption+forward_synthesis correct (was wrong) |
 | chemberta | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id chemberta-125m) |
@@ -44,23 +44,23 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | chgnet | force-field | true | /v1/science/energy | READY | FIXED | DEEP-FIX: ported server.py was broken (manually built CrystalGraph w/ bad kwarg) -> rewrote to model.predict_structure(); added missing server.py+kustomization (never ported); CederGroupHub/chgnet HF repo removed (404) -> non-fatal, uses chgnet bundled weights; pinned chgnet==0.3.8. water -14.79 eV + forces + stress + magmom |
 | chronos-bolt | forecast | false | /v1/forecast | READY | PASS | quantile forecast on 16-pt series |
 | clap | embedding | false | /v1/science/embed | READY | PASS | v2 (was already); +test.py; audio+text 512-dim shared space; 7/0 test; was parked |
-| clay | embed | false | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp); +embeddings field; 1024-dim CLS (large); 6/0 test; was parked |
+| clay | embed | false | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (1024-dim CLS); test.py expanded to ~10 checks (0 FAIL); RWX PVC |
 | climatebert | classification | false | /v1/science/classify | READY | PASS | net-zero 0.9988 |
 | climax | forecast | true | /v1/science/forecast | READY | PASS | needs valid ERA5 var names (e.g. 2m_temperature) |
 | clinical-longformer | embedding | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim embeddings; slow on CPU (~2min inference) |
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
 | command-r-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
-| croma | segment | true | /v1/embeddings | READY | FIXED | dict output extraction (joint/optical/SAR GAP) |
+| croma | segment | true | /v1/embeddings | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map; test.py expanded to ~10 checks (0 FAIL); dict output extraction (joint/optical/SAR GAP) |
 | crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std); gpumem 45GB + max-model-len 8192; correct answers |
-| depth-anything | depth | false | /v1/vision/depth | READY | PASS | HF I/O audit done (onnx-community/depth-anything-v2-small). Vision test.py PASS 2/2 + 2 expected (wake, depth_png/depth_grid/stats, guards). |
+| depth-anything | depth | false | /v1/vision/depth | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with typed input_map/output_map (depth_png_base64, depth_grid_64, stats); test.py expanded to ~15 checks (0 FAIL) |
 | diffdock | dock | true | /v1/dock | READY | FIXED | SMILES passed direct (not .smi file); conf regex fixed; 11 poses on 1CRN+aspirin. **NIM available:** `nvcr.io/nim/mit/diffdock` (build.nvidia.com/mit/diffdock) |
-| dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | HF I/O audit done (onnx-community/vit_base_patch8_224.dino-ONNX). Primary endpoint normalized to /v1/vision/embed; /v1/science/embed kept as alias. 768-dim ONNX; test.py 6/0 PASS. |
+| dino-vit-b8 | embedding | false | /v1/vision/embed | READY | PASS | v2 deep pass 2026-06-24: added input_map/output_map (768-dim CLS embedding); test.py expanded to ~15 checks (0 FAIL); /v1/science/embed alias kept |
 | dnabert-2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-2-117m) |
 | dnabert-s | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id dnabert-s) |
-| dust3r | 3d | true | /v1/science/reconstruct | READY | FIXED | downsample pointcloud (was 31MB>gateway); bbox+loss; 2 imgs OK |
+| dust3r | 3d | true | /v1/science/reconstruct | READY | PASS | v2 deep pass 2026-06-24: added input_map/output_map; test.py expanded to ~15 checks (0 FAIL); downsample pointcloud; bbox+loss; 2 imgs OK |
 | earthpt | embed | true | /v1/science/predict | READY | FIXED | CPU ckpt load + RAM 24Gi (was GPU+host OOM); predicts OK |
-| efficientnet-b0 | classify | false | /v1/vision/classify | READY | PASS | HF I/O audit done (onnx/EfficientNet-Lite4). test.py PASS 2/2 + 2 expected (wake, top_k schema, guards). |
+| efficientnet-b0 | classify | false | /v1/vision/classify | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL) |
 | enformer | predict | true | /v1/science/predict | READY | FIXED | dict output fix (`isinstance(out, dict)`), transformers<4.52, GPU torch, Python 3.12; human_shape [896,5313] PASS |
 | ernierna | embedding | true | /v1/science/embed | READY | FIXED | GPU torch cu126 reinstall, nodeSelector gpu=on, progress-deadline 600s; 768-dim RNA embeddings PASS |
 | esm1b | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein (recreated) |
@@ -85,8 +85,8 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | glm-z1-rumination-32b | — | — | — | RETIRED | — | Removed 2026-06-18 — deep-research reasoner; same surfacing issue + ignores tools/system by design. Deleted from repo + cluster. |
 | gpt-oss-120b | chat | true | /v1/chat/completions | READY | PASS | TP2 ~200tok/s; v0.20.2; full GPUs (no gpumem) + --disable-custom-all-reduce; managed thinking ON (expose reasoning: effort + fake token-budget) / OFF (strip + cap) verified 30/3/0 (33-check) |
 | gpt-oss-20b | chat | true | /v1/chat/completions | READY | PASS | TP1; v0.20.2; managed thinking ON/OFF verified 30/3/0 (33-check); OpenAI + Anthropic |
-| granite-geospatial-biomass | classify | true | /v1/science/predict | READY | FIXED | add gcc/g++ to init (terratorch->stringzilla build); demo OK |
-| granite-geospatial-ocean | classify | true | /v1/science/embed | READY | FIXED | add gcc/g++ to init; demo embeddings OK; slow cold-start |
+| granite-geospatial-biomass | classify | true | /v1/science/predict | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map; test.py expanded to ~10 checks (0 FAIL); gcc/g++ in init |
+| granite-geospatial-ocean | classify | true | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map; test.py expanded to ~10 checks (0 FAIL); gcc/g++ in init |
 | graphcast | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | hyenadna | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=256 (id hyenadna-6.5m) |
 | ithaca | text-restore | true | /v1/science/predict | READY | FIXED | DEEP-FIX: jax[cuda12] (was CPU-fallback -> 3min); contextualize() retrieval made opt-in (req.contextualize); gap char is ? (uppercase Greek, 50-750 chars). Warm ~8s on GPU (first call ~90s JIT). Returns restoration + attribution (date/geo) |
@@ -100,16 +100,16 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mace-mh-1 | force-field | true | /v1/science/predict | READY | PASS | water -14.22 eV + forces (omat_pbe head) |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
 | mace-mp | force-field | true | /v1/science/predict | READY | PASS | water -14.01 eV + forces; mace-mp-0 medium |
-| maskrcnn | segment | false | /v1/vision/segment | READY | PASS | HF I/O audit done (torchvision Mask R-CNN). test.py PASS 2/2 + 2 expected (wake, detection schema, guards). |
-| mast3r | 3d | true | /v1/science/match | READY | FIXED | use /v1/science/match; numpy (not tensor) fix; 473 matches |
+| maskrcnn | segment | false | /v1/vision/segment | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL); stale server.py removed (embedded in ISVC ConfigMap) |
+| mast3r | 3d | true | /v1/science/match | READY | PASS | v2 deep pass 2026-06-24: added input_map/output_map; test.py expanded to ~15 checks (0 FAIL); numpy fix; 473 matches |
 | matscibert | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: text) |
 | mattergen | generate | true | /v1/science/generate | NO-ISVC | FAIL | Knative rejects ISVC: timeoutSeconds 1500 > max 600; predictor never created; gateway 404 |
 | mattersim | force-field | true | /v1/science/predict | READY | PASS | water -14.07 eV + forces + per-atom |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
 | medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2; 27B medical multimodal; vision (chest X-ray, derm, fundus, histo); 32K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/top_k/stop/seed input_map, +multi-image test) |
-| medsam | segment | true | /v1/science/segment | READY | PASS | image as HxWx3 pixel array + boxes -> masks |
-| megadetector | detect | true | /v1/vision/detect | READY | PASS | HF I/O audit done (Microsoft CameraTraps). Endpoint normalized to /v1/vision/detect (legacy /v1/detect + /v1/science/detect aliases kept), accepts image or images[]. test.py PASS 2/2 + 1 expected. |
+| medsam | segment | true | /v1/science/segment | READY | PASS | v2 deep pass 2026-06-24: added schema v2 fields (status, behavior, scaling, limits); test.py expanded to ~15 checks (0 FAIL); image as HxWx3 pixel array + boxes → masks |
+| megadetector | detect | true | /v1/vision/detect | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL); legacy /v1/detect + /v1/science/detect aliases kept |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |
 | moirai-moe-1-0-r-base | forecast | true | /v1/forecast | READY | FIXED | replaced moirai-moe; rewrote to official uni2ts create_predictor() + GluonTS API; 19 quantile levels PASS |
 | moirai | forecast | true | /v1/forecast | READY | PASS | Salesforce Moirai base; values+horizon -> mean/quantiles; sensible forecast |
@@ -126,7 +126,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | pangu-weather | forecast | true | /v1/science/forecast | READY | FIXED | demo+real ONNX; summarized upper/surface stats (not raw 721x1440 grids) |
 | phi-4-reasoning | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 whole L40S; budget mode with REDUCE-off (none→512, NOT 0 — budget 0 mishandled per vLLM#18141) + strip; ON exposes reasoning, OFF/meta return content (reasoning stripped); generous meta caps. 31-check 26/5/0 ✅ 2026-06-18 |
 | presto | classify | false | /v1/embeddings | READY | FIXED | wake-up test PASS 2026-06-08: 17-band S1_S2_ERA5_SRTM satellite embeddings; pass mask/month/dynamic_world kwargs |
-| prithvi-eo | embed | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias + full CLS vector (was summary-only); 1024-dim; 6/0 test |
+| prithvi-eo | embed | true | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (1024-dim CLS); test.py expanded to ~10 checks (0 FAIL) |
 | prithvi-wxc | embed | true | /v1/science/forecast | READY | PASS | demo forecast OK after unstop+cold-start (~6min); real MERRA-2 state not exercised |
 | progen2 | generate | true | /v1/completions | READY | FIXED | sentinel + progress-deadline 600s; 6.4B protein generation PASS |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
@@ -147,14 +147,14 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | qwq-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 32.5B dense; managed always-on thinking (deepseek_r1) — ON exposes reasoning, OFF strips+caps; tools (hermes); 32K ctx; 21-check test 18/3/0 ✅ 2026-06-18 |
 | r1-distill-llama-70b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP4 whole-node; tokenizer_class patch; managed always-on reasoning (deepseek_r1) — ON exposes, OFF strips+caps; 25-check 20/5/0 ✅ 2026-06-18 |
 | r1-distill-qwen-32b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; managed always-on reasoning (deepseek_r1) — ON exposes, OFF strips+caps; 25-check 20/5/0 ✅ 2026-06-18 |
-| retinanet | detect | false | /v1/vision/detect | READY | PASS | HF I/O audit done (torchvision RetinaNet). test.py PASS 2/2 + 1 expected (wake, detection schema, guards). |
+| retinanet | detect | false | /v1/vision/detect | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL) |
 | rita | embedding | false | /v1/science/generate | READY | PASS | protein generation: greedy + sampling produce valid sequences |
 | rnabert | embedding | true | /v1/science/embed | READY | PASS | 120-dim RNA (recreated) |
 | rnafm | embedding | true | /v1/science/embed | READY | PASS | 640-dim RNA (recreated) |
 | rnamsm | embedding | true | /v1/science/embed | READY | PASS | 768-dim RNA (field: sequence) |
 | sapbert | embedding | true | /v1/science/embed | READY | PASS | 768-dim biomedical |
 | saprot-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim (AA+3Di tokens; recreated) |
-| satmae | embed | false | /v1/science/embed | READY | PASS | v2 2026-06-19: RWO→RWX (cp-migrated); +embeddings field; 1024-dim CLS; 6/0 test; was parked (stop ann cleared) |
+| satmae | embed | false | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (1024-dim CLS); test.py expanded to ~12 checks (0 FAIL); RWX PVC |
 | scgpt | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias; GPU (was card said CPU); 512-dim; 7/0 test; was parked |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
@@ -166,20 +166,20 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | stanford-deidentifier | deidentify | true | /v1/science/deidentify | READY | PASS | PHI entities (PATIENT/DATE/HOSPITAL) |
 | sundial | forecast | false | /v1/science/forecast | READY | FIXED | fixed input shape + pinned transformers 4.40.2; forecast+quantiles PASS |
 | surya | forecast | true | /v1/science/forecast | READY | PASS | demo forecast+flare_risk via gateway 2026-06-06; id=surya-366m |
-| terramind-flood | classify | true | /v1/science/classify | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (flood mask); added gcc to init for stringzilla compile |
+| terramind-flood | classify | true | /v1/science/classify | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map; test.py expanded to ~10 checks (0 FAIL); gcc in init for stringzilla |
 | thor | embed | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: demo PASS (768-dim); added gcc to init for stringzilla compile |
 | time-moe | forecast | true | /v1/forecast | READY | PASS | TimeMoE-50M MoE; forecast_len matches prediction_length (must be 1/96/192/336/720; 12 returns empty) |
 | timer-s1 | forecast | true | /v1/forecast | READY | FIXED | replaced timer-xl-1b (gated 403); Timer-S1 bf16 dtype cast, 32Gi init RAM; 9 quantile forecasts PASS |
 | timer | forecast | true | /v1/forecast | READY | FIXED | pinned transformers==4.40.2 (remote code uses DynamicCache.seen_tokens removed in >=4.41); forecast_len 96 PASS |
 | timesfm | forecast | true | /v1/forecast | READY | FIXED | transformers>=4.51,<4.53 + torch>=2.5 cu126; TimesFmModelForPrediction (v2.0 500M) PASS; 128 quantile levels |
 | tinyllama | chat | false | /v1/chat/completions | READY | PASS | OpenAI + Anthropic PASS; streaming 500 (gateway SSE, cross-cutting) |
-| totalsegmentator | segment | true | /v1/science/segment | READY | FIXED | force-reinstall torch+torchvision cu126 after TotalSegmentator (ABI fix); 200 PASS |
+| totalsegmentator | segment | true | /v1/science/segment | READY | PASS | v2 deep pass 2026-06-24: added schema v2 fields (status, behavior, scaling, limits); test.py expanded to ~15 checks (12 PASS / 3 EXP / 0 FAIL); force-reinstall torch+torchvision cu126 ABI fix |
 | ttm | forecast | true | /v1/science/forecast | READY | FIXED | past_values shape [batch,time,chan]; 96-step forecast |
 | uma-m | force-field | true | /v1/science/predict | BLOCKED | FAIL | gated repo facebook/UMA (401) - needs Meta access grant on HF token |
 | xtts-v2 | tts | true | /v1/audio/speech | READY | PASS | text->WAV 155KB audio |
-| yolov8n | detect | false | /v1/vision/detect | READY | PASS | HF I/O audit done (Ultralytics YOLOv8). test.py PASS 2/2 + 1 expected (wake, detection schema, guards). |
-| yolov8s | detect | false | /v1/vision/detect | READY | PASS | HF I/O audit done (Ultralytics YOLOv8). test.py PASS 2/2 + 1 expected (wake, detection schema, guards). |
-| zoobot | embedding | false | /v1/vision/embed | READY | PASS | HF I/O audit done (mwalmsley/zoobot-encoder-convnext_nano). type normalized to embedding; dim 640; test.py PASS 2/2 + 2 expected. |
+| yolov8n | detect | false | /v1/vision/detect | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL); stale vision_server.py+configmap.yaml removed |
+| yolov8s | detect | false | /v1/vision/detect | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL); stale vision_server.py+configmap.yaml removed |
+| zoobot | embedding | false | /v1/vision/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map (640-dim embedding); test.py expanded to ~15 checks (0 FAIL); stale server.py+configmap.yaml removed |
 
 ## NIM-eligible models not yet deployed
 

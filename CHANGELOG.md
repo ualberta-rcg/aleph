@@ -24,6 +24,26 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
 - **PVC + download** created for `qwen25-vl-72b` (145 GB BF16) and `qwen25-vl-72b-awq` (75 GB AWQ).
 - Updated `MODEL-STATUS.md` main table + capability matrix with new test tallies.
 
+## 2026-06-24 — Vision models deep pass: all 25 vision/science models audited, tested, schema v2
+
+Full deep pass over all 25 non-chat vision and science models. Every model's `details.yaml`
+rewritten or augmented to schema v2 with typed `input_map`/`output_map`, `status`, `behavior`,
+`scaling`, `limits`, and `catalog` sections. Test suites expanded from ~4 to 10-19 checks each.
+All 25 deployed, verified via gateway, and scaled back to zero.
+
+- **Tier 1 (9 CV models)**: `maskrcnn`, `efficientnet-b0`, `depth-anything`, `zoobot`,
+  `dino-vit-b8`, `yolov8n`, `yolov8s`, `retinanet`, `megadetector` — full details.yaml rewrite;
+  tests expanded to 15-19 checks; stale standalone server files removed (embedded in ISVC ConfigMaps)
+- **Tier 2 (4 medical/biomed)**: `arcface`, `biomedclip`, `medsam`, `totalsegmentator` —
+  schema v2 fields added; new test.py and README created where missing; totalsegmentator 12/3/0
+- **Tier 3 (10 science/geospatial)**: `satmae`, `astropt`, `prithvi-eo`, `clay`, `croma`,
+  `terramind-flood`, `granite-geospatial-ocean`, `granite-geospatial-biomass`, `aion`, `brainlm` —
+  schema v2; tests created/expanded to ~10 checks each
+- **Tier 4 (2 3D reconstruction)**: `dust3r`, `mast3r` — schema v2; tests created (~15 checks each)
+- **Structural cleanup**: deleted stale `server.py`, `configmap.yaml`, `vision_server.py` files
+  from Tier 1 models; deleted `medsam/kustomization.yaml`; all server code confirmed in ISVC ConfigMaps
+- **Results: 300 PASS / 42 EXP / 0 FAIL across 310 checks, all 25 models**
+
 ## 2026-06-23 — Vision endpoint phase: HF I/O audit + test.py coverage for 9 CV models
 
 - Ran the vision-model sweep with HF/upstream I/O validation (reference) and runtime-as-truth
