@@ -1,14 +1,20 @@
-"""qwen35-122b comprehensive gateway test (run inside the gateway pod).
+"""qwen35-122b comprehensive gateway test.
 
 Qwen3.5-122B-A10B FP8 MoE (122B/10B active, TP4 whole node). Toggle thinking (enable_thinking),
 qwen3_coder tools, language-model-only (vision disabled). vLLM v0.20.2.
 
-Run:  cat models/qwen35-122b/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/qwen35-122b/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/qwen35-122b/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "qwen35-122b")
 HARD = ("A farmer has 17 sheep. All but 9 die. How many sheep are left? "
         "Take that number, multiply by 7, then subtract 4. Show your reasoning.")
@@ -17,8 +23,8 @@ results = []
 
 def req(method, path, body=None, timeout=400, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
