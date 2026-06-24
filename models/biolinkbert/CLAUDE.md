@@ -18,61 +18,58 @@ Key info from source:
 
 ## How The Server Works
 
-- **Pattern**: Custom FastAPI embedding server with HuggingFace Transformers
-- **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`
-- **Init container**: Creates venv, installs torch+transformers (CUDA), downloads model from HF
-- **ConfigMap**: `biolinkbert-server` — server code embedded in inferenceservice.yaml
-- **PVC**: `biolinkbert-data` — stores venv + model weights (3Gi, NFS)
-- **Health**: Custom `/health` endpoint
-- **GPU**: 1x shared L40S via time-slicing, float16 on GPU / float32 on CPU
-- **Env vars**: `HF_HOME=/data/hf_cache`
-- **Pooling**: Mean pooling with attention mask
-- **Output**: OpenAI-compatible `/v1/embeddings` response format
-- **Note**: Downloads model at runtime via `AutoModel.from_pretrained(MODEL_ID)` each startup (no local_dir caching)
+- **Pattern**: Custom FastAPI + `transformers` AutoModel, venv-on-PVC.
+- **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`.
+- **Init container**: creates venv, installs torch+transformers (CUDA), downloads model to PVC.
+- **ConfigMap**: `biolinkbert-server` (server code embedded in inferenceservice.yaml).
+- **PVC**: `biolinkbert-data` — RWX, nfs-models (venv + weights; migrated RWO→RWX).
+- **GPU**: HAMi slice (`gpu: "on"`, `nvidia.com/gpumem: 8192`), fp16.
+- **Env**: `HF_HOME=/data/hf_cache`.
+- **Pooling**: mean pooling with attention mask.
+
+## API
+
+- **Primary**: `POST /v1/embeddings` (OpenAI-compliant; batch + usage) — 768-dim.
+- **Health**: `GET /health`.
 
 ## Gateway Integration
 
 - **k8s ISVC name**: `biolinkbert`
-- **API model ID**: `biolinkbert` (no mapping in ISVC_NAME_MAP)
-- **MODEL_TYPE**: defaults to "chat" — needs update to "embedding"
-- **KSERVE_CUSTOM_MODELS**: not listed — needs addition
-- **Scale-to-zero**: minReplicas=0, scaleTarget=5, 900s retention
+- **API model ID**: `biolinkbert`
+- **type**: `embedding` (details.yaml schema v2)
+- **Scale-to-zero**: minReplicas=0, 15m retention.
 
 ## Deploy / Update / Test
 
 ```bash
-# Deploy
-kubectl apply -k models/biolinkbert/
+kubectl apply -f models/biolinkbert/pvc.yaml
+kubectl apply -f models/biolinkbert/inferenceservice.yaml
+kubectl apply -f models/biolinkbert/details.yaml
 
-# Check status
+# Status / logs
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=biolinkbert
-
-# Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=biolinkbert -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"model":"biolinkbert","input":"The p53 tumor suppressor protein regulates cell cycle arrest."}'
+# Test (external via gateway VIP + Tyk auth)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biolinkbert/test.py
+# Or inside the gateway pod (no auth):
+cat models/biolinkbert/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-## Known Issues / Optimization Opportunities
+## Known Issues / Gotchas
 
-1. **Model re-downloaded each restart**: Init container does not download to PVC — uses `AutoModel.from_pretrained(MODEL_ID)` at runtime which fetches from HF each restart. Should use venv+PVC snapshot_download pattern.
-
-2. **GPU requested but likely unnecessary**: 110M BERT model runs fine on CPU.
-
-3. **Pip dependencies unpinned**: Init container installs deps without version pins.
-
-4. **Gateway registration incomplete**: Model not in MODEL_TYPES, MODEL_METADATA, KSERVE_CUSTOM_MODELS, or CONTEXT_WINDOWS in gateway.py.
-
-5. **PVC read-only mount**: Container mounts PVC read-only but model loading writes to HF cache on PVC.
+1. **GPU likely unnecessary**: 110M BERT runs fine on CPU; GPU slice is conservative.
+2. **Cold-start 404**: gateway can return 404 briefly during scale-from-zero (pre-warm before testing).
+3. Last run (2026-06-19): **8 PASS / 2 EXP / 0 FAIL** (dim 768, batch, model-echo, usage, distinctness, encoding_format, truncation, guardrails, catalog).
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ConfigMap + PVC + ISVC spec: init container + FastAPI container |
+| `details.yaml` | Model card (schema v2, type: embedding) |
+| `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
+| `pvc.yaml` | PVC `biolinkbert-data` (RWX, nfs-models) |
+| `test.py` | Gateway test battery (10 checks) |
+| `README.md` | Model overview |
 
 **IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
