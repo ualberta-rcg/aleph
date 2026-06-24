@@ -96,6 +96,20 @@ Manifests should use:
 - Reasoning behavior validated (including stripping policy where enabled)
 - Context-window expectations documented in `details.yaml`
 
+## Test convention (gateway test files)
+
+Each model's `test.py` should use environment-variable overrides — never hardcoded IPs:
+
+```python
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+```
+
+All `httpx` calls must include `headers=_HEADERS`. Docstrings should reference
+`<GATEWAY_VIP>` and `<TYK_KEY>` placeholders — no real IPs, hostnames, or
+site-specific URLs in committed model files.
+
 ## Optional per-model notes
 
 If a model has quirks, add `models/<model>/CLAUDE.md`.
