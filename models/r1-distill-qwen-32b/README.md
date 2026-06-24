@@ -19,6 +19,10 @@ still thinks internally, so content needs adequate `max_tokens`).
 ## Testing
 The 26-check always-on battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/r1-distill-qwen-32b/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/r1-distill-qwen-32b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **21 PASS / 5 EXP / 0 FAIL** — always-on reasoning exposed by default,
