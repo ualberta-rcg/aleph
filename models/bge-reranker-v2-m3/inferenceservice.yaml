@@ -1,4 +1,4 @@
-# bge-reranker-v2-m3: multilingual cross-encoder reranker — ported from POC (232).
+# bge-reranker-v2-m3: multilingual cross-encoder reranker — ported from the POC cluster.
 # CPU-only via HuggingFace TEI (ORT/ONNX backend); no GPU / no HAMi slice.
 # Init container downloads HF weights + exports to ONNX (idempotent via sentinel).
 # Always-on (minReplicas 1). TEI serves native /rerank; the gateway exposes a

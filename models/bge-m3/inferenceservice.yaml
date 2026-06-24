@@ -1,4 +1,4 @@
-# bge-m3: multilingual text embeddings (BAAI/bge-m3) — ported from POC (232).
+# bge-m3: multilingual text embeddings (BAAI/bge-m3) — ported from the POC cluster.
 # CPU-only via HuggingFace TEI; no GPU, so no HAMi slice and no gpu nodeSelector.
 # Always-on (minReplicas 1). API: POST /v1/embeddings (OpenAI-style, TEI-native).
 apiVersion: serving.kserve.io/v1beta1
