@@ -21,6 +21,10 @@ The 24-check vision battery runs inside the gateway pod (first check wakes a sca
 144 GB BF16 loads slowly, give it a patient wake):
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/qwen25-vl-72b/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/qwen25-vl-72b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
