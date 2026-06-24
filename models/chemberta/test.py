@@ -3,12 +3,18 @@
 Embedding (Template C) battery for a custom transformers server (ChemBERTa, CPU).
 768-dim mean-pooled embeddings of chemical SMILES strings.
 
-Run:  cat models/chemberta/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/chemberta/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/chemberta/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "chemberta-125m")
 EXP_DIM = 768
 MAX_INPUT = 512
@@ -20,7 +26,7 @@ S3 = "c1ccccc1"                        # benzene
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
