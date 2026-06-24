@@ -1,14 +1,20 @@
-"""geneformer single-cell embedding gateway test (run inside the gateway pod).
+"""geneformer single-cell embedding gateway test.
 
 Embedding (Template C) battery for a custom Geneformer server (NIH NCI, CPU).
 Cell-level embeddings from single-cell gene expression (gene names + expression), via the domain
 /v1/science/embed endpoint. Non-text (gene-expression) → does NOT expose OpenAI /v1/embeddings.
 
-Run:  cat models/geneformer/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/geneformer/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/geneformer/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, math, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "geneformer")
 EXP_DIM = 768  # geneformer-v2-104M hidden dim (V1-10M was 256); verified live 2026-06-20
 results = []
@@ -25,7 +31,7 @@ def record(icon, status, name, detail):
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout)
+        r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:
