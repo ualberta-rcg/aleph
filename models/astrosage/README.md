@@ -39,6 +39,7 @@ curl -X POST http://<gateway>/v1/chat/completions \
 ## Deploy
 
 ```bash
+kubectl apply -f pvc.yaml
 kubectl apply -f details.yaml
 kubectl apply -f inferenceservice.yaml
 ```
@@ -55,6 +56,10 @@ kubectl apply -f inferenceservice.yaml
 ## Testing
 The non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> MODEL=astrosage python3 models/astrosage/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/astrosage/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **18 PASS / 4 EXP / 0 FAIL (custom backend — model-echo only)**
