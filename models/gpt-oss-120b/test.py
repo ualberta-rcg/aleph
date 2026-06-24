@@ -1,4 +1,4 @@
-"""gpt-oss-120b comprehensive gateway test (run inside the gateway pod).
+"""gpt-oss-120b comprehensive gateway test.
 
 Covers the full standardized gateway surface for a managed-thinking reasoning model:
   - WAKE: first request retries through the gateway's 503 model_starting cold-start
@@ -13,13 +13,17 @@ Covers the full standardized gateway surface for a managed-thinking reasoning mo
 
 vLLM v0.20.2 emits reasoning in `reasoning` (not reasoning_content); both are accepted.
 
-Run:  cat models/gpt-oss-120b/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/gpt-oss-120b/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/gpt-oss-120b/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-# GW_URL: in-pod default is localhost:8080 (no auth). To run from the login node,
-# set GW_URL=http://129.128.190.55 (public VIP via Tyk) + TYK_KEY=<bearer key>.
+# GW_URL: in-pod default is localhost:8080 (no auth). To run externally,
+# set GW_URL=http://<GATEWAY_VIP> (VIP via Tyk) + TYK_KEY=<bearer key>.
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
