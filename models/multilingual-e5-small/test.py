@@ -1,11 +1,15 @@
-"""multilingual-e5-small embedding gateway test (run inside the gateway pod).
+"""multilingual-e5-small embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (intfloat
 multilingual-e5-small). 384-dim, 100+ languages, mean-pooled + L2-normalized.
 Covers WAKE/dim, batch, model-echo, usage, distinctness, multilingual, encoding_format,
 truncation, guardrails, catalog.
 
-Run:  cat models/multilingual-e5-small/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/multilingual-e5-small/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/multilingual-e5-small/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time

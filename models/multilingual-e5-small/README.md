@@ -25,6 +25,10 @@ The 11-check multilingual-embedding battery runs inside the gateway pod (first c
 scaled-to-zero model — cold start ~30–60s):
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/multilingual-e5-small/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/multilingual-e5-small/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
