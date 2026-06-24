@@ -18,8 +18,13 @@ GENA-LM from AIRI Institute is a BERT-style DNA language model trained on T2T hu
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/gena-lm/
+kubectl apply -f models/gena-lm/pvc.yaml
+kubectl apply -f models/gena-lm/inferenceservice.yaml
+kubectl apply -f models/gena-lm/details.yaml
 kubectl get inferenceservice gena-lm -n models
+
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/gena-lm/test.py
 ```
 
 ## Gateway integration
