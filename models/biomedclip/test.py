@@ -4,11 +4,17 @@ Embedding (Template C) battery for a custom BiomedCLIP server (Microsoft, GPU).
 Shared 512-dim image+text embeddings + zero-shot classify, via the domain /v1/science/embed
 endpoint (also /v1/embeddings). Non-text-primary (biomedical images) but has a text branch.
 
-Run:  cat models/biomedclip/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biomedclip/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/biomedclip/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, math, os, struct, time, zlib
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "biomedclip")
 EXP_DIM = 512
 results = []
@@ -21,7 +27,7 @@ def record(icon, status, name, detail):
 def embed(body, ep="/v1/science/embed", timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}{ep}", json=body, timeout=timeout)
+        r = httpx.post(f"{G}{ep}", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:
@@ -31,7 +37,7 @@ def embed(body, ep="/v1/science/embed", timeout=300):
 def classify(body, timeout=300):
     body = {**body, "model": MODEL}
     try:
-        r = httpx.post(f"{G}/v1/classify", json=body, timeout=timeout)
+        r = httpx.post(f"{G}/v1/classify", json=body, timeout=timeout, headers=_HEADERS)
         try: return r, r.json()
         except Exception: return r, {}
     except Exception:
@@ -154,7 +160,7 @@ def checks():
 
     # 16. health endpoint (gateway may not expose /health -> EXP)
     try:
-        r = httpx.get(f"{G}/health", timeout=10)
+        r = httpx.get(f"{G}/health", timeout=10, headers=_HEADERS)
         d = r.json()
         ok = r.status_code == 200 and d.get("status") == "ok"
         record("PASS" if ok else "EXP", r.status_code, "health endpoint", f"status={d.get('status')}")

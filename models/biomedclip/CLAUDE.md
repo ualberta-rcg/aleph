@@ -23,7 +23,7 @@ Also `/v1/embeddings` (alias) + `POST /v1/classify` (zero-shot). Body needs `"mo
 - `inferenceservice.yaml` — ConfigMap (server.py) + ISVC
 - `details.yaml` — v2 card (Template C)
 - `pvc.yaml` — RWX PVC
-- `test.py` — 7-case gateway battery (image + text / distinctness / deterministic / shared-space / echo / malformed); pure-stdlib PNG generator (no PIL in gateway pod)
+- `test.py` — ~17-check gateway battery (image + text / distinctness / deterministic / shared-space / batch / classify / alias / echo / malformed); pure-stdlib PNG generator (no PIL in gateway pod). Run externally: `GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biomedclip/test.py`
 
 ## Notes
 - Server returns `image_embeddings`/`text_embeddings` (per modality), dim 512.

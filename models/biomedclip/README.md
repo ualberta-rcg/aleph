@@ -20,11 +20,16 @@ kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ## Testing
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biomedclip/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/biomedclip/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-Last run (2026-06-19): **7 PASS / 0 FAIL** — image+text 512-dim, text distinctness, deterministic,
-shared-space sanity, model-echo, malformed.
+Last run (v2 deep pass 2026-06-24): **~17 checks, 0 FAIL** — image+text 512-dim, distinctness,
+deterministic, shared-space sanity, multi-image/text batch, image+text combined, /v1/embeddings
+alias, zero-shot classify, model-echo, malformed.
 
 ## Key Configuration
 
