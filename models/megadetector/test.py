@@ -1,12 +1,17 @@
-"""megadetector gateway test — comprehensive (run inside the gateway pod).
+"""megadetector gateway test — comprehensive.
 
-Run:
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/megadetector/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
   cat models/megadetector/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = "megadetector"
 EP = f"{G}/v1/vision/detect"
 results = []
@@ -39,7 +44,7 @@ def png_b64(seed=7, w=640, h=480):
 
 
 def call(body, timeout=300):
-    return httpx.post(EP, json=body, timeout=timeout)
+    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS)
 
 
 def wake():
@@ -128,12 +133,12 @@ def checks():
            "sequential 5-image batch", "all 200" if batch_ok else f"failed i={i}")
 
     # 13. guard — bad model
-    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60)
+    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60, headers=_HEADERS)
     record("EXP" if rg1.status_code == 404 else "FAIL",
            rg1.status_code, "guard bad model", rg1.text[:80])
 
     # 14. guard — missing image
-    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60)
+    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60, headers=_HEADERS)
     record("EXP" if rg2.status_code >= 400 else "FAIL",
            rg2.status_code, "guard missing image", rg2.text[:80])
 
