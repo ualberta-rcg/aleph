@@ -1,12 +1,17 @@
-"""maskrcnn gateway test — comprehensive (run inside the gateway pod).
+"""maskrcnn gateway test — comprehensive.
 
-Run:
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/maskrcnn/test.py
+
+Run inside gateway pod (legacy, no auth needed):
   cat models/maskrcnn/test.py | \
     kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import base64, httpx, io, os, struct, time, zlib
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = "maskrcnn-resnet50"
 EP = f"{G}/v1/vision/segment"
 results = []
@@ -39,7 +44,7 @@ def png_b64(seed=7, w=96, h=96):
 
 
 def call(body, timeout=240):
-    return httpx.post(EP, json=body, timeout=timeout)
+    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS)
 
 
 # ── 1. Wake from scale-zero ──────────────────────────────────────────
@@ -157,7 +162,7 @@ def checks():
         record("FAIL", r6a.status_code, "determinism same image", "request failed")
 
     # 15. /v1/models catalog (vision models may not appear in chat-only list)
-    rm = httpx.get(f"{G}/v1/models", timeout=30)
+    rm = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS)
     if rm.status_code == 200:
         ids = [m.get("id") for m in rm.json().get("data", [])]
         found = MODEL in ids
@@ -167,12 +172,12 @@ def checks():
         record("FAIL", rm.status_code, "catalog /v1/models", rm.text[:80])
 
     # 16. guard — bad model name → 404
-    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60)
+    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60, headers=_HEADERS)
     record("EXP" if rg1.status_code == 404 else "FAIL",
            rg1.status_code, "guard bad model", rg1.text[:80])
 
     # 17. guard — missing image field → error
-    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60)
+    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60, headers=_HEADERS)
     record("EXP" if rg2.status_code >= 400 else "FAIL",
            rg2.status_code, "guard missing image", rg2.text[:80])
 

@@ -33,13 +33,15 @@ Key info from source:
 - **API model ID**: `maskrcnn-resnet50` (mapped via ISVC_NAME_MAP)
 - **MODEL_TYPE**: segment
 - **KSERVE_CUSTOM_MODELS**: yes — uses `/v1/` prefix
-- **Scale-to-zero**: minReplicas=0, scaleTarget=2, 900s retention
+- **Scale-to-zero**: minReplicas=0, scaleTarget=2, 5m scale-down-delay + 15m retention
 
 ## Deploy / Update / Test
 
 ```bash
 # Deploy
-kubectl apply -k models/maskrcnn/
+kubectl apply -f models/maskrcnn/pvc.yaml
+kubectl apply -f models/maskrcnn/inferenceservice.yaml
+kubectl apply -f models/maskrcnn/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=maskrcnn
@@ -47,10 +49,8 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=maskrcnn
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=maskrcnn -c kserve-container -f
 
-# Test (public) — need a base64-encoded image
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vision/segment \
-  -H "Content-Type: application/json" \
-  -d '{"model":"maskrcnn-resnet50","image":"<base64_encoded_jpeg>"}'
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/maskrcnn/test.py
 ```
 
 ## Known Issues / Optimization Opportunities
@@ -76,7 +76,7 @@ curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vis
 | `details.yaml` | ConfigMap with model metadata (schema v2, Template B Pattern 4) |
 | `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
 | `pvc.yaml` | Dedicated PVC (maskrcnn-data, 5Gi RWX) |
-| `test.py` | Gateway test barrage (18 checks) |
+| `test.py` | Gateway test barrage (~18 checks, supports external VIP + Tyk auth) |
 | `README.md` | Model overview |
 
 ## HF / upstream I/O reference
