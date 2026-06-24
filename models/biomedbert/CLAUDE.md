@@ -10,7 +10,7 @@ biomedical text embeddings via `/v1/embeddings`.
 - Pinned `torch==2.5.1` (CPU), `transformers==4.46.3` for reproducibility.
 - HF token via `secretKeyRef: hf-token` (download step).
 
-## Migration changes vs 232
+## Migration changes
 - Inline HF token → `secretKeyRef`.
 - Pinned torch/transformers (were unpinned).
 - Card converted to v2 schema; added `routing.k8s_name: biomedbert` (model id is
@@ -22,5 +22,6 @@ biomedical text embeddings via `/v1/embeddings`.
 ## Validation
 - **Embeddings pass (2026-06-19):** 10-check battery via the gateway — **8 PASS / 2 EXP / 0 FAIL**
   (dim 768, batch, distinctness cos 0.79, truncation, guardrails, catalog). Card: fixed a
-  PubMedBERT→BiomedBERT description copy-paste error. Run:
-  `cat models/biomedbert/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -`.
+  PubMedBERT→BiomedBERT description copy-paste error. Run externally:
+  `GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biomedbert/test.py` (or in-pod:
+  `cat models/biomedbert/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -`).
