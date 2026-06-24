@@ -25,7 +25,7 @@ It combines:
 - **Tyk OSS** for key management and API gateway controls,
 - **FastAPI gateway** with OpenAI and Anthropic compatible endpoints.
 
-The repo includes deployment manifests, model cards, gateway logic, storage configs, install scripts, and validation harnesses used to run the stack reproducibly.
+The repo includes the Warewulf overlays + RKE2 auto-deploy manifests (`ww-overlays/`), model cards, gateway logic, and validation harnesses used to run the stack reproducibly. The platform is fully declarative: bake the overlays into the node image, provision, and the cluster brings itself up.
 
 ## ✨ Features
 
@@ -49,27 +49,48 @@ cp .env.example .env
 set -a; source .env; set +a
 ```
 
-### 2) Create HuggingFace token Secret
+### 2) Provision via Warewulf — the platform self-deploys
+
+Fill in your site values (`ww-overlays/SITE-VALUES.md`), then bake each overlay into the
+Warewulf image for its node role and provision:
+
+| Overlay | Baked on |
+|---|---|
+| `ww-overlays/overlays/common/` | all nodes |
+| `ww-overlays/overlays/control-plane/` | control-plane nodes (RKE2 auto-deploy manifests + public VIP) |
+| `ww-overlays/overlays/gpu-worker/` | GPU workers |
+
+On boot, RKE2 applies the manifests and stands up cert-manager, HAMi, NFS, MetalLB, Tyk,
+Istio/Knative/KServe, and the model-gateway — no deploy script. See
+[`ww-overlays/README.md`](ww-overlays/README.md) for the full mechanism.
+
+### 3) Post-deploy: HF token Secret + Tyk key
 
 ```bash
+# HuggingFace token (used by model init/download containers)
 kubectl create secret generic hf-token -n models \
   --from-literal=token="$HF_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### 3) Deploy gateway + models
+Issue a Tyk API key to call the gateway — see
+[`ww-overlays/post-deploy/README.md`](ww-overlays/post-deploy/README.md).
+
+The gateway image is published to Docker Hub as `rkhoja/aleph` on every push to `main`
+touching `gateway/**` (see `.github/workflows/deploy-gateway.yml`). Roll out a new build:
 
 ```bash
-# from a login node with sudo SSH access to control plane
-./deploy-aleph/deploy.sh
-
-# or pin a CI-built image tag
-GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha> ./deploy-aleph/deploy.sh
+kubectl rollout restart deploy/model-gateway -n models
 ```
 
-Gateway image is published to Docker Hub as `rkhoja/aleph` (see `.github/workflows/deploy-gateway.yml`).
+### 4) Add models
 
-### 4) Run full compatibility tests
+```bash
+kubectl apply -f models/<model>/details.yaml          # card (gateway picks it up via watch)
+kubectl apply -f models/<model>/inferenceservice.yaml # the KServe ISVC
+```
+
+### 5) Run full compatibility tests
 
 ```bash
 python3 test/full_test.py
@@ -79,9 +100,9 @@ python3 test/full_test.py
 
 | Path | Description |
 |---|---|
+| `ww-overlays/` | Warewulf overlays + RKE2 auto-deploy manifests (common / control-plane / gpu-worker), site-value tokens, and post-deploy steps |
 | `gateway/` | FastAPI gateway app, translation logic, k8s deployment, Tyk API defs |
 | `models/` | Per-model `InferenceService`, `PVC`, and `details.yaml` cards |
-| `deploy-aleph/` | Platform deploy: install scripts (Istio/Knative/KServe, Tyk), StorageClasses, `deploy.sh` |
 | `test/` | Deployment & verification tests (`full_test.py`, `test-model.sh`, `smoke.sh`); fixtures in `test/inputs/` |
 | `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
 | `docs/GATEWAY-DESIGN.md` | Gateway design rationale |
@@ -91,8 +112,8 @@ python3 test/full_test.py
 
 ## 🧭 Operations Notes
 
-- Main working cluster is a control-plane node with HAMi-enabled GPU workers (cluster-specific values in `docs/RUNBOOK.md` §0).
-- Node image build/publish source-of-truth is [`ualberta-rcg/warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami); this repo consumes that image line.
+- Main working cluster is HA: 3 control-plane nodes + HAMi-enabled GPU workers (cluster-specific values in `docs/RUNBOOK.md` §0).
+- Node image build/publish source-of-truth is [`ualberta-rcg/warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) (OS, NVIDIA drivers, HAMi runtime, RKE2); this repo's `ww-overlays/` are baked on top of that image per node role.
 - Keep secrets in `.env` only (gitignored); do not inline tokens in manifests.
 - Model-specific deployment guidance belongs in `models/CLAUDE.md` and optional `models/<model>/CLAUDE.md`.
 - Gateway-specific behavior notes belong in `gateway/CLAUDE.md`.
