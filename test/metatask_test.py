@@ -3,7 +3,7 @@
 qwen3-235b logs) against our chat models, verify each returns parseable JSON."""
 import json, re, sys, urllib.request
 
-U = "http://172.26.92.230:30808/v1/chat/completions"
+U = "http://172.26.92.43:30808/v1/chat/completions"
 KEY = open("/tmp/cvk").read().strip()
 
 CHAT = """USER: Explain options trading in simple terms if I'm familiar with stocks.

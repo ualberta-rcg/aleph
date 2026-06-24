@@ -15,12 +15,12 @@
 #       modest key counts; for large fleets use a Dashboard or your own index.
 #
 # Env overrides:
-#   TYK_URL     (default http://172.26.92.230:30808)
+#   TYK_URL     (default http://172.26.92.43:30808)
 #   TYK_SECRET  (required; see .env / .env.example)    -- the admin APISecret
 #   API_ID      (default model-gateway)
 set -euo pipefail
 
-TYK_URL="${TYK_URL:-http://172.26.92.230:30808}"
+TYK_URL="${TYK_URL:-http://172.26.92.43:30808}"
 TYK_SECRET="${TYK_SECRET:?set TYK_SECRET (Tyk gateway APISecret) — see .env / .env.example}"
 API_ID="${API_ID:-model-gateway}"
 AUTH=(-H "x-tyk-authorization: ${TYK_SECRET}")

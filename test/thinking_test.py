@@ -6,7 +6,7 @@
 """
 import json, urllib.request
 
-U = "http://172.26.92.230:30808/v1/chat/completions"
+U = "http://172.26.92.43:30808/v1/chat/completions"
 KEY = open("/tmp/ttk").read().strip()
 MODELS = ["gpt-oss-20b", "command-r-7b", "gemma-3-4b-it", "qwen25-vl-7b"]
 

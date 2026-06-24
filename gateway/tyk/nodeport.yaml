@@ -1,5 +1,6 @@
-# NodePort to reach Tyk from outside the cluster (no LB / public IP).
-# Hit it at http://<node-ip>:30808  e.g. http://172.26.92.230:30808
+# NodePort to reach Tyk from the internal network (NodePort fallback).
+# Primary access is via MetalLB VIP (129.128.190.55:80).
+# NodePort: http://<node-ip>:30808  e.g. http://172.26.92.43:30808
 apiVersion: v1
 kind: Service
 metadata:

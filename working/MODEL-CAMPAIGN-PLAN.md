@@ -115,7 +115,7 @@ The card-driven gateway is `deploy/model-gateway` (ns `models`, 2/2 containers, 
 `test.py` runs **inside the gateway pod** — no Python on the Vulcan login node:
 
 ```bash
-cat models/<name>/test.py | sudo ssh root@172.26.92.230 \
+cat models/<name>/test.py | sudo ssh root@172.26.92.43 \
   'export PATH=$PATH:/var/lib/rancher/rke2/bin; export KUBECONFIG=/etc/rancher/rke2/rke2.yaml;
    kubectl exec -i -n models deploy/model-gateway -- python3 -'
 ```

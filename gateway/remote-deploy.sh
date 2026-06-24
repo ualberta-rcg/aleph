@@ -41,5 +41,5 @@ kubectl rollout restart deploy/model-gateway -n models 2>/dev/null || true
 kubectl rollout status  deploy/model-gateway -n models --timeout=180s || true
 echo
 echo "DONE. Gateway image: ${GATEWAY_IMAGE}"
-echo "Endpoint: http://172.26.92.230:30808  (NodePort)"
+echo "Endpoint: http://172.26.92.43:30808  (NodePort)"
 echo "Wait for the model to be Ready:  kubectl get isvc command-r-7b -n models -w"

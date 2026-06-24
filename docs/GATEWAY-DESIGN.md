@@ -1,4 +1,4 @@
-# Inference Gateway Design — HAMI Cluster (172.26.92.230)
+# Inference Gateway Design — HAMI Cluster (172.26.92.43)
 
 > Design doc for the new model inference gateway.  
 > Builds on POC design at `/root/kuberflow-working/MODEL-DETAILS-SYSTEM.md` on 172.26.92.232.  
@@ -535,7 +535,7 @@ This means the model team controls the experience. They know their model's sweet
 
 ## Comparison with POC
 
-| Aspect | POC (172.26.92.232) | New cluster (172.26.92.230) |
+| Aspect | POC (172.26.92.232) | New cluster (172.26.92.43) |
 |---|---|---|
 | External domain | `inference.kubeflow.vulcan.alliancecan.ca` | `api.vulcan.alliancecan.ca` |
 | Path prefix | `/serving/` | None — clean `/v1/` paths |
@@ -946,7 +946,7 @@ For reasoning models, thinking tokens are tracked separately:
 - DNS entry pointing to cluster's external IP
 - Test: `curl https://api.vulcan.alliancecan.ca/v1/models -H "Authorization: Bearer $KEY"`
 
-### Phase 5: Port models from POC (172.26.92.232 → 172.26.92.230)
+### Phase 5: Port models from POC (172.26.92.232 → 172.26.92.43)
 
 **Important**: The POC cluster (172.26.92.232) will be **destroyed** and its nodes added to this cluster via Warewulf. So this is a migration, not a parallel deployment.
 
@@ -974,11 +974,11 @@ Order: CPU models first → single-GPU models → multi-GPU models → science m
 The POC cluster nodes will be reprovisioned via Warewulf and added as workers to this cluster. This is the long-term scaling path.
 
 **Current state:**
-- 172.26.92.230: control plane + 1 GPU worker (rack15-03, 4× L40S)
+- 172.26.92.43: control plane + 1 GPU worker (rack15-03, 4× L40S)
 - 172.26.92.232: separate POC cluster with 4 GPU workers (16× L40S total)
 
 **Target state:**
-- 172.26.92.230: control plane + 5 GPU workers (20× L40S total)
+- 172.26.92.43: control plane + 5 GPU workers (20× L40S total)
 - 172.26.92.232: decommissioned as separate cluster, nodes join 230's cluster
 
 **Steps:**
@@ -994,7 +994,7 @@ The POC cluster nodes will be reprovisioned via Warewulf and added as workers to
 
 | Component | Job | Not its job |
 |---|---|---|
-| **172.26.92.230** (this cluster) | Scale nodes via Warewulf, scale models via K8s, route inference requests | Prometheus, Grafana, monitoring stack |
+| **172.26.92.43** (this cluster) | Scale nodes via Warewulf, scale models via K8s, route inference requests | Prometheus, Grafana, monitoring stack |
 | **POC nodes** (currently 232) | Will be reprovisioned via Warewulf and joined to 230 as additional GPU workers | Running as separate cluster |
 | **Vulcan login nodes** | User access, key provisioning (`inference-key`), usage reporting scripts | — |
 | **Monitoring** (TBD) | Prometheus + Grafana somewhere — not on this cluster | — |

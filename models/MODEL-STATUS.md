@@ -1,6 +1,6 @@
-# Model Test Status -- Cluster 230
+# Model Test Status — Aleph POC Cluster
 
-Master tracker for the per-model verification loop. Gateway ClusterIP `http://10.43.79.101:80` (in-cluster only). Source of truth: this local repo.
+Master tracker for the per-model verification loop. Gateway ClusterIP `http://model-gateway.models.svc:80` (in-cluster). Public VIP: `http://129.128.190.55` (via Tyk auth). Source of truth: this local repo.
 
 Test-status legend: `PENDING` (not yet verified by this loop) - `PASS` - `FIXED` (was broken, now PASS) - `FAIL` (hard fail, see note).
 

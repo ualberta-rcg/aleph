@@ -19,7 +19,7 @@ import urllib.request
 import urllib.error
 import zlib
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://10.43.79.101:80"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://10.43.147.39:80"
 WARM_TIMEOUT = 480          # seconds to wait for a cold model
 WARM_POLL = 8
 REQ_TIMEOUT = 180

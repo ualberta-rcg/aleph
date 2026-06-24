@@ -160,10 +160,10 @@ cd /scratch/rahimk/repos/aleph
 GATEWAY_IMAGE=rkhoja/aleph:gateway-abc1234 ./gateway/remote-deploy.sh
 
 # Option 2: just update the gateway image
-sudo ssh root@172.26.92.230 "kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-abc1234"
+sudo ssh root@172.26.92.43 "kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-abc1234"
 
 # Option 3: use latest
-sudo ssh root@172.26.92.230 "kubectl rollout restart deploy/model-gateway -n models"
+sudo ssh root@172.26.92.43 "kubectl rollout restart deploy/model-gateway -n models"
 ```
 
 ## Key files

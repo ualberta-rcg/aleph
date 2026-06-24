@@ -12,7 +12,7 @@
 #   - Dex, oauth2-proxy, Central Dashboard
 #   - Kubeflow Pipelines, Katib, Jupyter, Tensorboards
 #
-# Run this script from the RKE2 control plane node (kubeflow-head-node2).
+# Run this script from the RKE2 control plane node (aleph1).
 # Prerequisites already in place:
 #   - cert-manager (RKE2 manifest)
 #   - NFS provisioner (RKE2 manifest)
@@ -21,7 +21,7 @@
 #   - GPU nodes labeled: kubectl label node <node> gpu=on
 #
 # Usage:
-#   sudo ssh root@172.26.92.230
+#   sudo ssh root@172.26.92.43
 #   cd /root/install-kubeflow && bash 01-install.sh
 #
 # Known issues handled by this script:

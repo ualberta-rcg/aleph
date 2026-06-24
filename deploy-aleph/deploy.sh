@@ -12,7 +12,7 @@
 # Assumes the platform is already up (RKE2, HAMi, KServe/Knative, Istio, Tyk OSS, NFS).
 set -euo pipefail
 
-HEAD="${HEAD:-172.26.92.230}"
+HEAD="${HEAD:-172.26.92.43}"
 GATEWAY_IMAGE="${GATEWAY_IMAGE:-rkhoja/aleph:latest}"
 DIR=/root/gateway-build
 SSH=(sudo ssh -o StrictHostKeyChecking=no "root@${HEAD}")

@@ -17,33 +17,40 @@ KServe/Knative + Tyk model-inference platform.
 | `test/` | Deployment & verification tests (`full_test.py`, `test-model.sh`, `smoke.sh`); fixtures in `test/inputs/` |
 | `docs/` + `CHANGELOG.md` | Design + ops docs (`RUNBOOK`, `GATEWAY-DESIGN`, `GATEWAY-ARCHITECTURE`, `CHANGELOG`) |
 
-## Cluster Overview
+## Cluster Overview — Aleph POC Cluster
 
-RKE2 Kubernetes cluster used for HAMi (HAMi) GPU scheduling and KServe model serving.
+HA RKE2 cluster with 3 control plane nodes and 2 GPU workers. Becoming the production platform.
 
 ## Access
 
 All commands run from Vulcan login node (`rahimk`). SSH to kube nodes as root:
 
 ```bash
-# Control plane (VM, no GPUs)
-sudo ssh root@172.26.92.230    # kubeflow-head-node2
+# Control plane (3× HA VMs, no GPUs)
+sudo ssh root@172.26.92.43  # aleph1 (primary)
+sudo ssh root@172.26.92.44  # aleph2
+sudo ssh root@172.26.92.45  # aleph3
 
-# Worker (GPU node)
-sudo ssh root@172.26.93.227    # rack15-03
+# Workers (GPU nodes)
+sudo ssh root@172.26.93.227 # rack15-03
+sudo ssh root@172.26.93.80  # rack05-16
 ```
 
 ### kubectl on nodes
 
-Once SSH'd into either kube node, `kubectl` works without restriction — no PATH or KUBECONFIG setup needed inside the node shell. From the Vulcan login node, you still need:
+Once SSH'd into any control plane node, `kubectl` works without restriction — no PATH or KUBECONFIG setup needed inside the node shell. From the Vulcan login node, you still need:
 
 ```bash
-sudo ssh root@172.26.92.230 "export PATH=\$PATH:/var/lib/rancher/rke2/bin; export KUBECONFIG=/etc/rancher/rke2/rke2.yaml; kubectl get nodes"
+sudo ssh root@172.26.92.43 "export PATH=\$PATH:/var/lib/rancher/rke2/bin; export KUBECONFIG=/etc/rancher/rke2/rke2.yaml; kubectl get nodes"
 ```
+
+## Public Endpoint
+
+MetalLB L2 VIP at `129.128.190.55` on interface `enp6s19`. Tyk API gateway exposed as LoadBalancer on port 80 (NodePort 30808 also available). All model API traffic goes through Tyk (auth) → model-gateway (FastAPI) → KServe pods.
 
 ## Warewulf + Stateless Nodes
 
-Nodes are provisioned via **Warewulf** — they are stateless and can be reprovisioned/replaced. RKE2 auto-deploy manifests go in `/var/lib/rancher/rke2/server/manifests/` on the head node. GPU nodes can be scaled by adding more Warewulf-provisioned workers.
+Nodes are provisioned via **Warewulf** — they are stateless and can be reprovisioned/replaced. RKE2 auto-deploy manifests go in `/var/lib/rancher/rke2/server/manifests/` on control plane nodes. GPU nodes can be scaled by adding more Warewulf-provisioned workers.
 
 ## GPU Setup (No GPU Operator)
 
@@ -51,59 +58,69 @@ This cluster does **NOT** use the NVIDIA GPU Operator. Instead:
 - **NVIDIA drivers** are installed directly on GPU node OS images (Warewulf overlay)
 - **HAMi** provides the device plugin + vGPU scheduler (replaces both nvidia-device-plugin and GPU Operator)
 - **nvidia-container-cli** is on the host for container GPU injection
-- GPUs: 4x NVIDIA L40S (48 GB each) on rack15-03
+- GPUs: 8x NVIDIA L40S (48 GB each) — 4 on rack15-03 + 4 on rack05-16
 
 ### HAMi Configuration
 
 - HAMi device plugin DaemonSet requires `gpu=on` node label
 - Scheduler uses `binpack` GPU policy + `spread` node policy
 - Each L40S is split into 10 vGPU slices (deviceSplitCount: 10)
-- Total allocatable: `nvidia.com/gpu: 40` (4 physical × 10 split)
+- Total allocatable: `nvidia.com/gpu: 80` (8 physical × 10 split)
 - Request VRAM: `nvidia.com/gpumem: "10240"` (MiB)
 
 ## Cluster
 
 | Node | IP | Role | OS | GPUs |
 |---|---|---|---|---|
-| kubeflow-head-node2 | 172.26.92.230 | control-plane, etcd (VM) | Ubuntu 24.04 | none |
+| aleph1 | 172.26.92.43 | control-plane, etcd (VM) | Ubuntu 24.04 | none |
+| aleph2 | 172.26.92.44 | control-plane, etcd (VM) | Ubuntu 24.04 | none |
+| aleph3 | 172.26.92.45 | control-plane, etcd (VM) | Ubuntu 24.04 | none |
 | rack15-03 | 172.26.93.227 | worker | Ubuntu 24.04 | 4× L40S 48GB |
+| rack05-16 | 172.26.93.80 | worker | Ubuntu 24.04 | 4× L40S 48GB |
 
 - **Kubernetes**: v1.36.1+rke2r2
 - **CNI**: Canal + Multus
 - **Ingress**: Traefik (RKE2 bundled)
-- **Storage**: NFS provisioner (`nfs-client` StorageClass, default)
+- **Storage**: NFS provisioner (`nfs-models` StorageClass, default)
+- **Public VIP**: 129.128.190.55 (MetalLB L2)
 
 ## Workloads / Namespaces
 
 | Namespace | Purpose |
 |---|---|
 | kube-system | Core + HAMI scheduler/device-plugin, RKE2 components |
+| models | Model ISVCs + model-gateway deployment |
+| tyk | Tyk OSS API gateway + Redis (auth layer) |
+| istio-system | Istio service mesh (serving stack) |
+| knative-serving | Knative Serving (scale-to-zero, revisions) |
+| kubeflow | KServe controller |
+| kubeflow-system | Kubeflow system components |
+| kuberay | KubeRay operator (Ray clusters on K8s) |
 | cert-manager | TLS cert automation |
 | nfs-provisioner | NFS dynamic PV provisioning |
-| traefik | RKE2 Traefik ingress |
+| metallb-system | MetalLB L2 load balancer |
 
 ### Key pods (kube-system)
 - `hami-scheduler` — HAMI vGPU scheduler (2/2 containers)
 - `hami-device-plugin-*` — on each GPU node (requires `gpu=on` label)
 
+## Gateway Stack
+
+```
+Internet → MetalLB VIP (129.128.190.55:80) → Tyk OSS (auth, rate-limit)
+  → model-gateway (FastAPI :8080, ClusterIP in models ns)
+    → KServe pods via knative-local-gateway
+```
+
+- **Gateway image**: `rkhoja/aleph:latest` (CI auto-builds on `main` push touching `gateway/**`, ~4 min)
+- **Gateway deploy**: `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>` or `kubectl rollout restart deploy/model-gateway -n models`
+- **Tyk keys**: `gateway/tyk/tyk-keys.sh` (create/list/inspect/revoke)
+- **Full deploy**: `GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha> ./gateway/remote-deploy.sh`
+
 ## POC Reference Cluster (172.26.92.232)
 
 The first POC cluster at `kubeflow-head-node` (172.26.92.232) runs a full Kubeflow inference platform.
 Install docs and working configs are on that node at `/root/kuberflow-working/`.
-
-### POC Architecture
-```
-Internet → Traefik → Istio IngressGateway → oauth2-proxy/Dex (auth)
-                                            → KServe InferenceServices (models ns)
-                                            → FastAPI Gateway (routing)
-```
-
-### POC Kubeflow Install Method
-- Kubeflow manifests: `v1.11-branch` from `github.com/kubeflow/manifests`
-- Installed via Kubernetes Job (`kubeflow-bootstrap`) that clones and applies kustomize overlays
-- KServe CRDs require `--server-side --force-conflicts` (too large for normal apply)
-- Components: Istio 1.24, Knative Serving, Dex, oauth2-proxy, KServe, Profiles, Dashboard
-- GPU Operator used on POC (NOT used on this cluster — HAMi handles it here)
 
 ### POC Key Files
 - `/root/kuberflow-working/install-kubeflow/` — install scripts, manifests, configs
@@ -207,10 +224,10 @@ Remaining LLMs still on v1 schema — see `models.md` for full list.
 ## Working Conventions
 
 - This repo is the source of truth; clone is at `/scratch/rahimk/repos/aleph` on the login node.
-- Run kubectl commands via SSH to the control plane node
+- Run kubectl commands via SSH to any control plane node (aleph1 preferred)
 - For quick one-liners:
   ```bash
-  sudo ssh root@172.26.92.230 "export PATH=\$PATH:/var/lib/rancher/rke2/bin; export KUBECONFIG=/etc/rancher/rke2/rke2.yaml; kubectl get nodes"
+  sudo ssh root@172.26.92.43 "export PATH=\$PATH:/var/lib/rancher/rke2/bin; export KUBECONFIG=/etc/rancher/rke2/rke2.yaml; kubectl get nodes"
   ```
 - For multi-command work, SSH in interactively or chain with `&&`
 

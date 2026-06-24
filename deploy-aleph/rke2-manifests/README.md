@@ -79,7 +79,7 @@ Istio ALLOW policy for `models` are in `62-kserve.yaml`.
 
 ## Site-config values to substitute before deploy
 
-| File | Value | 230 example |
+| File | Value | Aleph cluster example |
 |---|---|---|
 | `30-nfs.yaml` | `nfs.server`, `nfs.path` | `manage.storage.data.vulcan.local` / `/aleph` |
 | `10-hami.yaml` | `scheduler.kubeScheduler.imageTag` (match cluster k8s version) | `v1.36.1` |

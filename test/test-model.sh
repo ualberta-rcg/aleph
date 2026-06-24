@@ -15,13 +15,13 @@
 #   cycle     - zero, confirm scaled to zero, then up again (cold-start proof)
 #   all       - apply -> up -> status  (mechanical bring-up; payloads are manual)
 #
-# The gateway ClusterIP (10.43.79.101) is only reachable from inside 230, so all
+# The gateway ClusterIP (10.43.147.39) is only reachable from inside 230, so all
 # kubectl/curl run via SSH to the head node. Request PAYLOADS are intentionally NOT
 # baked in here: each model gets a custom test authored into models/<m>/TEST.md.
 set -uo pipefail
 
-HEAD="${HEAD:-172.26.92.230}"
-GW="${GW:-10.43.79.101}"
+HEAD="${HEAD:-172.26.92.43}"
+GW="${GW:-10.43.147.39}"
 NS=models
 M="${1:?usage: test-model.sh <model> [action]}"
 ACTION="${2:-all}"

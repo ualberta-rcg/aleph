@@ -7,7 +7,7 @@ import time
 import urllib.request
 import urllib.error
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://10.43.79.101:80"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://10.43.147.39:80"
 
 
 def post(path, payload, timeout=180):

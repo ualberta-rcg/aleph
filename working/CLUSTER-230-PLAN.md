@@ -1,7 +1,7 @@
 # Cluster 230 — Build Plan
 
 > The **how and when**. For architecture and card schema, see `GATEWAY-ARCHITECTURE.md`.
-> Cluster 230 = `kubeflow-head-node2` (172.26.92.230), the new HAMi cluster.
+> Cluster 230 = `aleph1` (172.26.92.43), the new HAMi cluster.
 
 ## Where we are right now (verified 2026-06-04)
 
@@ -143,15 +143,15 @@ No public IP / LoadBalancer, but the login nodes are on the same internal networ
 so a **NodePort** on the head-node IP is enough.
 
 ```
-login node  ──HTTP──>  172.26.92.230:30808  ──>  Tyk (auth/keys)  ──>  model-gateway  ──>  KServe/vLLM
+login node  ──HTTP──>  172.26.92.43:30808  ──>  Tyk (auth/keys)  ──>  model-gateway  ──>  KServe/vLLM
             (any internal client)            NodePort           ClusterIP         (cards)      (GPU pods)
 ```
 
-- **Endpoint:** `http://172.26.92.230:30808` (Service `tyk-gateway-nodeport`, `gateway/tyk/nodeport.yaml`).
+- **Endpoint:** `http://172.26.92.43:30808` (Service `tyk-gateway-nodeport`, `gateway/tyk/nodeport.yaml`).
   The NodePort is open on **every** node's IP, but use a **control-plane VM IP** (currently the
-  head node `172.26.92.230`), not the GPU worker.
-- OpenAI SDK: `base_url="http://172.26.92.230:30808/v1"`, `api_key=<tyk key>`.
-- Anthropic SDK: `base_url="http://172.26.92.230:30808"` (it appends `/v1/messages`), `api_key=<tyk key>`.
+  head node `172.26.92.43`), not the GPU worker.
+- OpenAI SDK: `base_url="http://172.26.92.43:30808/v1"`, `api_key=<tyk key>`.
+- Anthropic SDK: `base_url="http://172.26.92.43:30808"` (it appends `/v1/messages`), `api_key=<tyk key>`.
 
 ### Topology / placement
 
@@ -176,12 +176,12 @@ When the control plane grows to 3 VMs:
 Working curl (replace the key):
 
 ```bash
-curl http://172.26.92.230:30808/v1/chat/completions \
+curl http://172.26.92.43:30808/v1/chat/completions \
   -H "Authorization: Bearer <TYK_KEY>" -H "Content-Type: application/json" \
   -d '{"model":"command-r-7b","messages":[{"role":"user","content":"hi"}],"max_tokens":20}'
 
 # Anthropic-native:
-curl http://172.26.92.230:30808/v1/messages \
+curl http://172.26.92.43:30808/v1/messages \
   -H "Authorization: Bearer <TYK_KEY>" -H "Content-Type: application/json" \
   -d '{"model":"command-r-7b","max_tokens":40,"messages":[{"role":"user","content":"hi"}]}'
 ```
@@ -193,7 +193,7 @@ label) and `meta_data` (arbitrary map). A PAM script issues one key per user and
 username/uid/account on it. The key string is the bearer token the user puts in their client.
 
 ```bash
-TYK=http://172.26.92.230:30808
+TYK=http://172.26.92.43:30808
 SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk -o jsonpath='{.data.APISecret}' | base64 -d)
 # (run the kubectl on node 230, or cache the secret in the PAM script's config)
 
@@ -207,7 +207,7 @@ curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Conte
 # -> {"key":"<TYK_KEY>","key_hash":"...","status":"ok","action":"added"}
 ```
 
-All calls go to `http://172.26.92.230:30808/tyk/...` with header `x-tyk-authorization: <APISecret>`.
+All calls go to `http://172.26.92.43:30808/tyk/...` with header `x-tyk-authorization: <APISecret>`.
 The admin `APISecret` is `tyk-oss-cluster-secret-2026` (`secret/secrets-tyk-oss-tyk-gateway`).
 
 | Action | Call |

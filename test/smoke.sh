@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Demo curls for the cluster-230 inference gateway (via Tyk).
+# Demo curls for the Aleph inference gateway (via Tyk).
 # Run from the Vulcan login node. Usage:
 #   bash demo.sh         # run all demos in order
 #   bash demo.sh 4       # run only demo #4
 #
 # Endpoint = Tyk NodePort on the control-plane node. Auth = Tyk API key.
-BASE="${BASE:-http://172.26.92.230:30808}"
+BASE="${BASE:-http://172.26.92.43:30808}"
 KEY="${KEY:-eyJvcmciOiIiLCJpZCI6ImM3NmM3ZDliM2RiYTQ4MzdhYTY5NjFlYWY2ODM0OWY0IiwiaCI6Im11cm11cjEyOCJ9}"
 AUTH=(-H "Authorization: Bearer $KEY" -H "Content-Type: application/json")
 

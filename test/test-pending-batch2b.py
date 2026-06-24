@@ -5,7 +5,7 @@ import time
 import urllib.request
 import urllib.error
 
-GW = "http://10.43.79.101:80"
+GW = "http://10.43.147.39:80"
 TIMEOUT = 600
 
 CASES = [

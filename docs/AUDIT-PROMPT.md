@@ -10,7 +10,7 @@ first audit (read-only on cluster), then fix repo files (no cluster changes).
 
 ## Context (substitute per cluster)
 
-- **Control-plane node:** `<head-node-ip>` (e.g. `kubeflow-head-node2`)
+- **Control-plane node:** `<head-node-ip>` (e.g. `aleph1`)
 - **Worker / GPU node:** `<gpu-node-ip>` (e.g. `rack15-03`, 4× L40S 48GB)
 - **kubectl from the login node:** a *non-interactive* SSH does NOT source the node profile, so
   `kubectl` is not on PATH — export it (this is an easy gotcha):
