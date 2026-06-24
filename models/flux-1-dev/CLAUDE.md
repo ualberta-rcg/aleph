@@ -45,8 +45,12 @@ kubectl apply -f models/flux-1-dev/pvc.yaml
 kubectl apply -f models/flux-1-dev/inferenceservice.yaml
 kubectl apply -f models/flux-1-dev/details.yaml
 
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/images/generations \
-  -H "Content-Type: application/json" \
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/flux-1-dev/test.py
+
+# Or a direct image request through the gateway VIP
+curl -X POST http://<GATEWAY_VIP>/v1/images/generations \
+  -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \
   -d '{"model":"flux-1-dev","prompt":"a cat holding a sign that says hello world","n":1,"size":"1024x1024"}'
 ```
 

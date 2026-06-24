@@ -1,4 +1,4 @@
-"""flux-1-dev comprehensive gateway test (run inside the gateway pod).
+"""flux-1-dev comprehensive gateway test.
 
 Exercises the full OpenAI image surface for the FLUX.1-dev KServe custom-predictor
 image model through the default gateway (no model-specific gateway code):
@@ -16,7 +16,11 @@ image model through the default gateway (no model-specific gateway code):
 
 FLUX.1-dev is a big bf16 model on a whole L40S; keep step counts low here for speed.
 
-Run:  cat models/flux-1-dev/test.py | \\
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/flux-1-dev/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/flux-1-dev/test.py | \\
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, os, time, base64, struct
