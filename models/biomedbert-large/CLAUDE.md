@@ -17,64 +17,59 @@ Key info from source:
 
 ## How The Server Works
 
-- **Pattern**: Custom FastAPI embedding server with HuggingFace Transformers
-- **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`
-- **Init container**: Creates venv, installs torch+transformers (CPU), downloads model from HF to PVC
-- **ConfigMap**: `biomedbert-large-server` — server code embedded in inferenceservice.yaml
-- **PVC**: `biomedbert-large-data` — stores venv + model weights (5Gi)
-- **Health**: Custom `/health` endpoint
-- **GPU**: 1x shared L40S via time-slicing
-- **Env vars**: `MODEL_DIR=/data/model`, `HF_HUB_OFFLINE=1`
-- **Pooling**: CLS token
-- **Output**: Custom `/v1/science/embed` response format (not OpenAI-compatible)
-- **Note**: Uses venv-on-PVC pattern with HF_HUB_OFFLINE=1 for fast restarts
+- **Pattern**: Custom FastAPI + `transformers` AutoModel, venv-on-PVC.
+- **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`.
+- **Init container**: creates venv, installs torch+transformers, downloads model to PVC.
+- **ConfigMap**: `biomedbert-large-server` (server code embedded in inferenceservice.yaml).
+- **PVC**: `biomedbert-large-data` — RWX, nfs-models (venv + weights; migrated RWO→RWX).
+- **GPU**: HAMi slice (`gpu: "on"`, `nvidia.com/gpumem: 10240`).
+- **Env**: `MODEL_DIR=/data/model`, `HF_HUB_OFFLINE=1`.
+- **Pooling**: [CLS] token → 1024-dim.
+
+## API
+
+- **Primary**: `POST /v1/embeddings` (OpenAI-compliant; batch + usage) — added 2026-06-19.
+- **Secondary**: `POST /v1/science/embed` (domain endpoint, kept for back-compat).
+- **Health**: `GET /health`.
 
 ## Gateway Integration
 
 - **k8s ISVC name**: `biomedbert-large`
-- **API model ID**: `biomedbert-large` (no mapping in ISVC_NAME_MAP)
-- **MODEL_TYPE**: defaults to "chat" — needs update to "embedding"
-- **KSERVE_CUSTOM_MODELS**: not listed — needs addition
-- **Scale-to-zero**: minReplicas=0, scaleTarget=1, 10m retention
+- **API model ID**: `biomedbert-large`
+- **type**: `embedding` (details.yaml schema v2)
+- **Scale-to-zero**: minReplicas=0, 10m retention.
 
 ## Deploy / Update / Test
 
 ```bash
-# Deploy
-kubectl apply -k models/biomedbert-large/
+kubectl apply -f models/biomedbert-large/pvc.yaml
+kubectl apply -f models/biomedbert-large/inferenceservice.yaml
+kubectl apply -f models/biomedbert-large/details.yaml
 
-# Check status
+# Status / logs
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=biomedbert-large
-
-# Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=biomedbert-large -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/science/embed \
-  -H "Content-Type: application/json" \
-  -d '{"model":"biomedbert-large","text":"BRCA1 mutations are associated with hereditary breast cancer."}'
+# Test (external via gateway VIP + Tyk auth)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/biomedbert-large/test.py
+# Or inside the gateway pod (no auth):
+cat models/biomedbert-large/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 
-## Known Issues / Optimization Opportunities
+## Known Issues / Gotchas
 
-1. **GPU requested but may be excessive**: 340M BERT-large can run on CPU, though slower. GPU is reasonable for this size.
-
-2. **Non-OpenAI API**: Uses `/v1/science/embed` instead of `/v1/embeddings`. Not standard.
-
-3. **Pip dependencies unpinned**: Init container installs deps without version pins.
-
-4. **HF_TOKEN plaintext**: Token stored as plaintext env var in init container (intentional per docs).
-
-5. **Gateway registration incomplete**: Model not in MODEL_TYPES, MODEL_METADATA, KSERVE_CUSTOM_MODELS, or CONTEXT_WINDOWS in gateway.py.
-
-6. **No PVC storageClassName**: PVC missing storageClassName — uses cluster default.
+1. **Dual endpoint**: `/v1/embeddings` is primary; `/v1/science/embed` kept for back-compat — keep both in sync if the server changes.
+2. **GPU sized for headroom**: 340M BERT-large fits a 10 GiB slice; CPU works but is slower.
+3. Last run (2026-06-19): **8 PASS / 2 EXP / 0 FAIL** (dim 1024, batch, model-echo, usage, distinctness, encoding_format, truncation, guardrails, catalog).
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `details.yaml` | ConfigMap with model metadata |
-| `inferenceservice.yaml` | ConfigMap + PVC + ISVC spec: init container + FastAPI container |
-| `kustomization.yaml` | Kustomize resources |
+| `details.yaml` | Model card (schema v2, type: embedding) |
+| `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
+| `pvc.yaml` | PVC `biomedbert-large-data` (RWX, nfs-models) |
+| `test.py` | Gateway test battery (10 checks) |
+| `README.md` | Model overview |
 
 **IMPORTANT: When changing this model's deployment config (inferenceservice.yaml), update details.yaml to match.**
