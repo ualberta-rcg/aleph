@@ -40,7 +40,7 @@ Key info from source:
 
 ```bash
 # Deploy
-kubectl apply -k models/zoobot/
+kubectl apply -f models/zoobot/pvc.yaml -f models/zoobot/inferenceservice.yaml -f models/zoobot/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=zoobot
@@ -48,10 +48,14 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=zoobot
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=zoobot -c kserve-container -f
 
-# Test (public) — need a base64-encoded galaxy image
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vision/embed \
+# Test via gateway VIP + Tyk auth — need a base64-encoded galaxy image
+curl -X POST http://<GATEWAY_VIP>/v1/vision/embed \
+  -H "Authorization: Bearer <TYK_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"model":"zoobot-15m","image":"<base64_encoded_jpeg>"}'
+
+# Full battery
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/zoobot/test.py
 ```
 
 ## Known Issues / Optimization Opportunities

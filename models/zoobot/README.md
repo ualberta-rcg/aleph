@@ -20,15 +20,16 @@ Galaxy morphology embedding model using ConvNeXt Nano from the Zoobot project.
 ## Example Usage
 
 ```bash
-curl -X POST "https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/vision/embed" \
+curl -X POST "http://<GATEWAY_VIP>/v1/vision/embed" \
+  -H "Authorization: Bearer <TYK_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"model":"zoobot-15m","image":"<base64_png>"}'
 ```
 
+Run the full test battery externally:
+
 ```bash
-curl -X POST "https://kubeflow.vulcan.alliancecan.ca/serving/models/zoobot/v1/vision/embed" \
-  -H "Content-Type: application/json" \
-  -d '{"image":"<base64_png>"}'
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/zoobot/test.py
 ```
 
 ## Resource Requirements
