@@ -27,7 +27,9 @@ Image+metadata input → does NOT expose OpenAI `/v1/embeddings`. Body needs `"m
 - `inferenceservice.yaml` — ConfigMap (server.py) + ISVC (PVC split to `pvc.yaml`)
 - `details.yaml` — v2 card (Template C)
 - `pvc.yaml` — RWX PVC
-- `test.py` — 6-case gateway battery (dim / non-zero / distinctness / deterministic / echo / malformed)
+- `test.py` — ~10-check gateway battery (dim / non-zero / distinctness / deterministic / echo /
+  malformed / norm / response fields / metadata pass). Run externally:
+  `GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/clay/test.py`
 
 ## Notes
 - Only encoder weights loaded (decoder + projection head skipped). State-dict keys remapped
