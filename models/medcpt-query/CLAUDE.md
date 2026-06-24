@@ -34,15 +34,16 @@ Key info from source:
 
 - **k8s ISVC name**: `medcpt-query`
 - **API model ID**: `medcpt-query` (no mapping in ISVC_NAME_MAP)
-- **MODEL_TYPE**: defaults to "chat" — needs update to "embedding"
-- **KSERVE_CUSTOM_MODELS**: not listed — needs addition
+- **MODEL_TYPE**: embedding (schema-v2 card)
 - **Scale-to-zero**: minReplicas=0, scaleTarget=5, 900s retention
 
 ## Deploy / Update / Test
 
 ```bash
 # Deploy
-kubectl apply -k models/medcpt-query/
+kubectl apply -f models/medcpt-query/pvc.yaml
+kubectl apply -f models/medcpt-query/inferenceservice.yaml
+kubectl apply -f models/medcpt-query/details.yaml
 
 # Check status
 kubectl get pods -n models -l serving.kserve.io/inferenceservice=medcpt-query
@@ -50,10 +51,8 @@ kubectl get pods -n models -l serving.kserve.io/inferenceservice=medcpt-query
 # Logs
 kubectl logs -n models -l serving.kserve.io/inferenceservice=medcpt-query -c kserve-container -f
 
-# Test (public)
-curl -X POST https://inference.kubeflow.vulcan.alliancecan.ca/serving/api/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"model":"medcpt-query","input":"What are the side effects of metformin?"}'
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/medcpt-query/test.py
 ```
 
 ## Known Issues / Optimization Opportunities

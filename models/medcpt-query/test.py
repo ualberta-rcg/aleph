@@ -1,14 +1,20 @@
-"""medcpt-query medical-query-embedding gateway test (run inside the gateway pod).
+"""medcpt-query medical-query-embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (NCBI MedCPT-Query-Encoder, GPU).
 768-dim [CLS] medical search-query embeddings (max 64 tokens — it's a query encoder). Server compliant.
 
-Run:  cat models/medcpt-query/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/medcpt-query/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/medcpt-query/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "medcpt-query")
 EXP_DIM = 768
 MAX_INPUT = 64
@@ -20,7 +26,7 @@ Q3 = "BRCA1 gene mutations"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)
