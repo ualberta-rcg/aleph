@@ -1,4 +1,4 @@
-"""qwen3-32b comprehensive gateway test (run inside the gateway pod).
+"""qwen3-32b comprehensive gateway test.
 
 Qwen3-32B: dense 32.8B, effort mode with a binary `enable_thinking` switch (real off,
 unlike gpt-oss). vLLM `--reasoning-parser qwen3`. Text-only, tool calling (hermes).
@@ -12,12 +12,18 @@ Covers the standardized gateway surface for a managed-thinking reasoning model:
   - Meta-tasks (OpenWebUI title/tags/followups): short, no reasoning.
   - Guardrails: embed-via-Anthropic, bad model, catalog, vision rejected (text-only).
 
-Run:  cat models/qwen3-32b/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/qwen3-32b/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/qwen3-32b/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "qwen3-32b")
 HARD = ("A farmer has 17 sheep. All but 9 die. How many sheep are left? "
         "Take that number, multiply by 7, then subtract 4. Show your reasoning.")
@@ -26,8 +32,8 @@ results = []
 
 def req(method, path, body=None, timeout=300, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
