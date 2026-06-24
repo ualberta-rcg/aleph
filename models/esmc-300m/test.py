@@ -1,16 +1,22 @@
-"""esmc-300m protein-embedding gateway test (run inside the gateway pod).
+"""esmc-300m protein-embedding gateway test.
 
 Embedding (Template C) battery for a custom FastAPI server (EvolutionaryScale ESM-C 300M, GPU)
 using the esm SDK. 960-dim mean-pooled embeddings of amino-acid sequences.
 Covers WAKE/dim, batch, model-echo, usage, distinctness, encoding_format, truncation,
 guardrails, catalog.
 
-Run:  cat models/esmc-300m/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/esmc-300m/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/esmc-300m/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "esmc-300m")
 EXP_DIM = 960
 MAX_INPUT = 2048
@@ -22,7 +28,7 @@ SEQ_C = "MTKIPVAFYAGGDDSSNPEYKYWQYFLY"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):

@@ -19,6 +19,10 @@ The 10-check protein-embedding battery runs inside the gateway pod (first call w
 scaled-to-zero GPU model — ESM-C's cold rebuild is **slow, >6 min** after a PVC recreate):
 
 ```bash
+# External via gateway VIP + Tyk auth (preferred)
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/esmc-300m/test.py
+
+# Or inside the gateway pod (no auth)
 cat models/esmc-300m/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 

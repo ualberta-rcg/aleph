@@ -18,8 +18,13 @@ ESM-C (Cambrian) 300M from EvolutionaryScale (Meta spinoff). Next-gen protein LM
 
 ## Deploy/update/test
 ```bash
-kubectl apply -k models/esmc-300m/
+kubectl apply -f models/esmc-300m/pvc.yaml
+kubectl apply -f models/esmc-300m/inferenceservice.yaml
+kubectl apply -f models/esmc-300m/details.yaml
 kubectl get inferenceservice esmc-300m -n models
+
+# Test externally via gateway VIP + Tyk auth
+GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/esmc-300m/test.py
 ```
 
 ## Gateway integration
