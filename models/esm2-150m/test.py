@@ -1,16 +1,22 @@
-"""esm2-150m protein-embedding gateway test (run inside the gateway pod).
+"""esm2-150m protein-embedding gateway test.
 
 Embedding (Template C) battery for a custom transformers server (Meta ESM-2 150M, GPU).
 640-dim mean-pooled embeddings of amino-acid sequences.
 Covers WAKE/dim, batch, model-echo, usage, distinctness, encoding_format, truncation,
 guardrails, catalog.
 
-Run:  cat models/esm2-150m/test.py | \
+Run externally via the gateway VIP + Tyk auth (preferred):
+  GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> python3 models/esm2-150m/test.py
+
+Run inside the gateway pod (legacy, no auth needed):
+  cat models/esm2-150m/test.py | \
       kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 """
 import httpx, json, os, time
 
-G = "http://localhost:8080"
+G = os.environ.get("GW_URL", "http://localhost:8080")
+_KEY = os.environ.get("TYK_KEY")
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 MODEL = os.environ.get("MODEL", "esm2-150m")
 EXP_DIM = 640
 MAX_INPUT = 1024
@@ -22,7 +28,7 @@ SEQ_C = "MTKIPVAFYAGGDDSSNPEYKYWQYFLY"
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
 
 
 def record(icon, status, name, detail):
