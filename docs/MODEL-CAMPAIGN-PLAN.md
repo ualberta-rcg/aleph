@@ -69,8 +69,9 @@ The gateway **exposes reasoning when thinking is ON and strips+caps when OFF** f
 
 **Reference exemplars (DONE — copy these):** `gpt-oss-120b` + `gpt-oss-20b` — correct v2 cards
 (`strips_thinking: false`, `off_max_tokens: 2048`, effort mode), 33-check `test.py` (30/3/0),
-README + CLAUDE. Deploy path: commit → GH Actions builds `rkhoja/aleph:gateway-<sha>` →
-`kubectl set image deploy/model-gateway gateway=rkhoja/aleph:gateway-<sha> -n models` + rollout.
+README + CLAUDE. Deploy path: commit → GH Actions builds `rkhoja/aleph:latest` (+ immutable
+`gateway-<sha>`) → `kubectl rollout restart deploy/model-gateway -n models` (manifest pins
+`:latest` + `imagePullPolicy: Always`, so the restart pulls the new build).
 Cards hot-reload via the ConfigMap watch (no gateway restart).
 
 ---

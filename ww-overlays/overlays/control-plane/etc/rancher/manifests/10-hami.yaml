@@ -10,8 +10,9 @@
 # PREREQUISITES — handled by the Warewulf node image, NOT by this manifest:
 #   - NVIDIA driver + nvidia-container-cli on the GPU nodes.
 #   - containerd "nvidia" runtime + nvidia RuntimeClass (the rke2-gpu overlay sets these).
-#   - GPU nodes labeled  gpu=on  (baked by the WW image; without it the device-plugin
-#     DaemonSet won't schedule and nvidia.com/gpu stays absent).
+#   - GPU nodes labeled  gpu=on  (stamped at runtime by 09-gpu-autolabel.yaml, which
+#     autodetects the GPU; without the label the device-plugin DaemonSet won't schedule
+#     and nvidia.com/gpu stays absent).
 #
 # SITE-CONFIG: scheduler.kubeScheduler.imageTag MUST match the cluster's Kubernetes version
 # (HAMi ships a patched kube-scheduler). Set __K8S_VERSION__ to e.g. v1.36.1.

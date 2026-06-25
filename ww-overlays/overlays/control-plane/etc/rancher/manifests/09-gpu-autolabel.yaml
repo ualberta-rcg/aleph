@@ -1,0 +1,143 @@
+# GPU auto-label — RKE2 auto-deploy manifest (ServiceAccount + ClusterRole + DaemonSet).
+# -----------------------------------------------------------------------------
+# Stamps  gpu=on  onto every node that actually has an NVIDIA GPU, so the
+# GPU-gated workloads can schedule:
+#   - 10-hami.yaml          (HAMi device-plugin DaemonSet, nodeSelector gpu=on)
+#   - 11-node-labeler.yaml  (aleph.* hardware labels for usage/accounting, gpu=on)
+#   - 70-rdma-device-plugin (rdma/roce advertise, gpu=on)
+#
+# WHY this exists: gpu=on is the gate everything else keys on, but nothing
+# produced it — the WW image was assumed to bake it and does not, so after a
+# reprovision the workers come up unlabeled and HAMi/RDMA/node-labeler all sit
+# idle (0/0) with nvidia.com/gpu absent. This manifest closes that gap.
+#
+# CHICKEN-AND-EGG: a labeler that *produces* gpu=on obviously cannot *select* on
+# gpu=on. So this DaemonSet runs on all NON-control-plane nodes and detects the
+# GPU at runtime (nsenter into the host's nvidia-smi). It labels gpu=on only
+# where a GPU is present; nodes without one are left untouched. Detection at
+# runtime keeps it correct across Warewulf reprovision with no per-node editing.
+#
+# NODE TYPE: runs on workers (control-plane excluded via nodeAffinity).
+# Auto-deploy: lands on the first control-plane only; applies cluster-wide.
+# Numbered 09 so the label exists before 10/11/70 — though DaemonSets retry, so
+# ordering is best-effort convenience, not a hard dependency.
+#
+# The pod is privileged + hostPID and uses nsenter to read the HOST's nvidia-smi,
+# then PATCHes the Node via the in-cluster API with its SA token. It re-checks
+# hourly so the label survives node reprovisioning / driver changes.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gpu-autolabel
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gpu-autolabel
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gpu-autolabel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gpu-autolabel
+subjects:
+  - kind: ServiceAccount
+    name: gpu-autolabel
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-autolabel
+  namespace: kube-system
+  labels:
+    app: gpu-autolabel
+spec:
+  selector:
+    matchLabels:
+      app: gpu-autolabel
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: gpu-autolabel
+    spec:
+      serviceAccountName: gpu-autolabel
+      hostPID: true
+      # Run on workers only; control-plane VMs have no GPU.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: autolabel
+          image: ubuntu:24.04
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -u
+              export DEBIAN_FRONTEND=noninteractive
+              if ! command -v curl >/dev/null 2>&1; then
+                apt-get update -qq && apt-get install -y -qq curl util-linux ca-certificates >/dev/null 2>&1 || true
+              fi
+              API=https://kubernetes.default.svc
+              SA=/var/run/secrets/kubernetes.io/serviceaccount
+              CACERT=$SA/ca.crt
+              NSE="nsenter -t 1 -m -u -i -n -p --"
+
+              has_gpu() {
+                # True only if the host's nvidia-smi enumerates at least one GPU.
+                $NSE nvidia-smi -L 2>/dev/null | grep -q '^GPU '
+              }
+
+              label_gpu_on() {
+                local TOKEN CODE
+                TOKEN=$(cat $SA/token)
+                CODE=$(curl -sS --cacert $CACERT -H "Authorization: Bearer $TOKEN" \
+                  -H "Content-Type: application/merge-patch+json" \
+                  -X PATCH "$API/api/v1/nodes/$NODE_NAME" \
+                  -d '{"metadata":{"labels":{"gpu":"on"}}}' \
+                  -o /dev/null -w '%{http_code}')
+                echo "labeled $NODE_NAME gpu=on -> HTTP $CODE"
+              }
+
+              while true; do
+                if has_gpu; then
+                  label_gpu_on || echo "patch failed; will retry"
+                else
+                  echo "no GPU detected on $NODE_NAME; leaving unlabeled"
+                fi
+                sleep 3600
+              done

@@ -115,7 +115,7 @@ Internet → MetalLB VIP (129.128.190.55:80) → Tyk OSS (auth, rate-limit)
 ```
 
 - **Gateway image**: `rkhoja/aleph:latest` (CI auto-builds on `main` push touching `gateway/**`, ~4 min)
-- **Gateway deploy**: `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>` or `kubectl rollout restart deploy/model-gateway -n models`
+- **Gateway deploy**: `kubectl rollout restart deploy/model-gateway -n models` — the manifest pins `:latest` + `imagePullPolicy: Always`, so a restart always pulls the newest CI build. (Pin a specific immutable build only if you need to: `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>`.)
 - **Tyk keys**: `gateway/tyk/tyk-keys.sh` (create/list/inspect/revoke)
 - **Gateway update**: `kubectl rollout restart deploy/model-gateway -n models` (CI auto-builds `rkhoja/aleph:latest` on every `gateway/**` push)
 

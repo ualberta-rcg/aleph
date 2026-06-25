@@ -3,6 +3,69 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-25 — fix public VIP binding (lo via systemd, drop broken netplan dummy)
+
+The netplan `60-public-vip.yaml` used a top-level `dummy:` key to carry the VIP on a
+`dummy0` interface. That key is invalid on this netplan build — `netplan generate` fails
+on the whole file, so `dummy0` was never created and the VIP was bound to no local
+interface (verified: `lo` had only 127.0.0.1, no `dummy0` on any control-plane node).
+The proven recipe was always `.55`-on-`lo`, but netplan cannot address `lo`.
+
+- `etc/systemd/system/metallb-vip-lo.service` NEW (control-plane overlay) — systemd
+  oneshot that runs `ip address add __VIP__/32 dev lo` at boot (idempotent via `-`
+  prefix; `ExecStop` removes it). Enabled through the `multi-user.target.wants/` symlink,
+  mirroring the `nvidia-persistenced.service` pattern. Uses the `__VIP__` site token.
+- `etc/netplan/60-public-vip.yaml` — removed the rejected `dummy:` block; the file now
+  only does the NIC plumbing (public NIC IP-free + on-link subnet route). Header updated
+  to point at the systemd unit for the VIP-on-`lo` piece.
+- Docs: `SITE-VALUES.md` (added the unit to `__VIP__`'s file list + the overlay-contents
+  table) and `ww-overlays/README.md` (MetalLB recipe table + non-manifest-pieces note).
+- Repo-only; NOT applied to the live cluster. The running VIP already works (MetalLB L2
+  ARP + kube-proxy don't need the `lo` address for the internal path); this binding is the
+  reply-sourcing hardening for external/asymmetric clients and survives reprovision once
+  the control-plane overlay is baked into the WW image.
+
+## 2026-06-25 — standardize gateway deploy on the `:latest` tag
+
+Docs-only alignment. The infra already deployed `latest` — the aleph auto-deploy
+manifest (`63-model-gateway.yaml`) pins `image: rkhoja/aleph:latest` +
+`imagePullPolicy: Always`, and CI (`deploy-gateway.yml`) already builds/pushes both
+`:latest` (moving) and `gateway-<sha>` (immutable) on every `gateway/**` push. Only the
+quick-reference docs still led with the commit tag, nudging people to pin shas by default.
+
+- `CLAUDE.md`, `docs/MODEL-CAMPAIGN-PLAN.md`: the primary deploy step is now
+  `kubectl rollout restart deploy/model-gateway -n models` (pulls the newest `:latest`
+  build); `kubectl set image … gateway-<sha>` is demoted to an optional "pin a specific
+  immutable build" escape hatch.
+- No manifest/CI change — behavior already correct; this removes the doc/practice drift.
+
+## 2026-06-25 — auto-produce `gpu=on` (09-gpu-autolabel)
+
+Fixes the post-reprovision gap where GPU workers came up **unlabeled**: nothing in
+the repo or WW image actually produced `gpu=on`, so HAMi device-plugin,
+`11-node-labeler` (the `aleph.*` usage-accounting labels), and `70-rdma-device-plugin`
+all sat at `0/0` and `nvidia.com/gpu` / `rdma/roce` were never advertised. The docs
+claimed the label was "baked by the WW image" but no file set it.
+
+- `09-gpu-autolabel.yaml` NEW — privileged hostPID DaemonSet (ServiceAccount +
+  ClusterRole nodes get/list/patch + binding). Runs on all **non-control-plane**
+  nodes (nodeAffinity excludes `node-role.kubernetes.io/control-plane`), detects a
+  GPU at runtime via `nsenter … nvidia-smi -L`, and PATCHes `gpu=on` only where a
+  GPU exists. Re-checks hourly so the label self-heals across Warewulf reprovision.
+  Cannot select on `gpu=on` (it produces it), hence runtime detection.
+- Everything else cascades: once `gpu=on` lands, `10-hami` (device-plugin),
+  `11-node-labeler` (`aleph.gpu/product` etc), and `70-rdma-device-plugin`
+  (`rdma/roce`) schedule on their own. No new manifest needed for the `aleph.*`
+  logging labels — they were already automated, just gated on `gpu=on`.
+- Numbered `09` so the label exists before `10/11/70`; DaemonSets retry regardless.
+- Docs: corrected `10-hami.yaml` header and `ww-overlays/README.md` (manifest table,
+  boot-order, descriptions) to state `09-gpu-autolabel` is the `gpu=on` producer,
+  replacing the inaccurate "baked by the WW image" claim.
+- NOT YET APPLIED to the live cluster / not committed — manifest authored only.
+  Follow-up: drop into `/etc/rancher/manifests/` (or bake the overlay) and verify
+  `kubectl get nodes -l gpu=on` shows both workers, then confirm HAMi/RDMA/node-labeler
+  go Ready and `nvidia.com/gpu` + `aleph.*` labels appear.
+
 ## 2026-06-25 — split QUICKSTART.md out of README
 
 - `QUICKSTART.md` NEW — moved the Quickstart (cluster bring-up, secrets, deploy +

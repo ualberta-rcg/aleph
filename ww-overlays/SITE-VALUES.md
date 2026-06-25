@@ -18,7 +18,7 @@ the only overlay carrying tokens; `common` and `gpu-worker` have none).
 | `__K8S_VERSION__` | `etc/rancher/manifests/10-hami.yaml` | `v1.36.1` | Must match cluster Kubernetes version exactly. HAMi ships a patched kube-scheduler pinned to this version. |
 | `__NFS_SERVER__` | `etc/rancher/manifests/30-nfs.yaml` | *(your NFS host)* | The NFS server hostname or IP for model-weight storage. |
 | `__NFS_PATH__` | `etc/rancher/manifests/30-nfs.yaml` | *(your export path)* | NFS export path. The provisioner creates subdirs here per PVC. |
-| `__VIP__` | `etc/rancher/manifests/41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | *(your public IP)* | The public IP MetalLB will own. Must be routable to the control-plane public NIC. |
+| `__VIP__` | `etc/rancher/manifests/41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml`, `etc/systemd/system/metallb-vip-lo.service` | *(your public IP)* | The public IP MetalLB will own. Must be routable to the control-plane public NIC. The `metallb-vip-lo.service` binds it to `lo` so node replies source from it. |
 | `__PUBLIC_NIC__` | `etc/rancher/manifests/41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | *(your public NIC)* | The control-plane NIC on the public VLAN. Run `ip link` on the node to confirm. |
 | `__PUBLIC_SUBNET__` | `etc/netplan/60-public-vip.yaml` | *(e.g. a.b.c.0/28)* | The public subnet, on-link via `__PUBLIC_NIC__` for destination routing. |
 | `__PUBLIC_GW__` | `etc/netplan/60-public-vip.yaml` | *(your public gw)* | Public gateway IP (only needed for Internet clients, see commented block in netplan). |
@@ -45,7 +45,8 @@ the only overlay carrying tokens; `common` and `gpu-worker` have none).
 |---|---|---|
 | `common/etc/sysctl.d/90-inotify.conf` | all nodes | Raise `fs.inotify.max_user_instances` for dense-pod nodes (optional polish) |
 | `control-plane/etc/rancher/manifests/*` | control-plane (RKE2 applies cluster-wide) | The full auto-deploy set (see README table) |
-| `control-plane/etc/netplan/60-public-vip.yaml` | control-plane only | Public NIC / VIP plumbing for MetalLB L2 |
+| `control-plane/etc/netplan/60-public-vip.yaml` | control-plane only | Public NIC plumbing for MetalLB L2 (IP-free NIC + on-link route) |
+| `control-plane/etc/systemd/system/metallb-vip-lo.service` | control-plane only | Bind the VIP to `lo` at boot (`ip addr add __VIP__/32 dev lo`) — netplan can't address `lo` |
 | `control-plane/etc/sysctl.d/99-public-vip.conf` | control-plane only | `rp_filter=0`, ARP suppress for the VIP |
 | `gpu-worker/etc/systemd/system/nvidia-persistenced.service` | GPU workers | Enable NVIDIA persistence mode at boot (optional polish) |
 | `gpu-worker/etc/modules-load.d/rdma.conf` | GPU workers | Load RDMA/RoCE kernel modules at boot so `rdma/roce` is advertised (see NCCL-ROCE.md) |

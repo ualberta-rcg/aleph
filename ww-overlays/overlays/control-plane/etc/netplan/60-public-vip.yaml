@@ -6,13 +6,17 @@
 # SITE VALUES: __PUBLIC_NIC__, __PUBLIC_SUBNET__, __PUBLIC_GW__, __VIP__  (see SITE-VALUES.md)
 #
 # Recipe (proven in production): public NIC UP but IP-free (unnumbered) — MetalLB owns the VIP at
-# L2; VIP carried on a dummy interface (local address, loopback-equivalent — netplan cannot
-# address `lo`); public subnet on-link via the NIC (DESTINATION routing — replies to public
-# hosts route out the NIC by destination, which is what actually works).
+# L2; public subnet on-link via the NIC (DESTINATION routing — replies to public hosts route out
+# the NIC by destination, which is what actually works).
 #
-# Fallbacks if this netplan is rejected on your distro:
-#   - dummy rejected:           ip addr add __VIP__/32 dev lo
-#   - on-link route rejected:   ip route add __PUBLIC_SUBNET__ dev __PUBLIC_NIC__
+# NOTE: the VIP itself is NOT carried here. netplan cannot address `lo`, and the `dummy:` /
+# `dummy-devices:` key is rejected on this netplan build (the whole file fails to parse), so the
+# VIP-as-local-address piece lives in a systemd oneshot instead:
+#   etc/systemd/system/metallb-vip-lo.service  → `ip address add __VIP__/32 dev lo`
+# This file now does only the NIC plumbing (IP-free + on-link route).
+#
+# Fallback if the on-link route is rejected on your distro:
+#   ip route add __PUBLIC_SUBNET__ dev __PUBLIC_NIC__
 network:
   version: 2
   ethernets:
@@ -27,7 +31,3 @@ network:
         # Safe: the cluster subnet stays on the cluster NIC's connected route.
         # - to: default
         #   via: __PUBLIC_GW__
-  dummy:
-    dummy0:
-      addresses:
-        - __VIP__/32               # VIP as a local address so replies source from it

@@ -73,6 +73,7 @@ No deploy script, no SSH push. Provision the node → everything comes up.
 |---|---|---|
 | `00-cert-manager.yaml` | all | – |
 | `01-cluster-issuer.yaml` | all | `__ACME_EMAIL__` |
+| `09-gpu-autolabel.yaml` | workers (autodetected) | – |
 | `10-hami.yaml` | GPU nodes | `__K8S_VERSION__` |
 | `11-node-labeler.yaml` | GPU nodes (`gpu=on`) | – |
 | `30-nfs.yaml` | all | `__NFS_SERVER__`, `__NFS_PATH__` |
@@ -89,8 +90,10 @@ No deploy script, no SSH push. Provision the node → everything comes up.
 | `63-model-gateway.yaml` | all (runs on CP) | – |
 | `70-rdma-device-plugin.yaml` | GPU nodes (`gpu=on`) | `__ROCE_IFNAME__` |
 
-`11-node-labeler` stamps `aleph.gpu/product` etc onto GPU nodes (usage accounting);
-`54-tyk-middleware` carries the JSVM catch-all-auth + identity-injection hooks.
+`09-gpu-autolabel` detects an NVIDIA GPU on each worker (runtime nsenter) and stamps
+`gpu=on` — the gate that `10-hami`, `11-node-labeler`, and `70-rdma-device-plugin` all
+select on; `11-node-labeler` then stamps `aleph.gpu/product` etc onto GPU nodes (usage
+accounting); `54-tyk-middleware` carries the JSVM catch-all-auth + identity-injection hooks.
 
 "Applies to" is which workloads land where; all manifests are cluster-wide objects applied
 once by a server node.
@@ -115,6 +118,7 @@ independently. The serving-stack Jobs (60–63) self-order via internal wait loo
 
 ```
 00 cert-manager ──► 60-istio ──► 61-knative ──► 62-kserve ──► 63-model-gateway
+09 gpu-autolabel──► gpu=on on GPU workers ──► unblocks 10-hami / 11-node-labeler / 70-rdma
 10 hami         ──► device-plugin on gpu=on nodes (independent)
 30 nfs          ──► StorageClass (independent)
 40 metallb      ──► 41-metallb-vip (CRD-race: retries until MetalLB CRDs land — benign)
@@ -157,11 +161,13 @@ Clients → __VIP__:80 → Tyk (auth, rate-limit) → model-gateway → KServe p
 | `40-metallb.yaml` | Installs MetalLB (chart, frr sidecar, pinned to CP nodes) | control-plane manifest |
 | `41-metallb-vip.yaml` | VIP pool + L2Advertisement on `__PUBLIC_NIC__` | control-plane manifest |
 | `52-tyk-loadbalancer.yaml` | LoadBalancer svc → gets `__VIP__` from the pool | control-plane manifest |
-| `etc/netplan/60-public-vip.yaml` | NIC up IP-free, VIP on dummy0, subnet on-link | control-plane node overlay |
+| `etc/netplan/60-public-vip.yaml` | NIC up IP-free, subnet on-link (no VIP here) | control-plane node overlay |
+| `etc/systemd/system/metallb-vip-lo.service` | VIP bound to `lo` (`ip addr add __VIP__/32 dev lo`) | control-plane node overlay |
 | `etc/sysctl.d/99-public-vip.conf` | `rp_filter=0`, ARP suppress | control-plane node overlay |
 
-The netplan + sysctl are the only non-manifest pieces — they configure the host network that
-MetalLB L2 relies on, so they live in the `control-plane` overlay.
+The netplan + sysctl + the `metallb-vip-lo.service` unit are the non-manifest pieces — they
+configure the host network that MetalLB L2 relies on, so they live in the `control-plane`
+overlay. (The VIP-on-`lo` lives in the systemd unit because netplan can't address `lo`.)
 
 ---
 
