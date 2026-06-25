@@ -66,16 +66,17 @@ Each model in `models/<name>/` includes a `details.yaml` card, `inferenceservice
 
 ```
    HPC job / SDK / curl
-          │  http(s)  (OpenAI or Anthropic dialect)
+          │  HTTPS  (OpenAI or Anthropic dialect)
           ▼
   ┌─────────────────┐
   │     MetalLB     │  public VIP (L2) advertised out the head node's public NIC;
   │                 │  hands traffic to the Tyk LoadBalancer Service
   └────────┬────────┘
            ▼
-  ┌─────────────────┐
-  │    Tyk OSS      │  catch-all auth (Bearer / x-api-key / api-key / ?api_key=),
-  │                 │  rate-limit, JSVM middleware stamps X-Aleph-* identity headers
+  ┌─────────────────┐  ◄── cert-manager + Let's Encrypt (ACME HTTP-01) issues the
+  │    Tyk OSS      │      public TLS cert; Tyk terminates HTTPS here.
+  │ (TLS terminate) │      catch-all auth (Bearer / x-api-key / api-key / ?api_key=),
+  │                 │      rate-limit, JSVM middleware stamps X-Aleph-* identity headers
   └────────┬────────┘
            ▼
   ┌─────────────────┐
