@@ -26,7 +26,9 @@ ww-overlays/
     gpu-worker/        ← baked on GPU WORKER nodes
       etc/systemd/system/nvidia-persistenced.service
       etc/systemd/system/multi-user.target.wants/nvidia-persistenced.service
+      etc/modules-load.d/rdma.conf   ← RoCE kernel modules (see NCCL-ROCE.md)
   post-deploy/         ← applied after first boot (see post-deploy/README.md)
+  NCCL-ROCE.md         ← making NCCL run over RoCE (provider injection recipe)
 ```
 
 ### Node assignment
@@ -35,7 +37,7 @@ ww-overlays/
 |---|---|---|
 | `common` | all nodes | inotify limit bump (dense-pod headroom) |
 | `control-plane` | control-plane nodes | RKE2 auto-deploy manifests + public-VIP netplan/sysctl |
-| `gpu-worker` | GPU workers | NVIDIA persistence-mode unit |
+| `gpu-worker` | GPU workers | NVIDIA persistence-mode unit + RoCE kernel modules |
 
 **About the manifests:** RKE2 reads `/etc/rancher/manifests/` only on server (control-plane)
 nodes and applies each file cluster-wide. They only need to land on the **first / bootstrap**
@@ -82,6 +84,7 @@ No deploy script, no SSH push. Provision the node → everything comes up.
 | `61-knative.yaml` | all (Job) | – |
 | `62-kserve.yaml` | all (Job) | – |
 | `63-model-gateway.yaml` | all (runs on CP) | – |
+| `70-rdma-device-plugin.yaml` | GPU nodes (`gpu=on`) | `__ROCE_IFNAME__` |
 
 "Applies to" is which workloads land where; all manifests are cluster-wide objects applied
 once by a server node.
@@ -159,5 +162,6 @@ MetalLB L2 relies on, so they live in the `control-plane` overlay.
 ## See also
 
 - `SITE-VALUES.md` — all tokens, file locations, example values, regression warnings
+- `NCCL-ROCE.md` — making NCCL collectives run over RoCE (root cause + per-pod recipe)
 - `post-deploy/README.md` — steps after first boot (Tyk key, smoke test, adding models)
 - `docs/RUNBOOK.md` — cluster ops, Tyk key management, troubleshooting

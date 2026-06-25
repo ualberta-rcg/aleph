@@ -24,6 +24,7 @@ the only overlay carrying tokens; `common` and `gpu-worker` have none).
 | `__PUBLIC_GW__` | `etc/netplan/60-public-vip.yaml` | *(your public gw)* | Public gateway IP (only needed for Internet clients, see commented block in netplan). |
 | `__ACME_EMAIL__` | `etc/rancher/manifests/01-cluster-issuer.yaml` | *(your ops email)* | Email for Let's Encrypt ACME registration. Used for cert expiry notices. |
 | `__TYK_API_SECRET__` | `etc/rancher/manifests/51-tyk.yaml` | *(set from .env)* | Tyk gateway admin secret. Also used by `gateway/tyk/tyk-keys.sh`. **Never commit the real value.** See `.env` / `.env.example`. |
+| `__ROCE_IFNAME__` | `etc/rancher/manifests/70-rdma-device-plugin.yaml` | `eth0` | The GPU worker's active RoCE NIC (the one that is `PORT_ACTIVE` under `/sys/class/infiniband`). The device plugin selects it to advertise `rdma/roce`. Confirm with `ibv_devinfo` / `ip link` on a GPU node. |
 
 > Fill in the example column with your own values in `site.env` — keep concrete site values
 > out of the committed manifests (they stay tokenized).
@@ -47,6 +48,8 @@ the only overlay carrying tokens; `common` and `gpu-worker` have none).
 | `control-plane/etc/netplan/60-public-vip.yaml` | control-plane only | Public NIC / VIP plumbing for MetalLB L2 |
 | `control-plane/etc/sysctl.d/99-public-vip.conf` | control-plane only | `rp_filter=0`, ARP suppress for the VIP |
 | `gpu-worker/etc/systemd/system/nvidia-persistenced.service` | GPU workers | Enable NVIDIA persistence mode at boot (optional polish) |
+| `gpu-worker/etc/modules-load.d/rdma.conf` | GPU workers | Load RDMA/RoCE kernel modules at boot so `rdma/roce` is advertised (see NCCL-ROCE.md) |
+| `control-plane/etc/rancher/manifests/70-rdma-device-plugin.yaml` | control-plane (advertises on `gpu=on`) | RDMA shared device plugin → `rdma/roce` resource for NCCL over RoCE |
 
 > `etc/rancher/manifests/` is read only by `rke2-server` (control-plane) nodes; `rke2-agent`
 > (GPU workers) ignores it. The manifests are cluster-wide objects applied once by a server
