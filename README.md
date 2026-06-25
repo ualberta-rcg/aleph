@@ -223,11 +223,7 @@ Borges' 1945 story describes a point in a Buenos Aires cellar that contains ever
 - [Alberta Machine Intelligence Institute (AMII)](https://www.amii.ca/)
 - [Digital Research Alliance of Canada](https://alliancecan.ca/)
 - [HAMi — Heterogeneous AI Computing Virtualization Middleware](https://github.com/Project-HAMi/HAMi)
-- [warewulf-rke2-hami — Node OS image](https://github.com/ualberta-rcg/warewulf-rke2-hami)
-- [KServe](https://kserve.github.io/website/latest/)
-- [Knative Serving](https://knative.dev/docs/)
-- [RKE2](https://docs.rke2.io/)
-- [CERN ML Platform](https://ml.docs.cern.ch/serving/)
+- [WareWulf RKE2 + Hami Node Image](https://github.com/ualberta-rcg/warewulf-rke2-hami)
 
 ---
 
