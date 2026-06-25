@@ -45,6 +45,25 @@ The cluster nodes are built on the [`warewulf-rke2-hami`](https://github.com/ual
 - **Usage accounting / fairshare** — per-request JSON-lines log (identity, tokens, GPU SKU, node, gpu-seconds) + Prometheus metrics on `/metrics`
 - **NFS-backed weights** — model weights on shared NFS PVCs; survive pod and node churn without re-download
 
+## 🤖 Agentic Research
+
+Aleph is designed as infrastructure for autonomous research workflows. An agent running on the Alliance cluster can call any model as a standard HTTP tool from inside a Slurm job — ESMFold to fold a candidate protein, MACE-MH-1 for energy minimization, Nucleotide Transformer for genomic embeddings, Aurora for a weather forecast, and an LLM to synthesize the results — all through one authenticated endpoint.
+
+Models wake on first call and return to zero between steps, so a multi-step agentic pipeline pays for GPU time only when a model is actually running. Science embedding models (SciBERT, ESM2, DNABERT, AstroCLIP, MatSciBERT, SciNCL) make RAG over domain literature a native capability. Cold-start latency is documented in each model card and the gateway returns `503 + Retry-After` that well-behaved clients handle automatically.
+
+This vision — autonomous agents using HPC batch resources and live inference models interchangeably — was shaped by work at DeepMind, Anthropic, CERN, and Chinese AI research labs, and by the Alliance's goal of making national research infrastructure useful to the next generation of agentic science.
+
+## 🌐 Elastic Cluster
+
+Aleph scales by reprovisioning. The base OS image from [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) contains Ubuntu 24.04, NVIDIA drivers, HAMi runtime, and RKE2. Each node type gets a different overlay:
+
+- **Control-plane nodes** — carry the RKE2 auto-deploy manifests that bootstrap the entire platform stack and the public VIP network config; boot one and the cluster comes up
+- **GPU worker nodes** — carry NVIDIA persistence-mode and RoCE/RDMA kernel modules; boot one and it joins the GPU pool automatically, no `kubectl join`
+
+**To add inference capacity:** provision a new GPU worker with the `warewulf-rke2-hami` image + `gpu-worker` overlay → it joins on boot.
+
+**To shift to HPC batch:** reprovision those same GPU workers with the Slurm node image (or a Proxmox VM) → capacity returns to batch scheduling. No hardware change, no reinstall.
+
 ## 🚀 Quickstart
 
 ### 1. Clone and configure
@@ -216,25 +235,6 @@ kubectl rollout restart deploy/model-gateway -n models
 | `61–62` Knative + KServe | Scale-to-zero autoscaling and the InferenceService CRD |
 | `63` model-gateway | The FastAPI router (runs on control-plane nodes only) |
 | `70` RDMA device plugin | Exposes the RoCE NIC as `rdma/roce` so NCCL runs collectives over RDMA — required for multi-GPU tensor-parallel models |
-
-## 🤖 Agentic Research
-
-Aleph is designed as infrastructure for autonomous research workflows. An agent running on the Alliance cluster can call any model as a standard HTTP tool from inside a Slurm job — ESMFold to fold a candidate protein, MACE-MH-1 for energy minimization, Nucleotide Transformer for genomic embeddings, Aurora for a weather forecast, and an LLM to synthesize the results — all through one authenticated endpoint.
-
-Models wake on first call and return to zero between steps, so a multi-step agentic pipeline pays for GPU time only when a model is actually running. Science embedding models (SciBERT, ESM2, DNABERT, AstroCLIP, MatSciBERT, SciNCL) make RAG over domain literature a native capability. Cold-start latency is documented in each model card and the gateway returns `503 + Retry-After` that well-behaved clients handle automatically.
-
-This vision — autonomous agents using HPC batch resources and live inference models interchangeably — was shaped by work at DeepMind, Anthropic, CERN, and Chinese AI research labs, and by the Alliance's goal of making national research infrastructure useful to the next generation of agentic science.
-
-## 🌐 Elastic Cluster
-
-Aleph scales by reprovisioning. The base OS image from [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) contains Ubuntu 24.04, NVIDIA drivers, HAMi runtime, and RKE2. Each node type gets a different overlay:
-
-- **Control-plane nodes** — carry the RKE2 auto-deploy manifests that bootstrap the entire platform stack and the public VIP network config; boot one and the cluster comes up
-- **GPU worker nodes** — carry NVIDIA persistence-mode and RoCE/RDMA kernel modules; boot one and it joins the GPU pool automatically, no `kubectl join`
-
-**To add inference capacity:** provision a new GPU worker with the `warewulf-rke2-hami` image + `gpu-worker` overlay → it joins on boot.
-
-**To shift to HPC batch:** reprovision those same GPU workers with the Slurm node image (or a Proxmox VM) → capacity returns to batch scheduling. No hardware change, no reinstall.
 
 ## 🔗 References
 
