@@ -1,0 +1,154 @@
+# Node labeler — RKE2 auto-deploy manifest (ServiceAccount + ClusterRole + DaemonSet).
+# -----------------------------------------------------------------------------
+# Auto-detects each GPU worker's hardware and stamps it onto the Node object as
+# labels, so the model-gateway can attach real compute provenance (GPU product,
+# CPU model, core/memory counts) to every usage/accounting record for fairshare.
+#
+# NODE TYPE: runs only on GPU workers (nodeSelector gpu=on).
+# Auto-deploy: lands on the first control-plane only; applies cluster-wide.
+#
+# WHY a DaemonSet (not static RKE2 node-labels): the same overlay image ships to
+# every site, and GPU/CPU SKUs differ per node. Detecting at runtime keeps the
+# labels correct without per-node, per-site hand editing.
+#
+# Labels written (all under the aleph.* prefix so they are easy to select/scrub):
+#   aleph.gpu/product      e.g. L40S          (vendor prefix stripped, sanitized)
+#   aleph.gpu/count        e.g. 4
+#   aleph.gpu/memory-mib   e.g. 46068         (per-GPU total VRAM)
+#   aleph.cpu/model        e.g. Intel_R__Xeon_R__Gold_6338   (sanitized to label rules)
+#   aleph.cpu/cores        e.g. 128
+#   aleph.node/memory-gib  e.g. 1007
+#
+# The pod is privileged + hostPID and uses nsenter to read the HOST's nvidia-smi /
+# lscpu / /proc, then PATCHes the Node via the in-cluster API with its SA token.
+# It re-applies hourly so relabels survive node reprovisioning / driver changes.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-labeler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-labeler
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-labeler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-labeler
+subjects:
+  - kind: ServiceAccount
+    name: node-labeler
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-labeler
+  namespace: kube-system
+  labels:
+    app: node-labeler
+spec:
+  selector:
+    matchLabels:
+      app: node-labeler
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: node-labeler
+    spec:
+      serviceAccountName: node-labeler
+      hostPID: true
+      nodeSelector:
+        gpu: "on"
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: labeler
+          image: ubuntu:24.04
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -u
+              export DEBIAN_FRONTEND=noninteractive
+              if ! command -v curl >/dev/null 2>&1; then
+                apt-get update -qq && apt-get install -y -qq curl util-linux ca-certificates >/dev/null 2>&1 || true
+              fi
+              API=https://kubernetes.default.svc
+              SA=/var/run/secrets/kubernetes.io/serviceaccount
+              CACERT=$SA/ca.crt
+              NSE="nsenter -t 1 -m -u -i -n -p --"
+
+              sanitize() {
+                # K8s label values: [A-Za-z0-9._-], <=63 chars, must start/end alnum.
+                echo "$1" | sed -e 's/[^A-Za-z0-9._-]/_/g' | cut -c1-63 \
+                          | sed -e 's/^[^A-Za-z0-9]*//' -e 's/[^A-Za-z0-9]*$//'
+              }
+              num() { echo "$1" | tr -dc '0-9'; }
+
+              label_node() {
+                local GPU_NAME GPU_COUNT GPU_MEM CPU_MODEL CPU_CORES MEM_KB MEM_GIB
+                GPU_NAME=$($NSE nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+                GPU_COUNT=$(num "$($NSE nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)")
+                GPU_MEM=$(num "$($NSE nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)")
+                CPU_MODEL=$($NSE lscpu 2>/dev/null | sed -n 's/^Model name:[[:space:]]*//p' | head -1)
+                CPU_CORES=$(num "$($NSE nproc 2>/dev/null)")
+                MEM_KB=$(num "$($NSE cat /proc/meminfo 2>/dev/null | sed -n 's/^MemTotal:[[:space:]]*\([0-9]*\).*/\1/p')")
+                MEM_GIB=$(( ${MEM_KB:-0} / 1024 / 1024 ))
+
+                local GPU_PRODUCT CPU_MODEL_S LABELS TOKEN CODE
+                GPU_PRODUCT=$(sanitize "$(echo "$GPU_NAME" | sed -e 's/^NVIDIA //' -e 's/^Tesla //')")
+                CPU_MODEL_S=$(sanitize "$CPU_MODEL")
+
+                LABELS=""
+                add() { [ -n "$2" ] && LABELS="$LABELS\"$1\":\"$2\","; }
+                add "aleph.gpu/product"     "$GPU_PRODUCT"
+                add "aleph.gpu/count"       "$GPU_COUNT"
+                add "aleph.gpu/memory-mib"  "$GPU_MEM"
+                add "aleph.cpu/model"       "$CPU_MODEL_S"
+                add "aleph.cpu/cores"       "$CPU_CORES"
+                add "aleph.node/memory-gib" "$MEM_GIB"
+                [ -z "$LABELS" ] && { echo "no hardware detected on $NODE_NAME; skip"; return; }
+
+                TOKEN=$(cat $SA/token)
+                CODE=$(curl -sS --cacert $CACERT -H "Authorization: Bearer $TOKEN" \
+                  -H "Content-Type: application/merge-patch+json" \
+                  -X PATCH "$API/api/v1/nodes/$NODE_NAME" \
+                  -d "{\"metadata\":{\"labels\":{${LABELS%,}}}}" \
+                  -o /dev/null -w '%{http_code}')
+                echo "labeled $NODE_NAME (gpu=$GPU_PRODUCT x$GPU_COUNT cpu_cores=$CPU_CORES mem=${MEM_GIB}Gi) -> HTTP $CODE"
+              }
+
+              while true; do
+                label_node || echo "label pass failed; will retry"
+                sleep 3600
+              done

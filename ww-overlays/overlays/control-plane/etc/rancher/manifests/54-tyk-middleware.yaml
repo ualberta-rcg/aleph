@@ -1,0 +1,80 @@
+# Tyk JSVM middleware — RKE2 auto-deploy manifest (ConfigMap).
+#
+# APPLIES TO: all nodes (cluster-wide). No site values to fill.
+#
+# Committed + auto-deployed form of gateway/tyk/middleware/*.js. Mounted into the
+# Tyk gateway pod at /opt/tyk-gateway/middleware (see extraVolumeMounts in
+# 51-tyk.yaml) and referenced by the API definition's custom_middleware block
+# (53-tyk-api-definitions.yaml). Requires JSVM enabled (TYK_GW_ENABLEJSVM=true).
+#
+#   normalizeAuth.js  (pre)  — catch-all: accept the API key under Authorization
+#                              Bearer / x-api-key / api-key / x-goog-api-key /
+#                              ?api_key=, normalize to Authorization: Bearer.
+#                              Strips client X-Aleph-* identity headers (anti-spoof).
+#   injectIdentity.js (post) — stamp X-Aleph-Identity / X-Aleph-Account /
+#                              X-Aleph-Identity-Type from the key's session
+#                              metadata so the gateway can attribute usage.
+#
+# If you change either JS file, update BOTH gateway/tyk/middleware/*.js and this
+# ConfigMap, then: kubectl apply -f 54-tyk-middleware.yaml &&
+#                  kubectl rollout restart deploy/gateway-tyk-oss-tyk-gateway -n tyk
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tyk-middleware
+  namespace: tyk
+data:
+  normalizeAuth.js: |
+    // Tyk JSVM pre-auth middleware: catch-all API key normalization.
+    var normalizeAuth = new TykJS.TykMiddleware.NewMiddleware({});
+
+    normalizeAuth.NewProcessRequest(function(request, session) {
+        function firstHeader(name) {
+            var v = request.Headers[name];
+            if (v && v.length) { return v[0]; }
+            return "";
+        }
+        function firstParam(name) {
+            if (!request.Params) { return ""; }
+            var v = request.Params[name];
+            if (!v) { return ""; }
+            return (typeof v === "string") ? v : (v[0] || "");
+        }
+
+        var key = "";
+        var auth = firstHeader("Authorization");
+        if (auth) {
+            var m = auth.match(/^[Bb]earer\s+(.+)$/);
+            key = m ? m[1] : auth;
+        }
+        if (!key) { key = firstHeader("X-Api-Key"); }
+        if (!key) { key = firstHeader("Api-Key"); }
+        if (!key) { key = firstHeader("X-Goog-Api-Key"); }
+        if (!key) { key = firstParam("api_key") || firstParam("api-key") || firstParam("key"); }
+
+        if (key) {
+            request.SetHeaders["Authorization"] = "Bearer " + key;
+        }
+
+        request.DeleteHeaders.push("X-Aleph-Identity");
+        request.DeleteHeaders.push("X-Aleph-Account");
+        request.DeleteHeaders.push("X-Aleph-Identity-Type");
+
+        return normalizeAuth.ReturnData(request, {});
+    });
+  injectIdentity.js: |
+    // Tyk JSVM post-auth middleware: inject authoritative identity headers.
+    var injectIdentity = new TykJS.TykMiddleware.NewMiddleware({});
+
+    injectIdentity.NewProcessRequest(function(request, session) {
+        var md = (session && session.meta_data) ? session.meta_data : {};
+        var identity = md.identity || md.username || "";
+        var account = md.account || identity;
+        var itype = md.identity_type || "service";
+
+        request.SetHeaders["X-Aleph-Identity"] = String(identity);
+        request.SetHeaders["X-Aleph-Account"] = String(account);
+        request.SetHeaders["X-Aleph-Identity-Type"] = String(itype);
+
+        return injectIdentity.ReturnData(request, {});
+    });

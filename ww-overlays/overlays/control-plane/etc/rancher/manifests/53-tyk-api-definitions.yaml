@@ -13,7 +13,11 @@
 # The definition:
 #   - Proxies all traffic (listen_path: /) to model-gateway.models.svc.cluster.local:80
 #   - Requires Bearer token auth (use_keyless: false, use_standard_auth: true)
-#   - Authorization header carries the Tyk key (OpenAI/Anthropic SDK compatible)
+#   - custom_middleware (JSVM): normalizeAuth (pre) accepts the key under any
+#     common convention (Authorization Bearer, x-api-key, api-key, x-goog-api-key,
+#     ?api_key=) and injectIdentity (post) stamps X-Aleph-* identity headers from
+#     the key's metadata. JS lives in 54-tyk-middleware.yaml; needs JSVM enabled
+#     (TYK_GW_ENABLEJSVM=true in 51-tyk.yaml).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -39,6 +43,18 @@ data:
         "listen_path": "/",
         "target_url": "http://model-gateway.models.svc.cluster.local:80",
         "strip_listen_path": false
+      },
+      "custom_middleware": {
+        "driver": "otto",
+        "pre": [
+          { "name": "normalizeAuth", "path": "/opt/tyk-gateway/middleware/normalizeAuth.js", "require_session": false }
+        ],
+        "post": [
+          { "name": "injectIdentity", "path": "/opt/tyk-gateway/middleware/injectIdentity.js", "require_session": true }
+        ],
+        "auth_check": { "name": "" },
+        "post_key_auth": [],
+        "response": []
       },
       "active": true,
       "enable_context_vars": true,

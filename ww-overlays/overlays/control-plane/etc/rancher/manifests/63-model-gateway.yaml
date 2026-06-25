@@ -39,6 +39,10 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list"]
+  # Predictor pods: map a model -> the node it landed on (for usage/accounting).
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -49,6 +53,30 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: model-gateway
+subjects:
+  - kind: ServiceAccount
+    name: model-gateway
+    namespace: models
+---
+# Cluster-scoped: read node hardware labels (aleph.gpu/product etc) so usage
+# records can attribute requests to a concrete GPU SKU / node.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: model-gateway-nodes
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: model-gateway-nodes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: model-gateway-nodes
 subjects:
   - kind: ServiceAccount
     name: model-gateway
@@ -109,6 +137,17 @@ spec:
           env:
             - name: MODELS_NAMESPACE
               value: models
+            # Fairshare/accounting: site tag stamped on every usage record.
+            # Set per cluster (e.g. "aleph-vulcan"); defaults to "aleph".
+            - name: SITE_NAME
+              value: aleph
+            # Usage/accounting log lives IN-POD (emptyDir below), separate from
+            # app stdout. Ship it out of band (promtail/fluent-bit) later.
+            - name: GATEWAY_USAGE_LOG
+              value: /var/log/aleph/usage.log
+          volumeMounts:
+            - name: usage-log
+              mountPath: /var/log/aleph
           resources:
             requests:
               cpu: 100m
@@ -128,3 +167,9 @@ spec:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 15
+      volumes:
+        # In-pod usage/accounting log. Survives container restarts within the pod
+        # lifetime; intentionally NOT a hostPath. Tail with:
+        #   kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph/usage.log
+        - name: usage-log
+          emptyDir: {}

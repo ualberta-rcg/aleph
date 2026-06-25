@@ -17,6 +17,18 @@
     "target_url": "http://model-gateway.models.svc.cluster.local:80",
     "strip_listen_path": false
   },
+  "custom_middleware": {
+    "driver": "otto",
+    "pre": [
+      { "name": "normalizeAuth", "path": "/opt/tyk-gateway/middleware/normalizeAuth.js", "require_session": false }
+    ],
+    "post": [
+      { "name": "injectIdentity", "path": "/opt/tyk-gateway/middleware/injectIdentity.js", "require_session": true }
+    ],
+    "auth_check": { "name": "" },
+    "post_key_auth": [],
+    "response": []
+  },
   "active": true,
   "enable_context_vars": true,
   "do_not_track": false

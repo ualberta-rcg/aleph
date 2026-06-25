@@ -57,17 +57,30 @@ spec:
             value: /opt/tyk-gateway/apps
           - name: TYK_GW_ENABLEHASHEDKEYSLISTING
             value: "true"
+          # Enable the JS virtual machine so the API def's custom_middleware
+          # (normalizeAuth / injectIdentity, see 53/54) actually runs.
+          - name: TYK_GW_ENABLEJSVM
+            value: "true"
+          - name: TYK_GW_MIDDLEWAREPATH
+            value: /opt/tyk-gateway/middleware
         # Mount the API definitions ConfigMap (53-tyk-api-definitions.yaml) so Tyk reads it
-        # at /opt/tyk-gateway/apps (the APPPATH above). optional: true so Tyk starts even if
-        # the CM lands after the pod does — it will reload on the next restart.
+        # at /opt/tyk-gateway/apps (the APPPATH above), and the JSVM middleware ConfigMap
+        # (54-tyk-middleware.yaml) at /opt/tyk-gateway/middleware. optional: true so Tyk
+        # starts even if the CMs land after the pod does — it reloads on the next restart.
         extraVolumes:
           - name: api-defs
             configMap:
               name: tyk-api-definitions
               optional: true
+          - name: middleware
+            configMap:
+              name: tyk-middleware
+              optional: true
         extraVolumeMounts:
           - name: api-defs
             mountPath: /opt/tyk-gateway/apps
+          - name: middleware
+            mountPath: /opt/tyk-gateway/middleware
       service:
         type: ClusterIP
         port: 8080

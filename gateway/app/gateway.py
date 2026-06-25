@@ -24,6 +24,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from kubernetes import client, config, watch
 
+import usage
+
 # ── Anthropic Messages API <-> OpenAI Chat Completions translation ──────────────
 # Converts an Anthropic /v1/messages request into an OpenAI chat-completions body,
 # runs it through the normal chat pipeline, then converts the OpenAI response (and
@@ -291,6 +293,10 @@ _OWUI_SIGNALS = {
 CARDS: dict[str, dict] = {}
 # isvc_name -> {"ready": bool}
 ISVC_STATE: dict[str, dict] = {}
+# node name -> {aleph.* label: value} (hardware provenance from node-labeler DS)
+NODE_LABELS: dict[str, dict] = {}
+# k8s_name (ISVC) -> node name of its running predictor pod
+POD_NODE: dict[str, str] = {}
 _STATE_LOCK = threading.Lock()
 
 _DISCOVERY = {"cards_seeded": False, "isvc_seeded": False, "last_event": 0.0}
@@ -548,6 +554,56 @@ def _remove_isvc(isvc: dict) -> None:
         ISVC_STATE.pop(name, None)
 
 
+# ── Node hardware provenance (labels from the node-labeler DaemonSet) ───────────
+def _aleph_labels(labels: dict | None) -> dict:
+    """Keep only the aleph.* hardware labels (gpu/cpu/node provenance)."""
+    return {k: v for k, v in (labels or {}).items() if k.startswith("aleph.")}
+
+
+def _ingest_node(node: Any) -> None:
+    meta = getattr(node, "metadata", None)
+    name = getattr(meta, "name", None)
+    if not name:
+        return
+    with _STATE_LOCK:
+        NODE_LABELS[name] = _aleph_labels(getattr(meta, "labels", None))
+
+
+def _remove_node(node: Any) -> None:
+    name = getattr(getattr(node, "metadata", None), "name", None)
+    if name:
+        with _STATE_LOCK:
+            NODE_LABELS.pop(name, None)
+
+
+def _ingest_pod(pod: Any) -> None:
+    """Map a model's ISVC name -> the node its running predictor pod landed on."""
+    meta = getattr(pod, "metadata", None)
+    spec = getattr(pod, "spec", None)
+    status = getattr(pod, "status", None)
+    labels = getattr(meta, "labels", None) or {}
+    isvc = labels.get("serving.kserve.io/inferenceservice")
+    node = getattr(spec, "node_name", None)
+    phase = getattr(status, "phase", None)
+    if not isvc or not node:
+        return
+    if phase in ("Running", "Pending"):
+        with _STATE_LOCK:
+            POD_NODE[isvc] = node
+
+
+def _remove_pod(pod: Any) -> None:
+    meta = getattr(pod, "metadata", None)
+    labels = getattr(meta, "labels", None) or {}
+    isvc = labels.get("serving.kserve.io/inferenceservice")
+    node = getattr(getattr(pod, "spec", None), "node_name", None)
+    if not isvc:
+        return
+    with _STATE_LOCK:
+        if POD_NODE.get(isvc) == node:
+            POD_NODE.pop(isvc, None)
+
+
 # ── Discovery: initial seed + background watches ───────────────────────────────
 def seed_cards() -> None:
     try:
@@ -619,13 +675,73 @@ def watch_isvcs() -> None:
             time.sleep(2)
 
 
+def seed_nodes() -> None:
+    try:
+        for n in _core().list_node().items:
+            _ingest_node(n)
+        print(f"[DISCOVERY] seeded {len(NODE_LABELS)} node(s)", flush=True)
+    except Exception as e:
+        print(f"[DISCOVERY] node seed error: {e}", flush=True)
+
+
+def seed_pods() -> None:
+    try:
+        pods = _core().list_namespaced_pod(
+            MODELS_NS, label_selector="serving.kserve.io/inferenceservice"
+        )
+        for p in pods.items:
+            _ingest_pod(p)
+        print(f"[DISCOVERY] seeded {len(POD_NODE)} predictor pod->node map(s)", flush=True)
+    except Exception as e:
+        print(f"[DISCOVERY] pod seed error: {e}", flush=True)
+
+
+def watch_nodes() -> None:
+    while True:
+        try:
+            w = watch.Watch()
+            for event in w.stream(_core().list_node, timeout_seconds=300):
+                etype = event["type"]
+                if etype in ("ADDED", "MODIFIED"):
+                    _ingest_node(event["object"])
+                elif etype == "DELETED":
+                    _remove_node(event["object"])
+        except Exception as e:
+            print(f"[WATCH nodes] reconnect after error: {e}", flush=True)
+            time.sleep(2)
+
+
+def watch_pods() -> None:
+    while True:
+        try:
+            w = watch.Watch()
+            for event in w.stream(
+                _core().list_namespaced_pod,
+                MODELS_NS,
+                label_selector="serving.kserve.io/inferenceservice",
+                timeout_seconds=300,
+            ):
+                etype = event["type"]
+                if etype in ("ADDED", "MODIFIED"):
+                    _ingest_pod(event["object"])
+                elif etype == "DELETED":
+                    _remove_pod(event["object"])
+        except Exception as e:
+            print(f"[WATCH pods] reconnect after error: {e}", flush=True)
+            time.sleep(2)
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     _load_kube()
     seed_cards()
     seed_isvcs()
+    seed_nodes()
+    seed_pods()
     threading.Thread(target=watch_cards, daemon=True).start()
     threading.Thread(target=watch_isvcs, daemon=True).start()
+    threading.Thread(target=watch_nodes, daemon=True).start()
+    threading.Thread(target=watch_pods, daemon=True).start()
     print("[STARTUP] discovery running", flush=True)
 
 
@@ -662,8 +778,68 @@ def resource_block(info: dict, latency_ms: int) -> dict:
     """
     block = {"model": info["id"]}
     block.update(info.get("resources", {}) or {})
+    with _STATE_LOCK:
+        node = POD_NODE.get(info["k8s_name"])
+        labels = NODE_LABELS.get(node, {}) if node else {}
+    if node:
+        block["node"] = node
+        gpu_product = labels.get("aleph.gpu/product")
+        if gpu_product:
+            block["gpu_product"] = gpu_product
     block["latency_ms"] = latency_ms
     return block
+
+
+def _identity(request: Request) -> tuple[str, str, str | None]:
+    """Resolve caller identity from Tyk-injected headers.
+
+    Tyk validates the API key and forwards the key's metadata as headers
+    (X-Aleph-Identity = service/ldap name, X-Aleph-Account = billing bucket,
+    X-Aleph-Identity-Type = service|user). Calls that reach the gateway without
+    going through Tyk (e.g. in-cluster debugging) are logged as 'anonymous'.
+    """
+    h = request.headers
+    ident = h.get("x-aleph-identity")
+    acct = h.get("x-aleph-account")
+    itype = h.get("x-aleph-identity-type") or ("service" if ident else "anonymous")
+    return (ident or "anonymous", itype, acct)
+
+
+def _limits(info: dict) -> tuple[int, int]:
+    """(context_window, max_completion_tokens) declared in the model card."""
+    lim = (info.get("card", {}) or {}).get("limits", {}) or {}
+    def _i(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+    return _i(lim.get("context_window")), _i(lim.get("max_completion_tokens"))
+
+
+def _log_usage(request: Request, info: dict, *, endpoint: str, api: str,
+               status: int, latency_ms: int, usage_obj: dict | None = None,
+               cold_start: bool = False, stream: bool = False,
+               request_id: str | None = None) -> None:
+    """Write one accounting record for a served (or cold-started) request."""
+    ident, itype, acct = _identity(request)
+    cw, mct = _limits(info)
+    usage.record(
+        identity=ident, identity_type=itype, account=acct,
+        endpoint=endpoint, api=api, model=info.get("id", "unknown"),
+        status=status, latency_ms=latency_ms, usage=usage_obj,
+        resources=resource_block(info, latency_ms),
+        context_window=cw, max_completion_tokens=mct,
+        cold_start=cold_start, stream=stream, request_id=request_id,
+    )
+
+
+async def _guard_cold(request: Request, info: dict, endpoint: str, api: str):
+    """cold_start_guard + log the scale-from-zero event (it has real GPU cost)."""
+    cold = await cold_start_guard(info)
+    if cold is not None:
+        _log_usage(request, info, endpoint=endpoint, api=api, status=503,
+                   latency_ms=0, cold_start=True)
+    return cold
 
 
 def upstream_url(path: str) -> str:
@@ -1101,19 +1277,26 @@ def strip_reasoning_obj(data: dict) -> dict:
 
 
 async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
-                   strip_reasoning: bool | None = None):
+                   strip_reasoning: bool | None = None,
+                   log_ctx: dict | None = None):
     url = upstream_url(path)
     headers = upstream_headers(info)
     strip = _strips_thinking(info) if strip_reasoning is None else strip_reasoning
     if stream and not info.get("no_stream"):
         async def gen():
+            t0 = time.monotonic()
+            status_code = 200
+            captured_usage = None
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
                 async with c.stream("POST", url, content=body, headers=headers) as r:
-                    if not strip:
+                    status_code = r.status_code
+                    # Fast raw passthrough only when we neither strip nor account.
+                    if not strip and not log_ctx:
                         async for chunk in r.aiter_raw():
                             yield chunk
                         return
-                    # Reasoning-stripping pass: parse SSE lines, drop reasoning deltas.
+                    # Parse SSE lines: optionally drop reasoning deltas (strip) and
+                    # capture the final usage object (log_ctx, needs include_usage).
                     buf = ""
                     async for piece in r.aiter_text():
                         buf += piece
@@ -1128,6 +1311,11 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
                             except Exception:
                                 yield (line + "\n").encode()
                                 continue
+                            if log_ctx and obj.get("usage"):
+                                captured_usage = obj["usage"]
+                            if not strip:
+                                yield (line + "\n").encode()
+                                continue
                             for ch in obj.get("choices", []) or []:
                                 d = ch.get("delta")
                                 if isinstance(d, dict):
@@ -1136,12 +1324,19 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
                             yield ("data: " + json.dumps(obj) + "\n").encode()
                     if buf:
                         yield buf.encode()
+            if log_ctx:
+                latency_ms = int((time.monotonic() - t0) * 1000)
+                _log_usage(log_ctx["request"], info, endpoint=log_ctx["endpoint"],
+                           api=log_ctx["api"], status=status_code,
+                           latency_ms=latency_ms, usage_obj=captured_usage,
+                           stream=True)
 
         return StreamingResponse(
             gen(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+    t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
         # Ensure no_stream models never get stream=true upstream
         if info.get("no_stream"):
@@ -1152,6 +1347,16 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
             except Exception:
                 pass
         r = await c.post(url, content=body, headers=headers)
+    if log_ctx:
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        u = None
+        try:
+            u = r.json().get("usage")
+        except Exception:
+            u = None
+        _log_usage(log_ctx["request"], info, endpoint=log_ctx["endpoint"],
+                   api=log_ctx["api"], status=r.status_code, latency_ms=latency_ms,
+                   usage_obj=u, stream=False)
     return Response(
         content=r.content,
         status_code=r.status_code,
@@ -1173,7 +1378,7 @@ async def embeddings(request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
-    cold = await cold_start_guard(info)
+    cold = await _guard_cold(request, info, "/v1/embeddings", "openai")
     if cold is not None:
         return cold
     if info.get("upstream_model_id"):
@@ -1191,6 +1396,8 @@ async def embeddings(request: Request):
     try:
         data = r.json()
         data["resources"] = resource_block(info, latency_ms)
+        _log_usage(request, info, endpoint="/v1/embeddings", api="openai",
+                   status=200, latency_ms=latency_ms, usage_obj=data.get("usage"))
         return JSONResponse(data)
     except Exception:
         return Response(content=r.content, status_code=r.status_code,
@@ -1214,7 +1421,7 @@ async def rerank(request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
-    cold = await cold_start_guard(info)
+    cold = await _guard_cold(request, info, "/v1/rerank", "cohere")
     if cold is not None:
         return cold
     query = parsed.get("query")
@@ -1246,6 +1453,8 @@ async def rerank(request: Request):
             results.append(entry)
         if isinstance(top_n, int) and top_n >= 0:
             results = results[:top_n]
+        _log_usage(request, info, endpoint="/v1/rerank", api="cohere",
+                   status=200, latency_ms=latency_ms)
         return JSONResponse({"model": model_id, "results": results,
                              "resources": resource_block(info, latency_ms)})
     except Exception:
@@ -1283,7 +1492,7 @@ async def chat(request: Request):
     if _has_vision_content_openai(parsed.get("messages")) and not _supports_vision(info):
         _METRICS["requests_error"] += 1
         return _vision_unsupported_error(model_id)
-    cold = await cold_start_guard(info)
+    cold = await _guard_cold(request, info, "/v1/chat/completions", "openai")
     if cold is not None:
         return cold
     parsed, thinking_on = prepare_chat(info, parsed)
@@ -1291,8 +1500,17 @@ async def chat(request: Request):
         parsed = _off_token_cap(info, parsed)
     stream = bool(parsed.get("stream"))
     if stream and not info.get("no_stream"):
+        # Ask the engine to emit a final usage chunk so we can account streamed calls.
+        so = parsed.get("stream_options")
+        if isinstance(so, dict):
+            so.setdefault("include_usage", True)
+        else:
+            parsed["stream_options"] = {"include_usage": True}
         return await _forward(info, "/v1/chat/completions", json.dumps(parsed).encode(), True,
-                              strip_reasoning=not _expose_reasoning(info, thinking_on))
+                              strip_reasoning=not _expose_reasoning(info, thinking_on),
+                              log_ctx={"request": request,
+                                       "endpoint": "/v1/chat/completions",
+                                       "api": "openai"})
 
     # no_stream card or non-streaming request: force stream=false upstream
     parsed["stream"] = False
@@ -1304,6 +1522,8 @@ async def chat(request: Request):
     latency_ms = int((time.monotonic() - t0) * 1000)
     if r.status_code != 200:
         _METRICS["requests_error"] += 1
+        _log_usage(request, info, endpoint="/v1/chat/completions", api="openai",
+                   status=r.status_code, latency_ms=latency_ms)
         return Response(content=r.content, status_code=r.status_code,
                         media_type=r.headers.get("content-type", "application/json"))
     try:
@@ -1311,6 +1531,8 @@ async def chat(request: Request):
         if not _expose_reasoning(info, thinking_on):
             strip_reasoning_obj(data)
         data["resources"] = resource_block(info, latency_ms)
+        _log_usage(request, info, endpoint="/v1/chat/completions", api="openai",
+                   status=200, latency_ms=latency_ms, usage_obj=data.get("usage"))
         return JSONResponse(data)
     except Exception:
         return Response(content=r.content, status_code=r.status_code,
@@ -1356,7 +1578,7 @@ async def anthropic_messages(request: Request):
     ) and not _supports_vision(info):
         _METRICS["requests_error"] += 1
         return _vision_unsupported_error(model_id)
-    cold = await cold_start_guard(info)
+    cold = await _guard_cold(request, info, "/v1/messages", "anthropic")
     if cold is not None:
         return cold
 
@@ -1394,6 +1616,7 @@ async def anthropic_messages(request: Request):
             yield b"".join(anth_stream_start_events(model_id))
             finish = None
             out_tokens = 0
+            captured_usage = None
             buf = ""
             # Content blocks are opened lazily: index/track the currently-open
             # block so a tool-call response becomes a tool_use block instead of
@@ -1474,6 +1697,7 @@ async def anthropic_messages(request: Request):
                             u = obj.get("usage")
                             if u:
                                 out_tokens = u.get("completion_tokens", out_tokens)
+                                captured_usage = u
             if cur_idx >= 0:
                 yield _anth_sse("content_block_stop",
                                 {"type": "content_block_stop", "index": cur_idx})
@@ -1492,6 +1716,9 @@ async def anthropic_messages(request: Request):
                 finish, out_tokens, resource_block(info, latency_ms)
             ):
                 yield ev
+            _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
+                       status=200, latency_ms=latency_ms, usage_obj=captured_usage,
+                       stream=True)
 
         return StreamingResponse(
             gen(), media_type="text/event-stream",
@@ -1504,10 +1731,15 @@ async def anthropic_messages(request: Request):
     latency_ms = int((time.monotonic() - t0) * 1000)
     if r.status_code != 200:
         _METRICS["requests_error"] += 1
+        _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
+                   status=r.status_code, latency_ms=latency_ms)
         return Response(content=r.content, status_code=r.status_code,
                         media_type=r.headers.get("content-type", "application/json"))
-    out = anth_from_openai(r.json(), model_id, include_thinking=expose)
+    raw_oai = r.json()
+    out = anth_from_openai(raw_oai, model_id, include_thinking=expose)
     out["resources"] = resource_block(info, latency_ms)
+    _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
+               status=200, latency_ms=latency_ms, usage_obj=raw_oai.get("usage"))
     return JSONResponse(out)
 
 
@@ -1529,10 +1761,12 @@ async def forward_custom(path: str, request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
-    cold = await cold_start_guard(info)
+    cold = await _guard_cold(request, info, f"/v1/{path}", "custom")
     if cold is not None:
         return cold
-    return await _forward(info, f"/v1/{path}", body, stream=False)
+    return await _forward(info, f"/v1/{path}", body, stream=False,
+                          log_ctx={"request": request, "endpoint": f"/v1/{path}",
+                                   "api": "custom"})
 
 
 @app.get("/healthz")
@@ -1571,4 +1805,36 @@ async def metrics():
         "# TYPE gateway_models_ready gauge",
         f"gateway_models_ready {ready}",
     ]
+    counters = usage.snapshot()
+    if counters:
+        lines += [
+            "# HELP gateway_model_requests_total Served requests per model.",
+            "# TYPE gateway_model_requests_total counter",
+        ]
+        lines += [f'gateway_model_requests_total{{model="{m}"}} {c["requests"]}'
+                  for m, c in counters.items()]
+        lines += [
+            "# HELP gateway_model_prompt_tokens_total Prompt tokens per model.",
+            "# TYPE gateway_model_prompt_tokens_total counter",
+        ]
+        lines += [f'gateway_model_prompt_tokens_total{{model="{m}"}} {c["prompt_tokens"]}'
+                  for m, c in counters.items()]
+        lines += [
+            "# HELP gateway_model_completion_tokens_total Completion tokens per model.",
+            "# TYPE gateway_model_completion_tokens_total counter",
+        ]
+        lines += [f'gateway_model_completion_tokens_total{{model="{m}"}} {c["completion_tokens"]}'
+                  for m, c in counters.items()]
+        lines += [
+            "# HELP gateway_model_cold_starts_total Cold-start (scale-from-zero) events per model.",
+            "# TYPE gateway_model_cold_starts_total counter",
+        ]
+        lines += [f'gateway_model_cold_starts_total{{model="{m}"}} {c["cold_starts"]}'
+                  for m, c in counters.items()]
+        lines += [
+            "# HELP gateway_model_gpu_seconds_total Approx GPU-seconds (gpus*latency) per model.",
+            "# TYPE gateway_model_gpu_seconds_total counter",
+        ]
+        lines += [f'gateway_model_gpu_seconds_total{{model="{m}"}} {round(c["gpu_seconds"], 3)}'
+                  for m, c in counters.items()]
     return Response("\n".join(lines) + "\n", media_type="text/plain")
