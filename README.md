@@ -23,6 +23,8 @@
 
 This is not a chatbot stack. CERN runs a similar KServe-based platform at [ml.cern.ch](https://ml.docs.cern.ch/serving/) for physics inference; Aleph is the same idea applied broadly to research science — AlphaFold alongside Gemma, MACE alongside Qwen, NeuralGCM alongside DeepSeek. Each model publishes a `details.yaml` card; the gateway watches those cards and builds a live catalog without a single model name hardcoded in the routing layer. Inspired by the pace of model releases from DeepMind, Anthropic, and Chinese AI labs, the catalog is designed to grow without touching the gateway.
 
+The design was shaped by where computational science is heading: the US DOE's Genesis Mission push for AI-driven autonomous research on national-lab supercomputers, DeepMind's work on autonomous research agents, the wave of capable open models from Chinese AI labs, and CERN's production KServe platform for physics inference. Aleph is the same bet at the Alliance scale — make every model, science and language alike, a uniform HTTP tool that a researcher or an autonomous agent can call from inside a batch job.
+
 Aleph is built to sit **next to** a Slurm cluster, not replace it. Call any model from a batch job using your existing OpenAI SDK. Models scale to zero when idle and wake on first request — no idle GPU burn between jobs. Science embeddings (protein, genomic, astronomical, materials) make RAG over domain literature a first-class use case alongside generation and prediction.
 
 The cluster nodes are built on the [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) stateless image. Each node type — control-plane and GPU worker — gets a different overlay baked in; boot a node and it joins its role automatically. When you need more batch capacity and less inference, reprovision GPU worker nodes back to the Slurm image. The same physical hardware serves both worlds without reinstallation.
@@ -32,11 +34,12 @@ The cluster nodes are built on the [`warewulf-rke2-hami`](https://github.com/ual
 - **One endpoint, every model** — OpenAI (`/v1/chat/completions`, `/v1/embeddings`) and Anthropic (`/v1/messages`) APIs, plus custom science routes (`/v1/science/predict`, `/v1/dock`, `/v1/forecast`, etc.)
 - **Card-driven catalog** — each model is a `details.yaml` ConfigMap; the gateway watches cards live, no restarts needed to add a model
 - **Science models first** — proteins, DNA, RNA, molecules, materials, weather, astronomy, medical imaging, time-series, and audio alongside general-purpose LLMs
+- **Any KServe runtime** — KServe is the orchestration layer, not the engine, so a model card can back onto whatever serves it best: vLLM (most LLMs), Hugging Face/TEI (embeddings, rerank), ONNX Runtime (vision), JAX/Lightning/TensorFlow or a custom FastAPI server.py (science), and NVIDIA NIM (boltz-2, openfold-3). Triton, TorchServe, and TensorFlow Serving are equally deployable when a model calls for them.
 - **Fractional GPU scheduling** — HAMi slices each L40S into virtual GPUs (`nvidia.com/gpumem`); many models share one physical card
 - **Scale-to-zero + cold-start aware** — idle models drop to zero pods; first request gets a `503 + retry-after` while the pod wakes; agent loops handle this natively
 - **HPC-adjacent** — call models from Slurm jobs with a standard OpenAI SDK; designed for the [Digital Research Alliance of Canada](https://alliancecan.ca/) ecosystem
 - **Catch-all auth** — accepts `Authorization: Bearer`, `x-api-key`, `api-key`, or `?api_key=`; Tyk normalizes them all
-- **Elastic nodes** — bake and boot a new GPU worker node and it auto-joins the pool; reprovision to Slurm when batch capacity is needed instead
+- **Bidirectional node provisioning** — Warewulf stateless images let the same GPU hardware boot into Aleph (inference) or the Slurm node image (batch) on demand; we flip nodes between the two as load shifts, no reinstall
 - **Usage accounting / fairshare** — per-request JSON-lines log (identity, tokens, GPU SKU, node, gpu-seconds) + Prometheus metrics on `/metrics`
 - **NFS-backed weights** — model weights on shared NFS PVCs; survive pod and node churn without re-download
 
@@ -145,7 +148,7 @@ models/<name>/
 **Steps:**
 
 1. Copy the right `details.yaml` template from `models/DETAILS-TEMPLATE-LLM.md` (Template A for vLLM LLMs, B for custom science servers, C for embeddings/rerank/audio). Fill in all `CHANGEME` fields.
-2. Write `inferenceservice.yaml` — the init container handles weight download and venv setup (short-circuits if the PVC already has the artifacts). For vLLM LLMs use `vllm/vllm-openai:v0.20.2`. For custom science servers, embed the FastAPI server script inline as a ConfigMap in the same file.
+2. Write `inferenceservice.yaml` — the init container handles weight download and venv setup (short-circuits if the PVC already has the artifacts). For vLLM LLMs use `vllm/vllm-openai:v0.20.2`— it's the version pinned across the existing fleet and is cached on the nodes, so staying on it keeps cold starts fast and behavior consistent. Newer tags work; you just lose the cached-layer head start and risk per-model arg drift. For custom science servers, embed the FastAPI server script inline as a ConfigMap in the same file.
 3. Write `pvc.yaml` using `storageClassName: nfs-models`. Size generously — the init container caches both weights and the venv so cold starts don't re-download.
 4. Copy `models/test.template.py` → `models/<name>/test.py`. Keep only the sections that apply (chat, embeddings, science), update `MODEL` and expected outputs.
 5. Deploy and validate:
