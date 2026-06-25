@@ -3,6 +3,14 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-25 — split QUICKSTART.md out of README
+
+- `QUICKSTART.md` NEW — moved the Quickstart (cluster bring-up, secrets, deploy +
+  test a model) and the "Adding a Model" section out of `README.md` into a
+  dedicated root file. README keeps the description, features, model catalog, and
+  architecture and now links to QUICKSTART for the hands-on steps.
+- Docs-only; no functional change.
+
 ## 2026-06-25 — remove `scripts/` directory
 
 Consolidated the two `scripts/` files and dropped the directory.
