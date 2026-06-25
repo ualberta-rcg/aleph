@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # Manage Tyk API keys for the model-gateway from a login node.
 #
+# NOTE: For day-to-day identity/key management prefer the control-plane tool
+#   scripts/tyk/tyk-admin.sh  (add-user / validate-key / update-user / invalidate-key).
+# It stores identity in the key ALIAS + TAGS (durable) and reads the APISecret
+# from the in-cluster Secret. This script keeps identity in meta_data.username,
+# which Tyk OSS WIPES on the first request — so its find/revoke-user scans become
+# unreliable after a key is used. Kept here for quick list/inspect/test from a
+# login node. Auth is catch-all now: the key works under Authorization Bearer,
+# x-api-key, api-key, x-goog-api-key, or ?api_key=.
+#
 # Usage:
 #   ./tyk-keys.sh list
 #   ./tyk-keys.sh create <username> [uid] [account]   # prints the new key string

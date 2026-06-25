@@ -138,6 +138,63 @@ When a model is scaled to zero (minReplicas=0), the gateway:
 3. Returns HTTP 503 with `Retry-After: 30` and an ETA from the card's `cold_start_estimate`
 4. Client retries → model is now warming up → eventually serves
 
+## Usage accounting & identity
+
+Every served request (and every cold-start event) is written as one JSON line to
+an in-pod log for fairshare/billing. The log is an `emptyDir` at
+`GATEWAY_USAGE_LOG` (default `/var/log/aleph/usage.log`), kept separate from app
+stdout and intentionally not mounted to the host — ship it out of band
+(promtail/fluent-bit) later.
+
+```bash
+kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph/usage.log
+```
+
+Each record carries: `identity`/`account`/`identity_type`, `model`, `api`,
+`endpoint`, `status`, `latency_ms`, `cold_start`, `tokens` (normalized
+prompt/completion/total plus `detail` = the verbatim vLLM `usage`, so
+reasoning/cached token breakdowns are preserved when present), `context_window`,
+`max_completion_tokens`, a `resources` block (gpus, vram_mib, cpu_cores,
+system_ram_mib, **gpu_product**, **node**), and derived `gpu_seconds`. Per-model
+rollups are exposed on `/metrics`.
+
+**Where the compute facts come from:**
+- gpus/vram_mib/cpu_cores/system_ram_mib — the model's ISVC predictor `resources`.
+- gpu_product/node — the gateway resolves `model → predictor pod → node` (K8s
+  watches) and reads the node's `aleph.gpu/product` label, stamped by the
+  `node-labeler` DaemonSet (`11-node-labeler.yaml`).
+
+**Identity** is set by Tyk and read from request headers
+(`X-Aleph-Identity`/`-Account`/`-Identity-Type`). Requests that don't pass through
+Tyk are logged as `anonymous`. See `gateway/tyk/` and `scripts/tyk/tyk-admin.sh`.
+
+### API key acceptance (catch-all)
+
+Tyk's `normalizeAuth` pre-hook (`gateway/tyk/middleware/`) accepts the API key
+under any common convention and normalizes it to `Authorization: Bearer`:
+
+- `Authorization: Bearer <key>` (OpenAI/Cohere) or raw `Authorization: <key>`
+- `x-api-key: <key>` (Anthropic)
+- `api-key: <key>` (Azure OpenAI)
+- `x-goog-api-key: <key>` (Google)
+- `?api_key=` / `?api-key=` / `?key=` query string
+
+### Key administration (control plane)
+
+`scripts/tyk/tyk-admin.sh` runs on any control-plane node (reads the APISecret
+from the in-cluster Secret, auto-discovers the Tyk endpoint, writes an audit log):
+
+```bash
+KEY=$(scripts/tyk/tyk-admin.sh add-user openwebui shared-pool service)  # prints key
+scripts/tyk/tyk-admin.sh validate-key openwebui "$KEY"                  # true/false
+scripts/tyk/tyk-admin.sh update-user openwebui                          # rotate key
+scripts/tyk/tyk-admin.sh invalidate-key "$KEY"
+```
+
+Identity lives in the key's **alias** (identity) + **tags**
+(`account:<x>`, `type:<service|user>`) — Tyk OSS wipes `meta_data` on first
+request, so we don't depend on it.
+
 ## CI/CD
 
 ```mermaid
@@ -154,16 +211,16 @@ main push (gateway/**) → GitHub Actions → Docker build → Docker Hub push
 
 ## Deploy
 
+The gateway, Tyk, and all supporting resources deploy as RKE2 auto-deploy
+manifests via the Warewulf overlay (`ww-overlays/`) — there is no deploy script.
+To pick up a new image build on a running cluster:
+
 ```bash
-# Option 1: full deploy script (cards + ISVC + Tyk + gateway)
-cd /scratch/rahimk/repos/aleph
-GATEWAY_IMAGE=rkhoja/aleph:gateway-abc1234 ./gateway/remote-deploy.sh
+# Use latest (imagePullPolicy: Always)
+sudo ssh root@<control-plane> "kubectl rollout restart deploy/model-gateway -n models"
 
-# Option 2: just update the gateway image
-sudo ssh root@172.26.92.43 "kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-abc1234"
-
-# Option 3: use latest
-sudo ssh root@172.26.92.43 "kubectl rollout restart deploy/model-gateway -n models"
+# Or pin a specific immutable build
+sudo ssh root@<control-plane> "kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-abc1234"
 ```
 
 ## Key files

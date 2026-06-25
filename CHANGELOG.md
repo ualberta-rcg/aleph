@@ -3,6 +3,40 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-25 — usage accounting + identity + catch-all API auth
+
+Per-request usage/accounting for fairshare, caller identity, and provider-agnostic
+API-key acceptance. Verified live on the cluster.
+
+- `gateway/app/usage.py` NEW — JSON-lines accounting logger to an in-pod file
+  (`/var/log/aleph/usage.log`, emptyDir, rotated; separate from app stdout, never
+  lands on the host). One record per served (and per cold-start) request with:
+  identity/account/type, model, api/endpoint, status, latency, `cold_start`, full
+  token breakdown (`tokens.detail` is the verbatim vLLM `usage` incl.
+  reasoning/cached detail when present), `context_window`, `max_completion_tokens`,
+  the `resources` block (gpus, vram_mib, cpu_cores, system_ram_mib, gpu_product,
+  node), and derived `gpu_seconds`. Per-model Prometheus counters on `/metrics`
+  (requests, prompt/completion tokens, cold_starts, gpu_seconds).
+- `11-node-labeler.yaml` NEW — DaemonSet (gpu=on) auto-detects each worker's GPU
+  product/count/VRAM + CPU model/cores + RAM via nsenter and stamps `aleph.*` node
+  labels. Verified: both workers → `aleph.gpu/product=L40S x4`, cpu/mem labels.
+- Gateway resolves `model → predictor pod → node → aleph.gpu/product` (new node +
+  pod K8s watches; RBAC extended with pods (ns) + cluster nodes). Pod→node is
+  keyed per pod name so a revision rollout's old-pod delete can't clobber the new
+  pod's mapping.
+- Tyk catch-all auth (`normalizeAuth.js` pre-hook): accepts the key as
+  `Authorization: Bearer`, `x-api-key` (Anthropic), `api-key` (Azure),
+  `x-goog-api-key`, or `?api_key=`/`?key=` and normalizes to Bearer. Verified all
+  conventions authenticate; missing key → 401, bad key → 403.
+- Tyk identity injection (`injectIdentity.js` post-hook): stamps
+  `X-Aleph-Identity/Account/Identity-Type` from the key's **alias + tags** (Tyk
+  OSS wipes `meta_data` on first request; alias/tags persist). JSVM enabled +
+  middleware mounted via `51`/`54`; gateway reads the headers for accounting.
+- `scripts/tyk/tyk-admin.sh` NEW — control-plane key admin: `add-user`,
+  `validate-key`, `update-user` (rotate + revoke old), `invalidate-key`,
+  `list-user`, `invalidate-user`. Reads the APISecret from the in-cluster Secret,
+  auto-discovers the Tyk endpoint, writes an audit log. Verified end-to-end.
+
 ## 2026-06-24 — tests: model template + gateway test, retire test/ dir
 
 Consolidated testing around two clear homes (per-model vs gateway) and removed the

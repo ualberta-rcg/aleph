@@ -192,9 +192,10 @@ Tyk is fully configured by the WW-overlay manifests — no manual steps on a fre
 | Manifest | What it does |
 |---|---|
 | `50-tyk-redis.yaml` | Installs Redis (Bitnami) |
-| `51-tyk.yaml` | Installs Tyk OSS; bakes in `TYK_GW_APPPATH`, `ENABLEHASHEDKEYSLISTING`, and the api-defs volume mount |
+| `51-tyk.yaml` | Installs Tyk OSS; bakes in `TYK_GW_APPPATH`, `ENABLEHASHEDKEYSLISTING`, JSVM (`TYK_GW_ENABLEJSVM`), `MIDDLEWAREPATH`, and the api-defs + middleware volume mounts |
 | `52-tyk-loadbalancer.yaml` | LoadBalancer Service → MetalLB assigns the VIP |
-| `53-tyk-api-definitions.yaml` | ConfigMap with `model-gateway.json` (token auth, proxies to `model-gateway.models.svc:80`) |
+| `53-tyk-api-definitions.yaml` | ConfigMap with `model-gateway.json` (token auth, proxies to `model-gateway.models.svc:80`, custom_middleware pre/post) |
+| `54-tyk-middleware.yaml` | ConfigMap with JSVM middleware: `normalizeAuth` (catch-all key acceptance) + `injectIdentity` (X-Aleph-* from alias/tags) |
 
 API definition: `gateway/tyk/model-gateway-api.json` — `use_keyless:false`, `use_standard_auth:true`,
 `listen_path:/`, target `http://model-gateway.models.svc.cluster.local:80`. The committed source
@@ -211,30 +212,53 @@ kubectl logs -n tyk deploy/gateway-tyk-oss-tyk-gateway | grep -i "Detected\|mode
 
 ## Day-2 operations
 
-### Key management (Tyk OSS REST API)
+### Key management (control plane — `scripts/tyk/tyk-admin.sh`)
 
-The Tyk gateway REST API is authenticated with header `x-tyk-authorization: <APISecret>`
-(secret `secrets-tyk-oss-tyk-gateway`, key `APISecret`; live value in `.env` as `TYK_SECRET`).
-Keys live in Redis, so they persist and work in file-based mode. Keys only take effect when the
-API is **protected** (`use_keyless: false`, `use_standard_auth: true`).
-
-Tyk OSS has no separate "user" object, but **every key carries identity** via `alias` (human
-label) and `meta_data` (arbitrary map). Issue one key per user and stamp the username/uid/account
-on it; the key string is the bearer token the user puts in their client.
+Run on any control-plane node. It reads the APISecret from the in-cluster Secret
+(`secrets-tyk-oss-tyk-gateway` / `APISecret`), auto-discovers the Tyk endpoint
+(LB VIP, else ClusterIP), and writes an audit log (`/var/log/aleph/tyk-admin.log`).
 
 ```bash
-TYK=http://<VIP>           # MetalLB VIP on port 80 (primary). Fallback: http://<HEAD_IP>:30808
+# Mint a key (prints the key string). identity = service name OR LDAP username.
+KEY=$(scripts/tyk/tyk-admin.sh add-user openwebui shared-pool service)
+
+scripts/tyk/tyk-admin.sh validate-key openwebui "$KEY"   # true/false (exit 0/1)
+scripts/tyk/tyk-admin.sh update-user openwebui           # rotate: new key + revoke old
+scripts/tyk/tyk-admin.sh invalidate-key "$KEY"
+scripts/tyk/tyk-admin.sh list-user openwebui
+scripts/tyk/tyk-admin.sh invalidate-user openwebui
+```
+
+**Identity model.** Tyk OSS has no "user" object. Identity is stored on the key as
+the **alias** (= identity) and **tags** (`account:<x>`, `type:<service|user>`).
+We deliberately do NOT use `meta_data` — Tyk OSS wipes it on the first request,
+while alias + tags persist. The `injectIdentity` JSVM post-hook reads alias/tags
+and stamps `X-Aleph-Identity`/`-Account`/`-Identity-Type` on the upstream request;
+the gateway logs these on every request (see Usage accounting below).
+
+**Catch-all auth.** Clients may send the key as `Authorization: Bearer`,
+`x-api-key`, `api-key`, `x-goog-api-key`, or `?api_key=` — the `normalizeAuth`
+pre-hook normalizes any of them to Bearer before auth.
+
+<details><summary>Raw Tyk REST API (under the hood)</summary>
+
+The Tyk admin API is authenticated with `x-tyk-authorization: <APISecret>`. Keys
+live in Redis. Keys only take effect when the API is protected
+(`use_keyless:false`, `use_standard_auth:true`).
+
+```bash
+TYK=http://<VIP>           # MetalLB VIP :80 (primary). Fallback: http://<HEAD_IP>:30808
 SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk -o jsonpath='{.data.APISecret}' | base64 -d)
 
-# Issue a key bound to a user (Tyk generates the key string):
 curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Content-Type: application/json" -d '{
-  "alias": "rahimk",
-  "meta_data": {"username": "rahimk", "uid": "100123", "account": "def-pi", "source": "pam"},
-  "tags": ["pam"],
+  "alias": "openwebui",
+  "tags": ["aleph", "account:shared-pool", "type:service"],
   "access_rights": {"model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"]}}
 }'
 # -> {"key":"<TYK_KEY>","key_hash":"...","status":"ok","action":"added"}
 ```
+
+</details>
 
 | Action | Call (against `$TYK/tyk/...`) |
 |---|---|
@@ -247,25 +271,43 @@ curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Conte
 | Revoke by raw key | `DELETE /tyk/keys/<key>` |
 | Revoke by hash | `DELETE /tyk/keys/<hash>?hashed=true` (effective after the ~10s session cache) |
 
-Helper script: `gateway/tyk/tyk-keys.sh {list|create <user> [uid] [account]|inspect <hash>|revoke <hash>|test <key>|find <user>|revoke-user <user>}`.
+Primary tool: `scripts/tyk/tyk-admin.sh` (above). The login-node
+`gateway/tyk/tyk-keys.sh` still works for quick list/inspect/test but stores
+identity in `meta_data.username` (wiped on first request) — prefer `tyk-admin.sh`.
 
-**List / revoke by username:** Tyk OSS has **no username index** — `GET /tyk/keys` only returns
-hashes. So `find <user>` and `revoke-user <user>` *scan*: list hashes → `GET /tyk/keys/<hash>?hashed=true`
-→ filter on `meta_data.username` → (for revoke-user) `DELETE` each match. This is O(n) over all
-keys — fine for modest counts. For large fleets, keep your own username→key index, or use
-deterministic key ids (`POST /tyk/keys/<id-derived-from-username>`) so revoke is a direct `DELETE`.
+**List / revoke by identity:** Tyk OSS has **no identity index** — `GET /tyk/keys`
+only returns hashes. So `list-user` / `invalidate-user` *scan*: list hashes →
+`GET /tyk/keys/<hash>?hashed=true` → filter on `alias` → `DELETE` each match. O(n)
+over all keys — fine for modest counts.
 
-Verified lifecycle: no key → `401`; valid key → `200`; after `DELETE` → `403`. Tyk keeps an
-in-memory **session cache (~10s)**, so a revoked key may keep working for a few seconds —
+Verified lifecycle: no key → `401`; valid key → `200`; bad key → `403`. Tyk keeps
+an in-memory **session cache (~10s)**, so a revoked key may keep working briefly —
 expected, not a bug.
 
-> `TYK_GW_ENABLEHASHEDKEYSLISTING=true` and `TYK_GW_APPPATH` are now baked into `51-tyk.yaml`
-> via `extraEnvs` — no manual override needed.
+> `TYK_GW_ENABLEHASHEDKEYSLISTING`, `TYK_GW_APPPATH`, `TYK_GW_ENABLEJSVM`, and
+> `TYK_GW_MIDDLEWAREPATH` are baked into `51-tyk.yaml` via `extraEnvs`.
 >
 > Per-user **rate limit / quota** go in `access_rights.model-gateway.limit`
-> (`rate`, `per`, `quota_max`, `quota_renewal_rate`). To get the username into model logs for
-> per-user accounting, add a Tyk header transform injecting `$tyk_meta.username` as an upstream
-> header (e.g. `X-User`) — not wired yet.
+> (`rate`, `per`, `quota_max`, `quota_renewal_rate`). Per-identity accounting **is
+> wired**: `injectIdentity` stamps `X-Aleph-Identity`/`-Account`/`-Identity-Type`
+> from the key alias/tags and the gateway logs them (see Usage accounting below).
+
+### Usage accounting / fairshare
+
+The gateway writes one JSON line per request to an in-pod log (emptyDir, not on
+the host) for fairshare/billing:
+
+```bash
+kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph/usage.log
+```
+
+Each record has `identity`/`account`/`identity_type`, `model`, `api`, `status`,
+`latency_ms`, `cold_start`, `tokens` (prompt/completion/total + `detail` = verbatim
+vLLM usage with reasoning/cached breakdown), `context_window`,
+`max_completion_tokens`, `resources` (gpus, vram_mib, cpu_cores, system_ram_mib,
+`gpu_product`, `node`), and derived `gpu_seconds`. Per-model rollups are on
+`/metrics`. `gpu_product`/`node` come from the `node-labeler` DaemonSet
+(`11-node-labeler.yaml`) labels (`aleph.gpu/product` etc).
 
 ### Verify
 
