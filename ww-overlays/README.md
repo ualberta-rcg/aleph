@@ -20,9 +20,10 @@ ww-overlays/
     common/            ← baked on ALL nodes
       etc/sysctl.d/90-inotify.conf
     control-plane/     ← baked on CONTROL-PLANE nodes
-      etc/rancher/manifests/        ← RKE2 auto-deploy set (00..63)
+      etc/rancher/manifests/        ← RKE2 auto-deploy set (00..70)
       etc/netplan/60-public-vip.yaml
       etc/sysctl.d/99-public-vip.conf
+      usr/local/bin/tyk-admin.sh    ← Tyk key admin CLI (on PATH; see docs/TYK-USERS.md)
     gpu-worker/        ← baked on GPU WORKER nodes
       etc/systemd/system/nvidia-persistenced.service
       etc/systemd/system/multi-user.target.wants/nvidia-persistenced.service
@@ -36,7 +37,7 @@ ww-overlays/
 | Overlay | Baked on | Contains |
 |---|---|---|
 | `common` | all nodes | inotify limit bump (dense-pod headroom) |
-| `control-plane` | control-plane nodes | RKE2 auto-deploy manifests + public-VIP netplan/sysctl |
+| `control-plane` | control-plane nodes | RKE2 auto-deploy manifests + public-VIP netplan/sysctl + `tyk-admin.sh` in `/usr/local/bin` |
 | `gpu-worker` | GPU workers | NVIDIA persistence-mode unit + RoCE kernel modules |
 
 **About the manifests:** RKE2 reads `/etc/rancher/manifests/` only on server (control-plane)
@@ -73,6 +74,7 @@ No deploy script, no SSH push. Provision the node → everything comes up.
 | `00-cert-manager.yaml` | all | – |
 | `01-cluster-issuer.yaml` | all | `__ACME_EMAIL__` |
 | `10-hami.yaml` | GPU nodes | `__K8S_VERSION__` |
+| `11-node-labeler.yaml` | GPU nodes (`gpu=on`) | – |
 | `30-nfs.yaml` | all | `__NFS_SERVER__`, `__NFS_PATH__` |
 | `40-metallb.yaml` | control-plane | – |
 | `41-metallb-vip.yaml` | control-plane | `__VIP__`, `__PUBLIC_NIC__` |
@@ -80,11 +82,15 @@ No deploy script, no SSH push. Provision the node → everything comes up.
 | `51-tyk.yaml` | all | `__TYK_API_SECRET__` |
 | `52-tyk-loadbalancer.yaml` | control-plane | – |
 | `53-tyk-api-definitions.yaml` | all | – |
+| `54-tyk-middleware.yaml` | all | – |
 | `60-istio.yaml` | all (Job) | – |
 | `61-knative.yaml` | all (Job) | – |
 | `62-kserve.yaml` | all (Job) | – |
 | `63-model-gateway.yaml` | all (runs on CP) | – |
 | `70-rdma-device-plugin.yaml` | GPU nodes (`gpu=on`) | `__ROCE_IFNAME__` |
+
+`11-node-labeler` stamps `aleph.gpu/product` etc onto GPU nodes (usage accounting);
+`54-tyk-middleware` carries the JSVM catch-all-auth + identity-injection hooks.
 
 "Applies to" is which workloads land where; all manifests are cluster-wide objects applied
 once by a server node.
