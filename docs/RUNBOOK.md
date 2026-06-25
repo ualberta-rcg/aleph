@@ -212,21 +212,23 @@ kubectl logs -n tyk deploy/gateway-tyk-oss-tyk-gateway | grep -i "Detected\|mode
 
 ## Day-2 operations
 
-### Key management (control plane — `scripts/tyk/tyk-admin.sh`)
+### Key management (control plane — `tyk-admin.sh`)
 
-Run on any control-plane node. It reads the APISecret from the in-cluster Secret
+Run on any control-plane node — `tyk-admin.sh` is on PATH (baked at
+`/usr/local/bin`; source: `ww-overlays/overlays/control-plane/usr/local/bin/tyk-admin.sh`).
+It reads the APISecret from the in-cluster Secret
 (`secrets-tyk-oss-tyk-gateway` / `APISecret`), auto-discovers the Tyk endpoint
 (LB VIP, else ClusterIP), and writes an audit log (`/var/log/aleph/tyk-admin.log`).
 
 ```bash
 # Mint a key (prints the key string). identity = service name OR LDAP username.
-KEY=$(scripts/tyk/tyk-admin.sh add-user openwebui shared-pool service)
+KEY=$(tyk-admin.sh add-user openwebui shared-pool service)
 
-scripts/tyk/tyk-admin.sh validate-key openwebui "$KEY"   # true/false (exit 0/1)
-scripts/tyk/tyk-admin.sh update-user openwebui           # rotate: new key + revoke old
-scripts/tyk/tyk-admin.sh invalidate-key "$KEY"
-scripts/tyk/tyk-admin.sh list-user openwebui
-scripts/tyk/tyk-admin.sh invalidate-user openwebui
+tyk-admin.sh validate-key openwebui "$KEY"   # true/false (exit 0/1)
+tyk-admin.sh update-user openwebui           # rotate: new key + revoke old
+tyk-admin.sh invalidate-key "$KEY"
+tyk-admin.sh list-user openwebui
+tyk-admin.sh invalidate-user openwebui
 ```
 
 **Identity model.** Tyk OSS has no "user" object. Identity is stored on the key as
@@ -271,7 +273,7 @@ curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Conte
 | Revoke by raw key | `DELETE /tyk/keys/<key>` |
 | Revoke by hash | `DELETE /tyk/keys/<hash>?hashed=true` (effective after the ~10s session cache) |
 
-Primary tool: `scripts/tyk/tyk-admin.sh` (above). The login-node
+Primary tool: `tyk-admin.sh` (above). The login-node
 `gateway/tyk/tyk-keys.sh` still works for quick list/inspect/test but stores
 identity in `meta_data.username` (wiped on first request) — prefer `tyk-admin.sh`.
 

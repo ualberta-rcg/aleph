@@ -3,6 +3,25 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-25 — remove `scripts/` directory
+
+Consolidated the two `scripts/` files and dropped the directory.
+
+- `scripts/tyk/tyk-admin.sh` DELETED — it was a byte-identical duplicate of the
+  copy baked onto control-plane nodes via the Warewulf overlay
+  (`ww-overlays/overlays/control-plane/usr/local/bin/tyk-admin.sh`, on PATH at
+  `/usr/local/bin`). The overlay copy is now the single source of truth; no more
+  two-place drift risk.
+- `scripts/test-model.sh` → `models/test-model.sh` — the per-model ops helper
+  (apply/recreate/up/status/logs/curl/zero/cycle) lives next to the `models/`
+  dirs it operates on. Still run from the repo root; internal `DIR="models/<M>"`
+  path logic unchanged.
+- Updated all references: `gateway/README.md`, `gateway/tyk/tyk-keys.sh`,
+  `gateway/tyk/middleware/injectIdentity.js`, `docs/TYK-USERS.md`,
+  `docs/RUNBOOK.md`, `docs/MODEL-CAMPAIGN-PLAN.md`, `models/timer-s1/CLAUDE.md`.
+  Tyk-admin references now point at the on-PATH node command `tyk-admin.sh`.
+- No functional change; ops-tooling/layout cleanup only.
+
 ## 2026-06-25 — usage accounting + identity + catch-all API auth
 
 Per-request usage/accounting for fairshare, caller identity, and provider-agnostic

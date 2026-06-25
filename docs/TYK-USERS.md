@@ -46,48 +46,49 @@ X-Aleph-Identity-Type: <type tag, or "service">
 The gateway reads them and stamps every usage record (see [LOGGING.md](LOGGING.md)).
 A request that bypasses Tyk is logged as `anonymous`.
 
-## Managing keys — `scripts/tyk/tyk-admin.sh` (control plane)
+## Managing keys — `tyk-admin.sh` (control plane)
 
-Run on **any control-plane node**. It reads the Tyk admin secret from the
-in-cluster Secret (`secrets-tyk-oss-tyk-gateway` / `APISecret`), auto-discovers the
-Tyk endpoint (LB VIP, else ClusterIP), and appends every mutating action to an
-audit log (`/var/log/aleph/tyk-admin.log`).
+Run on **any control-plane node** — `tyk-admin.sh` is baked onto the node at
+`/usr/local/bin` (on PATH; source: `ww-overlays/overlays/control-plane/usr/local/bin/tyk-admin.sh`).
+It reads the Tyk admin secret from the in-cluster Secret
+(`secrets-tyk-oss-tyk-gateway` / `APISecret`), auto-discovers the Tyk endpoint
+(LB VIP, else ClusterIP), and appends every mutating action to an audit log
+(`/var/log/aleph/tyk-admin.log`).
 
 ```bash
-# On a control-plane node (kubectl works without setup inside the node shell):
-cd /path/to/aleph   # or copy scripts/tyk/tyk-admin.sh over
+# On a control-plane node (tyk-admin.sh is already on PATH):
 
 # Create a key (prints the key string — give it to the user/service):
-KEY=$(scripts/tyk/tyk-admin.sh add-user <identity> [account] [type])
+KEY=$(tyk-admin.sh add-user <identity> [account] [type])
 #   identity = service name or LDAP username
 #   account  = fairshare bucket   (default: identity)
 #   type     = service | user     (default: service)
 
 # Check a key is valid AND belongs to an identity (prints true/false, exit 0/1):
-scripts/tyk/tyk-admin.sh validate-key <identity> <key>
+tyk-admin.sh validate-key <identity> <key>
 
 # Rotate: issue a NEW key for the identity and revoke its old keys:
-NEWKEY=$(scripts/tyk/tyk-admin.sh update-user <identity> [account] [type])
+NEWKEY=$(tyk-admin.sh update-user <identity> [account] [type])
 
 # Revoke a single key:
-scripts/tyk/tyk-admin.sh invalidate-key <key|hash>
+tyk-admin.sh invalidate-key <key|hash>
 
 # List / revoke all keys for an identity:
-scripts/tyk/tyk-admin.sh list-user <identity>
-scripts/tyk/tyk-admin.sh invalidate-user <identity>
+tyk-admin.sh list-user <identity>
+tyk-admin.sh invalidate-user <identity>
 ```
 
 ### Examples
 
 ```bash
 # A shared service (e.g. OpenWebUI) on a shared fairshare pool:
-KEY=$(scripts/tyk/tyk-admin.sh add-user openwebui shared-pool service)
+KEY=$(tyk-admin.sh add-user openwebui shared-pool service)
 
 # A named person (future LDAP username), own account bucket:
-KEY=$(scripts/tyk/tyk-admin.sh add-user jdoe def-pi-alloc user)
+KEY=$(tyk-admin.sh add-user jdoe def-pi-alloc user)
 
 # Rotate a possibly-leaked key:
-scripts/tyk/tyk-admin.sh update-user openwebui
+tyk-admin.sh update-user openwebui
 ```
 
 ### Env overrides

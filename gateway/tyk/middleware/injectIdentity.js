@@ -7,7 +7,7 @@
 // IMPORTANT: we read identity from the key's `alias` and `tags`, NOT meta_data.
 // Tyk OSS wipes session meta_data on the first request (it re-saves a thin
 // session after rate-limiting), but alias + tags persist reliably. Keys are
-// minted by scripts/tyk/tyk-admin.sh as:
+// minted by tyk-admin.sh (on the control-plane node) as:
 //   alias = identity (service name or LDAP username)
 //   tags  = ["aleph", "account:<account>", "type:<service|user>"]
 //

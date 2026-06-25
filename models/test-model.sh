@@ -2,7 +2,7 @@
 # Per-model OPS helper (not a test battery — that's models/<model>/test.py).
 # Run from the repo root on a Vulcan login node.
 #
-#   scripts/test-model.sh <model-dir-name> [action]
+#   models/test-model.sh <model-dir-name> [action]
 #
 # actions:
 #   apply     - kubectl apply the model's local manifests (reconcile drift)

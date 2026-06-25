@@ -2,7 +2,8 @@
 # Manage Tyk API keys for the model-gateway from a login node.
 #
 # NOTE: For day-to-day identity/key management prefer the control-plane tool
-#   scripts/tyk/tyk-admin.sh  (add-user / validate-key / update-user / invalidate-key).
+#   tyk-admin.sh  (add-user / validate-key / update-user / invalidate-key) — on
+#   PATH on any control-plane node (source: ww-overlays/.../usr/local/bin/tyk-admin.sh).
 # It stores identity in the key ALIAS + TAGS (durable) and reads the APISecret
 # from the in-cluster Secret. This script keeps identity in meta_data.username,
 # which Tyk OSS WIPES on the first request — so its find/revoke-user scans become

@@ -166,7 +166,7 @@ rollups are exposed on `/metrics`.
 
 **Identity** is set by Tyk and read from request headers
 (`X-Aleph-Identity`/`-Account`/`-Identity-Type`). Requests that don't pass through
-Tyk are logged as `anonymous`. See `gateway/tyk/` and `scripts/tyk/tyk-admin.sh`.
+Tyk are logged as `anonymous`. See `gateway/tyk/` and `tyk-admin.sh` (on PATH on control-plane nodes).
 
 ### API key acceptance (catch-all)
 
@@ -181,14 +181,16 @@ under any common convention and normalizes it to `Authorization: Bearer`:
 
 ### Key administration (control plane)
 
-`scripts/tyk/tyk-admin.sh` runs on any control-plane node (reads the APISecret
-from the in-cluster Secret, auto-discovers the Tyk endpoint, writes an audit log):
+`tyk-admin.sh` is baked onto control-plane nodes at `/usr/local/bin` (on PATH;
+source: `ww-overlays/overlays/control-plane/usr/local/bin/tyk-admin.sh`). It reads
+the APISecret from the in-cluster Secret, auto-discovers the Tyk endpoint, and
+writes an audit log:
 
 ```bash
-KEY=$(scripts/tyk/tyk-admin.sh add-user openwebui shared-pool service)  # prints key
-scripts/tyk/tyk-admin.sh validate-key openwebui "$KEY"                  # true/false
-scripts/tyk/tyk-admin.sh update-user openwebui                          # rotate key
-scripts/tyk/tyk-admin.sh invalidate-key "$KEY"
+KEY=$(tyk-admin.sh add-user openwebui shared-pool service)  # prints key
+tyk-admin.sh validate-key openwebui "$KEY"                  # true/false
+tyk-admin.sh update-user openwebui                          # rotate key
+tyk-admin.sh invalidate-key "$KEY"
 ```
 
 Identity lives in the key's **alias** (identity) + **tags**
