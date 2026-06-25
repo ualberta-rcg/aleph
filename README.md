@@ -10,6 +10,8 @@
 [![Docker Hub](https://img.shields.io/docker/v/rkhoja/aleph?label=Docker%20Hub&color=blue)](https://hub.docker.com/r/rkhoja/aleph)
 
 > **170+ science and language models — one endpoint, one key, from protein folds to LLMs.**
+>
+> *One point. Every model. Infinite unity.*
 
 *Deployed on the [University of Alberta](https://www.ualberta.ca/en/information-services-and-technology/research-computing/index.html) / [AMII](https://www.amii.ca/) Vulcan environment for multi-model GPU inference*
 
@@ -27,7 +29,7 @@ The design was shaped by where computational science is heading: the US DOE's Ge
 
 Aleph is built to sit **next to** a Slurm cluster, not replace it. Call any model from a batch job using your existing OpenAI SDK. Models scale to zero when idle and wake on first request — no idle GPU burn between jobs. Science embeddings (protein, genomic, astronomical, materials) make RAG over domain literature a first-class use case alongside generation and prediction.
 
-The cluster nodes are built on the [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) stateless image. Each node type — control-plane and GPU worker — gets a different overlay baked in; boot a node and it joins its role automatically. When you need more batch capacity and less inference, reprovision GPU worker nodes back to the Slurm image. The same physical hardware serves both worlds without reinstallation.
+The cluster nodes are built on the [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) stateless image. Because Warewulf nodes are diskless and provisioned from an image at boot, the same physical GPU hardware switches between worlds on demand: boot a node into the `warewulf-rke2-hami` image and it joins Aleph as a GPU worker; reprovision it into the Slurm node image and that capacity returns to batch scheduling. No reinstall, no hardware change — just a reboot into a different image. We move nodes between Aleph inference and Slurm batch routinely as demand shifts.
 
 ## ✨ Features
 
@@ -116,7 +118,7 @@ The `models/` directory contains 170+ models across scientific and language doma
 
 | Domain | Examples |
 |---|---|
-| **Protein / Structural biology** | AlphaFold2, Boltz-2, ESMFold, ESM2, ESM-C, ProtTrans, LigandMPNN, DiffDock, SaProt |
+| **Protein / Structural biology** | AlphaFold2, Boltz-2, ESMFold, ESM2, ESM-C 300M, ProstT5, LigandMPNN, DiffDock, SaProt |
 | **Genomics / DNA / RNA** | Nucleotide Transformer, DNABERT-2, GENA-LM, Borzoi, Enformer, Caduceus, RNAbert |
 | **Materials / Chemistry** | MACE-MH-1, MACE-MP, CHGNet, ChemBERTa, MatterSim, CrystalLLM, ChemGPT |
 | **Weather / Climate** | Aurora, GraphCast, FourCastNet3, Pangu-Weather, NeuralGCM, ClimaX, FengWu |
@@ -148,7 +150,7 @@ models/<name>/
 **Steps:**
 
 1. Copy the right `details.yaml` template from `models/DETAILS-TEMPLATE-LLM.md` (Template A for vLLM LLMs, B for custom science servers, C for embeddings/rerank/audio). Fill in all `CHANGEME` fields.
-2. Write `inferenceservice.yaml` — the init container handles weight download and venv setup (short-circuits if the PVC already has the artifacts). For vLLM LLMs use `vllm/vllm-openai:v0.20.2`— it's the version pinned across the existing fleet and is cached on the nodes, so staying on it keeps cold starts fast and behavior consistent. Newer tags work; you just lose the cached-layer head start and risk per-model arg drift. For custom science servers, embed the FastAPI server script inline as a ConfigMap in the same file.
+2. Write `inferenceservice.yaml` — the init container handles weight download and venv setup (short-circuits if the PVC already has the artifacts). For vLLM LLMs, prefer `vllm/vllm-openai:v0.20.2` — it's the version pinned across the existing fleet and is cached on the nodes, so staying on it keeps cold starts fast and behavior consistent. Newer tags work; you just lose the cached-layer head start and risk per-model arg drift. For custom science servers, embed the FastAPI server script inline as a ConfigMap in the same file.
 3. Write `pvc.yaml` using `storageClassName: nfs-models`. Size generously — the init container caches both weights and the venv so cold starts don't re-download.
 4. Copy `models/test.template.py` → `models/<name>/test.py`. Keep only the sections that apply (chat, embeddings, science), update `MODEL` and expected outputs.
 5. Deploy and validate:
@@ -168,24 +170,29 @@ For HAMi GPU resources: use `nvidia.com/gpumem: "<MiB>"` + `nvidia.com/gpu: "1"`
           │  http(s)  (OpenAI or Anthropic dialect)
           ▼
   ┌─────────────────┐
-  │     MetalLB     │  public VIP (L2), hands traffic to Tyk LoadBalancer
+  │     MetalLB     │  public VIP (L2) advertised out the head node's public NIC;
+  │                 │  hands traffic to the Tyk LoadBalancer Service
   └────────┬────────┘
            ▼
   ┌─────────────────┐
-  │    Tyk OSS      │  catch-all auth, rate-limit, stamps X-Aleph-* identity headers
+  │    Tyk OSS      │  catch-all auth (Bearer / x-api-key / api-key / ?api_key=),
+  │                 │  rate-limit, JSVM middleware stamps X-Aleph-* identity headers
   └────────┬────────┘
            ▼
   ┌─────────────────┐
-  │  model-gateway  │  FastAPI: OAI⇄Anthropic translation, card routing,
-  │   (FastAPI)     │  cold-start guard, usage accounting
+  │  model-gateway  │  FastAPI: OAI⇄Anthropic translation, card-based routing,
+  │   (FastAPI)     │  cold-start guard (503 + Retry-After), usage accounting
   └────────┬────────┘
            ▼
   ┌─────────────────┐
-  │ Istio / Knative │  routes by Host header to live revision or activator (scale-to-zero)
+  │   Istio mesh    │  service mesh Knative programs; cluster-local-gateway routes
+  │                 │  by Host header to the live revision — or to the Knative
+  │                 │  activator, which holds the request while a cold pod boots
   └────────┬────────┘
            ▼
   ┌─────────────────┐
-  │ KServe ISVC pod │  vLLM / custom FastAPI on a HAMi vGPU slice (NFS weights)
+  │ KServe ISVC pod │  vLLM / TEI / ONNX / JAX / NIM / custom FastAPI on a
+  │                 │  HAMi vGPU slice; weights on NFS PVC
   └─────────────────┘
 ```
 
@@ -194,6 +201,21 @@ The gateway image is published to [Docker Hub (`rkhoja/aleph`)](https://hub.dock
 ```bash
 kubectl rollout restart deploy/model-gateway -n models
 ```
+
+**What boots, in order.** Control-plane nodes carry the full RKE2 auto-deploy manifest set, applied on first boot:
+
+| Manifest | Does |
+|---|---|
+| `00–01` cert-manager + ClusterIssuer | ACME/TLS for the public endpoint |
+| `10` HAMi | vGPU device plugin + scheduler (DaemonSet, `gpu=on` nodes only) |
+| `11` node-labeler | DaemonSet detects each worker's GPU/CPU/RAM and stamps `aleph.*` node labels — every usage record carries real hardware provenance |
+| `30` NFS | `nfs-models` StorageClass — the default; model weights live here |
+| `40–41` MetalLB | L2 load-balancer + VIP IPAddressPool |
+| `50–54` Tyk | Redis, OSS gateway, LoadBalancer exposure, API definitions, JSVM middleware |
+| `60` Istio | Service mesh + scaffolding the serving stack needs |
+| `61–62` Knative + KServe | Scale-to-zero autoscaling and the InferenceService CRD |
+| `63` model-gateway | The FastAPI router (runs on control-plane nodes only) |
+| `70` RDMA device plugin | Exposes the RoCE NIC as `rdma/roce` so NCCL runs collectives over RDMA — required for multi-GPU tensor-parallel models |
 
 ## 🤖 Agentic Research
 
@@ -213,12 +235,6 @@ Aleph scales by reprovisioning. The base OS image from [`warewulf-rke2-hami`](ht
 **To add inference capacity:** provision a new GPU worker with the `warewulf-rke2-hami` image + `gpu-worker` overlay → it joins on boot.
 
 **To shift to HPC batch:** reprovision those same GPU workers with the Slurm node image (or a Proxmox VM) → capacity returns to batch scheduling. No hardware change, no reinstall.
-
-## 🔭 Why "Aleph"?
-
-Borges' 1945 story describes a point in a Buenos Aires cellar that contains every other point in space — gaze in and you see the whole universe at once, from every angle, without overlap. Cantor's ℵ₀ is the smallest infinity: countless things addressed as one. Frederik Pohl's *Alpha-Aleph* (*The Gold at the Starbow's End*) is the destination a civilization aims its best work at. This platform is all three: one URL that reaches every model, an ever-growing catalog addressed as a single endpoint, and the coordinate researchers and autonomous agents point their jobs at.
-
-*One point. Every model. Infinite unity.*
 
 ## 🔗 References
 
