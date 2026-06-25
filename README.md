@@ -21,15 +21,11 @@
 
 ## 📖 Description
 
-**Aleph** is a card-driven inference platform for research clusters. 170+ models — protein structure, genomics, materials simulation, climate forecasting, astronomy, medical imaging, and LLMs — all served behind a single OpenAI- and Anthropic-compatible endpoint with per-request usage accounting, fairshare, and scale-to-zero.
+**Aleph** is a card-driven inference platform for research clusters. 170+ models — protein structure, genomics, materials simulation, climate forecasting, astronomy, medical imaging, and LLMs — served behind a single OpenAI- and Anthropic-compatible endpoint with per-request usage accounting, fairshare, and scale-to-zero.
 
-This is not a chatbot stack. CERN runs a similar KServe-based platform at [ml.cern.ch](https://ml.docs.cern.ch/serving/) for physics inference; Aleph is the same idea applied broadly to research science — AlphaFold alongside Gemma, MACE alongside Qwen, NeuralGCM alongside DeepSeek. Each model publishes a `details.yaml` card; the gateway watches those cards and builds a live catalog without a single model name hardcoded in the routing layer. Inspired by the pace of model releases from DeepMind, Anthropic, and Chinese AI labs, the catalog is designed to grow without touching the gateway.
+Not a chatbot stack. CERN runs a similar KServe-based platform for physics inference at [ml.cern.ch](https://ml.docs.cern.ch/serving/); Aleph is that idea applied across all research science — AlphaFold alongside Gemma, MACE alongside Qwen, NeuralGCM alongside DeepSeek. Each model publishes a `details.yaml` card; the gateway watches cards live and routes by model ID, nothing hardcoded. Shaped by the DOE's Genesis Mission push for autonomous science, DeepMind's agent work, Chinese AI labs' open releases, and CERN's production platform — every model becomes a standard HTTP tool for researchers and agents.
 
-The design was shaped by where computational science is heading: the US DOE's Genesis Mission push for AI-driven autonomous research on national-lab supercomputers, DeepMind's work on autonomous research agents, the wave of capable open models from Chinese AI labs, and CERN's production KServe platform for physics inference. Aleph is the same bet at the Alliance scale — make every model, science and language alike, a uniform HTTP tool that a researcher or an autonomous agent can call from inside a batch job.
-
-Aleph is built to sit **next to** a Slurm cluster, not replace it. Call any model from a batch job using your existing OpenAI SDK. Models scale to zero when idle and wake on first request — no idle GPU burn between jobs. Science embeddings (protein, genomic, astronomical, materials) make RAG over domain literature a first-class use case alongside generation and prediction.
-
-The cluster nodes are built on the [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) stateless image. Because Warewulf nodes are diskless and provisioned from an image at boot, the same physical GPU hardware switches between worlds on demand: boot a node into the `warewulf-rke2-hami` image and it joins Aleph as a GPU worker; reprovision it into the Slurm node image and that capacity returns to batch scheduling. No reinstall, no hardware change — just a reboot into a different image. We move nodes between Aleph inference and Slurm batch routinely as demand shifts.
+Models are callable like any other HTTP API — from a Slurm batch job, an agentic pipeline, or a notebook — using a standard OpenAI SDK and a single key. ESMFold to fold a protein, MACE for energy minimization, Aurora for a weather forecast, an LLM to synthesize the results, all through the same endpoint. Models scale to zero when idle and wake on first request; science embeddings (SciBERT, ESM2, DNABERT, AstroCLIP) make domain-literature RAG a native use case.
 
 ## ✨ Features
 
@@ -39,30 +35,9 @@ The cluster nodes are built on the [`warewulf-rke2-hami`](https://github.com/ual
 - **Any KServe runtime** — KServe is the orchestration layer, not the engine, so a model card can back onto whatever serves it best: vLLM (most LLMs), Hugging Face/TEI (embeddings, rerank), ONNX Runtime (vision), JAX/Lightning/TensorFlow or a custom FastAPI server.py (science), and NVIDIA NIM (boltz-2, openfold-3). Triton, TorchServe, and TensorFlow Serving are equally deployable when a model calls for them.
 - **Fractional GPU scheduling** — HAMi slices each L40S into virtual GPUs (`nvidia.com/gpumem`); many models share one physical card
 - **Scale-to-zero + cold-start aware** — idle models drop to zero pods; first request gets a `503 + retry-after` while the pod wakes; agent loops handle this natively
-- **HPC-adjacent** — call models from Slurm jobs with a standard OpenAI SDK; designed for the [Digital Research Alliance of Canada](https://alliancecan.ca/) ecosystem
 - **Catch-all auth** — accepts `Authorization: Bearer`, `x-api-key`, `api-key`, or `?api_key=`; Tyk normalizes them all
-- **Bidirectional node provisioning** — Warewulf stateless images let the same GPU hardware boot into Aleph (inference) or the Slurm node image (batch) on demand; we flip nodes between the two as load shifts, no reinstall
 - **Usage accounting / fairshare** — per-request JSON-lines log (identity, tokens, GPU SKU, node, gpu-seconds) + Prometheus metrics on `/metrics`
 - **NFS-backed weights** — model weights on shared NFS PVCs; survive pod and node churn without re-download
-
-## 🤖 Agentic Research
-
-Aleph is designed as infrastructure for autonomous research workflows. An agent running on the Alliance cluster can call any model as a standard HTTP tool from inside a Slurm job — ESMFold to fold a candidate protein, MACE-MH-1 for energy minimization, Nucleotide Transformer for genomic embeddings, Aurora for a weather forecast, and an LLM to synthesize the results — all through one authenticated endpoint.
-
-Models wake on first call and return to zero between steps, so a multi-step agentic pipeline pays for GPU time only when a model is actually running. Science embedding models (SciBERT, ESM2, DNABERT, AstroCLIP, MatSciBERT, SciNCL) make RAG over domain literature a native capability. Cold-start latency is documented in each model card and the gateway returns `503 + Retry-After` that well-behaved clients handle automatically.
-
-This vision — autonomous agents using HPC batch resources and live inference models interchangeably — was shaped by work at DeepMind, Anthropic, CERN, and Chinese AI research labs, and by the Alliance's goal of making national research infrastructure useful to the next generation of agentic science.
-
-## 🌐 Elastic Cluster
-
-Aleph scales by reprovisioning. The base OS image from [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) contains Ubuntu 24.04, NVIDIA drivers, HAMi runtime, and RKE2. Each node type gets a different overlay:
-
-- **Control-plane nodes** — carry the RKE2 auto-deploy manifests that bootstrap the entire platform stack and the public VIP network config; boot one and the cluster comes up
-- **GPU worker nodes** — carry NVIDIA persistence-mode and RoCE/RDMA kernel modules; boot one and it joins the GPU pool automatically, no `kubectl join`
-
-**To add inference capacity:** provision a new GPU worker with the `warewulf-rke2-hami` image + `gpu-worker` overlay → it joins on boot.
-
-**To shift to HPC batch:** reprovision those same GPU workers with the Slurm node image (or a Proxmox VM) → capacity returns to batch scheduling. No hardware change, no reinstall.
 
 ## 🚀 Quickstart
 
