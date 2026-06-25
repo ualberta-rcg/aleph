@@ -177,8 +177,9 @@ Phase 0 findings (2026-06-17):
       RayService) — leave alone (verify their replica counts).
 - [ ] **First-stage cleanup — `TEST.md` → `README.md`.** 47 dirs have a stale `TEST.md`
       (2026-06-04..06). Fold into that model's `README.md`, then delete `TEST.md`.
-- [ ] **Per-model test filename** = `test.py` (one per dir). Repo-level `.sh` drivers
-      (`aleph/test/smoke.sh`, `test-model.sh`) stay repo-level.
+- [ ] **Per-model test filename** = `test.py` (one per dir; start from
+      `models/test.template.py`). Gateway-level checks live in `gateway/test.py`; the
+      ops driver is `scripts/test-model.sh`.
 - [x] **Gaps enumerated** (marker = `inferenceservice.yaml`, 167 dirs):
       - missing **README**: 146 · missing **CLAUDE**: 23 · missing **test.\***: 141
       - The 29 chat LLMs are mostly complete; the gaps concentrate in the ~140

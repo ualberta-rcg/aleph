@@ -90,10 +90,15 @@ kubectl apply -f models/<model>/details.yaml          # card (gateway picks it u
 kubectl apply -f models/<model>/inferenceservice.yaml # the KServe ISVC
 ```
 
-### 5) Run full compatibility tests
+### 5) Test
 
 ```bash
-python3 test/full_test.py
+# Gateway-level checks (catalog, health, routing guardrails, auth). Add FLEET=1 to
+# also warm + probe every model in the catalog (replaces the old full_test sweep).
+GW_URL=http://<VIP> TYK_KEY=<key> python3 gateway/test.py
+
+# Per-model feature battery (start from the template, keep the sections that apply):
+GW_URL=http://<VIP> TYK_KEY=<key> MODEL=<id> python3 models/<model>/test.py
 ```
 
 ## 📚 Repository Layout
@@ -101,9 +106,9 @@ python3 test/full_test.py
 | Path | Description |
 |---|---|
 | `ww-overlays/` | Warewulf overlays + RKE2 auto-deploy manifests (common / control-plane / gpu-worker), site-value tokens, and post-deploy steps |
-| `gateway/` | FastAPI gateway app, translation logic, k8s deployment, Tyk API defs |
-| `models/` | Per-model `InferenceService`, `PVC`, and `details.yaml` cards |
-| `test/` | Deployment & verification tests (`full_test.py`, `test-model.sh`, `smoke.sh`); fixtures in `test/inputs/` |
+| `gateway/` | FastAPI gateway app, translation logic, k8s deployment, Tyk API defs, and `test.py` (model-agnostic gateway checks + optional `FLEET=1` warm-sweep) |
+| `models/` | Per-model `InferenceService`, `PVC`, `details.yaml` card, and `test.py` battery (copy `models/test.template.py`) |
+| `scripts/` | Ops helpers — `test-model.sh` (apply / recreate / up / status / cycle a model) |
 | `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
 | `docs/GATEWAY-DESIGN.md` | Gateway design rationale |
 | `docs/GATEWAY-ARCHITECTURE.md` | Card schema + handler map |

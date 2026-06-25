@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Per-model test helper. Run from the repo root on a Vulcan login node.
+# Per-model OPS helper (not a test battery — that's models/<model>/test.py).
+# Run from the repo root on a Vulcan login node.
 #
-#   test/test-model.sh <model-dir-name> [action]
+#   scripts/test-model.sh <model-dir-name> [action]
 #
 # actions:
 #   apply     - kubectl apply the model's local manifests (reconcile drift)
@@ -15,23 +16,31 @@
 #   cycle     - zero, confirm scaled to zero, then up again (cold-start proof)
 #   all       - apply -> up -> status  (mechanical bring-up; payloads are manual)
 #
-# The gateway ClusterIP (10.43.147.39) is only reachable from inside 230, so all
-# kubectl/curl run via SSH to the head node. Request PAYLOADS are intentionally NOT
-# baked in here: each model gets a custom test authored into models/<m>/TEST.md.
+# kubectl/curl run via SSH to the control-plane node (gateway ClusterIP is only
+# reachable from inside the cluster). Override the node with HEAD=, and the gateway
+# address with GW= ; if GW is unset it is discovered from the model-gateway Service.
+# Request PAYLOADS are intentionally NOT baked in: each model's checks live in
+# models/<model>/test.py (start from models/test.template.py).
 set -uo pipefail
 
 HEAD="${HEAD:-172.26.92.43}"
-GW="${GW:-10.43.147.39}"
 NS=models
-M="${1:?usage: test-model.sh <model> [action]}"
-ACTION="${2:-all}"
-DIR="models/${M}"
 
 SSH=(sudo ssh -o StrictHostKeyChecking=no "root@${HEAD}")
 KEXPORT='export PATH=$PATH:/var/lib/rancher/rke2/bin; export KUBECONFIG=/etc/rancher/rke2/rke2.yaml;'
 
 k()  { "${SSH[@]}" "${KEXPORT} kubectl $*"; }
 kf() { "${SSH[@]}" "${KEXPORT} kubectl apply -f -"; }   # reads manifest on stdin
+
+# Discover the gateway address from the Service if GW is not provided.
+if [ -z "${GW:-}" ]; then
+  GW="$(k get svc -n "$NS" model-gateway -o jsonpath='{.spec.clusterIP}' 2>/dev/null)"
+  GW="${GW:-10.43.0.1}"
+fi
+
+M="${1:?usage: test-model.sh <model> [action]}"
+ACTION="${2:-all}"
+DIR="models/${M}"
 
 apply_one() { [ -f "$1" ] && { echo ">> apply $1"; cat "$1" | kf; }; }
 

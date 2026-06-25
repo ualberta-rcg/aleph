@@ -12,10 +12,11 @@ KServe/Knative + Tyk model-inference platform.
 | Path | What |
 |---|---|
 | `gateway/` | FastAPI inference gateway (OpenAI + Anthropic compatible), Dockerfile, k8s manifests, Tyk config |
-| `models/` | Per-model KServe `InferenceService` + `PVC` + `details.yaml` cards (LLMs, embeddings, rerank, TTS, science models) |
+| `models/` | Per-model KServe `InferenceService` + `PVC` + `details.yaml` card + `test.py` battery (template: `models/test.template.py`) |
 | `ww-overlays/` | Warewulf overlay + RKE2 auto-deploy manifests (baked into node image); site-value tokens + post-deploy steps |
 | `deploy-aleph/` | Legacy reference (superseded by `ww-overlays/`). Only `03-deploy-test-model.sh` → now `ww-overlays/post-deploy/verify-test-model.sh` |
-| `test/` | Deployment & verification tests (`full_test.py`, `test-model.sh`, `smoke.sh`); fixtures in `test/inputs/` |
+| `gateway/test.py` | Model-agnostic gateway checks (catalog, health, guardrails, auth); `FLEET=1` warms + probes every model |
+| `scripts/` | Ops helpers — `test-model.sh` (apply / recreate / up / status / cycle a model) |
 | `docs/` + `CHANGELOG.md` | Design + ops docs (`RUNBOOK`, `GATEWAY-DESIGN`, `GATEWAY-ARCHITECTURE`, `CHANGELOG`) |
 
 ## Cluster Overview — Aleph POC Cluster

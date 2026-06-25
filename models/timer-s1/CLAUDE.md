@@ -29,9 +29,9 @@ Timer-S1 from Tsinghua THUML (2026) is a decoder-only MoE transformer:
 
 ## Deploy/update/test
 ```bash
-test/test-model.sh timer-s1 recreate
-test/test-model.sh timer-s1 status
-test/test-model.sh timer-s1 curl /v1/forecast '{"model":"timer-s1","time_series":[1.0,2.0,3.0,4.0,5.0],"prediction_length":10}'
+scripts/test-model.sh timer-s1 recreate
+scripts/test-model.sh timer-s1 status
+scripts/test-model.sh timer-s1 curl /v1/forecast '{"model":"timer-s1","time_series":[1.0,2.0,3.0,4.0,5.0],"prediction_length":10}'
 ```
 
 ## Gateway Integration

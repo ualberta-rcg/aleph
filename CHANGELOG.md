@@ -3,6 +3,49 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-24 — tests: model template + gateway test, retire test/ dir
+
+Consolidated testing around two clear homes (per-model vs gateway) and removed the
+catch-all `test/` directory.
+
+- `models/test.template.py` NEW — a monolithic reference battery (built from the
+  comprehensive gemma-4-26b-a4b test). It pretends a model supports everything
+  (chat + vision + tools + reasoning effort/budget/toggle/stream + meta-tasks + the
+  full Anthropic surface + guardrails, plus an embeddings/rerank block). Copy to
+  `models/<model>/test.py` and keep the sections that apply — a pick-and-choose menu,
+  not an auto-detecting harness. Runs via `GW_URL`/`TYK_KEY`/`MODEL`.
+- `gateway/test.py` NEW — model-agnostic gateway checks: health (`/healthz`,
+  `/readyz`, `/metrics`), catalog shape (`?all=true` schema + sorted, default = chat
+  only), routing guardrails (bad-model 404, chat↔embedder type mismatch, tools/vision
+  unsupported 400), the Tyk auth edge, and the `resources` block. Targets are
+  discovered from `/v1/models` (no hardcoded model list or cluster IP). `FLEET=1`
+  warms + probes every catalog model — replaces the old `full_test.py` sweep. Verified
+  live in-pod: 5 pass / 3 expected / 0 fail (cold/auth skipped).
+- Removed `test/` (`full_test.py`, `smoke.sh`, `metatask_test.py`, `thinking_test.py`,
+  `retest.py`, `test-pending-batch2b.py`, `inputs/`); the useful coverage now lives in
+  the template + gateway test.
+- Moved the ops helper `test/test-model.sh` → `scripts/test-model.sh` (it's
+  deploy/recreate/up/cycle tooling, not a test). Dropped the stale hardcoded gateway
+  ClusterIP — it now discovers the `model-gateway` Service when `GW` is unset.
+- Updated references in `README.md`, `CLAUDE.md`, `models/timer-s1/CLAUDE.md`, and the
+  campaign plan.
+
+## 2026-06-24 — ww-overlays: NCCL over RoCE (device plugin + modules + provider recipe)
+
+Enabled NCCL collectives over the GPU nodes' Broadcom `bnxt_re` RoCE NICs instead of
+falling back to TCP. Root cause: the container's inbox `libbnxt_re` verbs provider is
+ABI 1 while the host out-of-tree kernel driver is ABI 8, so NCCL logged
+`NET/IB : No device found` and used sockets.
+
+- `overlays/control-plane/etc/rancher/manifests/70-rdma-device-plugin.yaml` NEW —
+  Mellanox `k8s-rdma-shared-dev-plugin` advertising `rdma/roce` on `gpu=on` nodes
+  (NIC tokenized `__ROCE_IFNAME__`)
+- `overlays/gpu-worker/etc/modules-load.d/rdma.conf` NEW — load
+  `ib_umad`/`ib_uverbs`/`rdma_cm`/`rdma_ucm` at boot
+- `ww-overlays/NCCL-ROCE.md` NEW — root cause + per-pod recipe injecting the host
+  Broadcom provider (verified: `via NET/IB` on `bnxt_re0:1/RoCE`)
+- Documented `__ROCE_IFNAME__` in `SITE-VALUES.md` / `site.env.example` / `README.md`
+
 ## 2026-06-24 — ww-overlays: split into per-node-type overlays + scrub + polish
 
 Reworked `ww-overlays/` from a single flat `overlay/` tree into three per-node-type
