@@ -21,7 +21,7 @@
 
 ## 📖 Description
 
-**Aleph** is a card-driven inference platform for research clusters. 170+ models — protein structure, genomics, materials simulation, climate forecasting, astronomy, medical imaging, and LLMs — served behind a single OpenAI- and Anthropic-compatible endpoint with per-request usage accounting, fairshare, and scale-to-zero.
+**Aleph** is a card-driven inference platform for research clusters. 170+ models — protein structure, genomics, materials simulation, climate forecasting, astronomy, medical imaging, and LLMs — served behind a single OpenAI- and Anthropic-compatible endpoint with per-request usage accounting, rate-limiting, and scale-to-zero.
 
 Not a chatbot stack. CERN runs a similar KServe-based platform for physics inference at [ml.cern.ch](https://ml.docs.cern.ch/serving/); Aleph is that idea applied across all research science — AlphaFold alongside Gemma, MACE alongside Qwen, NeuralGCM alongside DeepSeek. Each model publishes a `details.yaml` card; the gateway watches cards live and routes by model ID, nothing hardcoded. Shaped by the DOE's Genesis Mission push for autonomous science, DeepMind's agent work, Chinese AI labs' open releases, and CERN's production platform — every model becomes a standard HTTP tool for researchers and agents.
 
@@ -36,7 +36,7 @@ Models are callable like any other HTTP API — from a Slurm batch job, an agent
 - **Fractional GPU scheduling** — HAMi slices each L40S into virtual GPUs (`nvidia.com/gpumem`); many models share one physical card
 - **Scale-to-zero + cold-start aware** — idle models drop to zero pods; first request gets a `503 + retry-after` while the pod wakes; agent loops handle this natively
 - **Catch-all auth** — accepts `Authorization: Bearer`, `x-api-key`, `api-key`, or `?api_key=`; Tyk normalizes them all
-- **Usage accounting / fairshare** — per-request JSON-lines log (identity, tokens, GPU SKU, node, gpu-seconds) + Prometheus metrics on `/metrics`
+- **Usage accounting** — per-request JSON-lines log (identity, tokens, GPU SKU, node, gpu-seconds) + Prometheus metrics on `/metrics`; rate-limiting via Tyk
 - **NFS-backed weights** — model weights on shared NFS PVCs; survive pod and node churn without re-download
 
 ## 🚀 Quickstart
