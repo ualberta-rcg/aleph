@@ -295,8 +295,10 @@ CARDS: dict[str, dict] = {}
 ISVC_STATE: dict[str, dict] = {}
 # node name -> {aleph.* label: value} (hardware provenance from node-labeler DS)
 NODE_LABELS: dict[str, dict] = {}
-# k8s_name (ISVC) -> node name of its running predictor pod
-POD_NODE: dict[str, str] = {}
+# k8s_name (ISVC) -> {predictor pod name -> node name}. Keyed by pod name (not
+# just node) so a revision rollout's old-pod DELETE can't clobber the new pod's
+# mapping when both land on the same node.
+POD_NODE: dict[str, dict[str, str]] = {}
 _STATE_LOCK = threading.Lock()
 
 _DISCOVERY = {"cards_seeded": False, "isvc_seeded": False, "last_event": 0.0}
@@ -577,31 +579,47 @@ def _remove_node(node: Any) -> None:
 
 
 def _ingest_pod(pod: Any) -> None:
-    """Map a model's ISVC name -> the node its running predictor pod landed on."""
+    """Track which node each predictor pod of a model landed on."""
     meta = getattr(pod, "metadata", None)
     spec = getattr(pod, "spec", None)
     status = getattr(pod, "status", None)
+    name = getattr(meta, "name", None)
     labels = getattr(meta, "labels", None) or {}
     isvc = labels.get("serving.kserve.io/inferenceservice")
     node = getattr(spec, "node_name", None)
     phase = getattr(status, "phase", None)
-    if not isvc or not node:
+    if not isvc or not name:
         return
-    if phase in ("Running", "Pending"):
-        with _STATE_LOCK:
-            POD_NODE[isvc] = node
+    with _STATE_LOCK:
+        pods = POD_NODE.setdefault(isvc, {})
+        if node and phase in ("Running", "Pending"):
+            pods[name] = node
+        else:
+            # Unscheduled / terminating / succeeded-failed: drop this pod.
+            pods.pop(name, None)
+            if not pods:
+                POD_NODE.pop(isvc, None)
 
 
 def _remove_pod(pod: Any) -> None:
     meta = getattr(pod, "metadata", None)
+    name = getattr(meta, "name", None)
     labels = getattr(meta, "labels", None) or {}
     isvc = labels.get("serving.kserve.io/inferenceservice")
-    node = getattr(getattr(pod, "spec", None), "node_name", None)
-    if not isvc:
+    if not isvc or not name:
         return
     with _STATE_LOCK:
-        if POD_NODE.get(isvc) == node:
-            POD_NODE.pop(isvc, None)
+        pods = POD_NODE.get(isvc)
+        if pods is not None:
+            pods.pop(name, None)
+            if not pods:
+                POD_NODE.pop(isvc, None)
+
+
+def _node_for(k8s_name: str) -> str | None:
+    """Best node for a model: any currently tracked (running/pending) pod's node."""
+    pods = POD_NODE.get(k8s_name) or {}
+    return next(iter(pods.values()), None)
 
 
 # ── Discovery: initial seed + background watches ───────────────────────────────
@@ -779,7 +797,7 @@ def resource_block(info: dict, latency_ms: int) -> dict:
     block = {"model": info["id"]}
     block.update(info.get("resources", {}) or {})
     with _STATE_LOCK:
-        node = POD_NODE.get(info["k8s_name"])
+        node = _node_for(info["k8s_name"])
         labels = NODE_LABELS.get(node, {}) if node else {}
     if node:
         block["node"] = node

@@ -15,8 +15,9 @@
 #   - Requires Bearer token auth (use_keyless: false, use_standard_auth: true)
 #   - custom_middleware (JSVM): normalizeAuth (pre) accepts the key under any
 #     common convention (Authorization Bearer, x-api-key, api-key, x-goog-api-key,
-#     ?api_key=) and injectIdentity (post) stamps X-Aleph-* identity headers from
-#     the key's metadata. JS lives in 54-tyk-middleware.yaml; needs JSVM enabled
+#     ?api_key=); injectIdentity (post) stamps X-Aleph-* identity headers from the
+#     key's alias + tags (NOT meta_data — Tyk OSS wipes meta_data on first
+#     request). JS lives in 54-tyk-middleware.yaml; needs JSVM enabled
 #     (TYK_GW_ENABLEJSVM=true in 51-tyk.yaml).
 apiVersion: v1
 kind: ConfigMap

@@ -12,8 +12,9 @@
 #                              ?api_key=, normalize to Authorization: Bearer.
 #                              Strips client X-Aleph-* identity headers (anti-spoof).
 #   injectIdentity.js (post) — stamp X-Aleph-Identity / X-Aleph-Account /
-#                              X-Aleph-Identity-Type from the key's session
-#                              metadata so the gateway can attribute usage.
+#                              X-Aleph-Identity-Type from the key's alias + tags
+#                              (Tyk OSS wipes meta_data on first request; alias +
+#                              tags persist), so the gateway can attribute usage.
 #
 # If you change either JS file, update BOTH gateway/tyk/middleware/*.js and this
 # ConfigMap, then: kubectl apply -f 54-tyk-middleware.yaml &&
@@ -63,17 +64,23 @@ data:
         return normalizeAuth.ReturnData(request, {});
     });
   injectIdentity.js: |
-    // Tyk JSVM post-auth middleware: inject authoritative identity headers.
+    // Tyk JSVM post-auth middleware: inject identity headers from alias + tags.
     var injectIdentity = new TykJS.TykMiddleware.NewMiddleware({});
 
     injectIdentity.NewProcessRequest(function(request, session) {
-        var md = (session && session.meta_data) ? session.meta_data : {};
-        var identity = md.identity || md.username || "";
-        var account = md.account || identity;
-        var itype = md.identity_type || "service";
+        var identity = (session && session.alias) ? session.alias : "";
+        var account = identity;
+        var itype = "service";
+
+        var tags = (session && session.tags) ? session.tags : [];
+        for (var i = 0; i < tags.length; i++) {
+            var t = String(tags[i]);
+            if (t.indexOf("account:") === 0) { account = t.substring(8); }
+            else if (t.indexOf("type:") === 0) { itype = t.substring(5); }
+        }
 
         request.SetHeaders["X-Aleph-Identity"] = String(identity);
-        request.SetHeaders["X-Aleph-Account"] = String(account);
+        request.SetHeaders["X-Aleph-Account"] = String(account || identity);
         request.SetHeaders["X-Aleph-Identity-Type"] = String(itype);
 
         return injectIdentity.ReturnData(request, {});

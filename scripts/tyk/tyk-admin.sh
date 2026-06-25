@@ -10,8 +10,10 @@
 #   identity       service name (e.g. openwebui) OR an LDAP username
 #   account        fairshare/billing bucket (defaults to identity)
 #   identity_type  service | user   (default: service)
-# These land in the key's meta_data and are injected by Tyk (injectIdentity.js)
-# as X-Aleph-* headers so the gateway can attribute every request for fairshare.
+# These are stored as the key ALIAS (identity) and TAGS (account:<x>, type:<x>)
+# and injected by Tyk (injectIdentity.js) as X-Aleph-* headers so the gateway can
+# attribute every request for fairshare. NOTE: we deliberately do NOT rely on
+# Tyk meta_data — Tyk OSS wipes it on the first request; alias + tags persist.
 #
 # Commands:
 #   add-user <identity> [account] [type]   create a key, print the key string
@@ -80,14 +82,16 @@ audit() {
   echo "$line" >> "$AUDIT_LOG" 2>/dev/null || true
 }
 
-# Emit a key body with identity metadata.
+# Emit a key body. Identity lives in alias + tags (durable); meta_data is also
+# set for human inspection right after creation but is NOT relied upon (Tyk OSS
+# wipes meta_data on first request).
 key_body() {
   local identity="$1" account="$2" itype="$3"
   cat <<EOF
 {
   "alias": "${identity}",
+  "tags": ["aleph", "account:${account}", "type:${itype}"],
   "meta_data": {"identity": "${identity}", "account": "${account}", "identity_type": "${itype}", "source": "tyk-admin", "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"},
-  "tags": ["aleph", "${itype}"],
   "access_rights": {"${API_ID}": {"api_id": "${API_ID}", "api_name": "${API_ID}", "versions": ["Default"]}}
 }
 EOF
@@ -115,9 +119,17 @@ for h in req("/tyk/keys").get("keys", []):
         d = req(f"/tyk/keys/{h}?hashed=true")
     except Exception:
         continue
-    md = d.get("meta_data") or {}
-    if md.get("identity") == want or md.get("username") == want:
-        print(f"{h}\t{md.get('identity', md.get('username',''))}\t{md.get('account','')}\t{md.get('identity_type','')}")
+    # Identity = durable alias; account/type parsed from tags (meta_data unreliable).
+    ident = d.get("alias") or (d.get("meta_data") or {}).get("identity", "")
+    if ident != want:
+        continue
+    account, itype = ident, "service"
+    for t in (d.get("tags") or []):
+        if t.startswith("account:"):
+            account = t[len("account:"):]
+        elif t.startswith("type:"):
+            itype = t[len("type:"):]
+    print(f"{h}\t{ident}\t{account}\t{itype}")
 PY
 }
 
@@ -137,18 +149,18 @@ case "$cmd" in
   validate-key)
     identity="${1:?identity required}"; key="${2:?key required}"
     out="$(curl -s "${AUTH[@]}" "${TYK_URL}/tyk/keys/${key}$(hashed_flag "$key")")"
-    ok="$(echo "$out" | python3 -c '
+    ok="$(echo "$out" | WANT="$identity" python3 -c '
 import sys, json, os
 want = os.environ["WANT"]
 try:
     d = json.load(sys.stdin)
 except Exception:
     print("false"); sys.exit()
-md = d.get("meta_data") or {}
-ident = md.get("identity") or md.get("username")
+# Identity is the durable alias (meta_data is unreliable in Tyk OSS).
+ident = d.get("alias") or (d.get("meta_data") or {}).get("identity")
 # A valid lookup returns the session (has access_rights); identity must match.
 print("true" if d.get("access_rights") and ident == want else "false")
-' WANT="$identity" 2>/dev/null || echo false)"
+' 2>/dev/null || echo false)"
     audit "validate-key" "$identity" "result=$ok"
     echo "$ok"
     [ "$ok" = "true" ]
