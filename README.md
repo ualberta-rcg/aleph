@@ -1,3 +1,5 @@
+<img src="./assets/ua_logo_green_rgb.png" alt="University of Alberta Logo" width="50%" />
+
 # Aleph
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
@@ -5,7 +7,7 @@
 [![GPU Scheduling](https://img.shields.io/badge/GPU-HAMi-76B900.svg)](https://github.com/Project-HAMi/HAMi)
 [![Serving](https://img.shields.io/badge/Serving-KServe%20%2B%20Knative-orange.svg)](https://kserve.github.io/website/latest/)
 
-> **RKE2 + Warewulf + HAMi + KServe/Knative inference platform with OpenAI/Anthropic-compatible gateway.**
+> **One gateway, 170+ models — OpenAI- and Anthropic-compatible inference on a self-deploying RKE2/HAMi/KServe stack.**
 
 *Deployed on the University of Alberta / AMII Vulcan environment for multi-model GPU inference.*
 
@@ -159,25 +161,18 @@ kubectl apply -f models/<model>/inferenceservice.yaml # the KServe ISVC
 # also warm + probe every model in the catalog (replaces the old full_test sweep).
 GW_URL=http://<VIP> TYK_KEY=<key> python3 gateway/test.py
 
-# Per-model feature battery (start from the template, keep the sections that apply):
+# Per-model feature battery:
 GW_URL=http://<VIP> TYK_KEY=<key> MODEL=<id> python3 models/<model>/test.py
 ```
 
-## 📚 Repository Layout
+## 📚 Code Layout
 
 | Path | Description |
 |---|---|
 | `ww-overlays/` | Warewulf overlays + RKE2 auto-deploy manifests (common / control-plane / gpu-worker), site-value tokens, and post-deploy steps |
 | `gateway/` | FastAPI gateway app, translation logic, k8s deployment, Tyk API defs, and `test.py` (model-agnostic gateway checks + optional `FLEET=1` warm-sweep) |
-| `models/` | Per-model `InferenceService`, `PVC`, `details.yaml` card, and `test.py` battery (copy `models/test.template.py`) |
+| `models/` | Per-model `InferenceService`, `PVC`, `details.yaml` card, and model-specific test battery |
 | `scripts/` | Ops helpers — `test-model.sh` (apply / recreate / up / status / cycle a model) |
-| `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
-| `docs/TYK-USERS.md` | Tyk users & API keys — identity model, `tyk-admin.sh`, catch-all auth |
-| `docs/LOGGING.md` | Usage accounting / fairshare — log schema, GPU/node provenance, metrics |
-| `docs/GATEWAY-DESIGN.md` | Gateway design rationale |
-| `docs/GATEWAY-ARCHITECTURE.md` | Card schema + handler map |
-| `CHANGELOG.md` | Timeline of model/platform updates |
-| `CLAUDE.md` | Operator and agent context for this repository |
 
 ## 🧭 Operations Notes
 
@@ -224,9 +219,9 @@ That's it! No other strings attached. The MIT License is trusted by major projec
 
 ## 🔭 Why "Aleph"?
 
-The name is borrowed, deliberately, from a few places that all point at the same idea: **one point that contains all the others.**
+The name is borrowed, deliberately, from a few places that all point at the same idea: **one point in space-time that contains all other points.**
 
-- **Borges (1945), *The Aleph*.** A single point in a Buenos Aires cellar that contains every other point in space — gaze into it and you see the entire universe at once, from every angle, without overlap or confusion. That is exactly the promise of this platform: *one endpoint that contains every model.* Send a request to a single URL and the whole catalog — 170+ models from protein folders to LLMs — is reachable through that one coordinate.
+- **Borges (1945), *The Aleph*.** A single point in a Buenos Aires cellar that contains every other point in space-time — gaze into it and you see the entire universe at once, from every angle, without overlap or confusion. That is exactly the promise of this platform: *one endpoint that contains every model.* Send a request to a single URL and the whole catalog — 170+ models from protein folders to LLMs — is reachable through that one coordinate.
 - **Cantor's mathematics.** ℵ₀ (aleph-null) is the *smallest infinity*, the cardinality of the natural numbers — and the Hebrew letter aleph also means "one." Cantor called it an "infinite unity": countless things, addressed as one. A fitting symbol for a single gateway fronting an unbounded, ever-growing catalog.
 - **The latent-space reading.** A modern gloss notes that a model's latent space is itself a kind of Aleph — the whole training corpus compressed into one high-dimensional point, where a prompt is just a coordinate and the output is the view from there. Aleph the platform is the infrastructure layer over many such points.
 - **The sci-fi reading.** In Frederik Pohl's *The Gold at the Starbow's End*, **Alpha-Aleph** is the destination — the planet that gives a crew (and a civilization) somewhere to aim. We like that too: a shared place researchers point their jobs at, where the hard part is already running.
