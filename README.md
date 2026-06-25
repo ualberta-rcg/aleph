@@ -110,6 +110,8 @@ GW_URL=http://<VIP> TYK_KEY=<key> MODEL=<id> python3 models/<model>/test.py
 | `models/` | Per-model `InferenceService`, `PVC`, `details.yaml` card, and `test.py` battery (copy `models/test.template.py`) |
 | `scripts/` | Ops helpers — `test-model.sh` (apply / recreate / up / status / cycle a model) |
 | `docs/RUNBOOK.md` | Operations guide — deploy, Tyk wiring, day-2 key mgmt, gotchas |
+| `docs/TYK-USERS.md` | Tyk users & API keys — identity model, `tyk-admin.sh`, catch-all auth |
+| `docs/LOGGING.md` | Usage accounting / fairshare — log schema, GPU/node provenance, metrics |
 | `docs/GATEWAY-DESIGN.md` | Gateway design rationale |
 | `docs/GATEWAY-ARCHITECTURE.md` | Card schema + handler map |
 | `CHANGELOG.md` | Timeline of model/platform updates |
