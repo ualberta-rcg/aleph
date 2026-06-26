@@ -1,0 +1,16 @@
+# Config for rke2-deregister.service / /usr/local/bin/rke2-deregister.sh
+#
+# HEAD_NODES is auto-detected from the RKE2 agent load-balancer config (the live list of all
+# control-plane addresses) — leave it empty. Only set it to override detection, e.g. on a node
+# where the LB file is absent. Space-separated host/IP list, no port.
+# HEAD_NODES=""
+
+# Private key matching the forced-command entry in the head nodes' /etc/ssh/deregister.authorized_keys
+SSH_KEY="/etc/rke2-deregister/id_ed25519"
+SSH_USER="root"
+
+# This whole cluster is stateless Warewulf — control-plane nodes also come back "new" on reboot and
+# must drop their stale Node object too, so server deregistration is ENABLED here.
+# CAUTION: reboot control-plane nodes ONE AT A TIME so etcd keeps quorum (2 of 3). The hook only
+# deletes the Node object (not the etcd member); rejoin is handled by RKE2/Warewulf on next boot.
+DEREGISTER_SERVERS=true

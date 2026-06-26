@@ -3,6 +3,50 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-26 — stateless node self-deregistration on shutdown (SSH-to-head, rejoin-clean)
+
+**What:** new on-shutdown hook (baked in the overlays) that deletes a node's own stale `Node`
+object so a stateless Warewulf reboot rejoins clean. Implemented via SSH to a head node rather than
+an API token (admin's call — closer to existing ops, no in-cluster RBAC).
+
+- `common/etc/systemd/system/rke2-deregister.service` (+ enable symlink) — oneshot,
+  `RemainAfterExit=yes`, work in `ExecStop`, ordered `After=` network so networking is still up when
+  it fires; `TimeoutStopSec=60`.
+- `common/usr/local/bin/rke2-deregister.sh` — on shutdown, SSHes a head node with a dedicated key
+  and passes its own hostname; the head runs the delete. Time-boxed (`timeout`/`ConnectTimeout`) so
+  an unreachable head can't hang shutdown. **Auto-detects head nodes** from the RKE2 agent
+  load-balancer config (`rke2-agent-load-balancer.json` → `ServerAddresses`), falling back to the
+  `server:` endpoint in `config.yaml` — nothing hardcoded. **Skips control-plane/etcd nodes by
+  default** (`DEREGISTER_SERVERS=true` to opt in).
+- `common/etc/default/rke2-deregister` — `SSH_KEY`/`SSH_USER`/server toggle; `HEAD_NODES` is an
+  optional manual override (detection is the default).
+- `common/etc/rke2-deregister/id_ed25519` — private SSH key. **DUMMY committed**; real key kept out
+  of the repo (local secrets dir) and swapped in at bake.
+- `control-plane/etc/ssh/deregister.authorized_keys` — forced-command (`command="…",restrict`) entry,
+  so the key can ONLY run the delete wrapper as root (the "permission to delete"; no sudoers needed).
+  **DUMMY pubkey committed.**
+- `control-plane/etc/ssh/sshd_config.d/10-deregister.conf` — adds that file as an extra
+  `AuthorizedKeysFile` so existing admin/Warewulf root keys are never clobbered.
+- `control-plane/usr/local/sbin/deregister-node.sh` — forced-command target; validates
+  `$SSH_ORIGINAL_COMMAND` as a single DNS-1123 node name (blocks injection) then `kubectl delete
+  node --ignore-not-found`.
+- Docs: `ww-overlays/README.md`, `SITE-VALUES.md`, `post-deploy/README.md`.
+
+**Why SSH (not plain kubectl on the worker):** verified that NO worker-local credential can delete
+nodes — `kubelet`, `kubeproxy`, `rke2controller` kubeconfigs all return `kubectl auth can-i delete
+nodes` → `no` (Node authorizer + NodeRestriction). The head node has the rights, so it does the
+delete.
+
+**Validation (no IPs, nothing hardcoded):** installed live on all 5 nodes; head detection returns
+the 3 control-plane addresses from the agent LB config. Confirmed end-to-end from a worker by SSHing
+the head with a BOGUS node name (forced command + `--ignore-not-found` = no-op): wrapper ran and
+printed the delete, exit 0; arbitrary command (`id; cat /etc/shadow`) was REFUSED; all 5 nodes
+remained Ready. No real Node deleted.
+
+**Follow-up (not done):** hard reset / power loss bypasses the hook and leaves a ghost `NotReady`
+node — delete by hand, or a small head-node cron/timer that reaps non-control-plane nodes
+`NotReady` > 15 min.
+
 ## 2026-06-26 — fix nfs-models mountOptions never applying on deploy (wrong helm values key)
 
 **What:** moved the NFS `mountOptions` list in `30-nfs.yaml` from under `storageClass:` to

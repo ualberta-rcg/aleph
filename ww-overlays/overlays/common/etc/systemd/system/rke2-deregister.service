@@ -1,0 +1,24 @@
+# Deregister this node from the RKE2 cluster on shutdown/reboot.
+#
+# Pattern: a oneshot that does nothing at start (RemainAfterExit) and does the real work in
+# ExecStop. systemd stops units in reverse start order, so ordering this After= the network
+# means ExecStop fires while networking is STILL up — the script then SSHes to a head node to
+# delete this node's own Node object.
+#
+# Baked via the common overlay (all nodes). The script guards control-plane/etcd nodes off by
+# default — see /usr/local/bin/rke2-deregister.sh and /etc/default/rke2-deregister.
+[Unit]
+Description=Deregister this node from the RKE2 cluster on shutdown
+After=network-online.target rke2-agent.service rke2-server.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/rke2-deregister
+ExecStart=/bin/true
+ExecStop=/usr/local/bin/rke2-deregister.sh
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

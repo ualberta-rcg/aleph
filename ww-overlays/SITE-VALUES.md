@@ -44,6 +44,9 @@ the only overlay carrying tokens; `common` and `gpu-worker` have none).
 | Overlay / file | Applies to | Purpose |
 |---|---|---|
 | `common/etc/sysctl.d/90-inotify.conf` | all nodes | Raise `fs.inotify.max_user_instances` for dense-pod nodes (optional polish) |
+| `common/etc/systemd/system/rke2-deregister.service` + `usr/local/bin/rke2-deregister.sh` + `etc/default/rke2-deregister` | all nodes | On-shutdown hook: SSHes a head node to delete this node's own stale `Node` object so stateless reboots rejoin clean (servers guarded off by default) |
+| `common/etc/rke2-deregister/id_ed25519` | all nodes | Private SSH key for the deregister hook. **Not a `__TOKEN__`** — DUMMY committed; swap in the real key (from the local secrets dir) at bake. |
+| `control-plane/etc/ssh/deregister.authorized_keys` + `sshd_config.d/10-deregister.conf` + `usr/local/sbin/deregister-node.sh` | control-plane | Forced-command SSH target that performs the `kubectl delete node`. DUMMY pubkey committed; swap in the real public key at bake. |
 | `control-plane/etc/rancher/manifests/*` | control-plane (RKE2 applies cluster-wide) | The full auto-deploy set (see README table) |
 | `control-plane/etc/netplan/60-public-vip.yaml` | control-plane only | Public NIC plumbing for MetalLB L2 (IP-free NIC + on-link route) |
 | `control-plane/etc/systemd/system/metallb-vip-lo.service` | control-plane only | Bind the VIP to `lo` at boot (`ip addr add __VIP__/32 dev lo`) — netplan can't address `lo` |

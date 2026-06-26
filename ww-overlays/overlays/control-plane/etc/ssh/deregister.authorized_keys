@@ -1,0 +1,12 @@
+# Node self-deregistration key — forced-command, root login restricted to ONE action.
+#
+# This is the "permission to delete a node" half (the SSH key's matching authorized_keys entry).
+# The `command="..."` forces every login with this key to run ONLY the delete wrapper, ignoring
+# whatever the client asks for; `restrict` disables port/agent/X11 forwarding, pty, etc. So even
+# though it logs in as root, a leaked key can do exactly one thing: delete the Node object whose
+# name the client passes. This is why no separate sudoers rule is needed.
+#
+# DUMMY KEY committed below — replace with the REAL public key at bake time:
+#   ~/hami-cluster-test/deregister-keys/id_ed25519.pub   (private half goes on the nodes at
+#   /etc/rke2-deregister/id_ed25519 via the common overlay).
+command="/usr/local/sbin/deregister-node.sh",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyPveRoVPq5GpcKRCmoA1IY3qaRbSPqdbnf91JGL6rP DUMMY-aleph-node-deregister-REPLACE-AT-BAKE

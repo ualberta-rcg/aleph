@@ -19,8 +19,15 @@ ww-overlays/
   overlays/
     common/            ← baked on ALL nodes
       etc/sysctl.d/90-inotify.conf
+      etc/rke2-deregister/id_ed25519             ← private SSH key (DUMMY committed; real swapped at bake)
+      etc/default/rke2-deregister                ← HEAD_NODES list, key path, server toggle
+      etc/systemd/system/rke2-deregister.service ← on-shutdown hook (SSHes head, deletes own Node)
+      usr/local/bin/rke2-deregister.sh           ← the deregister script (time-boxed, server-guarded)
     control-plane/     ← baked on CONTROL-PLANE nodes
       etc/rancher/manifests/        ← RKE2 auto-deploy set (00..70)
+      etc/ssh/deregister.authorized_keys         ← forced-command pubkey (DUMMY committed)
+      etc/ssh/sshd_config.d/10-deregister.conf   ← adds the extra AuthorizedKeysFile path
+      usr/local/sbin/deregister-node.sh          ← forced-command target (validates + kubectl delete)
       etc/netplan/60-public-vip.yaml
       etc/sysctl.d/99-public-vip.conf
       usr/local/bin/tyk-admin.sh    ← Tyk key admin CLI (on PATH; see docs/TYK-USERS.md)
@@ -36,8 +43,8 @@ ww-overlays/
 
 | Overlay | Baked on | Contains |
 |---|---|---|
-| `common` | all nodes | inotify limit bump (dense-pod headroom) |
-| `control-plane` | control-plane nodes | RKE2 auto-deploy manifests + public-VIP netplan/sysctl + `tyk-admin.sh` in `/usr/local/bin` |
+| `common` | all nodes | inotify limit bump (dense-pod headroom) + on-shutdown node-deregister client (SSH key + unit + script + config) |
+| `control-plane` | control-plane nodes | RKE2 auto-deploy manifests + public-VIP netplan/sysctl + `tyk-admin.sh` + node-deregister SSH target (forced-command key + wrapper) |
 | `gpu-worker` | GPU workers | NVIDIA persistence-mode unit + RoCE kernel modules |
 
 **About the manifests:** RKE2 reads `/etc/rancher/manifests/` only on server (control-plane)
@@ -170,6 +177,41 @@ configure the host network that MetalLB L2 relies on, so they live in the `contr
 overlay. (The VIP-on-`lo` lives in the systemd unit because netplan can't address `lo`.)
 
 ---
+
+## Stateless-node deregistration on shutdown (SSH to head)
+
+These nodes are stateless: a reboot brings the box up "fresh" and RKE2 auto-rejoins, but the
+**old `Node` object lingers in the API and dirties/blocks the rejoin**. On shutdown each node SSHes
+to a control-plane (head) node — which already has the admin kubeconfig — and asks it to delete the
+node's own `Node` object, so it re-registers clean on the next boot.
+
+Why SSH and not "just kubectl on the worker": agent nodes have **no** credential that can delete
+nodes — `kubelet`, `kubeproxy`, and `rke2controller` kubeconfigs are all forbidden by the Node
+authorizer + NodeRestriction (verified: `kubectl auth can-i delete nodes` → `no`). The head node
+does have the rights, so we let it do the delete.
+
+| Piece | Overlay / where | Does |
+|---|---|---|
+| `usr/local/bin/rke2-deregister.sh` | common (all nodes) | On shutdown, SSHes each `HEAD_NODES` in turn with the deregister key, passing its own hostname. Time-boxed (`timeout` + `ConnectTimeout`) so a dead head can't hang shutdown. **Skips control-plane/etcd nodes by default.** |
+| `etc/default/rke2-deregister` | common | `HEAD_NODES`, `SSH_KEY`, `SSH_USER`, `DEREGISTER_SERVERS` |
+| `etc/rke2-deregister/id_ed25519` | common | Private SSH key. **DUMMY committed**; real key swapped in at bake (real one lives in the local secrets dir, not the repo). |
+| `etc/systemd/system/rke2-deregister.service` | common | oneshot, `RemainAfterExit=yes`; work in `ExecStop`, ordered `After=` network so networking is still up when it fires |
+| `etc/ssh/deregister.authorized_keys` | control-plane | The key's matching entry, `command="…",restrict` — the key can ONLY run the delete wrapper (this is the "permission to delete", so no sudoers needed). **DUMMY pubkey committed.** |
+| `etc/ssh/sshd_config.d/10-deregister.conf` | control-plane | Adds that file as an extra `AuthorizedKeysFile` so the admin/WW keys in `~/.ssh/authorized_keys` are never clobbered |
+| `usr/local/sbin/deregister-node.sh` | control-plane | Forced-command target: validates `$SSH_ORIGINAL_COMMAND` as a single DNS-1123 node name (blocks injection), then `kubectl delete node <name> --ignore-not-found` as root |
+
+**Servers are guarded off by default.** Deleting a control-plane/etcd node's `Node` object on every
+reboot is a quorum footgun, so the script no-ops on server nodes unless `DEREGISTER_SERVERS=true` is
+set in `/etc/default/rke2-deregister`. Workers (the ones that actually churn) deregister automatically.
+
+**Keys: dummy in the repo, real at bake.** Per project convention the committed key pair is a clearly
+labelled DUMMY; the real pair lives outside the repo (e.g. `~/hami-cluster-test/deregister-keys/`).
+At bake time, drop the real private key into `common/etc/rke2-deregister/id_ed25519` and the real
+public key into the `command="…" <pubkey>` line of `control-plane/etc/ssh/deregister.authorized_keys`.
+
+> **Backstop for hard resets:** this hook only fires on *clean* shutdown. Power loss / hard reset
+> leaves a ghost `NotReady` node — delete it by hand, or run a small cron/timer on a head node that
+> deletes non-control-plane nodes that have been `NotReady` for >15 min.
 
 ## See also
 

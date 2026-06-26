@@ -58,7 +58,43 @@ kubectl apply -f models/<model>/inferenceservice.yaml
 kubectl get isvc <model> -n models -w    # wait for Ready
 ```
 
-## 4. TLS certificate (optional, requires public DNS + port 80)
+## 4. Bake the node-deregister SSH keys (stateless rejoin cleanup)
+
+On shutdown each node SSHes a head node to delete its own stale `Node` object so it rejoins clean.
+The repo ships a **DUMMY** key pair; swap in a real one at bake (real keys live outside the repo).
+
+```bash
+# Generate a real key pair once (keep it OUT of the repo, e.g. in the local working dir):
+ssh-keygen -t ed25519 -N '' -C aleph-node-deregister \
+  -f ~/hami-cluster-test/deregister-keys/id_ed25519
+
+# Private half -> common overlay (all nodes):
+cp ~/hami-cluster-test/deregister-keys/id_ed25519 \
+   ww-overlays/overlays/common/etc/rke2-deregister/id_ed25519
+chmod 600 ww-overlays/overlays/common/etc/rke2-deregister/id_ed25519
+
+# Public half -> control-plane overlay, kept restricted to the delete wrapper:
+printf 'command="/usr/local/sbin/deregister-node.sh",restrict %s\n' \
+  "$(cat ~/hami-cluster-test/deregister-keys/id_ed25519.pub)" \
+  > ww-overlays/overlays/control-plane/etc/ssh/deregister.authorized_keys
+```
+
+Then re-bake. Head nodes are auto-detected at runtime from the RKE2 agent load-balancer config, so
+nothing needs an IP. Verify the path from a worker WITHOUT deleting a real node (bogus name + the
+wrapper's `--ignore-not-found` makes it a no-op):
+
+```bash
+HEAD=$(sudo ssh root@<worker> "grep -oE '\"[0-9.]+:[0-9]+\"' \
+  /var/lib/rancher/rke2/agent/etc/rke2-agent-load-balancer.json | tr -d '\"' | sed 's/:.*//' | head -1")
+sudo ssh root@<worker> "ssh -i /etc/rke2-deregister/id_ed25519 \
+  -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  root@$HEAD 'zzz-fake-node'"            # -> deregister-node: deleting node 'zzz-fake-node'
+```
+
+The server-guard toggle and an optional manual `HEAD_NODES` override live in
+`ww-overlays/overlays/common/etc/default/rke2-deregister` (detection is the default).
+
+## 5. TLS certificate (optional, requires public DNS + port 80)
 
 Once DNS points `__PUBLIC_HOSTNAME__` at the VIP and Traefik exposes port 80:
 
