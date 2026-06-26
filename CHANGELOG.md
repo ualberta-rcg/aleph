@@ -3,6 +3,28 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-26 — move public VIP edge from Tyk to Traefik for TLS/ACME
+
+**What:** changed the generic public-edge service wiring so the single MetalLB VIP is consumed by
+bundled RKE2 Traefik, while Tyk remains an internal ClusterIP auth/rate-limit hop behind Traefik.
+
+- `42-traefik-loadbalancer.yaml` — new LoadBalancer Service selecting the bundled
+  `rke2-traefik` DaemonSet and exposing ports 80/443 on the MetalLB VIP.
+- `52-tyk-loadbalancer.yaml` — converted the historical `tyk-gateway-nodeport` compatibility
+  Service from LoadBalancer/NodePort to ClusterIP-only on port 8080.
+
+**Why:** cert-manager's existing `letsencrypt-prod` issuer uses HTTP-01 via the Traefik ingress
+class. When the VIP pointed directly at Tyk, ACME challenges could not be served by Traefik and
+Tyk would have needed custom TLS/cert mounting. Traefik is now the public TLS edge; Tyk stays
+internal and continues to proxy to `model-gateway`.
+
+**Validation:** applied live on Aleph after the Warewulf redeploy. MetalLB reassigned
+`129.128.190.56` to `rke2-traefik-public`; `tyk-gateway-nodeport` became ClusterIP-only; local
+post-install Traefik routes for `inference.vulcan.alliancecan.ca` redirect normal HTTP to HTTPS.
+Let's Encrypt HTTP-01 issuance is still blocked by external network policy (`Timeout during
+connect` from ACME validators), so a DNS-01/manual cert path is needed for the public certificate
+unless port 80 is reachable from Let's Encrypt.
+
 ## 2026-06-26 — stateless node self-deregistration on shutdown (SSH-to-head, rejoin-clean)
 
 **What:** new on-shutdown hook (baked in the overlays) that deletes a node's own stale `Node`

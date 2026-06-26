@@ -1,0 +1,33 @@
+# Traefik public exposure — RKE2 auto-deploy manifest (LoadBalancer Service via MetalLB).
+#
+# APPLIES TO: HEAD/edge nodes (the VIP is advertised there). No site values to fill — MetalLB
+#             auto-assigns the address from the 41-metallb-vip.yaml pool.
+#
+# Traefik is the public edge: cert-manager HTTP-01 challenges land on port 80, normal HTTP
+# traffic is redirected to HTTPS by post-install route customization, and HTTPS proxies to Tyk.
+# Tyk remains internal-only behind Traefik.
+#
+# ORDER: this Service stays <pending> until 41-metallb-vip.yaml's pool exists. The selector
+# matches the bundled RKE2 Traefik chart's pods; the chart's own ClusterIP Service remains in
+# place for in-cluster traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rke2-traefik-public
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: rke2-traefik
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: rke2-traefik-kube-system
+    app.kubernetes.io/name: rke2-traefik
+  ports:
+    - name: web
+      port: 80
+      targetPort: web
+      protocol: TCP
+    - name: websecure
+      port: 443
+      targetPort: websecure
+      protocol: TCP

@@ -1,17 +1,16 @@
-# Tyk public exposure — RKE2 auto-deploy manifest (LoadBalancer Service via MetalLB).
+# Tyk internal exposure — RKE2 auto-deploy manifest.
 #
-# APPLIES TO: HEAD/edge nodes (the VIP is advertised there). No site values to fill — MetalLB
-#             auto-assigns the address from the 41-metallb-vip.yaml pool.
+# APPLIES TO: all nodes (cluster-wide Service). No site values to fill.
 #
-# NAME NOTE: the Service is named `tyk-gateway-nodeport` for historical reasons but is type
-# LoadBalancer. It is the REAL public entrypoint: clients hit the MetalLB VIP on port 80.
-# The nodePort (30808) is only the LB's backing port, kept for an internal NodePort fallback
-# (http://<any-node-ip>:30808) — it is NOT the primary access path.
+# NAME NOTE: the Service keeps the historical `tyk-gateway-nodeport` name so older scripts that
+# reference it do not break, but it is now ClusterIP-only. Public traffic enters through Traefik
+# (42-traefik-loadbalancer.yaml), which terminates TLS and proxies to Tyk internally.
 #
-# Replaces the old gateway/tyk/nodeport.yaml (type NodePort), which was drift and is removed.
+# The tyk-oss chart also creates `gateway-svc-tyk-oss-tyk-gateway`; both Services select the same
+# pod. This compatibility Service is intentionally not public.
 #
-# ORDER: this Service stays <pending> until 41-metallb-vip.yaml's pool exists; both are
-# auto-deployed, so it converges automatically. Selector matches the tyk-oss chart's gateway pod.
+# ORDER: Traefik owns the single MetalLB VIP from 41-metallb-vip.yaml. Tyk must not be a
+# LoadBalancer or it will consume the only address in the pool.
 apiVersion: v1
 kind: Service
 metadata:
@@ -20,13 +19,12 @@ metadata:
   labels:
     app: gateway-tyk-oss-tyk-gateway
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: gateway-tyk-oss-tyk-gateway
     release: tyk-oss
   ports:
     - name: http
-      port: 80
+      port: 8080
       targetPort: 8080
-      nodePort: 30808
       protocol: TCP
