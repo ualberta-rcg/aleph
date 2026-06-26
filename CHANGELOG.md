@@ -3,6 +3,35 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-26 — fix nfs-models mountOptions never applying on deploy (wrong helm values key)
+
+**What:** moved the NFS `mountOptions` list in `30-nfs.yaml` from under `storageClass:` to
+under `nfs:` in the HelmChart `valuesContent`.
+
+**Why:** the `nfs-subdir-external-provisioner` chart (4.0.18) renders the StorageClass's
+`mountOptions` from `.Values.nfs.mountOptions` (`templates/storageclass.yaml`), and has **no
+`storageClass.mountOptions` key at all** — the overlay's `storageClass.mountOptions` block was
+silently dropped on every `helm install`. Result: `nfs-models` came up with empty mountOptions,
+dynamically-provisioned PVs mounted NFSv4.2 at the default `rsize/wsize=1Mi`, and the OneFS/Isilon
+backend threw `EIO`/`Errno 5` on large safetensors `close()` and pip/venv small-file writes. Because
+StorageClass `mountOptions` is immutable, the later helm reconcile could not patch it in — the SC had
+to be manually deleted and recreated each deploy (the "set them a second time" symptom). Verified
+against the chart templates: `nfs.mountOptions` is applied to BOTH the SC and the provisioner root PV.
+
+**Impact:** a clean boot now brings `nfs-models` up with the OneFS-safe 128Ki options automatically;
+no manual SC delete/recreate. Requires re-baking the control-plane WW overlay. Existing PVs keep the
+options captured at their own provision time (deleting/recreating the SC does not change bound PVs).
+
+**Validation:** confirmed live `nfs-models` currently carries the correct options (from the prior
+manual fix); confirmed chart `templates/storageclass.yaml` + `persistentvolume.yaml` (tag
+`nfs-subdir-external-provisioner-4.0.18`) read only `.Values.nfs.mountOptions`. Post-deploy check:
+`kubectl get sc nfs-models -o jsonpath='{.mountOptions}'` must be non-empty.
+
+- `ww-overlays/.../30-nfs.yaml`: mountOptions relocated under `nfs:`; header comment expanded with
+  the chart-key gotcha + immutability note.
+- `docs/RUNBOOK.md`: NFS EIO entry updated with the root cause and the post-deploy verify command.
+- Repo-only; live cluster already correct from the earlier manual recreation.
+
 ## 2026-06-25 — fix public VIP binding (lo via systemd, drop broken netplan dummy)
 
 The netplan `60-public-vip.yaml` used a top-level `dummy:` key to carry the VIP on a

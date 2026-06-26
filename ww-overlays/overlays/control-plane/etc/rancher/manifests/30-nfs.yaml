@@ -9,7 +9,16 @@
 # WHY nfs-models (the mountOptions below): the OneFS/Isilon backend returns EIO on COMMIT for
 # write RPCs > 128 KiB over NFSv4.1/4.2; the default wsize/rsize=1Mi makes multi-GB safetensors
 # writes fail at close(). Capping rsize/wsize to 128Ki lets large writes succeed (~700 MB/s
-# verified). The SC mountOptions propagate to the dynamically-provisioned PVs.
+# verified). These options propagate to the dynamically-provisioned PVs.
+#
+# CRITICAL — mountOptions MUST live under `nfs:`, NOT under `storageClass:`. The
+# nfs-subdir-external-provisioner chart renders the StorageClass `mountOptions` from
+# `.Values.nfs.mountOptions` (templates/storageclass.yaml), and ignores any
+# `storageClass.mountOptions` key entirely. Putting them under `storageClass` is silently
+# dropped, so the SC comes up with NO mountOptions, PVs mount at the default rsize/wsize=1Mi,
+# and OneFS throws EIO on large/small-file writes (pip/venv, safetensors). StorageClass
+# mountOptions are immutable, so a later helm upgrade can't patch them in — the SC has to be
+# deleted and recreated. Keeping them under `nfs:` makes a clean boot come up correct.
 #
 # NOTE: nfs-subdir-external-provisioner is upstream-archived but still functional. Swap to
 # nfs-csi (sig-storage) in a future iteration if desired.
@@ -27,10 +36,8 @@ spec:
     nfs:
       server: __NFS_SERVER__
       path: __NFS_PATH__
-    storageClass:
-      name: nfs-models
-      defaultClass: true
-      reclaimPolicy: Delete
+      # The chart applies these to BOTH the provisioner root mount and the StorageClass
+      # (and thus every dynamically-provisioned PV). Do not move under storageClass:.
       mountOptions:
         - nfsvers=4.2
         - rsize=131072
@@ -38,3 +45,7 @@ spec:
         - hard
         - timeo=600
         - retrans=2
+    storageClass:
+      name: nfs-models
+      defaultClass: true
+      reclaimPolicy: Delete

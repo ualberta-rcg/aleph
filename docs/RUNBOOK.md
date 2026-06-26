@@ -345,10 +345,17 @@ NodePort fallback (internal): `http://<HEAD_IP>:30808` (same Tyk gateway, port 3
 4. **NFS large-write EIO (SOLVED)** — the default SC mounts NFSv4.2 with `wsize/rsize=1Mi`; the
    OneFS/Isilon backend returns `Errno 5 Input/output error` on COMMIT for >128Ki write RPCs over
    NFSv4.1/4.2, so multi-GB safetensors failed at `close()` (small files OK).
-   **Fix:** dedicated SC `nfs-models` (`deploy-aleph/storage/nfs-models-storageclass.yaml`) with
+   **Fix:** the `nfs-models` SC (auto-deploy `ww-overlays/.../30-nfs.yaml`) sets
    `mountOptions: nfsvers=4.2,wsize=131072,rsize=131072` → ~700 MB/s, verified. Model PVCs use this
    SC so weights persist and **scale-from-zero cold starts skip the re-download** (~90s vs ~3min).
    (NFSv3 and v4.0 also work at default wsize; the 1Mi RPC on v4.1+ is the trigger.)
+   **GOTCHA (why it "didn't take" on deploy):** the nfs-subdir chart renders the SC's
+   `mountOptions` from `.Values.nfs.mountOptions`, NOT `.Values.storageClass.mountOptions`. The
+   overlay originally put them under `storageClass:`, which the chart silently ignores → SC came up
+   with empty mountOptions, PVs mounted at 1Mi, and the SC had to be manually deleted+recreated
+   (mountOptions is immutable, so a helm upgrade can't patch it). Fixed by moving the list under
+   `nfs:` in `30-nfs.yaml`. To verify after a deploy:
+   `kubectl get sc nfs-models -o jsonpath='{.mountOptions}'` (must be non-empty).
 5. **vLLM image is ~9 GB** — first model start on a fresh GPU node is slow (image pull). Subsequent
    starts are fast.
 6. **Bearer prefix** — Tyk strips `Bearer `, so OpenAI/Anthropic SDKs work; raw key also accepted.
