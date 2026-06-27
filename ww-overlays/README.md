@@ -28,8 +28,7 @@ ww-overlays/
       etc/ssh/deregister.authorized_keys         ← forced-command pubkey (DUMMY committed)
       etc/ssh/sshd_config.d/10-deregister.conf   ← adds the extra AuthorizedKeysFile path
       usr/local/sbin/deregister-node.sh          ← forced-command target (validates + kubectl delete)
-      etc/netplan/60-public-vip.yaml
-      etc/sysctl.d/99-public-vip.conf
+      etc/netplan/60-public-vip.yaml             ← numbers the public NIC + preferred default route (VIP floats)
       usr/local/bin/tyk-admin.sh    ← Tyk key admin CLI (on PATH; see docs/TYK-USERS.md)
     gpu-worker/        ← baked on GPU WORKER nodes
       etc/systemd/system/nvidia-persistenced.service
@@ -44,7 +43,7 @@ ww-overlays/
 | Overlay | Baked on | Contains |
 |---|---|---|
 | `common` | all nodes | inotify limit bump (dense-pod headroom) + on-shutdown node-deregister client (SSH key + unit + script + config) |
-| `control-plane` | control-plane nodes | RKE2 auto-deploy manifests + public-VIP netplan/sysctl + `tyk-admin.sh` + node-deregister SSH target (forced-command key + wrapper) |
+| `control-plane` | control-plane nodes | RKE2 auto-deploy manifests + public-VIP netplan + `tyk-admin.sh` + node-deregister SSH target (forced-command key + wrapper) |
 | `gpu-worker` | GPU workers | NVIDIA persistence-mode unit + RoCE kernel modules |
 
 **About the manifests:** RKE2 reads `/etc/rancher/manifests/` only on server (control-plane)
@@ -59,7 +58,7 @@ is assigned to all control-plane nodes. Assign it to just the bootstrap node if 
 ```
 Warewulf bakes the overlays onto nodes at boot
   control-plane: etc/rancher/manifests/*  → RKE2 applies them
-  control-plane: etc/netplan + etc/sysctl.d → public VIP plumbing
+  control-plane: etc/netplan → public NIC numbered + preferred default (VIP floats via MetalLB)
   common:        etc/sysctl.d → tuning on every node
   gpu-worker:    etc/systemd → NVIDIA persistence mode
 
@@ -161,20 +160,22 @@ Clients → __VIP__:80 → Tyk (auth, rate-limit) → model-gateway → KServe p
 
 ---
 
-## MetalLB L2 recipe (three layers)
+## MetalLB L2 recipe
 
 | Layer | What | Where |
 |---|---|---|
 | `40-metallb.yaml` | Installs MetalLB (chart, frr sidecar, pinned to CP nodes) | control-plane manifest |
-| `41-metallb-vip.yaml` | VIP pool + L2Advertisement on `__PUBLIC_NIC__` | control-plane manifest |
+| `41-metallb-vip.yaml` | VIP pool + L2Advertisement on `__PUBLIC_NIC__` (VIP floats, no nodeSelector) | control-plane manifest |
 | `52-tyk-loadbalancer.yaml` | LoadBalancer svc → gets `__VIP__` from the pool | control-plane manifest |
-| `etc/netplan/60-public-vip.yaml` | NIC up IP-free, subnet on-link (no VIP here) | control-plane node overlay |
-| `etc/systemd/system/metallb-vip-lo.service` | VIP bound to `lo` (`ip addr add __VIP__/32 dev lo`) | control-plane node overlay |
-| `etc/sysctl.d/99-public-vip.conf` | `rp_filter=0`, ARP suppress | control-plane node overlay |
+| `etc/netplan/60-public-vip.yaml` | Numbers the public NIC with this head's OWN IP + public gateway as the PREFERRED default route | control-plane node overlay |
 
-The netplan + sysctl + the `metallb-vip-lo.service` unit are the non-manifest pieces — they
-configure the host network that MetalLB L2 relies on, so they live in the `control-plane`
-overlay. (The VIP-on-`lo` lives in the systemd unit because netplan can't address `lo`.)
+**Networking model (see SITE-VALUES.md for the full write-up):** each control-plane node carries
+its 172 cluster IP (eth0), its own public IP (`__PUBLIC_NIC_IP__`, in the VIP's `/28`), and the
+floating VIP (`__VIP__`). MetalLB advertises the VIP at L2 from the elected head — it is **not**
+bound to any node and is **not** on `lo`. The one trick is the route metric: the public gateway is
+the head's **preferred** default (metric 50) so off-subnet/Internet replies leave the public NIC
+symmetrically; the cluster default must be a higher metric (100). This replaced the old IP-free +
+`lo`-bind + `rp_filter=0` recipe (those files were deleted — symmetric routing alone suffices).
 
 ---
 

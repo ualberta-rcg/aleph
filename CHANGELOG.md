@@ -3,6 +3,41 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-26 — public VIP networking: numbered NIC + preferred default route (replaces IP-free/lo/rp_filter recipe)
+
+**What:** reworked the control-plane public-VIP host networking to the configuration proven to work
+for off-subnet/Internet clients, and deleted the old hacks that are no longer needed.
+
+- `etc/netplan/60-public-vip.yaml` — rewritten. The public NIC now carries the head's OWN real IP
+  in the VIP's `/28` (token `__PUBLIC_NIC_IP__` per node) and sets the public gateway as the
+  **preferred** default route (`metric: 50`). No `addresses: []`, no on-link-only route.
+- `etc/systemd/system/metallb-vip-lo.service` — **deleted** (+ its `multi-user.target.wants` symlink).
+  The VIP is no longer bound to `lo`; it floats via MetalLB L2 and is not pinned to any node.
+- `etc/sysctl.d/99-public-vip.conf` — **deleted**. `rp_filter=0` / `arp_ignore` are unnecessary once
+  the return path is symmetric. (`ip_forward=1` is still required but is kube-proxy's job; just keep
+  a CIS `net.ipv4.ip_forward=0` from winning a later `sysctl --system`.)
+- New tokens: `__PUBLIC_NIC_IP__` (per control-plane node), `__PUBLIC_PREFIX__`. Removed unused
+  `__PUBLIC_SUBNET__`. SITE-VALUES.md, site.env.example, README.md updated; `41-metallb-vip.yaml`
+  header reworked (VIP floats, no nodeSelector, no `lo`).
+
+**Why:** inbound to the VIP lands on the public NIC, but an off-subnet/Internet client's reply
+follows the DEFAULT route. With the default out the cluster NIC (eth0) the reply leaves the wrong
+interface (asymmetric) and the campus edge/proxy drops it. Giving the public NIC a real IP and the
+preferred default makes the path symmetric — then no `lo` bind and no `rp_filter=0` are needed.
+
+**Validation (live on aleph2, via a squid proxy off-subnet + same-subnet + node egress):**
+
+| default-route metric ordering | squid HTTPS | node→Internet | same-subnet |
+|---|---|---|---|
+| public gw metric 50 (preferred), cluster metric 100 | ✅ 200 | ✅ 200 | ✅ 200 |
+| cluster metric 50 (preferred), public gw metric 100 | ❌ timeout | ✅ 200 | ✅ 200 |
+
+Confirmed in the real two-file shape (cluster netplan `metric 100` + public overlay `metric 50`).
+
+**Gotcha (documented in the netplan header + SITE-VALUES):** netplan *appends* routes across files,
+so the overlay cannot demote the cluster default — the warewulf-generated cluster netplan MUST ship
+its default at `metric: 100` or its implicit `metric 0` silently wins and breaks external replies.
+
 ## 2026-06-26 — move public VIP edge from Tyk to Traefik for TLS/ACME
 
 **What:** changed the generic public-edge service wiring so the single MetalLB VIP is consumed by

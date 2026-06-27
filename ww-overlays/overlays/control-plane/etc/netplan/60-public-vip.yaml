@@ -1,33 +1,55 @@
-# netplan — public VIP interface for MetalLB.
+# netplan — public NIC for the MetalLB VIP (control-plane / edge nodes).
 #
-# APPLIES TO: HEAD/edge nodes ONLY (the nodes that own the public NIC / advertise the VIP).
-#             Do NOT bake this onto GPU workers.
-# TARGET PATH on node: /etc/netplan/60-public-vip.yaml   Apply: netplan apply
-# SITE VALUES: __PUBLIC_NIC__, __PUBLIC_SUBNET__, __PUBLIC_GW__, __VIP__  (see SITE-VALUES.md)
+# APPLIES TO: CONTROL-PLANE nodes ONLY (the heads that own the public NIC and L2-advertise the
+#             VIP). Do NOT bake this onto GPU workers — they have no public NIC.
+# TARGET PATH on node: /etc/netplan/60-public-vip.yaml      Apply: netplan apply
+# SITE VALUES: __PUBLIC_NIC__, __PUBLIC_NIC_IP__, __PUBLIC_PREFIX__, __PUBLIC_GW__
+#              (see ww-overlays/SITE-VALUES.md)
 #
-# Recipe (proven in production): public NIC UP but IP-free (unnumbered) — MetalLB owns the VIP at
-# L2; public subnet on-link via the NIC (DESTINATION routing — replies to public hosts route out
-# the NIC by destination, which is what actually works).
+# ---------------------------------------------------------------------------------------------
+# RECIPE (proven on this cluster — see the metric tests in CHANGELOG):
+#   Give the public NIC a REAL per-node IP in the public /28 (NOT the VIP), and make its default
+#   route the PREFERRED one (lower metric). MetalLB then owns the VIP (__VIP__) at L2 on top of
+#   the numbered NIC, exactly like it does on every other (private) VLAN.
 #
-# NOTE: the VIP itself is NOT carried here. netplan cannot address `lo`, and the `dummy:` /
-# `dummy-devices:` key is rejected on this netplan build (the whole file fails to parse), so the
-# VIP-as-local-address piece lives in a systemd oneshot instead:
-#   etc/systemd/system/metallb-vip-lo.service  → `ip address add __VIP__/32 dev lo`
-# This file now does only the NIC plumbing (IP-free + on-link route).
+#   Why a numbered NIC + a preferred public default:
+#     - Inbound to the VIP arrives on __PUBLIC_NIC__. For an OFF-SUBNET / Internet client the
+#       reply's route is the DEFAULT route. If the default points out the cluster NIC (eth0) the
+#       reply leaves the WRONG interface (asymmetric) and the campus edge / proxy drops it
+#       (proven: squid clients time out). With the default out __PUBLIC_NIC__ the reply is
+#       symmetric and works.
+#     - Because the path is now symmetric, NONE of the old hacks are needed and they were removed:
+#         * no `rp_filter=0` / arp_ignore tweaks  (old etc/sysctl.d/99-public-vip.conf — deleted)
+#         * no VIP-on-`lo` binding                 (old metallb-vip-lo.service — deleted)
+#       Routing alone is sufficient. (ip_forward=1 is still required, but that is k8s' job and is
+#       set by kube-proxy at boot — do NOT let a CIS `net.ipv4.ip_forward=0` in /etc/sysctl.conf
+#       win a later `sysctl --system`; comment it out if present.)
 #
-# Fallback if the on-link route is rejected on your distro:
-#   ip route add __PUBLIC_SUBNET__ dev __PUBLIC_NIC__
+#   METRIC ORDERING (this is the whole trick — tested both ways):
+#     __PUBLIC_NIC__ default  metric 50   → PREFERRED  ✅ squid + Internet + same-subnet all work
+#     cluster NIC   default   metric 100  → BACKUP
+#     Reverse it (cluster preferred, public backup) and off-subnet/Internet clients FAIL.
+#     Cluster (172.x) traffic is unaffected either way — it uses eth0's connected /xx route, which
+#     is more specific than any default. The node's own Internet egress works out the public gw too.
+#
+# !! NETPLAN MERGE GOTCHA (why this file is public-NIC-only yet still wins) !!
+#   netplan MERGES all files; for routes it APPENDS rather than overrides. So this overlay CANNOT
+#   demote the cluster NIC's default from here — if the cluster netplan ships its default at the
+#   implicit metric 0, that 0 beats this 50 and the public path is bypassed (three defaults, the
+#   metric-0 cluster one wins). Therefore the CLUSTER (warewulf-generated) netplan MUST set its
+#   default route to `metric: 100`. That is the one change required outside this overlay; the
+#   GPU-worker cluster netplan needs no metric (it has only the one default).
+# ---------------------------------------------------------------------------------------------
 network:
   version: 2
   ethernets:
     __PUBLIC_NIC__:
       dhcp4: false
       dhcp6: false
-      addresses: []                # IP-free (unnumbered) — MetalLB owns the VIP at L2
+      addresses:
+        - __PUBLIC_NIC_IP__/__PUBLIC_PREFIX__   # this head's OWN public IP (per-node, NOT the VIP).
+                                                # The connected route to the public /28 is implicit.
       routes:
-        - to: __PUBLIC_SUBNET__    # on-link via this NIC (destination routing)
-          scope: link
-        # Optional — EXTERNAL (Internet) clients only: make this NIC the default gw.
-        # Safe: the cluster subnet stays on the cluster NIC's connected route.
-        # - to: default
-        #   via: __PUBLIC_GW__
+        - to: default
+          via: __PUBLIC_GW__                    # public gateway
+          metric: 50                            # PREFERRED default (cluster default must be 100)

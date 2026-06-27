@@ -1,15 +1,23 @@
 # MetalLB VIP pool — RKE2 auto-deploy manifest (IPAddressPool + L2Advertisement).
 #
-# APPLIES TO: HEAD/edge nodes (the VIP is L2-advertised out the public NIC on the heads).
-# SITE VALUES: __VIP__, __PUBLIC_NIC__  (see ww-overlays/SITE-VALUES.md)
+# APPLIES TO: CONTROL-PLANE nodes (the VIP is L2-advertised out the public NIC of whichever head
+#             MetalLB elects leader). SITE VALUES: __VIP__, __PUBLIC_NIC__ (see SITE-VALUES.md)
 #
 # Tells MetalLB which IP to own and on which NIC to L2-advertise it. Paired with:
 #   - 40-metallb.yaml ............ installs MetalLB (must run first; provides the CRDs below)
-#   - etc/netplan/60-public-vip.yaml + etc/sysctl.d/99-public-vip.conf .. node NIC/ARP plumbing
+#   - etc/netplan/60-public-vip.yaml .. numbers the public NIC per-node + preferred default route
 #   - 52-tyk-loadbalancer.yaml .... the LoadBalancer Service that consumes this pool
 #
 # A type=LoadBalancer Service with no loadBalancerIP gets the (single) IP from this pool, so the
 # Tyk LB ends up on __VIP__ automatically.
+#
+# THE VIP FLOATS — it is NOT bound to any one node. Each control-plane node carries its OWN real
+# public IP (__PUBLIC_NIC_IP__, from etc/netplan/60-public-vip.yaml, all in the __VIP__ /28); the
+# VIP (__VIP__) is a SEPARATE address MetalLB advertises from the elected leader and moves on
+# failover. No nodeSelector here (any numbered head may serve) and no VIP-on-`lo` (deleted) — the
+# per-node public IP gives the leader a symmetric return path, which is all that is required.
+# (Single-edge temporary state — only one head numbered — is done live with a nodeSelector pin;
+# that pin is NOT committed because the goal is every head numbered.)
 #
 # !! CRD-RACE (expected, benign) !! These are metallb.io/v1beta1 custom resources that can only
 # apply AFTER 40-metallb.yaml's HelmChart installs the MetalLB CRDs. At a cold boot RKE2 applies
