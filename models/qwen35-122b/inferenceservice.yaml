@@ -1,19 +1,8 @@
-# Qwen3.5-122B-A10B-FP8 — MoE reasoning model, 122B total / 10B active, FP8 ~122 GB.
-# Ported from POC (232) to cluster 230 / HAMi vGPU.
-#
-# Changes vs POC:
-#   - nodeSelector: gpu: "on" only (unpinned from a specific host; scheduler picks a
-#     node with 4 free L40S). This model takes 4 whole cards.
-#   - HAMi resources for TP>=2: request whole devices via `nvidia.com/gpu: "4"` and
-#     DO NOT set nvidia.com/gpumem (vGPU mode triggers a custom all-reduce P2P stall).
-#     Combined with --disable-custom-all-reduce this gives native NCCL speed.
-#   - ADD env VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 (REQUIRED on L40S/SM89 —
-#     FlashAttention-3 unavailable; same fix gpt-oss needed).
-#   - RawDeployment -> Knative serverless (scale-to-zero) so the 4-GPU node is freed
-#     when idle. 30m idle retention (cold start ~5 min loading 122 GB).
-#   - weights pre-staged on nfs-models PVC by download-job.yaml (mounted RO at /mnt/models).
-#   - --gpu-memory-utilization 0.90 -> 0.93 and add --max-num-seqs 4 to bound KV under
-#     the 46 GB/slice cap.
+# Qwen3.5-122B-A10B-FP8 — MoE reasoning, 122B total / 10B active, FP8 ~122 GB. 4x L40S TP.
+# Whole devices (nvidia.com/gpu: 4, no gpumem — >40GB/card). Persisted helper venv + weights on
+# RWX PVC (gemma-4 pattern); scale-to-zero, 15m idle.
+# Toggle thinking (qwen3 parser) + tools (qwen3_coder), language-model-only (vision off).
+# --disable-custom-all-reduce (L40S NODE topology, no NVLink P2P). TRITON_ATTN_VLLM_V1 (SM89).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -38,12 +27,65 @@ spec:
     timeout: 600
     nodeSelector:
       gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "Qwen3.5-122B-A10B-FP8 weights already on PVC, skipping download."
+            else
+                echo "Downloading Qwen/Qwen3.5-122B-A10B-FP8 (~122 GB) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="Qwen/Qwen3.5-122B-A10B-FP8",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: qwen35-122b
+            mountPath: /data
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
-        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        command:
+          - vllm
         args:
-          - --model=/mnt/models
+          - serve
+          - /data/model
           - --served-model-name=qwen35-122b
           - --tensor-parallel-size=4
           - --max-model-len=131072
@@ -54,13 +96,14 @@ spec:
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
           - --language-model-only
-          # TP=4 on HAMi: custom all-reduce busy-waits on a P2P path that stalls
-          # (100% util / low watt / ~0.25 tok/s). Disable -> NCCL native speed.
+          # TP=4 on HAMi/L40S: custom all-reduce busy-waits on a P2P path that stalls. NCCL native.
           - --disable-custom-all-reduce
           - --port=8080
         env:
           - name: HF_HUB_OFFLINE
             value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
           - name: VLLM_ATTENTION_BACKEND          # REQUIRED on L40S (SM89)
@@ -102,15 +145,15 @@ spec:
           timeoutSeconds: 15
           failureThreshold: 3
         volumeMounts:
-          - name: qwen35-data
-            mountPath: /mnt/models
+          - name: qwen35-122b
+            mountPath: /data
             readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: qwen35-data
+      - name: qwen35-122b
         persistentVolumeClaim:
-          claimName: qwen35-122b-data
+          claimName: qwen35-122b
       - name: shm
         emptyDir:
           medium: Memory

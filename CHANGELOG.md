@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwen35-122b deployed on 43 (download-job folded; whole-device TP4)
+
+**What:** eleventh model of the 43 bring-up. `models/qwen35-122b` (TP4 122B FP8 MoE) standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `qwen35-122b` PVC/volume naming (was the funny `qwen35-data`/`qwen35-122b-data`). **`download-job.yaml` deleted.** Already whole-device (no gpumem) — correct per the >40GB rule. Kept toggle thinking (`qwen3`) + `qwen3_coder` tools + `--language-model-only` + the TP4 recipe.
+- `test.py` — added `GW_INSECURE` toggle.
+
+**Validation:** deployed (init: venv + ~122 GB download), deleted ISVC+card, re-applied from repo (PVC retained — init logged *"venv exists, skipping"* / *"weights already on PVC, skipping download"*). 29-check **26 PASS / 3 EXP / 0 FAIL** — think ON/OFF + `ANT think ON` green. `minReplicas: 0`.
+
 ## 2026-06-27 — qwen3-235b deployed on 43 (download-job folded; whole-device, no gpumem)
 
 **What:** tenth model of the 43 bring-up. `models/qwen3-235b` (TP4 235B-A22B AWQ MoE) standardized + deployed.

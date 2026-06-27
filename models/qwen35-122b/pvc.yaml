@@ -1,10 +1,10 @@
 # Qwen3.5-122B-A10B-FP8 weights (~122 GB) persist on NFS (nfs-models default SC = OneFS-safe
 # 128Ki wsize) so scale-from-zero cold starts skip the multi-hour re-download.
-# Populated once by download-job.yaml. Pad 122 GB -> 150 Gi.
+# Staged by the ISVC initContainer (gemma-4 venv-on-PVC pattern). Pad 122 GB -> 150 Gi.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: qwen35-122b-data
+  name: qwen35-122b
   namespace: models
 spec:
   accessModes:
