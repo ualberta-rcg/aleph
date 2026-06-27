@@ -26,6 +26,9 @@ import httpx, json, os, time
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+# Public edge may serve an internal/self-signed cert (e.g. cert-manager.local) — opt out of
+# verification with GW_INSECURE=1 for login-node test runs. Default stays strict.
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 MODEL = os.environ.get("MODEL", "__MODEL_ID__")
 # A reasoning prompt with a definite answer (sheep: 9 → ×7=63 → −4=59).
 HARD = ("A farmer has 17 sheep. All but 9 die. How many sheep are left? "
@@ -37,8 +40,8 @@ results = []
 
 def req(method, path, body=None, timeout=300, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
 
 
 def record(icon, status, name, detail):

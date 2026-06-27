@@ -3,6 +3,33 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — phi-4-reasoning deployed on cluster 43; standardize on gemma-4 venv-on-PVC init + bare `<model>` naming
+
+**What:** first model of the 43 LLM/NIM bring-up. Brought `models/phi-4-reasoning` to the
+per-model standards and deployed it on cluster 43 (aleph1).
+
+- `inferenceservice.yaml` — converted the initContainer from the old "fresh `pip install
+  huggingface_hub` every cold start" pattern to the **gemma-4 persisted-venv-on-PVC pattern**: build
+  `/data/venv` once (dir-gated) + download weights to `/data/model` (existence-gated); main container
+  serves `/data/model`. Cold starts now skip both the reinstall and the redownload (verified on a
+  clean delete+redeploy: *"venv exists, skipping"* / *"weights already on PVC, skipping download"*).
+- Naming standardized to the bare model name everywhere: PVC `phi-4-reasoning-data` → `phi-4-reasoning`,
+  ISVC volume `phi4-data` → `phi-4-reasoning` (volume name + claimName + both volumeMounts), so ISVC =
+  card id = PVC = ConfigMap = `phi-4-reasoning`.
+- `test.py` + `models/test.template.py` — added an env-gated `GW_INSECURE` toggle (`verify=False` when
+  set) for login-node runs against the public edge, which serves a `cert-manager.local` self-signed
+  cert (Let's Encrypt issuance still blocked). Default stays strict.
+
+**Why:** 43 is the freshly rebuilt working cluster (only 9 models deployed); this establishes the
+gemma-4 venv-on-PVC + bare-naming standard the rest of the fleet will follow, and confirms fast cold
+starts (cached venv + weights on the RWX PVC).
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained), re-tested. 31-check
+**26 PASS / 5 EXP / 0 FAIL** on the first run (ANT think ON passed); one intermittent 504 on the
+`ANT think ON` check (gateway upstream-timeout on long thinking generation) noted — OpenAI thinking
+(medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
+`minReplicas: 0` (wake-on-demand).
+
 ## 2026-06-26 — public VIP networking: numbered NIC + preferred default route (replaces IP-free/lo/rp_filter recipe)
 
 **What:** reworked the control-plane public-VIP host networking to the configuration proven to work
