@@ -128,7 +128,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | presto | classify | false | /v1/embeddings | READY | FIXED | wake-up test PASS 2026-06-08: 17-band S1_S2_ERA5_SRTM satellite embeddings; pass mask/month/dynamic_world kwargs |
 | prithvi-eo | embed | true | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (1024-dim CLS); test.py expanded to ~10 checks (0 FAIL) |
 | prithvi-wxc | embed | true | /v1/science/forecast | READY | PASS | demo forecast OK after unstop+cold-start (~6min); real MERRA-2 state not exercised |
-| progen2 | generate | true | /v1/completions | READY | FIXED | sentinel + progress-deadline 600s; 6.4B protein generation PASS |
+| progen2 | completions | true | /v1/completions | READY | PASS | ProGen2-XLarge 6.4B protein generation; custom transformers server (NOT vLLM), caduceus venv-on-PVC pattern; TP1 fractional (gpumem 30720). **Deployed+verified on cluster 43 (2026-06-27):** split PVC out to its own file, bare `progen2` PVC/volume naming, created `test.py` (completions) + `README.md`. 7-check **5/2/0** — output is amino-acid-like (aa_frac=1.0); chat rejected (EXP); catalog not-listed (EXP, gateway doesn't list completions-type). |
 | prokbert | embedding | true | /v1/embeddings | READY | PASS | 384-dim DNA |
 | prostt5 | translate | true | /v1/translate | READY | PASS | AA->3Di structural alphabet (recreated) |
 | proteinmpnn | design | true | /v1/design | READY | PASS | designs sequences from PDB w/ scores. **NIM available:** `nvcr.io/nim/ipd/proteinmpnn` (build.nvidia.com/ipd/proteinmpnn) |

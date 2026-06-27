@@ -1,7 +1,7 @@
-# ProGen2 XLarge: Protein sequence generation model
-# GPU (~13GB VRAM), scale-to-zero. HF: hugohrban/progen2-xlarge
-# BSD-3 license, Salesforce Research
-# API: POST /v1/completions
+# ProGen2 XLarge: protein sequence generation (hugohrban/progen2-xlarge, 6.4B, BSD-3).
+# Custom FastAPI server (NOT vLLM) — caduceus pattern: full venv on PVC (torch + transformers<4.45)
+# + server.py ConfigMap. API: POST /v1/completions (amino-acid prompt -> continued sequence).
+# TP1 fractional slice (gpumem 30720; ~13GB). Scale-to-zero, 15m idle.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -45,8 +45,7 @@ data:
         return {"object": "list", "data": [
             {"id": "progen2", "object": "model", "created": 1700000000,
              "owned_by": "Salesforce", "type": "text-generation",
-             "description": "ProGen2 XLarge protein generation (6.4B params)"}
-        ]}
+             "description": "ProGen2 XLarge protein generation (6.4B params)"}]}
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: dict):
@@ -56,11 +55,9 @@ data:
     async def completions(request: dict):
         if model is None:
             return JSONResponse({"error": "model loading"}, 503)
-        
         prompt = request.get("prompt", "")
         max_tokens = request.get("max_tokens", 100)
         temperature = request.get("temperature", 1.0)
-
         loop = asyncio.get_event_loop()
         try:
             result = await loop.run_in_executor(None, _generate, prompt, max_tokens, temperature)
@@ -72,31 +69,16 @@ data:
     def _generate(prompt, max_tokens, temperature):
         enc = tokenizer(prompt, return_tensors="pt")
         enc = {k: v.to(DEVICE) for k, v in enc.items()}
-        
         with torch.no_grad():
             outputs = model.generate(**enc, max_new_tokens=max_tokens,
                 temperature=temperature if temperature > 0 else 1.0,
                 do_sample=temperature > 0, pad_token_id=tokenizer.eos_token_id)
-        
         generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
         return {"id": "gen-1", "object": "text_completion", "model": "progen2",
                 "choices": [{"text": generated, "index": 0, "finish_reason": "length"}]}
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: progen2-data
-  namespace: models
-spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 30Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -106,7 +88,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
-    serving.knative.dev/progress-deadline-seconds: "600"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -135,14 +117,13 @@ spec:
             SENTINEL=/data/.progen2-ready-v2
             if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
             if [ ! -d /data/venv/bin ]; then
-              echo "Creating venv..."
-              python3 -m venv /data/venv
-              /data/venv/bin/pip install -q -U pip
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -q -U pip
             fi
             echo "Installing dependencies..."
             /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
             /data/venv/bin/pip install -q 'transformers<4.45' fastapi uvicorn huggingface_hub
-
             echo "Pre-downloading ProGen2 (~13 GB)..."
             HF_HOME=/data/hf_cache /data/venv/bin/python -c "
             from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -156,7 +137,7 @@ spec:
           requests: { cpu: "2", memory: 16Gi }
           limits: { cpu: "4", memory: 32Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: progen2, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -175,10 +156,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: progen2, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: progen2-data }
+      - name: progen2
+        persistentVolumeClaim: { claimName: progen2 }
       - name: app
         configMap: { name: progen2-server }

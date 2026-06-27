@@ -1,0 +1,13 @@
+# ProGen2 weights + venv persist on NFS (nfs-models) so scale-from-zero cold starts skip the
+# ~13 GB re-download + venv build. RWX so cold starts share the cache.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: progen2
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 30Gi

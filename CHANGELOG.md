@@ -30,6 +30,16 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — progen2 deployed on 43 (completions; caduceus pattern; PVC split out + bare naming)
+
+**What:** twenty-second model. `models/progen2` (ProGen2-XLarge 6.4B protein generation) standardized + deployed.
+- Custom FastAPI server (NOT vLLM) — kept the caduceus pattern (full venv on PVC: torch + transformers<4.45, pre-download to HF cache, sentinel-gated). **Split the inlined PVC out to its own `pvc.yaml`** (RWX), bare `progen2` PVC/volume naming (was `progen2-data`/`model-data`).
+- Created `test.py` (completions battery) + `README.md` (dir was missing both). Card is v2 `type: completions`.
+
+**Research/I-O notes:** amino-acid prompt → continued sequence (`/v1/completions`); the gateway requires a `model` field to route (the server ignores it) — wired into the test. The gateway's `/v1/models` catalog doesn't list completions-type models (known behavior; routing still works via `model`).
+
+**Validation:** deployed, deleted ISVC+cards, re-applied from repo (PVC retained — init logged *"Already set up."*). 7-check **5 PASS / 2 EXP / 0 FAIL** — output is amino-acid-like (aa_frac=1.0); chat rejected (EXP). `minReplicas: 0`.
+
 ## 2026-06-27 — geogalactica deployed on 43 (gemma-4 venv init; chat-template ConfigMap fix)
 
 **What:** twenty-first model of the 43 bring-up. `models/geogalactica` (TP2 OPT/Galactica 30B) standardized + deployed.
