@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwen36-27b deployed on 43 (download-job folded; vision+tools+reasoning green)
+
+**What:** fourth model of the 43 bring-up. `models/qwen36-27b` standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `qwen36-27b` PVC/volume naming. **`download-job.yaml` deleted.** Kept TP2 args and **`vllm/vllm-openai:latest`** (NOT v0.20.2 — the Gated-DeltaNet hybrid arch needs a newer vLLM).
+- `test.py` — added `GW_INSECURE` toggle.
+
+**Validation:** deployed (init: venv + 29-file/~54 GB download in ~2 min; `:latest` image pull made first Ready ~9.5 min), deleted ISVC+card, re-applied from repo (PVC retained — init logged skips, Ready ~5 min with image cached). 31-check **29 PASS / 2 EXP / 0 FAIL** — vision + tools (OAI/ANT) + think-ON/OFF + `ANT think ON` all green. `minReplicas: 0`.
+
 ## 2026-06-27 — qwq-32b deployed on 43 (download-job folded; full battery green)
 
 **What:** third model of the 43 bring-up. `models/qwq-32b` standardized + deployed.
