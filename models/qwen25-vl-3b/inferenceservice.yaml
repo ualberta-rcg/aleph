@@ -1,8 +1,6 @@
-# Qwen2.5-VL-3B: Vision-language model (Qwen/Qwen2.5-VL-3B-Instruct)
-# Dedicated PVC with init container download; 1x time-sliced L40S GPU via vLLM.
-# 64K deployed context (128K max positions, sliding_window=32768 disabled).
-# KV cache at 64K ≈ 2.3 GB, well within 24GB slice (~15.6 GB free after weights).
-# API: POST /v1/chat/completions (OpenAI-style with image support)
+# Qwen2.5-VL-3B-Instruct: vision-language model. TP1 (1 vGPU slice, 24GB gpumem; 3B+ViT ~6GB so a
+# <40GB slice is correct). 64K ctx. Persisted helper venv + weights on RWX PVC (gemma-4 pattern);
+# scale-to-zero, 15m idle. API: POST /v1/chat/completions (OpenAI-style with image support).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -28,7 +26,7 @@ spec:
     nodeSelector:
       gpu: "on"
     initContainers:
-      - name: hf-fetch
+      - name: setup
         image: python:3.11-slim
         env:
           - name: HF_TOKEN
@@ -42,35 +40,48 @@ spec:
         args:
           - |
             set -e
-            pip install -q huggingface_hub
-            python3 -u <<'PY'
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "Qwen2.5-VL-3B weights already on PVC, skipping download."
+            else
+                echo "Downloading Qwen/Qwen2.5-VL-3B-Instruct ..."
+                /data/venv/bin/python3 -u <<'PY'
             import os
-            from pathlib import Path
-            if Path("/data/config.json").is_file():
-                print("Model already on PVC, skipping download.", flush=True)
-            else:
-                from huggingface_hub import snapshot_download
-                print("Downloading Qwen/Qwen2.5-VL-3B-Instruct ...", flush=True)
-                snapshot_download(
-                    repo_id="Qwen/Qwen2.5-VL-3B-Instruct",
-                    local_dir="/data",
-                    local_dir_use_symlinks=False,
-                    token=os.environ.get("HF_TOKEN"),
-                )
-                print("Download finished.", flush=True)
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="Qwen/Qwen2.5-VL-3B-Instruct",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
             PY
+            fi
         resources:
           requests:
             cpu: "2"
             memory: 4Gi
         volumeMounts:
-          - name: model-data
+          - name: qwen25-vl-3b
             mountPath: /data
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
         args:
-          - --model=/data
+          - serve
+          - /data/model
           - --served-model-name=qwen25-vl-3b
           - --port=8080
           - --max-model-len=65536
@@ -119,15 +130,15 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 3
         volumeMounts:
-          - name: model-data
+          - name: qwen25-vl-3b
             mountPath: /data
             readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: model-data
+      - name: qwen25-vl-3b
         persistentVolumeClaim:
-          claimName: qwen-vl-3b-data
+          claimName: qwen25-vl-3b
       - name: shm
         emptyDir:
           medium: Memory

@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwen25-vl-3b deployed on 43 (gemma-4 venv init; vision green)
+
+**What:** seventeenth model of the 43 bring-up. `models/qwen25-vl-3b` (TP1 vision) standardized + deployed.
+- `inferenceservice.yaml` — converted the old init to the gemma-4 venv-on-PVC pattern; `vllm serve /data/model`; bare `qwen25-vl-3b` PVC/volume naming (was the mismatched `model-data` volume + `qwen-vl-3b-data` claim). TP1 fractional slice (gpumem 24576); vision `image:20,video:1`.
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant).
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 25-check **22 PASS / 2 EXP / 0 FAIL** — vision + multi-image green. `minReplicas: 0`.
+
 ## 2026-06-27 — oceangpt-30b deployed on 43 (gemma-4 venv init; tools green)
 
 **What:** sixteenth model of the 43 bring-up. `models/oceangpt-30b` (TP2 MoE, ocean science) standardized + deployed.
