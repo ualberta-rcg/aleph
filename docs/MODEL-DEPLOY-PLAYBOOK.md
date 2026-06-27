@@ -206,12 +206,13 @@ Per-model repo tidy notes:
 - TP4 models (`qwen3-235b`, `qwen35-122b`, `openbiollm-70b`, `r1-distill-llama-70b`, `qwen25-vl-72b`)
   each bind 4 tenant-free L40S — fine at scale-0, but don't expect many hot at once.
 
-> **Progress (2026-06-27):** 20 of these are live + committed — phi-4-reasoning, qwen3-32b, qwq-32b,
-> qwen36-27b, r1-distill-qwen-32b, qwen36-35b-a3b, gemma-3-4b-it, medgemma-27b-it, glm-4-32b,
-> qwen3-235b, qwen35-122b, r1-distill-llama-70b, qwen25-coder-32b, command-r-7b, deepseek-v2-lite-16b,
-> oceangpt-30b, qwen25-vl-3b, qwen25-vl-72b-awq, qwen25-vl-72b, openbiollm-70b — all green.
-> Remaining: geogalactica, tinyllama-1-1b, astrosage, progen2, crysta-llm. See `models/MODEL-STATUS.md`
-> for per-model results + the `CHANGELOG.md` dated entries.
+> **Progress (2026-06-27): Phase A COMPLETE — all 25 chat LLMs live + committed.** The 21 vLLM models
+> (phi-4-reasoning, qwen3-32b/235b, qwen35-122b, qwen36-27b/35b-a3b, qwq-32b, r1-distill-qwen-32b/
+> llama-70b, glm-4-32b, gemma-3-4b-it, medgemma-27b-it, qwen25-coder-32b, command-r-7b,
+> deepseek-v2-lite-16b, oceangpt-30b, qwen25-vl-3b/72b/72b-awq, openbiollm-70b, geogalactica) plus
+> the 4 custom-server models (progen2, crysta-llm, astrosage, tinyllama-1-1b). All green. See
+> `models/MODEL-STATUS.md` for per-model results + the `CHANGELOG.md` dated entries.
+> **Next:** NIM + science models get their own tweaked plans (out of scope here).
 
 ---
 
