@@ -49,7 +49,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | climax | forecast | true | /v1/science/forecast | READY | PASS | needs valid ERA5 var names (e.g. 2m_temperature) |
 | clinical-longformer | embedding | true | /v1/science/embed | READY | FIXED | wake-up test PASS 2026-06-08: 768-dim embeddings; slow on CPU (~2min inference) |
 | clinicalbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id clinicalbert-110m) |
-| command-r-7b | chat | true | /v1/chat/completions | READY | PASS | OpenAI + Anthropic |
+| command-r-7b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1 (gpumem 32768 slice); 7B bf16; tools OFF (Cohere format needs cohere_melody). **Deployed+verified on cluster 43 (2026-06-27):** gemma-4 venv-on-PVC initContainer (init skips both on redeploy), `vllm serve /data/model`, bare `command-r-7b` PVC naming. 23-check **18/5/0** (OpenAI + Anthropic). |
 | croma | segment | true | /v1/embeddings | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map; test.py expanded to ~10 checks (0 FAIL); dict output extraction (joint/optical/SAR GAP) |
 | crysta-llm | chat | true | /v1/science/generate | READY | PASS | crystal structure gen from formula (progress-deadline fix) |
 | deepseek-v2-lite-16b | chat | true | /v1/chat/completions | READY | PASS | v0.20.2 (std); gpumem 45GB + max-model-len 8192; correct answers |

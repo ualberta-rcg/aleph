@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — command-r-7b deployed on 43 (gemma-4 venv init; OpenAI+Anthropic green)
+
+**What:** fourteenth model of the 43 bring-up. `models/command-r-7b` (TP1, 7B) standardized + deployed.
+- `inferenceservice.yaml` — converted the old init to the gemma-4 venv-on-PVC pattern; `vllm serve /data/model`; bare `command-r-7b` PVC/volume naming. TP1 fractional slice (gpumem 32768 — <40GB, correct for a 7B). Tools intentionally OFF (Cohere `<|START_ACTION|>` format needs `cohere_melody`, absent from stock image).
+- `test.py` — added `GW_INSECURE` toggle.
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 23-check **18 PASS / 5 EXP / 0 FAIL** (OpenAI + Anthropic). `minReplicas: 0`.
+
 ## 2026-06-27 — qwen25-coder-32b deployed on 43 (download-job folded; code+tools)
 
 **What:** thirteenth model of the 43 bring-up. `models/qwen25-coder-32b` (TP2 code specialist) standardized + deployed.
