@@ -110,18 +110,6 @@ data:
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: astrosage-data
-  namespace: models
-spec:
-  accessModes: [ReadWriteMany]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 25Gi
----
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -195,7 +183,7 @@ spec:
           requests: { cpu: "4", memory: 16Gi }
           limits:   { cpu: "8", memory: 32Gi }
         volumeMounts:
-          - { name: astrosage-data, mountPath: /data }
+          - { name: astrosage, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -219,12 +207,12 @@ spec:
           periodSeconds: 20
           failureThreshold: 60
         volumeMounts:
-          - { name: astrosage-data, mountPath: /data }
+          - { name: astrosage, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
-      - name: astrosage-data
+      - name: astrosage
         persistentVolumeClaim:
-          claimName: astrosage-data
+          claimName: astrosage
       - name: app
         configMap:
           name: astrosage-server

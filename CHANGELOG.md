@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — astrosage deployed on 43 (custom server; PVC de-duped + bare naming)
+
+**What:** twenty-fourth model. `models/astrosage` (AstroSage-8B, custom transformers server) standardized + deployed.
+- Custom server (caduceus pattern, NOT vLLM) kept; **removed the inlined PVC** (the dir had a separate `pvc.yaml` too — a duplicate; the standalone was only 10 Gi, too small for 8B) → single `pvc.yaml` at 25 Gi. Bare `astrosage` PVC/volume naming. `test.py` — `GW_INSECURE` toggle (auto-detect variant).
+- TP1 fractional (gpumem 16384); `no_stream` (the gateway forces stream=false upstream).
+
+**Validation:** deployed, deleted ISVC+cards, re-applied from repo (PVC retained — init logged *"Venv exists. AstroSage-8B already on PVC."*). 23-check **18 PASS / 4 EXP / 1 FAIL** — chat green; the 1 FAIL is the cross-cutting `embed via chat` guard artifact. `minReplicas: 0`.
+
 ## 2026-06-27 — crysta-llm deployed on 43 (science-generate; bare naming; test toggle)
 
 **What:** twenty-third model. `models/crysta-llm` (CrystaLLM-pi_base ~25M, CIF crystal-structure generation) standardized + deployed.
