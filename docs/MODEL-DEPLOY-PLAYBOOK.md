@@ -129,10 +129,25 @@ Common "funny" names to fix: PVC/volume `model-data`, `data`, `<model>-data`; vo
 
 ## The per-model loop (do exactly this, in order, for every model)
 
+0. **Research first (always; mandatory for non-standard/custom models).** Before touching the ISVC,
+   read the model's own docs to get the serving config + I/O right the first time:
+   - **HuggingFace model card** — what it does; supported features (chat/completions, tools, vision,
+     reasoning); context length; recommended sampling (temp/top_p/top_k); quantization; license;
+     known quirks. This also fills the card's `catalog` block (cite `source_url`).
+   - **GitHub repo + `*.github.io` docs + vLLM/TEI issues** — the exact serve args (parser names,
+     `--quantization`, `--chat-template`, `--limit-mm-per-prompt`, dtype), any required pip packages
+     / custom server, and known-issue threads (e.g. `vllm#18141`, parser crashes, empty-content bugs).
+   - **I/O shape** — for non-OpenAI/science/custom servers: the real request body + response shape, so
+     the card's `input_map`/`output_map` and `endpoints.primary` match what the server actually
+     expects. **This is where non-standard options get mapped** — capture anything needing a tweak vs
+     the template.
+   - Record findings in the model's `CLAUDE.md` so the next person doesn't re-research.
+   Cheap insurance: the special models (llama.cpp, custom transformers, completions-only,
+   science-generate) each have serving quirks a blind deploy will miss.
 1. **Standardize the repo files first** (before any apply): set the names above, fold any
    `download-job.yaml` into the ISVC initContainer (+ delete the file), drop `kustomization.yaml`,
    ensure the 6-file set exists (create missing `README.md`/`CLAUDE.md`/`test.py` from templates),
-   confirm `minReplicas: 0`, v2 card, RWX pvc.
+   confirm `minReplicas: 0`, v2 card, RWX pvc. **Apply the research findings** (args, I/O map, quirks).
 2. **Apply once:** `pvc.yaml` → `inferenceservice.yaml` (+ any `-configmap.yaml`) → `details.yaml`.
    Then **wait** for the initContainer to finish staging and the pod to go `Ready`. Do **not**
    re-apply/patch/scale while it's downloading/building (two writers on the RWX PVC → corrupted

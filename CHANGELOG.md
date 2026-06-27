@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — docs: add "research first" step to the deploy playbook
+
+**What:** `docs/MODEL-DEPLOY-PLAYBOOK.md` per-model loop now starts with a **step 0 — Research first**
+(read the HF model card + GitHub/`*.github.io` docs + vLLM/TEI issues before deploy) to capture the
+exact serve args, I/O shape, and quirks — and map any non-standard options into the card's
+`input_map`/`output_map`. Mandatory for the non-standard models (llama.cpp, custom transformers,
+completions-only, science-generate).
+
 ## 2026-06-27 — docs: MODEL-DEPLOY-PLAYBOOK.md (LLM bring-up standards + per-model loop)
 
 **What:** committed the operational playbook used to bring the chat-LLM fleet onto cluster 43 as
