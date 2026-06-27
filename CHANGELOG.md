@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — deepseek-v2-lite-16b deployed on 43 (gemma-4 venv init; TP1 whole-device)
+
+**What:** fifteenth model of the 43 bring-up. `models/deepseek-v2-lite-16b` standardized + deployed.
+- `inferenceservice.yaml` — converted the old init to the gemma-4 venv-on-PVC pattern; `vllm serve /data/model` (was `--model=/data`); naming was already bare. TP1 whole-device (16B MoE ~32GB fits one L40S; corrected the stale MODEL-STATUS note that claimed "gpumem 45GB + max-model-len 8192" — it's actually whole-device, 131072 ctx).
+- `test.py` — this one uses `urllib` (not httpx); added a `GW_INSECURE` SSL-context toggle (passed to `urlopen`).
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 14-check **14 PASS / 0 FAIL** (OpenAI + Anthropic). `minReplicas: 0`.
+
 ## 2026-06-27 — command-r-7b deployed on 43 (gemma-4 venv init; OpenAI+Anthropic green)
 
 **What:** fourteenth model of the 43 bring-up. `models/command-r-7b` (TP1, 7B) standardized + deployed.

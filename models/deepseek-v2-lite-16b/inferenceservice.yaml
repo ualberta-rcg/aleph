@@ -1,3 +1,5 @@
+# deepseek-ai/DeepSeek-V2-Lite-Chat on HAMi. vLLM v0.20.2, TP1 whole device (16B MoE ~32GB fits one L40S).
+# Persisted helper venv + weights on RWX PVC (gemma-4 pattern); scale-to-zero, 15m idle.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -22,7 +24,7 @@ spec:
     nodeSelector:
       gpu: "on"
     initContainers:
-      - name: hf-fetch
+      - name: setup
         image: python:3.11-slim
         env:
           - name: HF_TOKEN
@@ -36,23 +38,33 @@ spec:
         args:
           - |
             set -e
-            pip install -q huggingface_hub
-            python3 -u <<'PY'
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "DeepSeek-V2-Lite weights already on PVC, skipping download."
+            else
+                echo "Downloading deepseek-ai/DeepSeek-V2-Lite-Chat ..."
+                /data/venv/bin/python3 -u <<'PY'
             import os
-            from pathlib import Path
-            if Path("/data/config.json").is_file():
-                print("Model already on PVC, skipping download.", flush=True)
-            else:
-                from huggingface_hub import snapshot_download
-                print("Downloading deepseek-ai/DeepSeek-V2-Lite-Chat ...", flush=True)
-                snapshot_download(
-                    repo_id="deepseek-ai/DeepSeek-V2-Lite-Chat",
-                    local_dir="/data",
-                    local_dir_use_symlinks=False,
-                    token=os.environ.get("HF_TOKEN"),
-                )
-                print("Download finished.", flush=True)
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="deepseek-ai/DeepSeek-V2-Lite-Chat",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
             PY
+            fi
         resources:
           requests:
             cpu: "2"
@@ -63,8 +75,11 @@ spec:
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
+        command:
+          - vllm
         args:
-          - --model=/data
+          - serve
+          - /data/model
           - --served-model-name=deepseek-v2-lite-16b
           - --port=8080
           - --tensor-parallel-size=1
