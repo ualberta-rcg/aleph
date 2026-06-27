@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — glm-4-32b deployed on 43 (download-job folded; custom glm4_0414 parser preserved)
+
+**What:** ninth model of the 43 bring-up. `models/glm-4-32b` standardized + deployed (TP2, custom tool parser).
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; `vllm serve /data/model` (was `/mnt/models`); bare `glm-4-32b` PVC/volume naming. **`download-job.yaml` deleted.** Preserved the custom `glm4_0414` tool-parser plugin (ConfigMap `glm4-0414-parser` → `/opt/glm4_parser`) + `--tool-parser-plugin` flag + prefix-caching/chunked-prefill.
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant: module-level fetch + req()).
+
+**Validation:** deployed (init: venv + ~65 GB download), deleted ISVC+card, re-applied from repo (PVC + parser-cm retained — init logged skips). 24-check **20 PASS / 3 EXP / 1 FAIL** — chat + custom-parser tools (`tool_calls=1`) green. The 1 FAIL is the `embed via chat` guard: the gateway 404'd a chat request to whichever embedder `/v1/models?all=true` surfaced — a cross-cutting guard/catalog artifact, not a glm-4-32b defect. `minReplicas: 0`.
+
 ## 2026-06-27 — medgemma-27b-it deployed on 43 (gemma-4 venv init; vision green)
 
 **What:** eighth model of the 43 bring-up. `models/medgemma-27b-it` standardized + deployed (TP2 medical vision).

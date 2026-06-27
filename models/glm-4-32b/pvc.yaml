@@ -1,10 +1,10 @@
 # GLM-4-32B-0414 instruct: strong function calling + agentic workflows.
 # Weights (~65 GB) persist on NFS (nfs-models) so scale-from-zero cold starts skip
-# re-download. Populated once by download-job.yaml.
+# re-download. Staged by the ISVC initContainer (gemma-4 venv-on-PVC pattern).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: glm-4-32b-data
+  name: glm-4-32b
   namespace: models
 spec:
   accessModes:
