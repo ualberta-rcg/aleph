@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — crysta-llm deployed on 43 (science-generate; bare naming; test toggle)
+
+**What:** twenty-third model. `models/crysta-llm` (CrystaLLM-pi_base ~25M, CIF crystal-structure generation) standardized + deployed.
+- Custom server (caduceus pattern, NOT vLLM) kept; full 6-file set already present. Bare `crysta-llm` PVC/volume naming (was `crysta-llm-data`/`model-data`). `test.py` — added `GW_INSECURE` toggle (req + catalog fetch).
+- API: `POST /v1/science/generate {formula}` → CIF structures (test already carried `model` for gateway routing).
+
+**Validation:** deployed, deleted ISVC+cards, re-applied from repo (PVC retained — init logged *"Venv exists. Model weights present."*). 6-check **5 PASS / 1 EXP / 0 FAIL** — generates CIF-like structures; /health 404 (EXP). `minReplicas: 0`.
+
 ## 2026-06-27 — progen2 deployed on 43 (completions; caduceus pattern; PVC split out + bare naming)
 
 **What:** twenty-second model. `models/progen2` (ProGen2-XLarge 6.4B protein generation) standardized + deployed.

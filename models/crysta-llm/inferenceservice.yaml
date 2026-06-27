@@ -269,7 +269,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: crysta-llm, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -293,10 +293,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: crysta-llm, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: crysta-llm-data }
+      - name: crysta-llm
+        persistentVolumeClaim: { claimName: crysta-llm }
       - name: app
         configMap: { name: crysta-llm-server }
