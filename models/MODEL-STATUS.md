@@ -107,7 +107,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | mattersim | force-field | true | /v1/science/predict | READY | PASS | water -14.07 eV + forces + per-atom |
 | medcpt-article | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed article (recreated) |
 | medcpt-query | embedding | true | /v1/embeddings | READY | PASS | 768-dim PubMed query (recreated) |
-| medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2; 27B medical multimodal; vision (chest X-ray, derm, fundus, histo); 32K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/top_k/stop/seed input_map, +multi-image test) |
+| medgemma-27b-it | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2; 27B medical multimodal; vision (chest X-ray, derm, fundus, histo); 32K ctx. **Deployed+verified on cluster 43 (2026-06-27):** gemma-4 venv-on-PVC initContainer (init skips both on redeploy; naming already bare), `vllm serve /data/model`. 25-check **22/2/0** (vision + multi-image green; gated HF token OK). |
 | medsam | segment | true | /v1/science/segment | READY | PASS | v2 deep pass 2026-06-24: added schema v2 fields (status, behavior, scaling, limits); test.py expanded to ~15 checks (0 FAIL); image as HxWx3 pixel array + boxes → masks |
 | megadetector | detect | true | /v1/vision/detect | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL); legacy /v1/detect + /v1/science/detect aliases kept |
 | moirai-large | forecast | true | /v1/science/forecast | READY | PASS | mean+samples forecast |

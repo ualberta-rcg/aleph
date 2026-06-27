@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — medgemma-27b-it deployed on 43 (gemma-4 venv init; vision green)
+
+**What:** eighth model of the 43 bring-up. `models/medgemma-27b-it` standardized + deployed (TP2 medical vision).
+- `inferenceservice.yaml` — converted the old init to the gemma-4 venv-on-PVC pattern; `vllm serve /data/model` (was `/data`). Naming was already bare (`medgemma-27b-it`). Kept TP2 + SigLIP vision (`image:5`) + the `--disable-custom-all-reduce` recipe.
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant: module-level fetch + req()).
+
+**Validation:** deployed (gated — HF token had medgemma access), deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 25-check **22 PASS / 2 EXP / 0 FAIL** — vision + multi-image green. `minReplicas: 0`.
+
 ## 2026-06-27 — gemma-3-4b-it deployed on 43 (gemma-4 venv init; vision green)
 
 **What:** seventh model of the 43 bring-up. `models/gemma-3-4b-it` standardized + deployed (TP1 vision).
