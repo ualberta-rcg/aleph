@@ -30,6 +30,18 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwen3-32b deployed on 43; download-job folded into ISVC init; Tyk 30s hard-timeout found
+
+**What:** second model of the 43 bring-up. Brought `models/qwen3-32b` to the per-model standards and deployed on cluster 43.
+
+- `inferenceservice.yaml` — **folded the standalone `download-job.yaml` into the ISVC initContainer** (gemma-4 venv-on-PVC pattern): build `/data/venv` once (dir-gated) + download `Qwen/Qwen3-32B` to `/data/model` (existence-gated, `ignore_patterns` for `*.pt/*.pth/original/*/*.gguf`); main container modernized from `python3 -m vllm.entrypoints...` to `vllm serve /data/model`. **`download-job.yaml` deleted.** Kept the proven TP2 args (`--disable-custom-all-reduce`, `VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1`, `qwen3`/`hermes` parsers).
+- Naming standardized: PVC `qwen3-32b-data` → `qwen3-32b`; ISVC volume `model-data` → `qwen3-32b` (so ISVC = card = PVC = cm).
+- `test.py` — added the env-gated `GW_INSECURE` toggle (self-signed `cert-manager.local` edge).
+
+**Validation:** deployed (init: venv build + 27-file/~65 GB download in ~2 min via xet), deleted ISVC+card, re-applied from repo (PVC retained — init logged *"venv exists, skipping"* / *"weights already on PVC, skipping download"*), re-verified serving. 34-check **28 PASS / 3 EXP / 3 FAIL** — the 3 fails (`think_on_high`, `think_budget`, `ANT think ON`) are NOT model defects.
+
+**Finding — Tyk 30 s hard timeout (cluster-wide):** those 3 fails return `504 "Upstream service reached hard timeout"` at exactly **30 s**. The model-gateway allows 300 s (`UPSTREAM_TIMEOUT`, `gateway/app/gateway.py:278`), but **Tyk's default proxy timeout cuts the request at 30 s** (Traefik → Tyk → model-gateway → vLLM; the 30 s is not set in any Tyk config ⇒ Tyk default). Any vLLM generation > 30 s fails — affects **every** reasoning model's heavy-thinking tests (hit phi-4-reasoning too; 230's Tyk timeout was evidently higher). Fix is a Tyk edge-config change (set `proxy.timeout` in `gateway/tyk/model-gateway-api.json` or Tyk global) — deferred pending decision. Chat/tools/streaming/think-medium/think-OFF all pass.
+
 ## 2026-06-26 — public VIP networking: numbered NIC + preferred default route (replaces IP-free/lo/rp_filter recipe)
 
 **What:** reworked the control-plane public-VIP host networking to the configuration proven to work
