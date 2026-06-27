@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwen25-coder-32b deployed on 43 (download-job folded; code+tools)
+
+**What:** thirteenth model of the 43 bring-up. `models/qwen25-coder-32b` (TP2 code specialist) standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `qwen25-coder-32b` PVC/volume naming. **`download-job.yaml` deleted.** Whole-device (no gpumem); hermes tools, non-reasoning.
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant).
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 24-check **20 PASS / 3 EXP / 1 FAIL** — chat + tools green; the 1 FAIL is the cross-cutting `embed via chat` guard artifact (not a model defect). `minReplicas: 0`.
+
 ## 2026-06-27 — r1-distill-llama-70b deployed on 43 (download-job folded; whole-device TP4) — reasoning trio done
 
 **What:** twelfth model of the 43 bring-up. `models/r1-distill-llama-70b` (TP4 70B dense, always-on reasoning) standardized + deployed — completes the TP4 trio (qwen3-235b, qwen35-122b, this).
