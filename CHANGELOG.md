@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — r1-distill-qwen-32b deployed on 43 (download-job folded; full battery green)
+
+**What:** fifth model of the 43 bring-up. `models/r1-distill-qwen-32b` standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `r1-distill-qwen-32b` PVC/volume naming. **`download-job.yaml` deleted.** Kept TP2 args (`--disable-custom-all-reduce`, `TRITON_ATTN_VLLM_V1`, `deepseek_r1` parser; no tools).
+- `test.py` — added `GW_INSECURE` toggle.
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — init logged *"venv exists, skipping"* / *"weights already on PVC, skipping download"*). 26-check **21 PASS / 5 EXP / 0 FAIL** — `ANT think ON` green (Tyk timeout fix in effect). `minReplicas: 0`.
+
 ## 2026-06-27 — qwen36-27b deployed on 43 (download-job folded; vision+tools+reasoning green)
 
 **What:** fourth model of the 43 bring-up. `models/qwen36-27b` standardized + deployed.

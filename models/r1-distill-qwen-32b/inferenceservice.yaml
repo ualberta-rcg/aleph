@@ -1,7 +1,9 @@
 # deepseek-ai/DeepSeek-R1-Distill-Qwen-32B on the GPU cluster / HAMi. vLLM v0.20.2, TP2 (whole devices).
 # HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=2, DO NOT set gpumem,
 # and --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL is fast).
-# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 required on L40S (SM89). Scale-to-zero, 15m idle.
+# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 required on L40S (SM89).
+# Persisted helper venv + weights on RWX PVC (gemma-4 pattern); scale-to-zero, 15m idle.
+# Always-on reasoning (deepseek_r1 parser). No tools.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -28,12 +30,66 @@ spec:
     timeout: 600
     nodeSelector:
       gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "R1-Distill-Qwen-32B weights already on PVC, skipping download."
+            else
+                echo "Downloading deepseek-ai/DeepSeek-R1-Distill-Qwen-32B (~65 GB) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+                ignore_patterns=["*.pt", "*.pth", "original/*", "*.gguf"],
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: r1-distill-qwen-32b
+            mountPath: /data
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
-        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        command:
+          - vllm
         args:
-          - --model=/mnt/models
+          - serve
+          - /data/model
           - --served-model-name=r1-distill-qwen-32b
           - --tensor-parallel-size=2
           - --max-model-len=65536
@@ -46,6 +102,8 @@ spec:
         env:
           - name: HF_HUB_OFFLINE
             value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
           - name: VLLM_ATTENTION_BACKEND
@@ -81,15 +139,15 @@ spec:
           timeoutSeconds: 15
           failureThreshold: 3
         volumeMounts:
-          - name: model-data
-            mountPath: /mnt/models
+          - name: r1-distill-qwen-32b
+            mountPath: /data
             readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: model-data
+      - name: r1-distill-qwen-32b
         persistentVolumeClaim:
-          claimName: r1-distill-qwen-32b-data
+          claimName: r1-distill-qwen-32b
       - name: shm
         emptyDir:
           medium: Memory
