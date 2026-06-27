@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — r1-distill-llama-70b deployed on 43 (download-job folded; whole-device TP4) — reasoning trio done
+
+**What:** twelfth model of the 43 bring-up. `models/r1-distill-llama-70b` (TP4 70B dense, always-on reasoning) standardized + deployed — completes the TP4 trio (qwen3-235b, qwen35-122b, this).
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `r1-distill-llama-70b` PVC/volume naming. **`download-job.yaml` deleted.** Already whole-device (no gpumem). Kept `deepseek_r1` always-on reasoning + the TP4 recipe.
+- `test.py` — added `GW_INSECURE` toggle.
+
+**Validation:** deployed (init: venv + ~140 GB download), deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 26-check **21 PASS / 5 EXP / 0 FAIL** — think ON/OFF + `ANT think ON` green. `minReplicas: 0`.
+
 ## 2026-06-27 — qwen35-122b deployed on 43 (download-job folded; whole-device TP4)
 
 **What:** eleventh model of the 43 bring-up. `models/qwen35-122b` (TP4 122B FP8 MoE) standardized + deployed.

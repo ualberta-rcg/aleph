@@ -15,6 +15,7 @@ import httpx, json, os, time
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 MODEL = os.environ.get("MODEL", "r1-distill-llama-70b")
 HARD = ("A farmer has 17 sheep. All but 9 die. How many sheep are left? "
         "Take that number, multiply by 7, then subtract 4.")
@@ -23,8 +24,8 @@ results = []
 
 def req(method, path, body=None, timeout=400, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
 
 
 def record(icon, status, name, detail):
