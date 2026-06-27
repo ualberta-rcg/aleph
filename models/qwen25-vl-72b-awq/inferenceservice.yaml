@@ -1,9 +1,7 @@
-# Qwen/Qwen2.5-VL-72B-Instruct-AWQ (4-bit quantized) on the GPU cluster / HAMi. vLLM v0.20.2, TP2 (whole devices).
-# HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=2, DO NOT set gpumem,
-# and --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL is fast).
-# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 required on L40S (SM89). Scale-to-zero, 15m idle.
-# AWQ 4-bit weights: ~20 GiB/GPU with TP2. 64K context (128K OOMs on L40S 48GB).
-# gpu-memory-utilization=0.92 → 44.2 GiB budget, ~24 GiB for KV+encoder after weights.
+# Qwen/Qwen2.5-VL-72B-Instruct-AWQ (4-bit) on the GPU cluster / HAMi. vLLM v0.20.2, TP2 (whole devices).
+# Whole devices (no gpumem). Persisted helper venv + weights on RWX PVC (gemma-4 pattern);
+# scale-to-zero, 15m idle. Vision (image:20,video:1). AWQ ~20 GiB/GPU; 64K ctx (128K OOMs on L40S).
+# --disable-custom-all-reduce (L40S NODE topology, no NVLink P2P). TRITON_ATTN_VLLM_V1 (SM89).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -29,13 +27,65 @@ spec:
     timeout: 600
     nodeSelector:
       gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "Qwen2.5-VL-72B-AWQ weights already on PVC, skipping download."
+            else
+                echo "Downloading Qwen/Qwen2.5-VL-72B-Instruct-AWQ (~75 GB) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="Qwen/Qwen2.5-VL-72B-Instruct-AWQ",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+                ignore_patterns=["*.pt", "*.pth", "original/*", "*.gguf"],
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: qwen25-vl-72b-awq
+            mountPath: /data
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
         command: ["vllm"]
         args:
           - serve
-          - /mnt/models
+          - /data/model
           - --served-model-name=qwen25-vl-72b-awq
           - --tensor-parallel-size=2
           - --max-model-len=65536
@@ -48,6 +98,8 @@ spec:
         env:
           - name: HF_HUB_OFFLINE
             value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
           - name: VLLM_ATTENTION_BACKEND
@@ -83,15 +135,15 @@ spec:
           timeoutSeconds: 15
           failureThreshold: 3
         volumeMounts:
-          - name: model-data
-            mountPath: /mnt/models
+          - name: qwen25-vl-72b-awq
+            mountPath: /data
             readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: model-data
+      - name: qwen25-vl-72b-awq
         persistentVolumeClaim:
-          claimName: qwen25-vl-72b-awq-data
+          claimName: qwen25-vl-72b-awq
       - name: shm
         emptyDir:
           medium: Memory

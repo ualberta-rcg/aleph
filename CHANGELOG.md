@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwen25-vl-72b-awq deployed on 43 (download-job folded; vision green)
+
+**What:** eighteenth model of the 43 bring-up. `models/qwen25-vl-72b-awq` (TP2 AWQ vision) standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; `vllm serve /data/model`; bare `qwen25-vl-72b-awq` PVC/volume naming. **`download-job.yaml` deleted.** Whole-device TP2; vision `image:20,video:1`.
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant).
+
+**Validation:** deployed (init: venv + ~75 GB download), deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 25-check **22 PASS / 2 EXP / 0 FAIL** — vision + multi-image green. `minReplicas: 0`.
+
 ## 2026-06-27 — qwen25-vl-3b deployed on 43 (gemma-4 venv init; vision green)
 
 **What:** seventeenth model of the 43 bring-up. `models/qwen25-vl-3b` (TP1 vision) standardized + deployed.
