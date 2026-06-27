@@ -63,6 +63,17 @@ spec:
             value: "true"
           - name: TYK_GW_MIDDLEWAREPATH
             value: /opt/tyk-gateway/middleware
+          # Raise Tyk's timeouts so long LLM generations aren't cut off. Defaults:
+          # proxy_default_timeout 30s (Tyk→upstream) — the one that 504'd reasoning
+          # models' heavy-thinking requests; read/write_timeout 120s (client↔Tyk).
+          # 600s aligns with the Knative/ISVC request ceiling; the model-gateway's
+          # own UPSTREAM_TIMEOUT (300s) stays the practical bound.
+          - name: TYK_GW_PROXYDEFAULTTIMEOUT
+            value: "600"
+          - name: TYK_GW_HTTPSERVEROPTIONS_READTIMEOUT
+            value: "600"
+          - name: TYK_GW_HTTPSERVEROPTIONS_WRITETIMEOUT
+            value: "600"
         # Mount the API definitions ConfigMap (53-tyk-api-definitions.yaml) so Tyk reads it
         # at /opt/tyk-gateway/apps (the APPPATH above), and the JSVM middleware ConfigMap
         # (54-tyk-middleware.yaml) at /opt/tyk-gateway/middleware. optional: true so Tyk

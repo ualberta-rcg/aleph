@@ -30,6 +30,16 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — raise Tyk timeouts (proxy_default_timeout 30→600s) so long LLM generations don't 504
+
+**What:** bumped three Tyk OSS gateway timeouts from their defaults, both live on cluster 43 and in the boot overlay.
+- `ww-overlays/.../51-tyk.yaml` `extraEnvs` — added `TYK_GW_PROXYDEFAULTTIMEOUT=600`, `TYK_GW_HTTPSERVEROPTIONS_READTIMEOUT=600`, `TYK_GW_HTTPSERVEROPTIONS_WRITETIMEOUT=600` so they apply on every (re)deploy.
+- Applied the same three to the live `deployment/gateway-tyk-oss-tyk-gateway` and rolled out.
+
+**Why:** Tyk's `proxy_default_timeout` defaults to **30 s** (per the Tyk OSS config docs) and isn't set anywhere in our configs, so any proxied request longer than 30 s returned `504 "Upstream service reached hard timeout"`. The model-gateway itself allows 300 s (`UPSTREAM_TIMEOUT`, `gateway/app/gateway.py:278`), but Tyk sat in front of it (Traefik → Tyk → model-gateway → vLLM) and cut every long generation off at 30 s. This broke every reasoning model's heavy-thinking tests (`think_on_high`, `think_budget`, `ANT think ON`) — the root cause behind qwen3-32b's 3 "fails" and phi-4-reasoning's intermittent `ANT think ON` 504. 600 s aligns with the Knative/ISVC request ceiling; the model-gateway's 300 s upstream limit stays the practical bound.
+
+**Validation:** after the rollout, the three qwen3-32b requests that previously 504'd at exactly 30 s now return 200 — `think_high` 27 s (rc_len 1391), `think_budget` 24 s (rc_len 1059), `ANT think ON` 27 s (`['thinking','text']`). qwen3-32b's 34-check is now fully green; phi-4-reasoning's intermittent `ANT think ON` resolved too.
+
 ## 2026-06-27 — qwen3-32b deployed on 43; download-job folded into ISVC init; Tyk 30s hard-timeout found
 
 **What:** second model of the 43 bring-up. Brought `models/qwen3-32b` to the per-model standards and deployed on cluster 43.
