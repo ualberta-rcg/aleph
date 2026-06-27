@@ -60,12 +60,12 @@ spec:
           memory: 3Gi
       volumeMounts:
       - mountPath: /mnt/models
-        name: tinyllama-1-1b-models
+        name: tinyllama-1-1b
         readOnly: true
       workingDir: /
     initContainers:
     - args:
-      - "set -e\npip install -q huggingface_hub\npython3 -u <<'PY'\nimport os, shutil\nfrom pathlib import Path\ndest = Path(\"/mnt/models/cpu-models/tinyllama/model.gguf\")\ndest.parent.mkdir(parents=True, exist_ok=True)\nif dest.exists() and dest.stat().st_size > 1_000_000:\n    print(\"TinyLlama GGUF already present, skipping download.\", flush=True)\nelse:\n    from huggingface_hub import hf_hub_download\n    p = hf_hub_download(\n        repo_id=\"TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF\",\n        filename=\"tinyllama-1-1b-chat-v1.0.Q4_K_M.gguf\",\n        local_dir=str(dest.parent),\n        token=os.environ.get(\"HF_TOKEN\"),\n    )\n    if p != str(dest):\n        shutil.move(p, str(dest))\n    print(\"Download complete:\", dest, flush=True)\nPY\n"
+      - "set -e\npip install -q huggingface_hub\npython3 -u <<'PY'\nimport os, shutil\nfrom pathlib import Path\ndest = Path(\"/mnt/models/cpu-models/tinyllama/model.gguf\")\ndest.parent.mkdir(parents=True, exist_ok=True)\nif dest.exists() and dest.stat().st_size > 1_000_000:\n    print(\"TinyLlama GGUF already present, skipping download.\", flush=True)\nelse:\n    from huggingface_hub import hf_hub_download\n    p = hf_hub_download(\n        repo_id=\"TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF\",\n        filename=\"tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf\",\n        local_dir=str(dest.parent),\n        token=os.environ.get(\"HF_TOKEN\"),\n    )\n    if p != str(dest):\n        shutil.move(p, str(dest))\n    print(\"Download complete:\", dest, flush=True)\nPY\n"
       command:
       - bash
       - -c
@@ -83,12 +83,12 @@ spec:
           memory: 2Gi
       volumeMounts:
       - mountPath: /mnt/models
-        name: tinyllama-1-1b-models
+        name: tinyllama-1-1b
     minReplicas: 0
     scaleMetric: concurrency
     scaleTarget: 2
     timeout: 600
     volumes:
-    - name: tinyllama-1-1b-models
+    - name: tinyllama-1-1b
       persistentVolumeClaim:
-        claimName: tinyllama-1-1b-models
+        claimName: tinyllama-1-1b

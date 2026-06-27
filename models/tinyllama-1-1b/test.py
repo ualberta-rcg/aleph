@@ -20,11 +20,12 @@ import httpx, json, os, time
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 MODEL = os.environ.get("MODEL", "tinyllama-1-1b")
 results = []
 
 # ── detect capabilities from the live catalog ─────────────────────────────────
-_caps = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS).json()
+_caps = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS, verify=_VERIFY).json()
 _me = next((m for m in _caps.get("data", []) if m["id"] == MODEL), {})
 CAP = _me.get("capabilities", {})
 VISION = bool(CAP.get("vision"))
@@ -34,8 +35,8 @@ MAXOUT = int(_me.get("max_completion_tokens") or 8192) or 8192
 
 def req(method, path, body=None, timeout=180, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
 
 
 def record(icon, status, name, detail):

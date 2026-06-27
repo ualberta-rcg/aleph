@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — tinyllama-1-1b deployed on 43 (llama.cpp; GGUF filename fix) — Phase A complete
+
+**What:** twenty-fifth + final model of the chat-LLM bring-up. `models/tinyllama-1-1b` (TinyLlama-1.1B-Chat, llama.cpp, CPU-only) standardized + deployed — **completes Phase A (all 25 chat LLMs live).**
+- Dropped `kustomization.yaml`; bare `tinyllama-1-1b` PVC/volume naming (was `tinyllama-1-1b-models`); `test.py` `GW_INSECURE` toggle.
+- **GGUF filename fix (research-first catch):** the init 404'd on `tinyllama-1-1b-chat-v1.0.Q4_K_M.gguf` (dash) → CrashLoop → Knative marked the revision failed + scaled to 0. The real file is `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` (dot, `1.1b`). Fixed the filename; deleted the stuck failed ISVC to let a fresh revision come up.
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — GGUF cached, Ready ~90s). 23-check **18 PASS / 4 EXP / 1 FAIL** — chat + streaming (no_stream→JSON) green; the 1 FAIL is the cross-cutting `embed via chat` guard artifact. `minReplicas: 0`.
+
 ## 2026-06-27 — astrosage deployed on 43 (custom server; PVC de-duped + bare naming)
 
 **What:** twenty-fourth model. `models/astrosage` (AstroSage-8B, custom transformers server) standardized + deployed.
