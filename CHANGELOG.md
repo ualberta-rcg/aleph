@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — openbiollm-70b deployed on 43 (download-job folded; whole-device TP4)
+
+**What:** twentieth model of the 43 bring-up. `models/openbiollm-70b` (TP4 70B biomedical) standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `openbiollm-70b` PVC/volume naming. **`download-job.yaml` deleted.** Whole-device TP4.
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant).
+
+**Validation:** deployed (init: venv + ~140 GB download), deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 24-check **19 PASS / 4 EXP / 1 FAIL** — chat green; the 1 FAIL is the cross-cutting `embed via chat` guard artifact. `minReplicas: 0`.
+
 ## 2026-06-27 — qwen25-vl-72b deployed on 43 (download-job folded; whole-device TP4 vision)
 
 **What:** nineteenth model of the 43 bring-up. `models/qwen25-vl-72b` (TP4 dense 72B VLM) standardized + deployed.
