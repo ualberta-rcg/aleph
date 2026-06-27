@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: gemma-3-4b-it-data
+  name: gemma-3-4b-it
   namespace: models
 spec:
   accessModes:

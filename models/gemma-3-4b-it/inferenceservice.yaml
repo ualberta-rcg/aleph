@@ -1,15 +1,6 @@
-# gemma-3-4b-it — Google Gemma 3 4B Instruct, adapted from POC (232) for 230 / HAMi.
-#
-# Cleanup vs POC: the POC called this "gemma-4b" but the repo is google/gemma-3-4b-it
-# (Gemma *3*). Renamed the model id + served name to gemma-3-4b-it to match the repo.
-#
-# Other changes vs POC:
-#   - nodeSelector nvidia.com/gpu.product -> gpu: "on" (HAMi)
-#   - dropped the fp8 quantization + nvidia-smi VRAM-guard; HAMi enforces VRAM
-#     isolation, so a plain bf16 `vllm serve` on a 16GB slice is simpler/reliable.
-#   - image vllm/vllm-openai:v0.20.2 (newer, cached on node) instead of 0.8.4.
-#   - weights on NFS PVC (nfs-models SC); minReplicas 0 (scale-to-zero), 15m idle.
-#   - NO --enforce-eager (CUDA graphs on).
+# gemma-3-4b-it — Google Gemma 3 4B Instruct on HAMi. TP1 (1 vGPU slice, 20GB gpumem).
+# Persisted helper venv + weights on RWX PVC (gemma-4 pattern); scale-to-zero, 15m idle.
+# Multimodal (SigLIP vision tower): allow image inputs. NO --enforce-eager (CUDA graphs on).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -34,7 +25,7 @@ spec:
     nodeSelector:
       gpu: "on"
     initContainers:
-      - name: hf-fetch
+      - name: setup
         image: python:3.11-slim
         env:
           - name: HF_TOKEN
@@ -48,29 +39,39 @@ spec:
         args:
           - |
             set -e
-            pip install -q huggingface_hub
-            python3 -u <<'PY'
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "gemma-3-4b-it weights already on PVC, skipping download."
+            else
+                echo "Downloading google/gemma-3-4b-it ..."
+                /data/venv/bin/python3 -u <<'PY'
             import os
-            from pathlib import Path
-            if Path("/data/config.json").is_file():
-                print("gemma-3-4b-it weights already on PVC, skipping.", flush=True)
-            else:
-                from huggingface_hub import snapshot_download
-                print("Downloading google/gemma-3-4b-it ...", flush=True)
-                snapshot_download(
-                    repo_id="google/gemma-3-4b-it",
-                    local_dir="/data",
-                    local_dir_use_symlinks=False,
-                    token=os.environ.get("HF_TOKEN"),
-                )
-                print("Download finished.", flush=True)
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="google/gemma-3-4b-it",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
             PY
+            fi
         resources:
           requests:
             cpu: "2"
             memory: 4Gi
         volumeMounts:
-          - name: gemma-3-4b-it-data
+          - name: gemma-3-4b-it
             mountPath: /data
     containers:
       - name: kserve-container
@@ -79,7 +80,7 @@ spec:
           - vllm
         args:
           - serve
-          - /data
+          - /data/model
           - --served-model-name
           - gemma-3-4b-it
           - --port
@@ -137,15 +138,15 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 3
         volumeMounts:
-          - name: gemma-3-4b-it-data
+          - name: gemma-3-4b-it
             mountPath: /data
             readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: gemma-3-4b-it-data
+      - name: gemma-3-4b-it
         persistentVolumeClaim:
-          claimName: gemma-3-4b-it-data
+          claimName: gemma-3-4b-it
       - name: shm
         emptyDir:
           medium: Memory

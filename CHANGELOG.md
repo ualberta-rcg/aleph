@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — gemma-3-4b-it deployed on 43 (gemma-4 venv init; vision green)
+
+**What:** seventh model of the 43 bring-up. `models/gemma-3-4b-it` standardized + deployed (TP1 vision).
+- `inferenceservice.yaml` — converted the old "fresh `pip install` every cold start" init to the gemma-4 venv-on-PVC pattern (`/data/venv` + weights to `/data/model`); modernized to `vllm serve /data/model`; bare `gemma-3-4b-it` PVC/volume naming. Kept TP1 (gpumem 20480) + SigLIP vision (`--limit-mm-per-prompt {"image":8}`).
+- `test.py` — added `GW_INSECURE` toggle (this test.py is the auto-detecting variant; wired verify into the module-level catalog fetch + req()).
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — init logged *"venv exists, skipping"* / *"weights already on PVC, skipping download"*). 25-check **22 PASS / 2 EXP / 0 FAIL** — vision + multi-image green; gated HF token had gemma access. `minReplicas: 0`.
+
 ## 2026-06-27 — qwen36-35b-a3b deployed on 43 (download-job folded; vision+tools+reasoning green)
 
 **What:** sixth model of the 43 bring-up. `models/qwen36-35b-a3b` standardized + deployed.

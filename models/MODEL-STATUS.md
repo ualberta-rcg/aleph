@@ -74,7 +74,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image). **NIM available (FCN2):** `nvcr.io/nim/nvidia/fourcastnet` (build.nvidia.com/nvidia/fourcastnet, L40S-tested) |
 | galileo | classify | false | /v1/embeddings | READY | FAIL | galileo pip package import conflicts with cloned repo; server stuck at model loading |
-| gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1; 4B vision-language; 65K ctx; 22/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/stop/seed input_map, +multi-image test) |
+| gemma-3-4b-it | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP1 (gpumem 20GB); 4B vision-language (SigLIP); 65K ctx. **Deployed+verified on cluster 43 (2026-06-27):** gemma-4 venv-on-PVC initContainer (init skips both on redeploy), `vllm serve /data/model`, bare `gemma-3-4b-it` PVC naming. 25-check **22/2/0** (vision + multi-image green; gated HF token OK). |
 | gemma-4-26b-a4b | chat | true | /v1/chat/completions | READY | PASS | 26B MoE fp8; managed thinking + vision + tools; 32/2/0 gateway test ✅ 2026-06-24 (VL light pass: +presence_penalty/stop/seed input_map, +multi-image test). (NIM alt: nvcr.io/nim/google/gemma-4-31b-it) |
 | gena-lm-large | embedding | true | /v1/science/embed | READY | FIXED | output_hidden_states (was returning vocab logits); 1024-dim |
 | gena-lm | embedding | true | /v1/embeddings | READY | PASS | 768-dim DNA (recreated) |
