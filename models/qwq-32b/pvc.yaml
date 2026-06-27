@@ -1,10 +1,10 @@
 # Qwen QwQ-32B reasoning model. Strong STEM, distinct style from R1 distills.
 # Weights (~65 GB) persist on NFS (nfs-models) so scale-from-zero cold starts skip
-# re-download. Populated once by download-job.yaml.
+# re-download. Staged by the ISVC initContainer (gemma-4 venv-on-PVC pattern).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: qwq-32b-data
+  name: qwq-32b
   namespace: models
 spec:
   accessModes:

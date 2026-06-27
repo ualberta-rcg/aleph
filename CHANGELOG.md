@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwq-32b deployed on 43 (download-job folded; full battery green)
+
+**What:** third model of the 43 bring-up. `models/qwq-32b` standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `qwq-32b` PVC/volume naming. **`download-job.yaml` deleted.** Kept TP2 args (`--disable-custom-all-reduce`, `TRITON_ATTN_VLLM_V1`, `deepseek_r1` parser, `hermes` tools).
+- `test.py` — added `GW_INSECURE` toggle.
+
+**Validation:** deployed (init: venv + 27-file/~65 GB download in ~2 min), deleted ISVC+card, re-applied from repo (PVC retained — init logged *"venv exists, skipping"* / *"weights already on PVC, skipping download"*). 22-check **19 PASS / 3 EXP / 0 FAIL** — `ANT think ON` green (the Tyk timeout fix in effect). `minReplicas: 0`.
+
 ## 2026-06-27 — raise Tyk timeouts (proxy_default_timeout 30→600s) so long LLM generations don't 504
 
 **What:** bumped three Tyk OSS gateway timeouts from their defaults, both live on cluster 43 and in the boot overlay.
