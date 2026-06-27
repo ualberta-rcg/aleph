@@ -30,6 +30,20 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — docs: MODEL-DEPLOY-PLAYBOOK.md (LLM bring-up standards + per-model loop)
+
+**What:** committed the operational playbook used to bring the chat-LLM fleet onto cluster 43 as
+`docs/MODEL-DEPLOY-PLAYBOOK.md`. Captures the standards (flat 6-file layout, gemma-4 venv-on-PVC
+initContainer, bare `<model>` naming, the >40 GB → whole-device/no-gpumem GPU rule, scale-to-zero),
+the model-specific exceptions (qwen36-27b `:latest`, glm-4-32b custom parser, qwen3-235b AWQ,
+geogalactica chat-template), the per-model loop (standardize → apply → test → tweak → clean
+delete+redeploy → scale 0 → record+commit), and the operational specifics (apply files separately,
+background the test, `GW_INSECURE`, the Tyk 600 s timeout).
+
+**Why:** this batch (20+ LLMs) is working repeatably; recording the playbook lets it be reused /
+forked. **NIM and science models are explicitly out of scope here** — they get separate, tweaked
+plans (different init/runtime specifics).
+
 ## 2026-06-27 — openbiollm-70b deployed on 43 (download-job folded; whole-device TP4)
 
 **What:** twentieth model of the 43 bring-up. `models/openbiollm-70b` (TP4 70B biomedical) standardized + deployed.
