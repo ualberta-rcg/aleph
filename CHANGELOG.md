@@ -30,6 +30,15 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — geogalactica deployed on 43 (gemma-4 venv init; chat-template ConfigMap fix)
+
+**What:** twenty-first model of the 43 bring-up. `models/geogalactica` (TP2 OPT/Galactica 30B) standardized + deployed.
+- `inferenceservice.yaml` — converted the old init to the gemma-4 venv-on-PVC pattern; `vllm serve /data/model`; bare `geogalactica` PVC/volume naming. Whole-device TP2; max-model-len 2048 (OPT hard limit).
+- **Chat-template fix (the I/O tweak the research step catches):** the HF repo `geobrain-ai/geogalactica` does **not** ship a chat template, so a blind deploy made OPT emit raw academic text (the test "passed" on status but outputs were garbage — `## [!INCLUDE[footer-include]…`, `[END_REF]…`). Added `chat-template-configmap.yaml` (ConfigMap `geogalactica-chat-template` with the local `Question:/Answer:` template) mounted at `/chat-template`, referenced via `--chat-template`. After the fix `OAI temp=0` answers coherently ("Paris").
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant).
+
+**Validation:** deployed, then deleted ISVC + re-applied the corrected repo files (chat-template cm + isvc; PVC retained — init skipped download). 24-check **19 PASS / 4 EXP / 1 FAIL** — OAI answers coherently; the 1 FAIL is the cross-cutting `embed via chat` guard artifact. `minReplicas: 0`.
+
 ## 2026-06-27 — docs: add "research first" step to the deploy playbook
 
 **What:** `docs/MODEL-DEPLOY-PLAYBOOK.md` per-model loop now starts with a **step 0 — Research first**

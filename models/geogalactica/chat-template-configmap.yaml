@@ -1,0 +1,21 @@
+# GeoGalactica's chat template (the HF repo doesn't ship one). Mounted at /chat-template and
+# referenced via --chat-template so Galactica/OPT behaves as a Q/A chat model (Question:/Answer:).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: geogalactica-chat-template
+  namespace: models
+data:
+  chat_template.jinja: |
+    {%- for message in messages -%}
+      {%- if message['role'] == 'system' -%}
+    {{ message['content'] }}
+
+      {%- elif message['role'] == 'user' -%}
+    Question: {{ message['content'] }}
+
+      {%- elif message['role'] == 'assistant' -%}
+    Answer: {{ message['content'] }}
+    {% endif %}
+    {%- endfor -%}
+    Answer:

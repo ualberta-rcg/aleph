@@ -1,7 +1,7 @@
-# GeoGalactica: 30B geoscience LLM (geobrain-ai/geogalactica)
-# Galactica/OPT architecture: 48 layers, 56 heads, hidden=7168, max_position=2048
-# ~60GB weights need 2x L40S with tensor parallel. Context capped at 2048 (OPT hard limit).
-# Gated model on HF — requires HF_TOKEN secret for download.
+# GeoGalactica: 30B geoscience LLM (geobrain-ai/geogalactica). Galactica/OPT arch; ~60GB → TP2.
+# Whole devices (no gpumem). Persisted helper venv + weights on RWX PVC (gemma-4 pattern);
+# scale-to-zero, 15m idle. Context capped at 2048 (OPT hard limit). Gated — HF_TOKEN required.
+# --disable-custom-all-reduce (L40S NODE topology, no NVLink P2P). chat-template from the snapshot.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -29,7 +29,7 @@ spec:
     nodeSelector:
       gpu: "on"
     initContainers:
-      - name: hf-fetch
+      - name: setup
         image: python:3.11-slim
         env:
           - name: HF_TOKEN
@@ -41,23 +41,35 @@ spec:
         args:
           - |
             set -e
-            if [ -f "/data/config.json" ] && [ -f "/data/tokenizer_config.json" ]; then
-              echo "GeoGalactica weights already on PVC, skipping download."
-              exit 0
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
             fi
-            pip install -q huggingface_hub
-            python3 -u <<'PY'
+            # Download weights to /data/model (skip if config + tokenizer already present).
+            if [ -f /data/model/config.json ] && [ -f /data/model/tokenizer_config.json ]; then
+              echo "GeoGalactica weights already on PVC, skipping download."
+            else
+              echo "Downloading geobrain-ai/geogalactica (~60 GB) ..."
+              /data/venv/bin/python3 -u <<'PY'
             import os
             from huggingface_hub import snapshot_download
-            print("Downloading geobrain-ai/geogalactica (~60GB)...", flush=True)
             snapshot_download(
                 repo_id="geobrain-ai/geogalactica",
-                local_dir="/data",
+                local_dir="/data/model",
                 local_dir_use_symlinks=False,
                 token=os.environ.get("HF_TOKEN"),
             )
             print("Download finished.", flush=True)
             PY
+            fi
+            # NB: the chat template is NOT in the HF repo — it's mounted from the
+            # geogalactica-chat-template ConfigMap (see chat-template-configmap.yaml) at /chat-template.
         resources:
           requests:
             cpu: "4"
@@ -66,12 +78,12 @@ spec:
             cpu: "8"
             memory: 32Gi
         volumeMounts:
-          - name: model-data
+          - name: geogalactica
             mountPath: /data
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
-        command: ["vllm", "serve", "/data"]
+        command: ["vllm", "serve", "/data/model"]
         args:
           - --served-model-name=geogalactica
           - --port=8080
@@ -81,7 +93,7 @@ spec:
           - --gpu-memory-utilization=0.90
           - --trust-remote-code
           - --disable-custom-all-reduce
-          - --chat-template=/data/chat_template.jinja
+          - --chat-template=/chat-template/chat_template.jinja
         env:
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache
@@ -123,14 +135,20 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 3
         volumeMounts:
-          - name: model-data
+          - name: geogalactica
             mountPath: /data
+          - name: chat-template
+            mountPath: /chat-template
+            readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: model-data
+      - name: geogalactica
         persistentVolumeClaim:
-          claimName: geogalactica-data
+          claimName: geogalactica
+      - name: chat-template
+        configMap:
+          name: geogalactica-chat-template
       - name: shm
         emptyDir:
           medium: Memory
