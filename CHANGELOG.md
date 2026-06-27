@@ -30,6 +30,14 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — oceangpt-30b deployed on 43 (gemma-4 venv init; tools green)
+
+**What:** sixteenth model of the 43 bring-up. `models/oceangpt-30b` (TP2 MoE, ocean science) standardized + deployed.
+- `inferenceservice.yaml` — converted the old init to the gemma-4 venv-on-PVC pattern (`/data/model`, robust config+tokenizer presence check); bare `oceangpt-30b` PVC/volume naming. Whole-device TP2; hermes tools.
+- `test.py` — added `GW_INSECURE` toggle (auto-detect variant).
+
+**Validation:** deployed, deleted ISVC+card, re-applied from repo (PVC retained — init logged skips). 24-check **20 PASS / 3 EXP / 1 FAIL** — chat + tools green; the 1 FAIL is the cross-cutting `embed via chat` guard artifact. `minReplicas: 0`.
+
 ## 2026-06-27 — deepseek-v2-lite-16b deployed on 43 (gemma-4 venv init; TP1 whole-device)
 
 **What:** fifteenth model of the 43 bring-up. `models/deepseek-v2-lite-16b` standardized + deployed.

@@ -1,7 +1,7 @@
-# OceanGPT-30B-A3B-Instruct: ocean science LLM (zjunlp/OceanGPT-basic-30B-A3B-Instruct)
-# Qwen3-MoE: 30.5B total params (128 experts, 8 active), ~3B active per token.
-# 128-expert weights (~61GB) need 2x L40S with tensor parallel.
-# API: POST /v1/chat/completions (OpenAI-style)
+# OceanGPT-30B-A3B-Instruct: ocean science LLM (zjunlp/OceanGPT-basic-30B-A3B-Instruct).
+# Qwen3-MoE: 30.5B total (128 experts, 8 active), ~3B active. ~61GB → 2x L40S TP.
+# Persisted helper venv + weights on RWX PVC (gemma-4 pattern); scale-to-zero, 15m idle.
+# Tools (hermes). --disable-custom-all-reduce (L40S NODE topology, no NVLink P2P).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -27,7 +27,7 @@ spec:
     nodeSelector:
       gpu: "on"
     initContainers:
-      - name: hf-fetch
+      - name: setup
         image: python:3.11-slim
         env:
           - name: HF_TOKEN
@@ -41,28 +41,34 @@ spec:
         args:
           - |
             set -e
-            pip install -q huggingface_hub
-            python3 -u <<'PY'
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model. Verify config + tokenizer (not just config),
+            # so an interrupted download is re-run.
+            if [ -f /data/model/config.json ] && { [ -f /data/model/tokenizer.json ] || [ -f /data/model/tokenizer_config.json ]; }; then
+                echo "OceanGPT weights already on PVC, skipping download."
+            else
+                echo "Downloading zjunlp/OceanGPT-basic-30B-A3B-Instruct ..."
+                /data/venv/bin/python3 -u <<'PY'
             import os
-            from pathlib import Path
-            # Verify a complete snapshot (config + tokenizer + weights index), not just
-            # config.json — an interrupted download can leave config but miss the tokenizer.
-            have = (Path("/data/config.json").is_file()
-                    and (Path("/data/tokenizer.json").is_file()
-                         or Path("/data/tokenizer_config.json").is_file()))
-            if have:
-                print("OceanGPT weights already on PVC, skipping download.", flush=True)
-            else:
-                from huggingface_hub import snapshot_download
-                print("Downloading zjunlp/OceanGPT-basic-30B-A3B-Instruct ...", flush=True)
-                snapshot_download(
-                    repo_id="zjunlp/OceanGPT-basic-30B-A3B-Instruct",
-                    local_dir="/data",
-                    local_dir_use_symlinks=False,
-                    token=os.environ.get("HF_TOKEN"),
-                )
-                print("Download finished.", flush=True)
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="zjunlp/OceanGPT-basic-30B-A3B-Instruct",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
             PY
+            fi
         resources:
           requests:
             cpu: "2"
@@ -71,12 +77,12 @@ spec:
             cpu: "4"
             memory: 8Gi
         volumeMounts:
-          - name: oceangpt-30b-data
+          - name: oceangpt-30b
             mountPath: /data
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
-        command: ["vllm", "serve", "/data"]
+        command: ["vllm", "serve", "/data/model"]
         args:
           - --served-model-name=oceangpt-30b
           - --port=8080
@@ -129,14 +135,14 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 3
         volumeMounts:
-          - name: oceangpt-30b-data
+          - name: oceangpt-30b
             mountPath: /data
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: oceangpt-30b-data
+      - name: oceangpt-30b
         persistentVolumeClaim:
-          claimName: oceangpt-30b-data
+          claimName: oceangpt-30b
       - name: shm
         emptyDir:
           medium: Memory

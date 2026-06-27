@@ -119,7 +119,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | naturecode-earth | embed | true | /v1/science/predict | READY | DEMO | demo OK (seg probs); weights GATED (naturecodeproject/earth 403); needs HF access |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |
 | nucleotide-transformer | embedding | true | /v1/embeddings | READY | PASS | 1024-dim DNA |
-| oceangpt-30b | chat | true | /v1/chat/completions | READY | FIXED | 30B-A3B MoE TP2 ~73tok/s; v0.20.2; full GPUs + --disable-custom-all-reduce (no CUDA_DISABLE_CONTROL); OpenAI+Anthropic |
+| oceangpt-30b | chat | true | /v1/chat/completions | READY | PASS | vLLM v0.20.2 TP2 whole-device; 30B-A3B MoE (128 experts); tools (hermes); 64K ctx; --disable-custom-all-reduce. **Deployed+verified on cluster 43 (2026-06-27):** gemma-4 venv-on-PVC initContainer (init skips both on redeploy; robust config+tokenizer check), `vllm serve /data/model`, bare `oceangpt-30b` PVC naming. 24-check **20/3/1** — chat + tools green; the 1 FAIL is the `embed via chat` guard artifact (not a model defect). |
 | openbiollm-70b | chat | true | /v1/chat/completions | READY | PASS | hemoglobin answer correct; tokenizer already Fast; vLLM v0.20.2 TP4 whole-device |
 | openfold-3 | structure | true | /v1/science/predict | READY | PASS | OpenFold-3 NIM container. **NIM:** `nvcr.io/nim/openfold/openfold3` (build.nvidia.com/openfold/openfold3) |
 | omnigenome | embedding | false | /v1/science/predict | READY | PASS | id=omnigenome-186m; RNA embedding |
