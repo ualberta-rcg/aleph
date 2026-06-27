@@ -1,10 +1,10 @@
 # Qwen3-235B-A22B-Instruct-2507-AWQ weights (~118 GB, int4 AWQ) persist on NFS
 # (nfs-models default SC) so scale-from-zero cold starts skip the multi-hour
-# re-download. Populated once by download-job.yaml. Pad 118 GB -> 160 Gi.
+# re-download. Staged by the ISVC initContainer (gemma-4 venv-on-PVC pattern). Pad 118 GB -> 160 Gi.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: qwen3-235b-data
+  name: qwen3-235b
   namespace: models
 spec:
   accessModes:

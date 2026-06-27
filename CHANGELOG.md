@@ -30,6 +30,17 @@ starts (cached venv + weights on the RWX PVC).
 (medium/high/stream/budget) fully green, Anthropic think-OFF/streaming/non-think pass. Model left at
 `minReplicas: 0` (wake-on-demand).
 
+## 2026-06-27 — qwen3-235b deployed on 43 (download-job folded; whole-device, no gpumem)
+
+**What:** tenth model of the 43 bring-up. `models/qwen3-235b` (TP4 235B-A22B AWQ MoE) standardized + deployed.
+- `inferenceservice.yaml` — folded `download-job.yaml` into the gemma-4 venv-on-PVC initContainer; modernized to `vllm serve /data/model`; bare `qwen3-235b` PVC/volume naming (was the "funny" `qwen3-data`/`qwen3-235b-data`). **`download-job.yaml` deleted.**
+- **GPU: removed the obsolete `nvidia.com/gpumem: "45000"` workaround.** The model needs >40 GB/card, so it now takes 4 whole devices (`nvidia.com/gpu: "4"`, no gpumem). The gpumem=45000 was a workaround for HAMi#1781's broken exclusive path — no longer needed now that NCCL/exclusive issues are cleared up (verified: schedules cleanly, 21/3/0). Kept `--disable-custom-all-reduce` + `awq_marlin` + `TRITON_ATTN_VLLM_V1`.
+- `test.py` — added `GW_INSECURE` toggle.
+
+**Validation:** deployed (init: venv + ~118 GB download), then deleted ISVC+card, re-applied the whole-device version, re-tested (init skipped — weights cached). 24-check **21 PASS / 3 EXP / 0 FAIL**. `minReplicas: 0`.
+
+**GPU recipe refinement (applies fleet-wide):** a model needing **>40 GB/card → whole devices (`nvidia.com/gpu: N`), NO `gpumem`**. Use `nvidia.com/gpumem` only for fractional slices (<40 GB) on small models.
+
 ## 2026-06-27 — glm-4-32b deployed on 43 (download-job folded; custom glm4_0414 parser preserved)
 
 **What:** ninth model of the 43 bring-up. `models/glm-4-32b` standardized + deployed (TP2, custom tool parser).

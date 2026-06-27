@@ -5,12 +5,13 @@ import httpx, json, sys, os
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 results = []
 
 def req(method, path, body=None, timeout=120, stream=False):
     if stream:
-        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+        return httpx.stream(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail))

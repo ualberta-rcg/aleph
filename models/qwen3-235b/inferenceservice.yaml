@@ -1,29 +1,13 @@
 # Qwen3-235B-A22B-Instruct-2507-AWQ — large MoE, 235B total / 22B active, int4 AWQ ~118 GB.
-# Ported from the POC reference cluster to this cluster / HAMi. 4x L40S tensor parallel.
-# Source repo: QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ (232's tclf90/... was removed
-# from HF; QuantTrio is the maintained, vLLM-compatible AWQ replacement).
+# 4x L40S tensor parallel. Source: QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ.
+# Persisted helper venv + weights on RWX PVC (gemma-4 pattern); scale-to-zero, 15m idle.
 #
-# Changes vs POC (232):
-#   - Runtime: kserve/huggingfaceserver -> raw vLLM (vllm/vllm-openai:v0.20.2), matching
-#     the rest of this cluster's LLM fleet.
-#   - nodeSelector: gpu: "on" only (unpinned). Takes 4 whole cards (a whole GPU node).
-#   - HAMi 4-card recipe on v2.9.0: nvidia.com/gpu: "4" + an EXPLICIT nvidia.com/gpumem (45000
-#     MiB/card, just under the 46068 registered). Leaving gpumem UNSET (the documented "exclusive"
-#     path) AND gpumem-percentage:100 both hit the broken exclusive code path on v2.9.0
-#     (Project-HAMi/HAMi#1781): the scheduler computes MemPercentagereq=100 -> phantom
-#     CardInsufficientMemory and the pod stays Pending on every node even when a GPU node is fully
-#     empty. A concrete gpumem value takes the normal memory-fit path (same as the other working
-#     models here) and schedules. libvgpu then caps visible VRAM to 45000; vLLM
-#     --gpu-memory-utilization is relative to that. (On the 232 POC nvidia.com/gpu just worked
-#     because 232 runs the stock nvidia-device-plugin; aleph has no nvidia-device-plugin — HAMi
-#     is sole, so every request goes through its vGPU accounting.)
-#     --disable-custom-all-reduce is still needed because
-#     L40S here are NODE topology (PCIe via CPU, no NVLink P2P): vLLM custom all-reduce
-#     hangs at engine init; NCCL fallback is correct + fast.
-#   - VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 (L40S/SM89: FlashAttention-3 unavailable).
-#   - --quantization awq_marlin for the fast AWQ kernel on SM89.
-#   - minReplicas: 0 (Knative scale-to-zero) so the 4-GPU node frees when idle.
-#   - weights pre-staged on PVC by download-job.yaml (mounted RO at /mnt/models).
+# HAMi 4-card recipe: nvidia.com/gpu: "4" whole devices, NO gpumem (model needs >40 GB/card,
+# so it takes whole cards; the previous gpumem=45000 workaround for HAMi#1781's broken
+# exclusive path is obsolete now that NCCL/exclusive issues are cleared up).
+# --disable-custom-all-reduce still required (L40S NODE topology, no NVLink P2P → custom
+# all-reduce hangs at init; NCCL fallback fast).
+# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 (L40S/SM89). --quantization awq_marlin.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -49,12 +33,65 @@ spec:
     timeout: 600
     nodeSelector:
       gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "Qwen3-235B-AWQ weights already on PVC, skipping download."
+            else
+                echo "Downloading QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ (~118 GB) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: qwen3-235b
+            mountPath: /data
     containers:
       - name: kserve-container
         image: vllm/vllm-openai:v0.20.2
-        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        command:
+          - vllm
         args:
-          - --model=/mnt/models
+          - serve
+          - /data/model
           - --served-model-name=qwen3-235b
           - --tensor-parallel-size=4
           - --quantization=awq_marlin
@@ -64,13 +101,14 @@ spec:
           - --max-num-seqs=4
           - --enable-auto-tool-choice
           - --tool-call-parser=hermes
-          # TP=4 on HAMi/L40S: custom all-reduce hangs at init (no NVLink P2P).
-          # Disable -> NCCL native speed.
+          # TP=4 on HAMi/L40S: custom all-reduce hangs at init (no NVLink P2P). NCCL fallback.
           - --disable-custom-all-reduce
           - --port=8080
         env:
           - name: HF_HUB_OFFLINE
             value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
           - name: VLLM_ATTENTION_BACKEND          # REQUIRED on L40S (SM89)
@@ -85,12 +123,10 @@ spec:
             cpu: "8"
             memory: 64Gi
             nvidia.com/gpu: "4"
-            nvidia.com/gpumem: "45000"
           limits:
             cpu: "16"
             memory: 128Gi
             nvidia.com/gpu: "4"
-            nvidia.com/gpumem: "45000"
         readinessProbe:
           httpGet:
             path: /v1/models
@@ -115,15 +151,15 @@ spec:
           timeoutSeconds: 15
           failureThreshold: 3
         volumeMounts:
-          - name: qwen3-data
-            mountPath: /mnt/models
+          - name: qwen3-235b
+            mountPath: /data
             readOnly: true
           - name: shm
             mountPath: /dev/shm
     volumes:
-      - name: qwen3-data
+      - name: qwen3-235b
         persistentVolumeClaim:
-          claimName: qwen3-235b-data
+          claimName: qwen3-235b
       - name: shm
         emptyDir:
           medium: Memory
