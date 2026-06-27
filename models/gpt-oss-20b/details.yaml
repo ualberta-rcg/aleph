@@ -59,9 +59,9 @@ data:
           "thinking": { "enabled": true, "effort": "medium" }
         },
         "meta_tasks": {
-          "title":     { "max_tokens": 80,  "thinking": { "enabled": false } },
-          "tags":      { "max_tokens": 60,  "thinking": { "enabled": false } },
-          "followups": { "max_tokens": 220, "thinking": { "enabled": false } }
+          "title":     { "max_tokens": 512, "thinking": { "enabled": false } },
+          "tags":      { "max_tokens": 384, "thinking": { "enabled": false } },
+          "followups": { "max_tokens": 512, "thinking": { "enabled": false } }
         }
       },
       "custom_params": {

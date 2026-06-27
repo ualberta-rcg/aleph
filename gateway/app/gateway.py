@@ -880,14 +880,30 @@ def apply_defaults(card: dict, body: dict) -> dict:
     return body
 
 
+def _msg_text(content) -> str:
+    """Flatten an OpenAI message content (str or list of typed blocks) to plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return ""
+
+
 def detect_meta_task(body: dict) -> str | None:
-    msgs = body.get("messages") or []
-    if len(msgs) == 1 and msgs[0].get("role") == "user":
-        prompt = msgs[0].get("content") or ""
-        if isinstance(prompt, str):
-            for task, signal in _OWUI_SIGNALS.items():
-                if signal in prompt:
-                    return task
+    """Detect an OpenWebUI meta-task (title/tags/followups) by its signature prompt.
+    OpenWebUI sends these as a one-off generation, but the task text may arrive as a
+    single user message OR split across system+user (and the content may be a typed
+    block list), so scan every message rather than only a lone user message."""
+    for msg in (body.get("messages") or []):
+        text = _msg_text(msg.get("content"))
+        if not text:
+            continue
+        for task, signal in _OWUI_SIGNALS.items():
+            if signal in text:
+                return task
     return None
 
 
@@ -1012,7 +1028,16 @@ def prepare_chat(
         if "max_tokens" in meta_cfg:
             cur = body.get("max_tokens")
             cap = meta_cfg["max_tokens"]
-            body["max_tokens"] = min(cur, cap) if isinstance(cur, int) else cap
+            if (card.get("behavior", {}) or {}).get("reasoning_model"):
+                # Always-reasoning models (gpt-oss) spend a VARIABLE number of tokens on
+                # internal reasoning before the final answer, so a small client budget
+                # (OpenWebUI's title/tags requests) gets eaten and returns empty content.
+                # Treat the meta budget as a FLOOR: take the larger of client vs meta so
+                # there is room for reasoning + the short answer. The model stops early
+                # (finish=stop), so the generous ceiling costs nothing in practice.
+                body["max_tokens"] = max(cur, cap) if isinstance(cur, int) else cap
+            else:
+                body["max_tokens"] = min(cur, cap) if isinstance(cur, int) else cap
         meta_think = meta_cfg.get("thinking", {}) or {}
         meta_effort = meta_think.get("effort")
         thinking_enabled = meta_think.get("enabled", False)
