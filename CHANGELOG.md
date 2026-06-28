@@ -3,6 +3,25 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — mace-mp deployed on cluster 43 (Phase S1); gateway-routing/variant field fix
+
+**What:** second science model. Brought `models/mace-mp` (MACE-MP-0 universal force field) to the
+science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**; card **id `mace-mp-0` → `mace-mp`** (it served via ISVC
+  `mace-mp` and the old id collided with the separate `mace-mp-0` dir); typed input_map/output_map.
+- `inferenceservice.yaml` — PVC `mace-mp-data` → bare `mace-mp` (volume + claim renamed).
+- **Routing fix:** the server picked the model size via the `model` field, but the gateway routes on
+  `model` (= the model id) → requests with `model: "medium"` 404'd ("model 'medium' not found").
+  Renamed the server's size selector to `variant` (keeping `model` as the gateway routing field —
+  the progen2 lesson), and changed the response `model` echo to `mace-mp` (the routable id).
+- `test.py` (Si cell, medium variant) + `README.md` added; `CLAUDE.md` research notes.
+- `models/test.science-template.py` — hardened `wake()` to also retry on 502/504 and a transient
+  post-redeploy 404 (route-recreation window).
+
+**Result:** 6/6 PASS — Si cell energy **-10.75 eV**, forces [2][3], stress [6] voigt; model-echo
+`mace-mp`; catalogued `force-field`. Reproducible via clean delete + redeploy. Scale-to-zero.
+
 ## 2026-06-27 — science-model pass begins: mace-mh-1 deployed on cluster 43 (Phase S1)
 
 **What:** first model of the science-fleet bring-up to cluster 43 (aleph1). Brought

@@ -22,7 +22,8 @@ data:
         "elements": ["Si", "Si"],
         "positions": [[0,0,0], [1.35,1.35,1.35]],
         "lattice": [[2.7,2.7,0],[2.7,0,2.7],[0,2.7,2.7]],  // optional, adds PBC
-        "model": "medium"   // "small" | "medium" | "large" (default: medium)
+        "variant": "medium"   // "small" | "medium" | "large" (default: medium).
+        // NOTE: "model" is the gateway routing field (= "mace-mp"); use "variant" to pick the size.
       }
     Returns:
       {"energy": -10.3, "forces": [[fx,fy,fz],...], "stress": [...], "model": "mace-mp-0"}
@@ -97,7 +98,7 @@ data:
         elements = req.get("elements")
         positions = req.get("positions")
         lattice   = req.get("lattice")
-        model_sz  = req.get("model", "medium")
+        model_sz  = req.get("variant", req.get("size", "medium"))
         if not elements or not positions:
             raise ValueError("elements and positions required")
 
@@ -111,7 +112,7 @@ data:
         atoms.calc = calc
         energy = float(atoms.get_potential_energy())
         forces = atoms.get_forces().tolist()
-        result = {"model": "mace-mp-0", "variant": model_sz, "energy_eV": energy, "forces_eV_per_Ang": forces}
+        result = {"model": "mace-mp", "variant": model_sz, "energy_eV": energy, "forces_eV_per_Ang": forces}
         if lattice:
             try:
                 result["stress_eV_per_Ang3"] = atoms.get_stress(voigt=True).tolist()
@@ -188,7 +189,7 @@ spec:
           requests: { cpu: "4", memory: 8Gi }
           limits: { cpu: "8", memory: 16Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: mace-mp, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -210,10 +211,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: mace-mp, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: mace-mp-data }
+      - name: mace-mp
+        persistentVolumeClaim: { claimName: mace-mp }
       - name: app
         configMap: { name: mace-mp-server }

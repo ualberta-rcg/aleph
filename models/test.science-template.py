@@ -50,7 +50,9 @@ def wake():
         r = req("POST", ENDPOINT, PAYLOAD)
         if r.status_code == 200:
             record("PASS", 200, "WAKE + endpoint", f"attempts={attempt+1}"); return
-        if r.status_code == 503:
+        if r.status_code in (502, 503, 504):      # cold-start / upstream-not-ready
+            time.sleep(5); continue
+        if r.status_code == 404 and attempt < 24:  # transient route-recreation window after redeploy
             time.sleep(5); continue
         record("FAIL", r.status_code, "WAKE + endpoint", f"unexpected body={r.text[:80]}"); return
     record("FAIL", 503, "WAKE + endpoint", "timed out waiting for warm model")

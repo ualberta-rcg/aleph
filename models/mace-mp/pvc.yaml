@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mace-mp-data
+  name: mace-mp
   namespace: models
 spec:
   accessModes: [ReadWriteMany]
