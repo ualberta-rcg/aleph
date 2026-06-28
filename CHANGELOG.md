@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — chemgpt deployed on cluster 43 (Phase S2)
+
+**What:** tenth Phase S2 model. Brought `models/chemgpt` (ChemGPT-1.2B SMILES molecule generation)
+to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**; card id **`chemgpt-1.2b` → `chemgpt`** (id = ISVC name).
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`**, renamed
+  `chemgpt-data` → bare `chemgpt` (volume + claim); server id/echo `chemgpt-1.2b` → `chemgpt`.
+  (Init already well-gated; gated HF-token download of `ncfrey/ChemGPT-1.2B` worked.)
+- `test.py` (SMILES prompt → generated) + `README.md` added.
+
+**Result:** 5/5 PASS — generates from its vocabulary; reproducible via clean delete + redeploy.
+**Note:** the raw output uses ChemGPT-1.2B's `-expl` exploded-tokenizer notation (needs post-processing
+to canonical SMILES) — known model behavior, not a defect. Scale-to-zero. CPU-only.
+
 ## 2026-06-27 — biogpt deployed on cluster 43 (Phase S2); gate venv install, type→completions
 
 **What:** ninth Phase S2 model. Brought `models/biogpt` (BioGPT biomedical text generation, 347M) to
