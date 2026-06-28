@@ -267,7 +267,7 @@ spec:
           requests: { cpu: "2", memory: 8Gi }
           limits: { cpu: "4", memory: 16Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: proteinmpnn, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -294,12 +294,12 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: proteinmpnn, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
+      - name: proteinmpnn
         persistentVolumeClaim:
-          claimName: proteinmpnn-data
+          claimName: proteinmpnn
       - name: app
         configMap:
           name: proteinmpnn-server

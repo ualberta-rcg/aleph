@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — proteinmpnn deployed on cluster 43 (Phase S2)
+
+**What:** seventh Phase S2 model. Brought `models/proteinmpnn` (ProteinMPNN sequence design,
+in-process on GPU) to the science standards and deployed it live on cluster 43.
+
+- `inferenceservice.yaml` — PVC `proteinmpnn-data` → bare `proteinmpnn` (volume + claim renamed).
+  Card was already v2; server/init unchanged (torch cu121 + `v_48_020.pt` weights, in-process
+  `ProteinMPNN`, GPU HAMi slice `gpumem 4096`).
+- `test.py` + `test_protein.pdb` (crambin/1CRN) + `README.md` + `CLAUDE.md` added. **Test-data note:**
+  the server returns `sequences` as a list of **strings** (the `{score, seq_recovery}` dicts are in
+  `results`) — the sanity check reads `results`, not `sequences`.
+
+**Result:** 5/5 PASS — 3 designed sequences, top **seq_recovery ≈ 0.59** (crambin); reproducible via
+clean delete + redeploy. Scale-to-zero.
+
 ## 2026-06-27 — ligandmpnn deployed on cluster 43 (Phase S2)
 
 **What:** sixth Phase S2 model. Brought `models/ligandmpnn` (Baker Lab ligand-aware protein sequence
