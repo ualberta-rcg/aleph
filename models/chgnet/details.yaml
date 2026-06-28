@@ -8,70 +8,71 @@ metadata:
 data:
   details.json: |
     {
-      "id": "chgnet-v0.3",
+      "id": "chgnet",
+      "status": "production",
       "type": "force-field",
-      "description_short": "CHGNet universal neural network potential with magnetic moments and charge distribution for materials simulation.",
-      "description": "CHGNet is a universal graph neural network force field from UC Berkeley (CederGroupHub) that includes magnetic moments and charge distribution prediction. Trained on Materials Project DFT data, it predicts energy, forces, stress, and magnetic moments from atomic structures. Critical for battery and magnetic materials research. Uses the chgnet pip package with ASE calculator interface.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/energy",
         "health": "/health"
       },
-      "owned_by": "Berkeley",
-      "source": "CederGroupHub/chgnet",
-      "source_url": "https://github.com/CederGroupHub/chgnet",
-      "license": "MIT",
-      "parameters": "~2M",
-      "precision": "float32",
-      "architecture": "CHGNet (Charge-Enhanced Graph Neural Network)",
-      "framework": "chgnet + ASE + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "cpu_request": "2",
-        "memory_request": "4Gi",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "timeout": 120,
-        "pvc": "chgnet-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "chgnet",
-        "api_name": "chgnet-v0.3",
-        "gateway_type": "force-field",
-        "isvc_name_map": {"chgnet": "chgnet-v0.3"}
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 1000
       },
-      "domain": "materials-science",
-      "subdomain": "interatomic-potentials",
-      "tags": ["science", "materials", "force-field", "molecular-dynamics", "magnetism", "battery", "gpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "structure": {
-          "elements": "array of element symbols e.g. [\"Li\", \"Fe\", \"P\", \"O\"]",
-          "positions": "array of [x,y,z] positions in Angstroms",
-          "cell": "3x3 cell vectors",
-          "pbc": "[bool, bool, bool] periodic boundary conditions"
+          "type": "object",
+          "required": true,
+          "description": "atomic structure: {elements:[\"Li\",\"Fe\",\"P\",\"O\"], positions:[[x,y,z],...], cell?(3x3), pbc?([bool,bool,bool])}. A large cubic box is synthesized for molecules (no cell)."
         }
       },
       "output_map": {
-        "energy_eV": "total potential energy in eV",
-        "forces_eV_A": "per-atom forces in eV/Angstrom",
-        "stress_eV_A3": "Voigt stress tensor"
+        "model": {"type": "string", "description": "model name"},
+        "energy_eV": {"type": "number", "description": "total potential energy in eV (per-atom × n_atoms)"},
+        "energy_eV_per_atom": {"type": "number", "description": "per-atom energy in eV"},
+        "forces_eV_per_A": {"type": "array", "description": "per-atom forces [n_atoms][3] in eV/Angstrom"},
+        "stress_GPa": {"type": "array", "description": "Voigt stress tensor in GPa (when available)"},
+        "magmom_muB": {"type": "array", "description": "per-atom magnetic moments in mu_B (CHGNet-unique; when available)"},
+        "n_atoms": {"type": "integer", "description": "atom count"}
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "checkpoint_path": "/data/checkpoint.pth",
-        "configmap_name": "chgnet-server"
+      "catalog": {
+        "description_short": "CHGNet universal NN potential with magnetic moments + charge distribution for materials (battery/magnetic research).",
+        "description": "CHGNet (Charge-Enhanced Graph Neural Network, UC Berkeley) is a universal graph neural network force field trained on Materials Project DFT. Unique among the force fields here for predicting **magnetic moments** and **charge distribution** alongside energy/forces/stress — valuable for battery and magnetic-materials research. Loaded via the `chgnet` pip package (bundled pretrained weights; the HF repo was removed). Pinned `chgnet==0.3.8` (0.4.x breaks the bundled graph converter).",
+        "owned_by": "UC Berkeley",
+        "source": "CederGroupHub/chgnet",
+        "source_url": "https://github.com/CederGroupHub/chgnet",
+        "license": "MIT",
+        "parameters": "~2M",
+        "precision": "float32",
+        "framework": "chgnet + pymatgen + ASE + PyTorch",
+        "domain": "materials-science",
+        "subdomain": "interatomic-potentials",
+        "tags": ["science", "materials", "force-field", "molecular-dynamics", "magnetism", "battery", "gpu"]
       }
     }

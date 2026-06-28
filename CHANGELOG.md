@@ -3,6 +3,24 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — chgnet deployed on cluster 43 (Phase S1); embed server.py, drop kustomize
+
+**What:** fourth science model. Brought `models/chgnet` (CHGNet NN force field with magnetic
+moments) to the science standards and deployed it live on cluster 43.
+
+- `inferenceservice.yaml` — **embedded the standalone `server.py` into the `chgnet-server`
+  ConfigMap** (it was previously a standalone file assembled into the ConfigMap via
+  `kustomization.yaml`); **dropped `kustomization.yaml`** so the dir deploys with plain
+  `kubectl apply -f`; renamed PVC `chgnet-data` → bare `chgnet`.
+- `details.yaml` — v1 → **v2 Template B**; card id **`chgnet-v0.3` → `chgnet`** (was routed via an
+  `isvc_name_map` hack — now id = ISVC name, remap removed); typed nested-`structure` input_map.
+- `test.py` (NaCl cell → energy/forces/stress/magmom) + `README.md` + `CLAUDE.md` added.
+- Kept the deep-fixed server (`model.predict_structure()`) + `chgnet==0.3.8` pin (0.4.x breaks the
+  bundled graph converter). HF repo gone (404) → uses chgnet bundled weights, non-fatal.
+
+**Result:** 5/5 PASS — NaCl energy **-4.05 eV**, forces [2][3], stress (GPa), **magmom (mu_B)**
+(CHGNet-unique); reproducible via clean delete + redeploy. Scale-to-zero.
+
 ## 2026-06-27 — mace-mp-0 deployed on cluster 43 (Phase S1)
 
 **What:** third science model. Brought `models/mace-mp-0` (MACE-MP-0 medium, CPU, `/v1/science/energy`)
