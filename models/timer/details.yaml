@@ -9,60 +9,30 @@ data:
   details.json: |
     {
       "id": "timer",
+      "status": "production",
       "type": "forecast",
-      "description_short": "Timer-base-84M universal time-series forecasting model (Tsinghua THUML, decoder-only transformer).",
-      "description": "Timer is a universal time-series forecasting model from THUML at Tsinghua University (2024). It uses a decoder-only transformer architecture pretrained on multi-domain time-series data for zero-shot forecasting. The base variant has 84M parameters. Supports configurable prediction lengths. Uses HuggingFace AutoModelForCausalLM with trust_remote_code. Apache 2.0 license.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/forecast",
-        "health": "/health"
-      },
-      "owned_by": "thuml",
-      "source": "thuml/timer-base-84m",
-      "source_url": "https://huggingface.co/thuml/timer-base-84m",
-      "license": "Apache-2.0",
-      "parameters": "84M",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "Decoder-only transformer for time series",
-      "framework": "transformers (AutoModelForCausalLM, trust_remote_code) + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 120,
-        "pvc": "timer-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
-      "routing": {
-        "kserve_custom": true,
-        "k8s_name": "timer",
-        "api_name": "timer",
-        "gateway_type": "forecast"
-      },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
-      },
-      "domain": "time-series",
-      "subdomain": "forecasting",
-      "tags": ["science", "timeseries", "forecast", "zero-shot", "gpu", "thuml", "tsinghua"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "endpoints": { "primary": "/v1/forecast", "health": "/health" },
+      "routing": { "k8s_name": "timer", "no_stream": true, "upstream_model_id": null },
+      "limits": { "context_window": 0, "max_input_tokens": 10000 },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "2-4 min" },
+      "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
-        "time_series": "array of numeric values",
-        "prediction_length": "future steps to forecast (default: 96)"
+        "time_series": { "type": "array", "required": true, "description": "numeric observations" },
+        "prediction_length": { "type": "integer", "required": false, "default": 96, "description": "future steps" }
       },
       "output_map": {
-        "forecast": "predicted values array",
-        "model": "timer"
+        "model": { "type": "string" }, "forecast": { "type": "array", "description": "forecasted values (length=prediction_length)" }
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "hf_model_id": "thuml/timer-base-84m"
+      "catalog": {
+        "description_short": "Timer-base-84M universal zero-shot time-series forecasting (THUML/Tsinghua).",
+        "description": "Timer (thuml/timer-base-84m, THUML/Tsinghua, 2024) is a universal zero-shot time-series forecasting model — decoder-only transformer pretrained on multi-domain data. 84M params. Configurable prediction lengths. transformers AutoModelForCausalLM (trust_remote_code).",
+        "owned_by": "thuml", "source": "thuml/timer-base-84m", "source_url": "https://huggingface.co/thuml/timer-base-84m",
+        "license": "Apache-2.0", "parameters": "84M", "precision": "fp16 (GPU)/fp32 (CPU)",
+        "framework": "transformers (AutoModelForCausalLM, trust_remote_code) + torch",
+        "domain": "time-series", "subdomain": "forecasting", "tags": ["science", "timeseries", "forecast", "gpu"]
       }
     }
