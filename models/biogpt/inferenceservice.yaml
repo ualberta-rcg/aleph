@@ -75,18 +75,6 @@ data:
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: biogpt-data
-  namespace: models
-spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 5Gi
----
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -120,21 +108,32 @@ spec:
         args:
           - |
             set -e
-            if [ ! -d /data/venv/bin ]; then
+            SENTINEL=/data/venv/.biogpt-ready
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Building venv..."
               python3 -m venv /data/venv && /data/venv/bin/pip install -U pip
+              /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q transformers sacremoses fastapi uvicorn
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists."
             fi
-            /data/venv/bin/pip install -q 'torch>=2.6' --index-url https://download.pytorch.org/whl/cu126
-            /data/venv/bin/pip install -q transformers sacremoses fastapi uvicorn
-            /data/venv/bin/python -c "
+            if [ ! -d /data/hf_cache/models--microsoft--biogpt ]; then
+              echo "Downloading microsoft/biogpt..."
+              /data/venv/bin/python -c "
             from transformers import BioGptTokenizer, BioGptForCausalLM
             BioGptTokenizer.from_pretrained('microsoft/biogpt')
             BioGptForCausalLM.from_pretrained('microsoft/biogpt')
             "
+            else
+              echo "BioGpt already cached."
+            fi
         resources:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: biogpt, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -147,16 +146,21 @@ spec:
         resources:
           requests: { cpu: "2", memory: 4Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
           limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 15
+          periodSeconds: 15
+          failureThreshold: 40
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
           initialDelaySeconds: 30
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: biogpt, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: biogpt-data }
+      - name: biogpt
+        persistentVolumeClaim: { claimName: biogpt }
       - name: app
         configMap: { name: biogpt-server }

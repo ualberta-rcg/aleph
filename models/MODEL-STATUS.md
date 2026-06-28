@@ -24,7 +24,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | bge-reranker-v2-m3 | reranker | false | /v1/rerank | READY | PASS | /v1/rerank correct ranking (panda docs top), scores OK |
 | bge-small | forecast | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | biobert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
-| biogpt | generate | true | /v1/completions | READY | PASS | coherent biomedical text completion |
+| biogpt | completions | true | /v1/completions | READY | PASS | BioGPT biomedical text generation (microsoft/biogpt, 347M, custom transformers server, fp16 GPU). **Deployed+verified on cluster 43 (2026-06-27, science pass S2):** extracted inlined **RWO→RWX** PVC → standalone `biogpt`, gated the venv install (was reinstalling every cold start), added startupProbe, **card type `generate`→`completions`** (gateway gate), v2 Template B card, test.py+README. 5-check **5/0** — coherent biomedical continuation ('The treatment of diabetes includes a multitude of drug thera…'); reproducible via clean delete+redeploy. |
 | biolinkbert | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biomed-roberta | embedding | true | /v1/embeddings | READY | PASS | 768-dim |
 | biomedbert-large | embedding | true | /v1/science/embed | READY | PASS | 1024-dim (field: text) |

@@ -10,77 +10,70 @@ data:
     {
       "id": "biogpt",
       "status": "production",
-      "type": "generate",
-      "description_short": "BioGPT — biomedical text generation from Microsoft",
-      "description": "BioGPT by Microsoft. 347M params. GPT-2 style autoregressive language model pre-trained on 15M PubMed abstracts. Generates biomedical text, descriptions of drugs/proteins/diseases, and can perform relation extraction. Produces biomedical entity descriptions and answers biomedical questions. Max input length 1024 tokens.",
-      "context_window": 1024,
-      "max_completion_tokens": 100,
+      "type": "completions",
       "endpoints": {
         "primary": "/v1/completions",
         "health": "/health"
       },
-      "owned_by": "microsoft",
-      "source": "microsoft/biogpt",
-      "source_url": "https://huggingface.co/microsoft/biogpt",
-      "license": "MIT",
-      "parameters": "347M",
-      "parameter_count": 347000000,
-      "precision": "fp32",
-      "architecture": "transformer",
-      "framework": "pytorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "startup_seconds": 30,
-        "container_image": "python:3.11-slim",
-        "timeout": 120
-      },
       "routing": {
-        "path_prefix": "/v1/",
-        "serialize": false,
-        "no_stream": false
+        "k8s_name": "biogpt",
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": {
+        "context_window": 1024,
+        "max_input_tokens": 1024
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-3 minutes (venv + BioGPT load)"
+      },
+      "behavior": {
         "supports_vision": false,
-        "reasoning_model": false
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "domain": "biomedical",
-      "subdomain": "biomedical-text-generation",
-      "tags": ["generate", "biomedical", "nlp", "gpt", "pubmed", "biology", "text-generation"],
-      "content_types": ["text"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "prompt": {
           "type": "string",
           "required": true,
-          "description": "Biomedical text prompt"
+          "description": "biomedical text prompt (a seed phrase / question)"
         },
         "max_tokens": {
-          "type": "int",
+          "type": "integer",
           "required": false,
-          "description": "Maximum tokens to generate (default: 100)"
+          "default": 100,
+          "description": "max tokens to generate"
         }
       },
       "output_map": {
-        "id": "string",
-        "object": "string (text_completion)",
-        "model": "string",
-        "choices": {
-          "type": "array",
-          "items": {
-            "text": "string",
-            "index": "int",
-            "finish_reason": "string"
-          }
-        }
+        "model": {"type": "string", "description": "model name"},
+        "choices": {"type": "array", "description": "[{text, index, finish_reason}]"}
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "framework": "transformers (HuggingFace)",
-        "max_seq_length": 1024,
-        "generation_strategy": "sampling"
+      "catalog": {
+        "description_short": "BioGPT — biomedical text generation (Microsoft, GPT-2 style on PubMed).",
+        "description": "BioGPT (Microsoft, 347M) is a GPT-2-style autoregressive LM pre-trained on 15M PubMed abstracts. Generates biomedical text — descriptions of drugs/proteins/diseases, relation extraction. Completions-style endpoint: prompt → continuation. fp16 on GPU. Max input 1024 tokens.",
+        "owned_by": "microsoft",
+        "source": "microsoft/biogpt",
+        "source_url": "https://huggingface.co/microsoft/biogpt",
+        "license": "MIT",
+        "parameters": "347M",
+        "precision": "fp16 (GPU) / fp32 (CPU)",
+        "framework": "transformers (BioGptForCausalLM) + torch",
+        "domain": "biomedical",
+        "subdomain": "biomedical-text-generation",
+        "tags": ["science", "completions", "biomedical", "nlp", "pubmed", "text-generation", "gpu"]
       }
     }
