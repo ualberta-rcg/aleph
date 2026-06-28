@@ -3,6 +3,13 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — timer-s1 deployed on cluster 43 (Phase S3)
+
+**What:** tenth Phase S3 model. Brought `models/timer-s1` (Timer-S1 quantile forecast) to standards.
+- Removed the redundant inlined PVC (kept standalone `pvc.yaml`), renamed `timer-s1-data` → bare
+  `timer-s1`. Card was already v2 + `progress-deadline: 1800s`. test.py + README added.
+- **Result:** 5/5 PASS — forecast (len 96, finite); reproducible via repo apply.
+
 ## 2026-06-28 — timer deployed on cluster 43 (Phase S3)
 
 **What:** ninth Phase S3 model. Brought `models/timer` (Timer-base-84M, THUML/Tsinghua) to standards.

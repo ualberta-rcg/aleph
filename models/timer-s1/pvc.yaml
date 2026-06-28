@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: timer-s1-data
+  name: timer-s1
   namespace: models
 spec:
   accessModes: [ReadWriteMany]
