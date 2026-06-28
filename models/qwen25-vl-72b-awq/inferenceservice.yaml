@@ -1,6 +1,6 @@
 # Qwen/Qwen2.5-VL-72B-Instruct-AWQ (4-bit) on the GPU cluster / HAMi. vLLM v0.20.2, TP2 (whole devices).
 # Whole devices (no gpumem). Persisted helper venv + weights on RWX PVC (gemma-4 pattern);
-# scale-to-zero, 15m idle. Vision (image:20,video:1). AWQ ~20 GiB/GPU; 64K ctx (128K OOMs on L40S).
+# always-on. Vision (image:32,video:1). AWQ ~20 GiB/GPU; 64K ctx (128K OOMs on L40S).
 # --disable-custom-all-reduce (L40S NODE topology, no NVLink P2P). TRITON_ATTN_VLLM_V1 (SM89).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -20,8 +20,8 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    maxReplicas: 1
+    minReplicas: 1
+    maxReplicas: 5
     scaleTarget: 8
     scaleMetric: concurrency
     timeout: 600
@@ -92,7 +92,7 @@ spec:
           - --dtype=auto
           - --gpu-memory-utilization=0.92
           - --max-num-seqs=4
-          - '--limit-mm-per-prompt={"image": 20, "video": 1}'
+          - '--limit-mm-per-prompt={"image": 32, "video": 1}'
           - --disable-custom-all-reduce
           - --port=8080
         env:

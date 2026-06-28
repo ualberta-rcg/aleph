@@ -3,6 +3,27 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — standardize always-on agentic/model tier
+
+**What:** selected a small always-on tier for low-latency agentic and UI use, while leaving most
+models wake-on-demand. Updated the repo manifests for:
+
+- `command-r-7b` — `minReplicas: 1`, `maxReplicas: 5`.
+- `qwen35-122b` — `minReplicas: 1`, `maxReplicas: 5` (4x L40S flagship agentic/reasoning model).
+- `qwen25-coder-32b` — `minReplicas: 1`, `maxReplicas: 5` (2x L40S code specialist).
+- `qwen25-vl-72b-awq` — `minReplicas: 1`, `maxReplicas: 5`; increased vision cap from
+  `{"image": 20, "video": 1}` to `{"image": 32, "video": 1}`.
+
+**Why:** keep the models needed for Claude/OpenWebUI agentic workflows warm, standardize the
+autoscale ceiling to `maxReplicas: 5`, and promote the stronger 72B-AWQ vision model while
+demoting the older always-on vision/image endpoints back to scale-to-zero.
+
+**Validation:** applied live on cluster 43. New `00002` revisions reached Ready / `3/3 Running`:
+`command-r-7b` on rack05-16, `qwen25-coder-32b` + `qwen25-vl-72b-awq` on rack08-10, and
+`qwen35-122b` on rack12-16. Patched old always-on `qwen25-vl-7b` and `sd3-medium` back to
+`minReplicas: 0` and scaled their current revision Deployments to `0/0`; services remain Ready and
+wake-on-demand.
+
 ## 2026-06-28 — aurora deployed on cluster 43 (Phase S4 begins); fix tensor shapes for latest API
 
 **What:** first Phase S4 model (weather/climate). Brought `models/aurora` (Microsoft Aurora 0.25°
