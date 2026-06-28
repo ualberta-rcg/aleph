@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ithaca-data
+  name: ithaca
   namespace: models
 spec:
   accessModes: [ReadWriteMany]

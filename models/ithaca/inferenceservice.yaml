@@ -41,17 +41,13 @@ data:
 
     def load():
         global model
-        import sys, subprocess
+        import sys
         SRC_DIR = "/data/src/predictingthepast"
         sys.path.insert(0, SRC_DIR)
         print("Loading Ithaca...", flush=True)
         try:
-            # jax[cuda12] pulls the CUDA-enabled jaxlib + plugin so Ithaca runs on the
-            # L40S GPU (plain "jax jaxlib" is CPU-only -> ~3+ min/inference).
-            subprocess.run(["pip", "install", "-q", "jax[cuda12]", "dm-haiku",
-                            "optax", "numpy", "absl-py"], check=False, capture_output=True)
-            subprocess.run(["pip", "install", "-q", "-e", SRC_DIR],
-                           check=False, capture_output=True)
+            # jax[cuda12] (GPU jaxlib) is installed in the persisted venv by the initContainer;
+            # plain "jax jaxlib" is CPU-only -> ~3+ min/inference.
             from predictingthepast.eval import inference
             from predictingthepast.models.model import Model
             from predictingthepast.util import alphabet as util_alphabet
@@ -184,34 +180,38 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.ithaca-ready-v3
-            if [ -f "$SENTINEL" ]; then echo "Already set up."; exit 0; fi
-            apt-get update -qq && apt-get install -y -qq git curl
+            SENTINEL=/data/.ithaca-ready-v4
+            if [ -f "$SENTINEL" ]; then echo "Already set up (venv + weights cached)."; exit 0; fi
+            apt-get update -qq && apt-get install -y -qq git curl > /dev/null 2>&1
+            # Build persisted venv with jax[cuda12] (GPU) + deps — cached on PVC so cold
+            # starts skip the install (was a fresh ~1GB pip install every cold start).
+            if [ ! -d /data/venv/bin ]; then
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+            fi
+            echo "Installing jax[cuda12] + dm-haiku + optax + fastapi/uvicorn into venv..."
+            /data/venv/bin/pip install -q "jax[cuda12]" dm-haiku optax numpy absl-py fastapi uvicorn
+            echo "Cloning predictingthepast source..."
+            mkdir -p /data/src
+            git clone --depth=1 https://github.com/google-deepmind/predictingthepast /data/src/predictingthepast 2>/dev/null || echo "Clone failed"
+            /data/venv/bin/pip install -q -e /data/src/predictingthepast 2>/dev/null || echo "pip -e predictingthepast failed (non-fatal)"
             echo "Downloading Ithaca weights from GCS (ithaca-resources bucket)..."
             BASE="https://storage.googleapis.com/ithaca-resources/models"
             curl -L --fail -o /data/ithaca_153143996_2.pkl "${BASE}/ithaca_153143996_2.pkl"
             curl -L --fail -o /data/iphi.json               "${BASE}/iphi.json"
             curl -L --fail -o /data/iphi_emb_xid153143996.pkl "${BASE}/iphi_emb_xid153143996.pkl"
             echo "Downloads complete: $(wc -c < /data/ithaca_153143996_2.pkl) bytes model"
-            echo "Cloning predictingthepast source..."
-            mkdir -p /data/src
-            git clone --depth=1 https://github.com/google-deepmind/predictingthepast /data/src/predictingthepast 2>/dev/null || echo "Clone failed"
             touch "$SENTINEL"
             echo "Setup complete."
         resources:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: ithaca, mountPath: /data }
     containers:
       - name: kserve-container
-        image: python:3.11
-        command: ["bash", "-c"]
-        args:
-          - |
-            pip install -q "jax[cuda12]" dm-haiku optax fastapi uvicorn
-            pip install -q -e /data/src/predictingthepast 2>/dev/null || true
-            python /app/server.py
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
         env:
           - { name: HF_HOME, value: /tmp }
         ports:
@@ -231,10 +231,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: ithaca, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: ithaca-data }
+      - name: ithaca
+        persistentVolumeClaim: { claimName: ithaca }
       - name: app
         configMap: { name: ithaca-server }

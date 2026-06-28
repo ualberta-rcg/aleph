@@ -9,73 +9,73 @@ data:
   details.json: |
     {
       "id": "ithaca",
+      "status": "production",
       "type": "predict",
-      "description_short": "Ithaca — ancient Greek inscription restoration, dating, and geolocation",
-      "description": "Ithaca by DeepMind x UCL x Venice. JAX/Flax model published in Nature 2022. Restores damaged ancient Greek inscriptions, attributes chronological dating (BCE), and predicts geographic origin. Takes ancient Greek text with gaps marked [---], returns restored text, date range, and location attribution. Uses predictingthepast library with JAX/haiku. GPU required for full inference.",
-      "context_window": 750,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/predict",
         "health": "/health"
       },
-      "owned_by": "deepmind",
-      "source": "google-deepmind/predictingthepast",
-      "source_url": "https://github.com/google-deepmind/predictingthepast",
-      "license": "Apache-2.0",
-      "parameters": "N/A (JAX/Flax)",
-      "parameter_count": 0,
-      "precision": "fp32",
-      "architecture": "transformer (JAX/haiku)",
-      "framework": "jax",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "startup_seconds": 120,
-        "container_image": "python:3.11",
-        "timeout": 180
-      },
       "routing": {
-        "path_prefix": "/v1/",
-        "serialize": false,
-        "no_stream": false
+        "k8s_name": "ithaca",
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": {
+        "context_window": 750,
+        "max_input_tokens": 750
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 min (jax[cuda12] venv + weights; first restore/attribute JIT-compiles ~90s)"
+      },
+      "behavior": {
         "supports_vision": false,
-        "reasoning_model": false
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
       },
-      "domain": "scientific-nlp",
-      "subdomain": "digital-humanities",
-      "tags": ["predict", "ancient-greek", "digital-humanities", "classics", "epigraphy", "restoration", "deepmind"],
-      "content_types": ["text"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "text": {
           "type": "string",
           "required": true,
-          "description": "Ancient Greek inscription text with gaps marked [---]. Must be 50-750 characters."
+          "description": "ancient Greek inscription text (uppercase), 50-750 chars; mark damaged/unknown chars with ? (the predictingthepast gap char)"
         },
-        "demo": {
-          "type": "bool",
+        "contextualize": {
+          "type": "boolean",
           "required": false,
-          "description": "Return demo output for testing"
+          "default": false,
+          "description": "opt-in retrieval search over the training corpus (~2 min, CPU/IO-bound); default response is restoration + date + geo attribution"
         }
       },
       "output_map": {
-        "model": "string",
-        "input": "string",
-        "restoration": "string",
-        "date": {"mean": "int (BCE)", "std": "int", "range": "[int, int]"},
-        "location": {"region": "string", "subregion": "string", "lat": "float", "lon": "float"},
-        "confidence": "float"
+        "model": {"type": "string", "description": "model name"},
+        "input": {"type": "string", "description": "input text"},
+        "restoration": {"type": "object", "description": "restored text predictions for the gap spans"},
+        "attribution": {"type": "object", "description": "chronological date (BCE) + geographic region/subregion attribution"}
       },
-      "server_config": {
-        "inference_backend": "jax",
-        "framework": "dm-haiku / optax",
-        "max_text_length": 750,
-        "min_text_length": 50,
-        "weights_source": "Google Cloud Storage (public)"
+      "catalog": {
+        "description_short": "Ithaca — ancient Greek inscription restoration, dating, and geolocation (DeepMind, Nature 2022).",
+        "description": "Ithaca (DeepMind × UCL × Venice, Nature 2022) is a JAX/Flax transformer that restores damaged ancient Greek inscriptions, attributes a chronological date (BCE), and predicts geographic origin. Input is ancient Greek text (50-750 chars) with gaps marked `[---]`. Served via the `predictingthepast` library (dm-haiku/optax) with `jax[cuda12]` for GPU inference; weights from GCS. The optional `contextualize` flag adds a corpus retrieval search (~2 min).",
+        "owned_by": "deepmind",
+        "source": "google-deepmind/predictingthepast",
+        "source_url": "https://github.com/google-deepmind/predictingthepast",
+        "license": "Apache-2.0",
+        "parameters": "JAX/Flax transformer",
+        "precision": "fp32",
+        "framework": "jax + dm-haiku + optax (predictingthepast)",
+        "domain": "digital-humanities",
+        "subdomain": "epigraphy",
+        "tags": ["science", "ancient-greek", "digital-humanities", "classics", "epigraphy", "restoration", "deepmind"]
       }
     }

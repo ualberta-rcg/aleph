@@ -3,6 +3,25 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — ithaca deployed on cluster 43 (Phase S2); venv refactor + gap-char/encoding fixes
+
+**What:** third Phase S2 model. Brought `models/ithaca` (DeepMind ancient-Greek inscription
+restoration, JAX/Flax) to the science standards and deployed it live on cluster 43.
+
+- `inferenceservice.yaml` — **moved the per-cold-start `pip install jax[cuda12] dm-haiku optax …`
+  (≈1 GB every wake) into the initContainer venv-on-PVC** (gated sentinel → cold starts skip it);
+  dropped the redundant in-server `subprocess.run(["pip",…])` calls; renamed PVC `ithaca-data` →
+  bare `ithaca`; container now runs the cached `/data/venv/bin/python`.
+- `details.yaml` — v1 → **v2 Template B**; fixed the gap-char doc (`[---]` → `?`, the
+  predictingthepast alphabet's actual gap char).
+- `test.py` + `README.md` + `CLAUDE.md` added. **Two test-data gotchas found:** (1) the `[---]` gap
+  marker is wrong — ithaca uses `?`; (2) typed "Greek" text contained **Cyrillic homoglyphs** (л, А…)
+  the alphabet rejects → the test builds text via an ASCII→Greek codepoint transliteration.
+
+**Result:** 5/5 PASS — **real jax GPU inference** (demo=False): restoration (predictions + saliency)
++ attribution (date/region) on an Attic fragment; reproducible via clean delete + redeploy.
+Scale-to-zero. Cold start ~3-6 min; first restore/attribute JIT ~90s, ~8s warm.
+
 ## 2026-06-27 — diffdock deployed on cluster 43 (Phase S2)
 
 **What:** second Phase S2 model. Brought `models/diffdock` (DiffDock-L protein-ligand docking, the
