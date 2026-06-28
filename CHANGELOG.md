@@ -3,6 +3,19 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — chronos-bolt deployed on cluster 43 (Phase S3 begins)
+
+**What:** first Phase S3 model (time-series). Brought `models/chronos-bolt` (Amazon Chronos-Bolt
+zero-shot forecasting, CPU) to the science standards and deployed it live on cluster 43.
+
+- `inferenceservice.yaml` — **embedded the standalone `server.py` into the `chronos-bolt-server`
+  ConfigMap** (was built via `kustomization.yaml`); **dropped `kustomization.yaml`** + standalone
+  server.py; renamed PVC `chronos-bolt-data` → bare `chronos-bolt`. Card was already v2.
+- `test.py` (16-pt series → horizon-12 forecast) + `README.md` added.
+
+**Result:** 5/5 PASS — median forecast `[48.3, 50.5, 52.2…]` (sensible trend continuation);
+reproducible via clean delete + redeploy. CPU-only. Scale-to-zero.
+
 ## 2026-06-27 — leandojo deployed on cluster 43 (Phase S2 COMPLETE)
 
 **What:** fourteenth + final Phase S2 model. Brought `models/leandojo` (LeanDojo Lean 4 premise
