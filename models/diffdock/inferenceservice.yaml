@@ -28,12 +28,12 @@ data:
     @app.get("/health")
     async def health():
         weights_ok = os.path.isdir(WEIGHTS_DIR) and bool(os.listdir(WEIGHTS_DIR))
-        return {"status": "ok" if weights_ok else "weights_missing", "model": "diffdock-l"}
+        return {"status": "ok" if weights_ok else "weights_missing", "model": "diffdock"}
 
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [
-            {"id": "diffdock-l", "object": "model", "owned_by": "gcorso", "type": "docking"}
+            {"id": "diffdock", "object": "model", "owned_by": "gcorso", "type": "docking"}
         ]}
 
     @app.post("/v1/dock")
@@ -119,7 +119,7 @@ data:
                     for fn in files:
                         tree.append(os.path.relpath(os.path.join(root, fn), out_dir))
                 return {
-                    "model": "diffdock-l", "ligand_smiles": ligand_smiles,
+                    "model": "diffdock", "ligand_smiles": ligand_smiles,
                     "num_poses": 0, "poses": [],
                     "warning": "no SDF poses produced",
                     "output_files": tree[:50],
@@ -142,7 +142,7 @@ data:
                 })
 
             return {
-                "model": "diffdock-l",
+                "model": "diffdock",
                 "ligand_smiles": ligand_smiles,
                 "num_poses": len(poses),
                 "poses": poses,
@@ -237,7 +237,7 @@ spec:
           requests: { cpu: "4", memory: 8Gi }
           limits:   { cpu: "8", memory: 16Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: diffdock, mountPath: /data }
     containers:
       - name: kserve-container
         image: rbgcsail/diffdock:v1.1.3
@@ -289,12 +289,12 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: diffdock, mountPath: /data }
           - { name: server-code, mountPath: /server }
     volumes:
-      - name: model-data
+      - name: diffdock
         persistentVolumeClaim:
-          claimName: diffdock-data
+          claimName: diffdock
       - name: server-code
         configMap:
           name: diffdock-server

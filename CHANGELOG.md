@@ -3,6 +3,23 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — diffdock deployed on cluster 43 (Phase S2)
+
+**What:** second Phase S2 model. Brought `models/diffdock` (DiffDock-L protein-ligand docking, the
+subprocess-CLI pattern) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**; card id **`diffdock-l` → `diffdock`** (now id = ISVC name).
+- `inferenceservice.yaml` — PVC `diffdock-data` → bare `diffdock`; server id echo → `diffdock`.
+  (Server unchanged: `rbgcsail/diffdock:v1.1.3` image + subprocess to `inference.py`; server deps
+  pinned for Python 3.9 — `fastapi==0.103.2`, `click<8.2`, etc. — on the PVC via `PYTHONPATH`.)
+- `test.py` + **`test_protein.pdb`** (crambin/1CRN ATOM fixture, fetched from RCSB) + `README.md` +
+  `CLAUDE.md` added.
+
+**Result:** 5/5 PASS — **11 ranked SDF poses** docking aspirin into crambin; reproducible via clean
+delete + redeploy (image cached). Scale-to-zero. Cold start ~3-6 min. **Known cosmetic gap:** this
+DiffDock-L build's SDF filenames don't encode confidence → parser yields `confidence=0.0` (poses are
+still ranked); follow-up to parse confidence from the SDF tag.
+
 ## 2026-06-27 — esmfold deployed on cluster 43 (Phase S2 begins)
 
 **What:** first Phase S2 model (protein/structure). Brought `models/esmfold` (Meta ESMfold protein

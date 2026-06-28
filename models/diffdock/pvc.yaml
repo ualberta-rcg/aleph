@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: diffdock-data
+  name: diffdock
   namespace: models
 spec:
   accessModes:
