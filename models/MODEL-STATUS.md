@@ -97,7 +97,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | lag-llama | forecast | true | /v1/science/forecast | READY | FIXED | torch2.6 weights_only + create_predictor(module=) API |
 | leandojo | embed | true | /v1/science/retrieve | READY | PASS | premise retrieval w/ scores |
 | ligandmpnn | design | false | /v1/design | READY | FIXED | checkpoints+args+optional-openfold; 1CRN design near-native PASS |
-| mace-mh-1 | force-field | true | /v1/science/predict | READY | PASS | water -14.22 eV + forces (omat_pbe head) |
+| mace-mh-1 | force-field | true | /v1/science/predict | READY | PASS | MACE-MH-1 multi-head MLIP (7 heads, 89 elements, float64). **Deployed+verified on cluster 43 (2026-06-27, science pass):** extracted inlined PVC → standalone `mace-mh-1` (bare naming), v2 Template B card (typed input_map/output_map), added test.py + README + `/health` startup/readiness probes. Caduceus pattern (ConfigMap-embedded `server.py`, venv-on-PVC). 6-check **6/0** — Cu cell energy **-14.96 eV** + forces [4][3] + stress [6] (omat_pbe head); reproducible via clean delete+redeploy (venv+weights cached). NB: science models catalog under `/v1/models?all=true`. |
 | mace-mp-0 | force-field | false | /v1/science/energy | READY | FIXED | fixed pbc-zero-cell garbage + PVC model cache; water -14.15eV PASS |
 | mace-mp | force-field | true | /v1/science/predict | READY | PASS | water -14.01 eV + forces; mace-mp-0 medium |
 | maskrcnn | segment | false | /v1/vision/segment | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL); stale server.py removed (embedded in ISVC ConfigMap) |

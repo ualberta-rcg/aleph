@@ -3,6 +3,29 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — science-model pass begins: mace-mh-1 deployed on cluster 43 (Phase S1)
+
+**What:** first model of the science-fleet bring-up to cluster 43 (aleph1). Brought
+`models/mace-mh-1` (MACE multi-head foundation force field) to the science standards and deployed
+it live. The science pass treats each model as unverified (the 232-era MODEL-STATUS rows are not
+trusted) — research → author v2 card → standardize to the caduceus pattern → deploy → test → clean
+redeploy → record. Deeper than the LLM pass; major work allowed.
+
+- `details.yaml` — converted from v1 to **v2 Template B** (typed `input_map`/`output_map` for
+  elements/positions/lattice/head → energy/forces/stress; `catalog` block; `schema_version: 2`).
+- `inferenceservice.yaml` — **extracted the inlined PVC** to a standalone `pvc.yaml` and renamed the
+  volume + claim to bare `mace-mh-1` (was `mace-mh-1-data`/`model-data`); added `/health`
+  `startupProbe` + `readinessProbe`. Server (`server.py`, MACECalculator float64 + 7 heads) unchanged.
+- `pvc.yaml` — standalone RWX `nfs-models` 5Gi, name `mace-mh-1`.
+- `test.py` — force-field battery (WAKE/SHAPE/SANITY/MODEL-ECHO/CATALOG): Cu cell → energy + forces + stress.
+- `README.md` + `CLAUDE.md` — overview + research notes (mace-torch `>=0.3` ~0.3.16, MACECalculator API).
+- Added `models/test.science-template.py` — the reusable science test battery (science models catalog
+  under `/v1/models?all=true`, not the plain list; SKIP semantics for demo-only models).
+
+**Result:** 6/6 PASS — Cu cell energy **-14.96 eV**, forces [4][3], stress [6] voigt (omat_pbe head);
+catalogued as `force-field`. Reproducible via clean delete + redeploy (venv + weights cached on the
+RWX PVC → fast cold start). Scale-to-zero (minReplicas 0, wake-on-demand).
+
 ## 2026-06-27 — phi-4-reasoning deployed on cluster 43; standardize on gemma-4 venv-on-PVC init + bare `<model>` naming
 
 **What:** first model of the 43 LLM/NIM bring-up. Brought `models/phi-4-reasoning` to the
