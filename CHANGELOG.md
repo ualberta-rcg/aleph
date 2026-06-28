@@ -3,6 +3,18 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — chem-t5 deployed on cluster 43 (Phase S2)
+
+**What:** twelfth Phase S2 model. Brought `models/chem-t5` (multitask chemistry T5: caption +
+forward_synthesis + retrosynthesis, CPU) to the science standards and deployed it live on cluster 43.
+
+- `inferenceservice.yaml` — extracted the inlined PVC → standalone `pvc.yaml`, renamed `chem-t5-data`
+  → bare `chem-t5` (volume + claim). Card was already v2; server/init unchanged.
+- `test.py` (caption + forward_synthesis) + `README.md` added.
+
+**Result:** 4/4 PASS — caption: aspirin → "member of the class of benzoic acids…"; forward_synthesis:
+reaction → product SMILES `CCOC(=O)C(C)=O`. Reproducible via clean delete + redeploy. CPU-only.
+
 ## 2026-06-27 — biot5 deployed on cluster 43 (Phase S2)
 
 **What:** eleventh Phase S2 model. Brought `models/biot5` (BioT5 cross-modal T5: mol2text +
