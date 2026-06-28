@@ -11,71 +11,65 @@ data:
       "id": "esmfold",
       "status": "production",
       "type": "structure",
-      "description_short": "ESMfold protein structure prediction from sequence",
-      "description": "ESMfold end-to-end protein folding model by Meta. Predicts 3D protein structures directly from amino acid sequences without MSA lookup. Based on ESM-2 backbone (~690M params). Returns PDB-formatted structures with per-residue pLDDT confidence scores. Max 1022 residues. Single-sequence method — no external databases needed.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/structure",
         "health": "/health"
       },
-      "owned_by": "Meta",
-      "source": "facebook/esmfold_v1",
-      "source_url": "https://huggingface.co/facebook/esmfold_v1",
-      "license": "MIT",
-      "parameters": "~690M",
-      "parameter_count": 690000000,
-      "precision": "fp32",
-      "architecture": "transformer",
-      "framework": "custom",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "startup_seconds": 180,
-        "container_image": "python:3.11-slim",
-        "timeout": 150
-      },
       "routing": {
-        "path_prefix": "/v1/",
-        "serialize": false,
-        "no_stream": false
+        "k8s_name": "esmfold",
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 1022
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 minutes (ESMFold ~690M load + first fold)"
+      },
+      "behavior": {
         "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
         "reasoning_model": false,
-        "needs_json_fixing": false,
         "strips_thinking": false
       },
-      "domain": "proteomics",
-      "subdomain": "structure-prediction",
-      "tags": ["structure", "science", "protein", "folding", "gpu"],
-      "content_types": ["text"],
-      "languages": ["protein"],
-      "tier": "production",
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "sequence": {
           "type": "string",
           "required": true,
-          "pattern": "^[ACDEFGHIKLMNPQRSTVWY]+$",
           "max_length": 1022,
-          "description": "Amino acid sequence in single-letter codes"
+          "description": "amino-acid sequence in single-letter codes (^[ACDEFGHIKLMNPQRSTVWY]+$); max 1022 residues"
         }
       },
       "output_map": {
-        "model": {"type": "string", "description": "Model name"},
-        "pdb": {"type": "string", "description": "Predicted structure in PDB format"},
-        "plddt": {"type": "float", "description": "Mean pLDDT confidence score (0-100)"}
+        "model": {"type": "string", "description": "model name"},
+        "pdb": {"type": "string", "description": "predicted 3D structure in PDB format"},
+        "plddt": {"type": "number", "description": "mean per-residue pLDDT confidence score (0-100)"}
       },
-      "server_config": {
-        "inference_backend": "pytorch",
-        "model_path": "/data/model",
-        "batch_size": 1,
-        "max_sequence_length": 1022,
-        "dependencies": "torch transformers protobuf fastapi uvicorn huggingface_hub",
-        "pip_note": "numpy<2 required (numpy 2.x breaks transformers protein.py format specs)"
+      "catalog": {
+        "description_short": "ESMfold end-to-end protein structure prediction from sequence (Meta).",
+        "description": "ESMfold (Meta, facebook/esmfold_v1) predicts 3D protein structures directly from an amino-acid sequence — single-sequence, no MSA/external DB lookup. Based on the ESM-2 backbone (~690M params). Returns a PDB-format structure plus a mean per-residue pLDDT confidence. Max 1022 residues. fp32.",
+        "owned_by": "Meta",
+        "source": "facebook/esmfold_v1",
+        "source_url": "https://huggingface.co/facebook/esmfold_v1",
+        "license": "MIT",
+        "parameters": "~690M",
+        "precision": "fp32",
+        "framework": "transformers (EsmForProteinFolding) + torch",
+        "domain": "proteomics",
+        "subdomain": "structure-prediction",
+        "tags": ["science", "protein", "folding", "structure", "gpu"]
       }
     }

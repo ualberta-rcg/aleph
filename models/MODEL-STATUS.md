@@ -69,7 +69,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | esm2-3b | embedding | true | /v1/embeddings | READY | PASS | 2560-dim protein (recreate cleared) |
 | esm2-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein. **NIM available:** `nvcr.io/nim/meta/esm2-650m` (build.nvidia.com/meta/esm2-650m) |
 | esmc-300m | embedding | true | /v1/embeddings | READY | PASS | 960-dim (recreated) |
-| esmfold | structure | true | /v1/structure | READY | PASS | folds protein -> PDB. **NIM available:** `nvcr.io/nim/meta/esmfold` (build.nvidia.com/meta/esmfold) |
+| esmfold | structure | true | /v1/structure | READY | PASS | ESMfold protein folding (facebook/esmfold_v1, ~690M, fp32, max 1022 aa). **Deployed+verified on cluster 43 (2026-06-27, science pass S2):** renamed PVC `esmfold-data`→`esmfold`, v2 Template B card, test.py+README+CLAUDE. `numpy<2` pinned (2.x breaks transformers protein.py); transformers 5.x OK. **Server fix:** pLDDT scaled ×100 (raw is 0-1 → standard 0-100). 5-check **5/0** — 30-aa ubiquitin fragment → pdb (18267 chars) + **pLDDT 75.53**; reproducible via clean delete+redeploy. Cold start ~2-4 min. **NIM available:** `nvcr.io/nim/meta/esmfold`. |
 | fengwu | forecast | true | /v1/science/forecast | READY | FIXED | summarize grid (was 286MB>gateway); demo+real ONNX OK |
 | finbert | classify | true | /v1/science/classify | READY | PASS | sentiment positive 0.96 |
 | fourcastnet3 | forecast | true | /v1/science/forecast | READY | DEMO | demo OK; real FCN3 blocked (makani+torch-harmonics CUDA matrix needs dedicated image). **NIM available (FCN2):** `nvcr.io/nim/nvidia/fourcastnet` (build.nvidia.com/nvidia/fourcastnet, L40S-tested) |

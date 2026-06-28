@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: esmfold-data
+  name: esmfold
   namespace: models
 spec:
   accessModes:

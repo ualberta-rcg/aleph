@@ -3,6 +3,23 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — esmfold deployed on cluster 43 (Phase S2 begins)
+
+**What:** first Phase S2 model (protein/structure). Brought `models/esmfold` (Meta ESMfold protein
+folding) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B** (typed input_map/output_map; `schema_version 2`).
+- `inferenceservice.yaml` — PVC `esmfold-data` → bare `esmfold` (volume + claim renamed).
+- **Server fix:** `plddt` scaled **×100** — ESMfold's raw `output["plddt"]` is a 0-1 fraction; the
+  standard convention (AlphaFold/ESMFold docs, and the card) is 0-100.
+- `test.py` (30-aa ubiquitin fragment → pdb + plddt) + `README.md` + `CLAUDE.md` added. `numpy<2`
+  pinned (2.x breaks transformers `protein.py`); confirmed transformers 5.x still ships
+  `EsmForProteinFolding`.
+
+**Result:** 5/5 PASS — pdb (18267 chars) + **pLDDT 75.53**; reproducible via clean delete + redeploy.
+Scale-to-zero. Cold start ~2-4 min (~690M load + first fold compiles many torch ops — may exceed a
+6-min wake window on the very first deploy).
+
 ## 2026-06-27 — mattersim deployed on cluster 43 (Phase S1); fix relax serialization + RWX PVC
 
 **What:** fifth science model (completes the materials/force-field domain). Brought `models/mattersim`

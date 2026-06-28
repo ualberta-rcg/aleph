@@ -51,7 +51,7 @@ data:
         with torch.no_grad():
             output = model(**inputs)
         pdb = model.output_to_pdb(output)[0]
-        return {"pdb": pdb, "plddt": output["plddt"][0].cpu().numpy().mean().item()}
+        return {"pdb": pdb, "plddt": round(float(output["plddt"][0].cpu().numpy().mean().item()) * 100, 2)}
 
     @app.post("/v1/structure")
     async def predict_structure(request: dict):
@@ -125,7 +125,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: esmfold, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -147,10 +147,10 @@ spec:
           periodSeconds: 30
           failureThreshold: 40
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: esmfold, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: esmfold-data }
+      - name: esmfold
+        persistentVolumeClaim: { claimName: esmfold }
       - name: app
         configMap: { name: esmfold-server }
