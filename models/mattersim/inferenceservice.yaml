@@ -97,7 +97,7 @@ data:
         }
 
         if lattice:
-            stress = atoms.get_stress(voigt=False).tolist()
+            stress = atoms.get_stress(voigt=True).tolist()
             result["stress_ev_per_angstrom3"] = stress
             result["stress_gpa"] = (np.array(stress) / GPa).tolist()
 
@@ -142,8 +142,8 @@ data:
         forces = atoms.get_forces().tolist()
         result = {
             "model": "mattersim",
-            "converged": opt.converged(),
-            "steps": opt.get_number_of_steps(),
+            "converged": bool(opt.converged()),
+            "steps": int(opt.get_number_of_steps()),
             "energy_ev": energy,
             "energy_per_atom_ev": energy / len(atoms),
             "relaxed_positions": atoms.get_positions().tolist(),
@@ -155,18 +155,6 @@ data:
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mattersim-data
-  namespace: models
-spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 10Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -238,7 +226,7 @@ spec:
           requests: { cpu: "4", memory: 8Gi }
           limits: { cpu: "8", memory: 16Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: mattersim, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -262,10 +250,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: mattersim, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: mattersim-data }
+      - name: mattersim
+        persistentVolumeClaim: { claimName: mattersim }
       - name: app
         configMap: { name: mattersim-server }

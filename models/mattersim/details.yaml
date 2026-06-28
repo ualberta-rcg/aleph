@@ -9,84 +9,75 @@ data:
   details.json: |
     {
       "id": "mattersim",
+      "status": "production",
       "type": "force-field",
-      "description_short": "Microsoft MatterSim universal atomistic ML force field for energy/forces/stress prediction and structure relaxation.",
-      "description": "MatterSim is a universal atomistic machine learning force field from Microsoft Research (arxiv: 2405.04967). It predicts energy, forces, and stress tensors from atomic structures across elements, temperatures, and pressures. Trained on a comprehensive dataset covering diverse materials. Additionally provides a /v1/science/relax endpoint for automatic structure relaxation using BFGS optimization. Uses the mattersim pip package with MatterSimCalculator ASE interface.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/predict",
+        "secondary": "/v1/science/relax",
         "health": "/health"
       },
-      "owned_by": "microsoft",
-      "source": "microsoft/mattersim",
-      "source_url": "https://huggingface.co/microsoft/mattersim",
-      "license": "MIT",
-      "parameters": "~1M",
-      "precision": "float32",
-      "architecture": "MatterSim deep learning atomistic model",
-      "framework": "mattersim + ASE + PyTorch + PyG",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "cpu_request": "2",
-        "memory_request": "4Gi",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 120,
-        "pvc": "mattersim-data (10Gi NFS)",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "mattersim",
-        "api_name": "mattersim",
-        "gateway_type": "force-field"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 1000
       },
-      "domain": "materials-science",
-      "subdomain": "atomistic-force-fields",
-      "tags": ["science", "materials", "force-field", "molecular-dynamics", "structure-relaxation", "gpu", "microsoft"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 minutes (mattersim + torch_geometric import + checkpoint load)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "predict": {
-          "elements": "array of element symbols",
-          "positions": "array of [x,y,z] positions in Angstroms",
-          "lattice": "optional 3x3 cell vectors for periodic systems"
+          "type": "object",
+          "description": "{elements:[\"Si\",\"Si\"], positions:[[x,y,z],...], lattice?(3x3)}. The \"model\" field is the gateway routing id (= mattersim); the server ignores it."
         },
         "relax": {
-          "elements": "array of element symbols",
-          "positions": "array of [x,y,z] positions",
-          "lattice": "3x3 cell vectors",
-          "fmax": "force convergence criterion in eV/Angstrom (default: 0.05)",
-          "steps": "max optimization steps (default: 200)"
+          "type": "object",
+          "description": "{elements, positions, lattice, fmax?(0.05 eV/A), steps?(200)} — BFGS structure relaxation."
         }
       },
       "output_map": {
         "predict": {
-          "energy_ev": "total energy in eV",
-          "energy_per_atom_ev": "energy per atom",
-          "forces_ev_per_angstrom": "per-atom forces",
-          "stress_ev_per_angstrom3": "stress tensor",
-          "stress_gpa": "stress in GPa"
+          "type": "object",
+          "description": "{energy_ev, energy_per_atom_ev, forces_ev_per_angstrom [n][3], stress_ev_per_angstrom3, stress_gpa (periodic only)}"
         },
         "relax": {
-          "converged": "bool",
-          "steps": "number of optimization steps",
-          "energy_ev": "relaxed energy",
-          "relaxed_positions": "optimized positions",
-          "relaxed_cell": "optimized cell vectors"
+          "type": "object",
+          "description": "{converged, steps, energy_ev, energy_per_atom_ev, relaxed_positions, relaxed_cell, forces_ev_per_angstrom}"
         }
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "checkpoint_path": "/data/torch_cache/mattersim/pretrained_models/MatterSim-v1.0.0-1M.pth"
+      "catalog": {
+        "description_short": "Microsoft MatterSim universal atomistic ML force field — energy/forces/stress + structure relaxation.",
+        "description": "MatterSim (Microsoft Research, arXiv 2405.04967) is a universal deep-learning atomistic force field trained across elements, temperatures, and pressures. Predicts energy, per-atom forces, and stress from an atomic structure, and exposes a `/v1/science/relax` endpoint for BFGS structure relaxation. Uses the `mattersim` pip package (MatterSimCalculator ASE interface) + torch_geometric.",
+        "owned_by": "microsoft",
+        "source": "microsoft/mattersim",
+        "source_url": "https://huggingface.co/microsoft/mattersim",
+        "license": "MIT",
+        "parameters": "~1M",
+        "precision": "float32",
+        "framework": "mattersim + ASE + torch + torch_geometric",
+        "domain": "materials-science",
+        "subdomain": "atomistic-force-fields",
+        "tags": ["science", "materials", "force-field", "molecular-dynamics", "structure-relaxation", "gpu", "microsoft"]
       }
     }

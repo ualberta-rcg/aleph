@@ -3,6 +3,27 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — mattersim deployed on cluster 43 (Phase S1); fix relax serialization + RWX PVC
+
+**What:** fifth science model (completes the materials/force-field domain). Brought `models/mattersim`
+(Microsoft MatterSim, predict + relax) to the science standards and deployed it live on cluster 43.
+
+- `inferenceservice.yaml` — **extracted the inlined PVC and switched RWO → RWX** (the only force-field
+  that was ReadWriteOnce — breaks scale-from-zero weight sharing); renamed `mattersim-data` → bare
+  `mattersim`. **Server fixes:** `predict` stress `voigt=False` → `voigt=True` (flat 6, fleet-consistent);
+  `relax` casts `opt.converged()` → `bool()` and `opt.get_number_of_steps()` → `int()` — the numpy
+  `bool_`/int broke FastAPI's JSON encoder → 500 on `/v1/science/relax`.
+- `details.yaml` — v1 → **v2 Template B** (nested predict/relax input_map/output_map; `schema_version 2`).
+- `test.py` (Si predict → energy/forces/stress + a relax call) + `README.md` + `CLAUDE.md` added.
+
+**Result:** 7/7 PASS — Si predict energy **-10.81 eV**, forces [2][3], voigt-6 stress (GPa), relax
+`converged=True`; reproducible via clean delete + redeploy. Scale-to-zero. Cold start ~3-4 min
+(heavy mattersim + torch_geometric import).
+
+**Phase S1 (materials/force-field) COMPLETE:** mace-mh-1, mace-mp, mace-mp-0, chgnet, mattersim —
+all live on 43. **Skipped (genuinely blocked):** `uma-m` (gated Meta repo, 401 — needs HF grant),
+`mattergen` (Knative rejects `timeoutSeconds` 1500 > 600 max — NO-ISVC).
+
 ## 2026-06-27 — chgnet deployed on cluster 43 (Phase S1); embed server.py, drop kustomize
 
 **What:** fourth science model. Brought `models/chgnet` (CHGNet NN force field with magnetic

@@ -1,46 +1,40 @@
-# MatterSim — Microsoft Universal Atomistic Force Field
+# mattersim — Microsoft MatterSim Universal Atomistic Force Field
 
 ## Source
-- HuggingFace: https://huggingface.co/microsoft/mattersim
-- Paper: arxiv 2405.04967
+- HuggingFace: https://huggingface.co/microsoft/mattersim · arXiv: 2405.04967
 - License: MIT
+- Architecture: MatterSim deep-learning atomistic model, float32, ~1M params
 
-## Deployment Summary
-- **Model**: MatterSim v1.0.0-1M (~1M params)
-- **GPU**: 1x L40S (shared), falls back to CPU
-- **PVC**: mattersim-data (10Gi NFS)
-- **Scale-to-zero**: Yes (minReplicas: 0)
-- **Venv**: Yes (/data/venv on PVC)
+## Serving contract (research 2026-06-27)
+- **Install:** `mattersim` + `torch`/`torchaudio`/`torchvision` (cu126) + `torch_geometric`
+  (PyG wheel for the torch build) + `ase`. Needs `git` + `build-essential` in the init for compiles.
+  Persisted venv on the PVC (gated by a `from mattersim.forcefield import MatterSimCalculator`
+  import check).
+- **Weights:** the MatterSim checkpoint auto-downloads (from microsoft/mattersim GitHub raw) on first
+  `MatterSimCalculator()` load. Cached to `/root/.local/mattersim/...` (ephemeral) — the init's gate
+  checks a different PVC path, so cold starts re-download the small 1M checkpoint (~1s, non-fatal).
+- **API:** `POST /v1/science/predict` {elements, positions, lattice?} →
+  {energy_ev, energy_per_atom_ev, forces_ev_per_angstrom, stress_ev_per_angstrom3 (voigt 6),
+  stress_gpa (periodic)}. `POST /v1/science/relax` {…, fmax?, steps?} → BFGS-relaxed structure
+  ({converged, steps, energy_ev, relaxed_positions, relaxed_cell}).
+- The `model` field is the gateway routing id (server ignores it) — no collision.
+- **Cold start is slow** (~3-4 min: mattersim + torch_geometric import + load) — may exceed a 6-min
+  wake window on the very first deploy; re-run the test warm.
 
-## API
-- `POST /v1/science/predict` — predict energy, forces, stress
-- `POST /v1/science/relax` — relax atomic structure with BFGS optimizer
-- Input: elements, positions, lattice
-- Output: energy (eV), forces (eV/Ang), stress (eV/Ang^3 and GPa)
+## Deployment (standardized)
+- **Pattern:** caduceus — ConfigMap `mattersim-server` (server.py embedded) mounted read-only at
+  `/app`; initContainer builds `/data/venv` + pre-caches the checkpoint; main container runs
+  `/data/venv/bin/python /app/server.py`. `/health` startup + readiness probes.
+- **PVC:** standalone `pvc.yaml`, name `mattersim` (was `mattersim-data`, **RWO→RWX**), 10Gi.
+- **GPU:** 1× L40S HAMi slice (`gpumem 10240`); CPU fallback. nodeSelector `gpu=on`.
+- **Scale-to-zero:** `minReplicas: 0`, no stop, 15m idle retention.
+- **Card:** v2 Template B (`schema_version: 2`), nested predict/relax input_map/output_map.
 
-## Key Files
-- `inferenceservice.yaml` — ConfigMap (server.py) + PVC + ISVC (all-in-one)
-- `details.yaml` — model metadata ConfigMap
+## Server fixes applied (2026-06-27)
+- `predict` stress → `voigt=True` (flat 6, fleet-consistent; was `voigt=False` 3×3).
+- `relax` → `bool(opt.converged())` + `int(opt.get_number_of_steps())` (numpy types that FastAPI
+  couldn't JSON-serialize → 500).
 
-## Dependencies
-- mattersim (pip)
-- torch >= 2.2.0 (CUDA 12.6)
-- torch_geometric >= 2.5.3 (PyG)
-- ase, fastapi, uvicorn
-
-## Gateway Integration
-- ISVC name: `mattersim`
-- MODEL_TYPE: force-field
-- KSERVE_CUSTOM_MODELS: yes (listed in gateway)
-- GPU_MODELS: not explicitly listed (should be added)
-
-## Audit Notes
-- Requires git + build-essential in init container for PyG compilation
-- Uses TORCH_HOME=/data/torch_cache for checkpoint caching
-- Provides both predict and relax endpoints (unique among force fields)
-- Uses NFS (ReadWriteMany) PVC — unusual for force field models
-
-## Update Reminder
-- Check for new MatterSim checkpoint releases
-- Monitor mattersim pip package updates
-- Consider adding to GPU_MODELS in gateway
+## Files
+- `details.yaml` (v2, `mattersim-details`) · `inferenceservice.yaml` (ConfigMap `mattersim-server` + ISVC) ·
+  `pvc.yaml` (`mattersim`) · `test.py` (predict + relax) · `README.md`.
