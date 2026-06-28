@@ -1,45 +1,39 @@
-# MACE-MP-0 — Universal ML Force Field (CPU variant)
+# mace-mp-0 — MACE-MP-0 Force Field (CPU, /v1/science/energy)
 
 ## Source
-- GitHub: https://github.com/ACEsuit/mace
+- GitHub: https://github.com/ACEsuit/mace · model: https://github.com/ACEsuit/mace-mp/releases
 - License: MIT
-- Architecture: MACE equivariant MPNN
+- Architecture: MACE equivariant MPNN, float32, 89 elements
 
-## Deployment Summary
-- **Model**: MACE-MP-0 medium variant (~10M params)
-- **GPU**: None (CPU-only deployment, uses mace_mp() convenience loader)
-- **PVC**: mace-mp-0-data
-- **Scale-to-zero**: Yes (minReplicas: 0)
-- **Venv**: Yes (/data/venv on PVC)
-- **CPU**: 8 cores requested, 16 limit
+## Serving contract (research 2026-06-27)
+- **Install:** `mace-torch` (~0.3.16, pulls `mace_mp()` helper) + **CPU** `torch`
+  (`--extra-index-url https://download.pytorch.org/whl/cpu`) + `ase` + `fastapi`/`uvicorn`.
+  Persisted venv on the PVC (gated by `/data/venv/bin`).
+- **Weights:** the medium checkpoint `2023-12-03-mace-128-L1_epoch-199.model` downloaded via
+  `urllib` from the ACEsuit/mace-mp GitHub releases → cached at `/data/mace-models/medium.model`
+  (so cold starts skip the 42 MB re-download). `mace_mp(model=<local>, device="cpu",
+  default_dtype="float32")`.
+- **Endpoint:** `POST /v1/science/energy` {structure:{elements, positions, cell?, pbc?}} →
+  {energy_eV, forces_eV_A, stress_eV_A3}. Body takes a **nested `structure`** object.
+- **Precision:** float32 (CPU). Note: a zero/None cell with PBC gives garbage energies — the server
+  defaults to non-periodic when no cell is supplied.
+- Distinct from `mace-mp` (GPU /v1/science/predict, small/medium/large + float64).
 
-## API
-- `POST /v1/science/energy` — predict energy, forces, stress from atomic structure
-- Input: structure dict with elements, positions, cell, pbc
-- Output: energy_eV, forces_eV_A, stress_eV_A3
+## Deployment (standardized)
+- **Pattern:** caduceus — ConfigMap `mace-mp-0-server` (server.py) mounted read-only at `/app`;
+  initContainer builds `/data/venv` + caches the model; main container runs
+  `/data/venv/bin/python /app/server.py` with the data PVC read-only. `/health` startup + readiness probes.
+- **PVC:** standalone `pvc.yaml`, name `mace-mp-0`, RWX `nfs-models` 5Gi.
+- **Compute:** **CPU-only** (no GPU request; no `gpu=on` nodeSelector) — runs on any worker. 8–16 CPU.
+- **Scale-to-zero:** `minReplicas: 0`, no stop, 15m idle retention. Cold start ~2-4 min on CPU.
+- **Card:** v2 Template B (`schema_version: 2`), typed input_map (nested structure)/output_map.
+- Dropped `kustomization.yaml` (flat-dir standard).
 
-## Key Files
-- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC + PVC (all-in-one)
+## Files
+- `details.yaml` (v2, `mace-mp-0-details`) · `inferenceservice.yaml` (ConfigMap + ISVC) ·
+  `pvc.yaml` (`mace-mp-0`) · `test.py` · `README.md`.
 
-## Dependencies
-- mace-torch (includes mace_mp convenience function)
-- torch (CPU-only build via --extra-index-url)
-- ase, fastapi, uvicorn
-
-## Gateway Integration
-- ISVC name: `mace-mp-0`
-- ISVC_NAME_MAP: not listed (no remapping needed)
-- MODEL_TYPE: force-field
-- KSERVE_CUSTOM_MODELS: yes
-- CONTEXT_WINDOWS: mace-mp-0 -> 0
-
-## Audit Notes
-- CPU-only deployment (no GPU requested) — slower but more portable
-- Uses mace_mp() convenience function which auto-downloads checkpoint
-- Uses float32 precision (less accurate than mace-mp's float64)
-- Separate deployment from mace-mp (which offers GPU + multiple model sizes)
-
-## Update Reminder
-- Check if this should be consolidated with mace-mp (the GPU variant)
-- Consider upgrading to float64 for better accuracy
-- Monitor mace-torch updates for API changes
+## Notes
+- The `model` field is the gateway routing id (`mace-mp-0`); this server has no variant selector, so
+  no routing collision (unlike `mace-mp`).
+- Verify on each deploy: a fresh mace-torch may shift the `mace_mp()` API or numpy pin.

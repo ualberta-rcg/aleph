@@ -124,7 +124,7 @@ spec:
           requests: { cpu: "4", memory: 8Gi }
           limits: { cpu: "8", memory: 16Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: mace-mp-0, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -135,16 +135,20 @@ spec:
         resources:
           requests: { cpu: "8", memory: 8Gi }
           limits: { cpu: "16", memory: 16Gi }
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 40
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
-          initialDelaySeconds: 120
           periodSeconds: 30
-          failureThreshold: 20
+          failureThreshold: 10
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: mace-mp-0, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: mace-mp-0-data }
+      - name: mace-mp-0
+        persistentVolumeClaim: { claimName: mace-mp-0 }
       - name: app
         configMap: { name: mace-mp-0-server }

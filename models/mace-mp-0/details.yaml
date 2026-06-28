@@ -11,65 +11,65 @@ data:
       "id": "mace-mp-0",
       "status": "production",
       "type": "force-field",
-      "description_short": "MACE-MP-0 universal ML force field (medium variant) for materials energy/forces/stress prediction.",
-      "description": "MACE-MP-0 universal machine learning force field from Cambridge/DeepMind. Uses mace_mp() convenience function from mace-torch to load the medium model variant. Predicts energy (eV), forces (eV/Angstrom), and stress tensors from atomic structures using the MACE equivariant message passing architecture. Trained on Materials Project DFT data covering 89 elements. CPU-only deployment (no GPU requested). Uses mace-torch's built-in checkpoint download.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/energy",
         "health": "/health"
       },
-      "owned_by": "Cambridge/DeepMind",
-      "source": "ACEsuit/mace-mp-0",
-      "source_url": "https://github.com/ACEsuit/mace",
-      "license": "MIT",
-      "parameters": "~10M (medium)",
-      "precision": "float32",
-      "architecture": "MACE (Multi Atomic Cluster Expansion equivariant MPNN)",
-      "framework": "mace-torch + ASE + PyTorch (CPU)",
-      "deployment": {
-        "gpu": false,
-        "cpu_request": "8",
-        "memory_request": "8Gi",
-        "min_replicas": 0,
-        "max_replicas": 2,
-        "timeout": 600,
-        "pvc": "mace-mp-0-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "mace-mp-0",
-        "api_name": "mace-mp-0",
-        "gateway_type": "force-field"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 1000
       },
-      "domain": "materials-science",
-      "subdomain": "interatomic-potentials",
-      "tags": ["science", "materials", "force-field", "molecular-dynamics", "chemistry", "physics", "mace", "cpu"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 minutes (mace-torch import + medium model load on CPU)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "structure": {
-          "elements": "array of element symbols",
-          "positions": "array of [x,y,z] positions in Angstroms",
-          "cell": "optional 3x3 cell vectors",
-          "pbc": "optional [bool, bool, bool] periodic boundary conditions"
+          "type": "object",
+          "required": true,
+          "description": "atomic structure: {elements:[\"Si\",\"Si\"], positions:[[x,y,z],...], cell?(3x3), pbc?([bool,bool,bool] when cell given; else false for molecules)}"
         }
       },
       "output_map": {
-        "energy_eV": "total potential energy in eV",
-        "forces_eV_A": "per-atom forces in eV/Angstrom",
-        "stress_eV_A3": "Voigt 6-component stress tensor"
+        "model": {"type": "string", "description": "model name"},
+        "energy_eV": {"type": "number", "description": "total potential energy in eV"},
+        "forces_eV_A": {"type": "array", "description": "per-atom forces [n_atoms][3] in eV/Angstrom"},
+        "stress_eV_A3": {"type": "array", "description": "Voigt 6-component stress tensor (periodic only; null for molecules)"}
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data",
-        "venv_path": "/data/venv"
+      "catalog": {
+        "description_short": "MACE-MP-0 universal ML force field (medium variant, mace_mp() loader) — energy/forces/stress on CPU.",
+        "description": "MACE-MP-0 universal machine-learning force field (Cambridge/DeepMind), loaded via the mace-torch mace_mp() convenience helper (medium variant, the GitHub-released 2023-12-03-mace-128-L1_epoch-199 checkpoint). Predicts energy (eV), per-atom forces, and stress from an atomic structure using the equivariant MACE architecture. Trained on Materials Project DFT across 89 elements. This deployment is CPU-only, float32. (See the companion `mace-mp` service for the GPU /v1/science/predict variant with small/medium/large selection.)",
+        "owned_by": "Cambridge/DeepMind",
+        "source": "ACEsuit/mace-mp-0",
+        "source_url": "https://github.com/ACEsuit/mace",
+        "license": "MIT",
+        "parameters": "~10M (medium)",
+        "precision": "float32",
+        "framework": "mace-torch (mace_mp) + ASE + PyTorch (CPU)",
+        "domain": "materials-science",
+        "subdomain": "interatomic-potentials",
+        "tags": ["science", "materials", "force-field", "molecular-dynamics", "chemistry", "physics", "mace", "cpu"]
       }
     }

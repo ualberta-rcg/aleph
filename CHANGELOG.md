@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — mace-mp-0 deployed on cluster 43 (Phase S1)
+
+**What:** third science model. Brought `models/mace-mp-0` (MACE-MP-0 medium, CPU, `/v1/science/energy`)
+to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B** (nested `structure` input_map; `catalog`; `schema_version 2`).
+- `inferenceservice.yaml` — PVC `mace-mp-0-data` → bare `mace-mp-0`; **dropped `kustomization.yaml`**;
+  added a `/health` `startupProbe` (CPU load is slow). Server unchanged (mace_mp() CPU loader, float32).
+- `test.py` (Si periodic cell → energy/forces/stress) + `README.md` + `CLAUDE.md` added.
+
+**Result:** 6/6 PASS — Si cell energy **-10.67 eV**, forces [2][3], stress [6]; CPU-only, no
+`model`/variant collision (body uses nested `structure`). Reproducible via clean delete + redeploy.
+Scale-to-zero.
+
 ## 2026-06-27 — mace-mp deployed on cluster 43 (Phase S1); gateway-routing/variant field fix
 
 **What:** second science model. Brought `models/mace-mp` (MACE-MP-0 universal force field) to the
