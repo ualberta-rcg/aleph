@@ -3,6 +3,24 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — moirai deployed on cluster 43 (Phase S3); progress-deadline for slow uni2ts init
+
+**What:** third Phase S3 model. Brought `models/moirai` (Salesforce Moirai base, ~91M) to the science
+standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**.
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`**, renamed
+  `moirai-data` → bare `moirai`; **added `serving.knative.dev/progress-deadline: 1800s`**.
+- `test.py` (series → mean+quantile forecast) + `README.md` added.
+
+**Gotcha (first-start fragility):** the uni2ts venv install exceeded Knative's default progress
+deadline on first deploy → `RevisionFailed`, and the killed init left a **half-built venv** on the PVC
+(the gate thought it was done). The extended deadline let a clean rebuild succeed. **Lesson: heavy-init
+science models need a generous `progress-deadline`** (enformer/mattersim already had one).
+
+**Result:** 5/5 PASS — forecast mean + quantiles, finite; reproducible via clean delete + redeploy.
+NB: the server returns Moirai's configured prediction_length, not the request `horizon`.
+
 ## 2026-06-27 — moment deployed on cluster 43 (Phase S3)
 
 **What:** second Phase S3 model. Brought `models/moment` (MOMENT-1-large time-series foundation model,

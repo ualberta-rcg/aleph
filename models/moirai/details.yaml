@@ -9,64 +9,71 @@ data:
   details.json: |
     {
       "id": "moirai",
+      "status": "production",
       "type": "forecast",
-      "description_short": "Salesforce Moirai base universal time-series forecasting model with zero-shot capabilities.",
-      "description": "Moirai is Salesforce Research's universal time-series forecasting foundation model (base variant). It supports any-variate, zero-shot forecasting with configurable prediction length, context length, and patch size. Uses the uni2ts library with MoiraiForecast pipeline. Apache 2.0 license. GPU-accelerated with CUDA fallback.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/forecast",
         "health": "/health"
       },
-      "owned_by": "Salesforce",
-      "source": "Salesforce/moirai-1.0-R-base",
-      "source_url": "https://huggingface.co/Salesforce/moirai-1.0-R-base",
-      "license": "Apache-2.0",
-      "parameters": "~91M",
-      "precision": "float32",
-      "architecture": "Moirai (patch-based transformer for time series)",
-      "framework": "uni2ts + PyTorch + GluonTS",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 120,
-        "pvc": "moirai-data (5Gi NFS)",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "moirai",
-        "api_name": "moirai",
-        "gateway_type": "forecast"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 10000
       },
-      "domain": "time-series",
-      "subdomain": "forecasting",
-      "tags": ["science", "timeseries", "forecast", "zero-shot", "gpu", "salesforce", "moirai"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 min (venv + Moirai load + first forecast)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
-        "values": "array of numeric values (historical time series)",
-        "input": "alternative key for values array",
-        "horizon": "number of future steps (default: 24)"
-      },
-      "output_map": {
-        "forecast": {
-          "mean": "mean forecast values",
-          "quantile_10": "10th percentile values",
-          "quantile_90": "90th percentile values"
+        "values": {
+          "type": "array",
+          "required": true,
+          "description": "numeric observations (univariate)"
+        },
+        "horizon": {
+          "type": "integer",
+          "required": false,
+          "default": 12,
+          "description": "prediction length"
         }
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "hf_model_id": "Salesforce/moirai-1.0-R-base"
+      "output_map": {
+        "model": {"type": "string", "description": "model name"},
+        "forecast": {"type": "object", "description": "{mean, quantile_10, quantile_90}, each length=horizon"}
+      },
+      "catalog": {
+        "description_short": "Salesforce Moirai (base) universal zero-shot time-series forecasting.",
+        "description": "Moirai (Salesforce Research, moirai-1.0-R-base, ~91M) is a universal time-series forecasting foundation model — any-variate, zero-shot, with configurable prediction/context length and patch size. Served via the `uni2ts` library (MoiraiForecast pipeline) + GluonTS. Returns mean + quantile forecasts.",
+        "owned_by": "Salesforce",
+        "source": "Salesforce/moirai-1.0-R-base",
+        "source_url": "https://huggingface.co/Salesforce/moirai-1.0-R-base",
+        "license": "Apache-2.0",
+        "parameters": "~91M",
+        "precision": "fp32",
+        "framework": "uni2ts + torch + GluonTS",
+        "domain": "time-series",
+        "subdomain": "forecasting",
+        "tags": ["science", "timeseries", "forecast", "salesforce", "gpu"]
       }
     }
