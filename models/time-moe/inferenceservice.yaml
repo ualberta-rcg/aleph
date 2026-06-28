@@ -24,7 +24,7 @@ data:
         "prediction_length": 96             // 1|96|192|336|720 (default: 96)
       }
     Returns:
-      {"forecast": [...], "model": "time-moe-50m", "prediction_length": 96}
+      {"forecast": [...], "model": "time-moe", "prediction_length": 96}
     """
     import os, asyncio
     from fastapi import FastAPI
@@ -57,12 +57,12 @@ data:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok" if model else "loading", "model": "time-moe-50m"}
+        return {"status": "ok" if model else "loading", "model": "time-moe"}
 
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [
-            {"id": "time-moe-50m", "object": "model", "owned_by": "maple728",
+            {"id": "time-moe", "object": "model", "owned_by": "maple728",
              "type": "time-series-forecasting",
              "supported_prediction_lengths": [1, 96, 192, 336, 720]}
         ]}
@@ -88,7 +88,7 @@ data:
             raise ValueError("time_series required")
         if pred_len not in [1, 96, 192, 336, 720]:
             return {"warning": f"pred_len {pred_len} not in supported set, using 96",
-                    "forecast": [], "model": "time-moe-50m"}
+                    "forecast": [], "model": "time-moe"}
 
         ts_arr = np.array(ts, dtype=np.float32)
         # Normalize
@@ -122,7 +122,7 @@ data:
         forecast = (forecast_norm * std + mean).tolist()
 
         return {
-            "model": "time-moe-50m",
+            "model": "time-moe",
             "input_length": len(ts),
             "prediction_length": pred_len,
             "forecast": forecast,
@@ -139,6 +139,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     affinity:
@@ -189,7 +190,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: time-moe, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -213,10 +214,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: time-moe, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: time-moe-data }
+      - name: time-moe
+        persistentVolumeClaim: { claimName: time-moe }
       - name: app
         configMap: { name: time-moe-server }

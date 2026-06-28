@@ -3,6 +3,18 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — time-moe deployed on cluster 43 (Phase S3)
+
+**What:** eighth Phase S3 model. Brought `models/time-moe` (TimeMoE-50M MoE forecast) to the science
+standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**.
+- `inferenceservice.yaml` — renamed PVC `time-moe-data` → bare `time-moe`; added
+  `progress-deadline: 1800s`; server echo `time-moe-50m` → `time-moe`.
+- `test.py` (100-pt series → 96-step forecast) + `README.md` added. NB: prediction_length ∈ {1,96,192,336,720}.
+
+**Result:** 5/5 PASS — forecast (len 96, finite); reproducible via repo apply.
+
 ## 2026-06-28 — timesfm deployed on cluster 43 (Phase S3); fix progress-deadline key
 
 **What:** seventh Phase S3 model. Brought `models/timesfm` (Google TimesFM, ~500M) to the science

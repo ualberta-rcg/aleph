@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: time-moe-data
+  name: time-moe
   namespace: models
 spec:
   accessModes: [ReadWriteMany]
