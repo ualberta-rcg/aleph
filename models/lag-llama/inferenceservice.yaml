@@ -144,6 +144,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     affinity:
@@ -214,7 +215,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits:   { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: lag-llama-data, mountPath: /data }
+          - { name: lag-llama, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -237,12 +238,12 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: lag-llama-data, mountPath: /data }
+          - { name: lag-llama, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
-      - name: lag-llama-data
+      - name: lag-llama
         persistentVolumeClaim:
-          claimName: lag-llama-data
+          claimName: lag-llama
       - name: app
         configMap:
           name: lag-llama-server

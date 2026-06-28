@@ -3,6 +3,18 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — lag-llama deployed on cluster 43 (Phase S3)
+
+**What:** sixth Phase S3 model. Brought `models/lag-llama` (Lag-Llama probabilistic forecast, ~200M)
+to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**.
+- `inferenceservice.yaml` — **dropped the vestigial `kustomization.yaml`** (server already embedded);
+  renamed PVC `lag-llama-data` → bare `lag-llama`; added `progress-deadline: 1800s`.
+- `test.py` (96-pt series → mean+quantiles) + `README.md` added.
+
+**Result:** 5/5 PASS — mean + quantiles (len 24, finite); reproducible via clean delete + redeploy.
+
 ## 2026-06-28 — moirai-moe-1-0-r-base deployed on cluster 43 (Phase S3)
 
 **What:** fifth Phase S3 model. Brought `models/moirai-moe-1-0-r-base` (Salesforce Moirai-MoE, ~935M

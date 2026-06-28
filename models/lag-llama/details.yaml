@@ -11,63 +11,77 @@ data:
       "id": "lag-llama",
       "status": "production",
       "type": "forecast",
-      "description_short": "Lag-Llama probabilistic time-series foundation model (~30M params) for zero-shot forecasting with lag features.",
-      "description": "Lag-Llama is a probabilistic time-series foundation model based on the LLaMA decoder-only Transformer architecture with lag-based tokenization. It provides zero-shot probabilistic forecasting with configurable prediction horizons and sample counts. Trained on diverse time-series datasets for general-purpose forecasting. Apache 2.0 license. GPU-capable with CPU fallback.",
-      "context_window": 0,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/forecast",
         "health": "/health"
       },
-      "owned_by": "time-series-foundation-models",
-      "source": "time-series-foundation-models/lag-llama",
-      "source_url": "https://huggingface.co/time-series-foundation-models/lag-llama",
-      "license": "Apache-2.0",
-      "parameters": "~30M",
-      "precision": "float32",
-      "architecture": "LLaMA-based decoder-only Transformer with lag tokenization",
-      "framework": "lag-llama + GluonTS + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "timeout": 300,
-        "pvc": "lag-llama-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "lag-llama",
-        "api_name": "lag-llama",
-        "gateway_type": "forecast"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 10000
       },
-      "domain": "time-series",
-      "subdomain": "forecasting",
-      "tags": ["science", "timeseries", "forecast", "probabilistic", "zero-shot", "gpu", "lag-llama"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 min (venv + Lag-Llama load + first forecast)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
-        "context": "array of numeric values (historical time series)",
-        "prediction_length": "number of future steps to forecast (default: 24)",
-        "num_samples": "number of probabilistic samples (default: 100)",
-        "freq": "frequency string e.g. 'H', 'D' (default: 'H')"
+        "context": {
+          "type": "array",
+          "required": true,
+          "description": "numeric observations (the time series)"
+        },
+        "prediction_length": {
+          "type": "integer",
+          "required": false,
+          "default": 24,
+          "description": "future steps to forecast"
+        },
+        "num_samples": {
+          "type": "integer",
+          "required": false,
+          "default": 100,
+          "description": "number of forecast samples (for quantile estimation)"
+        }
       },
       "output_map": {
-        "mean": "array of mean forecast values",
-        "quantiles": {"0.1": "10th percentile", "0.5": "median", "0.9": "90th percentile"},
-        "prediction_length": "forecast horizon"
+        "model": {"type": "string", "description": "model name"},
+        "mean": {"type": "array", "description": "mean forecast (length = prediction_length)"},
+        "quantiles": {"type": "object", "description": "{0.1, 0.9} quantile forecasts"},
+        "samples": {"type": "array", "description": "raw forecast samples"}
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model",
-        "checkpoint": "lag-llama.ckpt"
+      "catalog": {
+        "description_short": "Lag-Llama — probabilistic zero-shot time-series foundation model (200M).",
+        "description": "Lag-Llama (time-series-foundation-models/Lag-Llama, ~200M) is a probabilistic foundation model for zero-shot time-series forecasting — lag-based tokenization + a decoder-only transformer. Returns mean + quantile forecasts via GluonTS sampling.",
+        "owned_by": "time-series-foundation-models",
+        "source": "time-series-foundation-models/Lag-Llama",
+        "source_url": "https://huggingface.co/time-series-foundation-models/Lag-Llama",
+        "license": "Apache-2.0",
+        "parameters": "~200M",
+        "precision": "fp32",
+        "framework": "torch + GluonTS (lag-based decoder transformer)",
+        "domain": "time-series",
+        "subdomain": "forecasting",
+        "tags": ["science", "timeseries", "forecast", "probabilistic", "gpu"]
       }
     }
