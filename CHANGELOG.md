@@ -3,6 +3,19 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — borzoi deployed on cluster 43 (Phase S2)
+
+**What:** fifth Phase S2 model. Brought `models/borzoi` (RNA-seq prediction from ~524kb DNA) to the
+science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**.
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`**, renamed
+  `borzoi-data` → bare `borzoi`. (Server + init venv unchanged — `borzoi-pytorch` + `transformers<4.51`.)
+- `test.py` (4kb ACGT, `n_bins=4` → `[4, 6144]` predictions) + `README.md` + `CLAUDE.md` added.
+
+**Result:** 5/5 PASS — predictions `[4, 6144]` finite; reproducible via clean delete + redeploy.
+Scale-to-zero. Cold start ~3-6 min.
+
 ## 2026-06-27 — enformer deployed on cluster 43 (Phase S2)
 
 **What:** fourth Phase S2 model. Brought `models/enformer` (gene-expression prediction from ~196kb

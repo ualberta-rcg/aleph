@@ -11,31 +11,72 @@ data:
       "id": "borzoi",
       "status": "production",
       "type": "predict",
-      "description_short": "RNA-seq prediction from 524kb genomic sequences (Calico, ~500M)",
-      "description": "Borzoi from Calico Research predicts RNA-seq signal from 524,288 bp genomic DNA sequences. Predicts gene expression at base-pair resolution across multiple bins. Based on the Enformer architecture with modifications for RNA-seq prediction. 68K+ HF downloads. CC-BY-4.0 license.",
-      "context_window": 524288,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/predict",
         "health": "/health"
       },
-      "owned_by": "calico",
-      "source": "johahi/borzoi-replicate-0",
-      "source_url": "https://huggingface.co/johahi/borzoi-replicate-0",
-      "license": "CC-BY-4.0",
-      "parameters": "~500M",
-      "precision": "float32",
-      "architecture": "Borzoi (Enformer-variant for RNA-seq)",
-      "framework": "borzoi-pytorch + transformers<4.51 + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "2", "memory_request": "8Gi", "pvc": "borzoi-data", "pvc_size": "10Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "borzoi", "api_name": "borzoi"},
-      "compatibility": {"openai_embeddings": false, "input_fields": ["sequence", "n_bins"]},
-      "domain": "genomics",
-      "subdomain": "rna-seq-prediction",
-      "tags": ["predict", "science", "genomics", "dna", "rna-seq", "gene-expression", "gpu"],
-      "content_types": ["text"],
-      "languages": ["dna"],
-      "input_map": {"sequence": "DNA sequence (~524kb bp)", "n_bins": "int (default 16) — number of center bins to return"},
-      "output_map": {"model": "borzoi", "predictions": "[[[float]]] shape (n_bins, n_tracks)", "bins_returned": "int", "num_tracks": "int"},
-      "tier": 1
+      "routing": {
+        "k8s_name": "borzoi",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 524288,
+        "max_input_tokens": 524288
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 min (venv + Borzoi load + first 524kb inference)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "sequence": {
+          "type": "string",
+          "required": true,
+          "description": "DNA sequence (ACGTN); 524,288 bp context — shorter sequences are padded with N"
+        },
+        "n_bins": {
+          "type": "integer",
+          "required": false,
+          "default": 16,
+          "description": "number of center bins of track predictions to return (each bin × num_tracks)"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "model name"},
+        "predictions": {"type": "array", "description": "track predictions, shape [n_bins, n_tracks]"},
+        "bins_returned": {"type": "integer", "description": "number of bins returned"},
+        "num_tracks": {"type": "integer", "description": "number of tracks per bin"},
+        "sequence_length": {"type": "integer", "description": "input sequence length"}
+      },
+      "catalog": {
+        "description_short": "Borzoi — RNA-seq signal prediction from ~524kb genomic DNA (Calico).",
+        "description": "Borzoi (Calico Research, Linder 2023) predicts RNA-seq signal from a 524,288 bp genomic DNA sequence — gene expression at base-pair resolution across multiple bins. An Enformer-variant arch (~500M params). Served via `borzoi-pytorch` (`johahi/borzoi-replicate-0`). Short sequences are padded with N; the server returns the center `n_bins` of the track predictions.",
+        "owned_by": "calico",
+        "source": "johahi/borzoi-replicate-0",
+        "source_url": "https://huggingface.co/johahi/borzoi-replicate-0",
+        "license": "CC-BY-4.0",
+        "parameters": "~500M",
+        "precision": "fp32",
+        "framework": "borzoi-pytorch + torch (transformers<4.51)",
+        "domain": "genomics",
+        "subdomain": "rna-seq-prediction",
+        "tags": ["science", "genomics", "dna", "rna-seq", "gene-expression", "gpu"]
+      }
     }

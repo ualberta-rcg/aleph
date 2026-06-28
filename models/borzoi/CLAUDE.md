@@ -1,30 +1,29 @@
-# Borzoi Model Deployment
-
-## What this model does
-Borzoi from Calico Research predicts RNA-seq signal from 524,288 bp genomic DNA sequences. Gene expression at base-pair resolution. Based on Enformer architecture. Tier 1 model.
+# borzoi — RNA-seq Prediction from Genomic DNA (Borzoi)
 
 ## Source
-- **HF**: johahi/borzoi-replicate-0 | **License**: CC-BY-4.0 | **Params**: ~500M
+- HuggingFace: https://huggingface.co/johahi/borzoi-replicate-0 (Calico Research, Linder 2023)
+- License: CC-BY-4.0
+- Architecture: Borzoi (Enformer-variant), ~500M params, fp32; 524,288 bp context
 
-## How the server works
-- `POST /v1/science/predict` -- DNA sequence (~524kb) to RNA-seq predictions
-- One-hot encodes DNA, pads/truncates to 524,288 bp
-- Returns center bins of predictions: (n_bins, n_tracks) matrix
+## Serving contract (research 2026-06-27)
+- **Install:** `borzoi-pytorch` + torch (cu126) + `transformers<4.51` + `einops` + fastapi/uvicorn.
+  Persisted venv on PVC (gated by a `from borzoi_pytorch import Borzoi` import check).
+- **Weights:** `johahi/borzoi-replicate-0` via `Borzoi.from_pretrained(...)` → HF cache `/data/hf_cache`
+  (`HF_HUB_OFFLINE=1` at runtime).
+- **API:** `POST /v1/science/predict` {sequence, n_bins?} → {predictions [n_bins, n_tracks],
+  bins_returned, num_tracks, sequence_length}. One-hot encodes (ACGTN; pads short seq to 524,288 with
+  N), runs the model, returns the center `n_bins` (default 16). **num_tracks = 6144**.
+- The `model` field is the gateway routing id (server ignores it) — no collision.
 
-## Our config vs source
-- venv-on-PVC with borzoi-pytorch + transformers<4.51
-- GPU shared (L40S-SHARED), 10Gi PVC, minReplicas: 0
-- 8Gi/16Gi memory for 524kb sequences
-- HF_HUB_OFFLINE=1 in main container
+## Deployment (standardized)
+- **Pattern:** caduceus — ConfigMap `borzoi-server` (server.py embedded) mounted read-only at `/app`;
+  initContainer builds `/data/venv` + caches weights (gated); main container runs the venv python.
+  `/health` startup + readiness probes.
+- **PVC:** standalone `pvc.yaml`, name `borzoi` (was `borzoi-data`, **RWO→RWX**), 10Gi.
+- **GPU:** 1× L40S HAMi slice (`gpumem 10240`); fp32; nodeSelector `gpu=on`.
+- **Scale-to-zero:** `minReplicas: 0`, 15m idle retention. Cold start ~3-6 min.
+- **Card:** v2 Template B (`schema_version: 2`).
 
-## Deploy/update/test
-```bash
-kubectl apply -k models/borzoi/
-kubectl get inferenceservice borzoi -n models
-```
-
-## Gateway integration
-- MODEL_TYPES: `"borzoi": "predict"` | KServe custom | Not in MODEL_METADATA
-
-## IMPORTANT
-- Do NOT modify inferenceservice.yaml unless explicitly asked
+## Files
+- `details.yaml` (v2, `borzoi-details`) · `inferenceservice.yaml` (ConfigMap `borzoi-server` + ISVC) ·
+  `pvc.yaml` (`borzoi`) · `test.py` (4kb ACGT, n_bins=4 → [4,6144]) · `README.md`.
