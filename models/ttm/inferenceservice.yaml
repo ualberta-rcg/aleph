@@ -103,6 +103,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     affinity:
@@ -171,7 +172,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits:   { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: ttm-data, mountPath: /data }
+          - { name: ttm, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -195,12 +196,12 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: ttm-data, mountPath: /data }
+          - { name: ttm, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
-      - name: ttm-data
+      - name: ttm
         persistentVolumeClaim:
-          claimName: ttm-data
+          claimName: ttm
       - name: app
         configMap:
           name: ttm-server

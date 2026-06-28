@@ -3,6 +3,16 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — ttm deployed on cluster 43 (Phase S3 COMPLETE)
+
+**What:** eleventh + final Phase S3 model. Brought `models/ttm` (IBM TinyTimeMixer) to standards.
+- Dropped vestigial `kustomization.yaml`, renamed PVC `ttm-data` → bare `ttm`, added
+  `progress-deadline: 1800s`. v1 → v2 Template B. test.py + README added.
+- **Result:** 5/5 PASS — forecast (finite); reproducible via repo apply.
+
+> **Phase S3 (time-series forecast) COMPLETE:** chronos-bolt, moment, moirai, moirai-large,
+> moirai-moe-1-0-r-base, lag-llama, timesfm, time-moe, timer, timer-s1, ttm — all 11 live on 43.
+
 ## 2026-06-28 — timer-s1 deployed on cluster 43 (Phase S3)
 
 **What:** tenth Phase S3 model. Brought `models/timer-s1` (Timer-S1 quantile forecast) to standards.

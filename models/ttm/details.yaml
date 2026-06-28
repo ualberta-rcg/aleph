@@ -11,61 +11,29 @@ data:
       "id": "ttm",
       "status": "production",
       "type": "forecast",
-      "description_short": "IBM TinyTimeMixer (TTM-R2) lightweight multi-variate time-series forecasting model (1-5M params).",
-      "description": "IBM TinyTimeMixer (TTM-R2) from IBM Granite is an extremely lightweight time-series forecasting model achieving state-of-the-art zero-shot performance with only 1-5M parameters. Supports multi-variate forecasting with configurable context lengths (512-1024) and channel mixing. Uses the granite-tsfm/tsfm_public library. Apache 2.0 license. GPU-capable.",
-      "context_window": 512,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "primary": "/v1/science/forecast",
-        "health": "/health"
-      },
-      "owned_by": "ibm-granite",
-      "source": "ibm-granite/granite-timeseries-ttm-r2",
-      "source_url": "https://huggingface.co/ibm-granite/granite-timeseries-ttm-r2",
-      "license": "Apache-2.0",
-      "parameters": "1-5M",
-      "precision": "float32",
-      "architecture": "TinyTimeMixer (lightweight channel-mixing transformer)",
-      "framework": "tsfm_public + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "timeout": 120,
-        "pvc": "ttm-data",
-        "image": "python:3.11-slim",
-        "venv": true,
-        "venv_path": "/data/venv2"
-      },
-      "routing": {
-        "kserve_custom": true,
-        "k8s_name": "ttm",
-        "api_name": "ttm",
-        "gateway_type": "forecast"
-      },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
-      },
-      "domain": "time-series",
-      "subdomain": "forecasting",
-      "tags": ["science", "timeseries", "forecast", "efficient", "gpu", "ibm", "granite"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "endpoints": { "primary": "/v1/science/forecast", "health": "/health" },
+      "routing": { "k8s_name": "ttm", "no_stream": true, "upstream_model_id": null },
+      "limits": { "context_window": 512, "max_input_tokens": 512 },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "2-4 min" },
+      "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
+      "param_translation": { "thinking": { "mode": "none" } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
       "input_map": {
-        "context": "univariate [v1,v2,...] or multi-variate [[ch1...],[ch2...]]",
-        "prediction_length": "future steps (default: 96)",
-        "context_length": "historical context length (default: 512)"
+        "context": { "type": "array", "required": true, "description": "numeric observations (univariate [v1,...] or multivariate [[ch1...],[ch2...]])" },
+        "prediction_length": { "type": "integer", "required": false, "default": 96, "description": "future steps" },
+        "context_length": { "type": "integer", "required": false, "default": 512, "description": "context window (should match model config: 512)" }
       },
       "output_map": {
-        "forecast": "predicted values (single or multi-channel)"
+        "model": { "type": "string" }, "forecast": { "type": "array", "description": "forecasted values [channels][horizon] or [horizon]" }
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model",
-        "hf_model_id": "ibm-granite/granite-timeseries-ttm-r2"
+      "catalog": {
+        "description_short": "IBM TinyTimeMixer (TTM) — efficient zero-shot time-series forecasting (1-5M params).",
+        "description": "IBM TinyTimeMixer (TTM) is a lightweight MLP-mixer-based time-series foundation model (1-5M params) achieving state-of-the-art zero-shot forecasting. Supports uni- and multi-variate input. 512-context / 96-prediction config.",
+        "owned_by": "ibm", "source": "ibm-granite/granite-tinytime-pytorch", "source_url": "https://huggingface.co/ibm-granite/granite-tinytime-pytorch",
+        "license": "Apache-2.0", "parameters": "1-5M", "precision": "fp32",
+        "framework": "tsfm-public (TinyTimeMixer) + torch",
+        "domain": "time-series", "subdomain": "forecasting", "tags": ["science", "timeseries", "forecast", "ibm", "gpu"]
       }
     }
