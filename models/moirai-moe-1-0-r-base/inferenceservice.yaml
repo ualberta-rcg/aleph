@@ -14,7 +14,7 @@ data:
     Salesforce Research, 2024. 935M params MoE, stronger than base Moirai.
     API: POST /v1/forecast
     Input: {"time_series": [1.0, 2.0, ...], "prediction_length": 24, "freq": "H"}
-    Returns: {"forecast": {"mean": [...], "quantiles": {...}}, "model": "moirai-moe-1.0-R-base"}
+    Returns: {"forecast": {"mean": [...], "quantiles": {...}}, "model": "moirai-moe-1-0-r-base"}
     """
     import os, asyncio
     from fastapi import FastAPI
@@ -55,12 +55,12 @@ data:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok" if pipeline else "loading", "model": "moirai-moe-1.0-R-base"}
+        return {"status": "ok" if pipeline else "loading", "model": "moirai-moe-1-0-r-base"}
 
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [
-            {"id": "moirai-moe-1.0-R-base", "object": "model", "owned_by": "salesforce",
+            {"id": "moirai-moe-1-0-r-base", "object": "model", "owned_by": "salesforce",
              "type": "time-series-forecasting"}
         ]}
 
@@ -117,7 +117,7 @@ data:
 
         forecast = forecasts[0]
         result = {
-            "model": "moirai-moe-1.0-R-base",
+            "model": "moirai-moe-1-0-r-base",
             "input_length": len(values),
             "prediction_length": pred_len,
             "forecast": {
@@ -131,18 +131,6 @@ data:
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: moirai-moe-1-0-r-base-data
-  namespace: models
-spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 5Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -204,7 +192,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: moirai-moe-1-0-r-base, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -228,10 +216,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: moirai-moe-1-0-r-base, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: moirai-moe-1-0-r-base-data }
+      - name: moirai-moe-1-0-r-base
+        persistentVolumeClaim: { claimName: moirai-moe-1-0-r-base }
       - name: app
         configMap: { name: moirai-moe-1-0-r-base-server }

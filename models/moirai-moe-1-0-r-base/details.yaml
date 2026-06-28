@@ -8,7 +8,7 @@ metadata:
 data:
   details.json: |
     {
-      "id": "moirai-moe-1.0-R-base",
+      "id": "moirai-moe-1-0-r-base",
       "type": "forecast",
       "endpoints": {
         "primary": "/v1/forecast",

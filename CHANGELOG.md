@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — moirai-moe-1-0-r-base deployed on cluster 43 (Phase S3)
+
+**What:** fifth Phase S3 model. Brought `models/moirai-moe-1-0-r-base` (Salesforce Moirai-MoE, ~935M
+mixture-of-experts) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — card id **`moirai-moe-1.0-R-base` → `moirai-moe-1-0-r-base`** (match the ISVC/dir;
+  the HF repo id + cache path keep `1.0-R-base`). Card was already v2.
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`**, renamed
+  `…-data` → bare `moirai-moe-1-0-r-base` (volume + claim); server echo → `moirai-moe-1-0-r-base`.
+  (`progress-deadline: 1800s` was already present.)
+- `test.py` (96-pt series → mean+quantiles) + `README.md` added.
+
+**Result:** 5/5 PASS — mean + quantiles (len 24, finite); reproducible via clean delete + redeploy.
+Cold start slow (935M download + load). Scale-to-zero.
+
 ## 2026-06-28 — moirai-large deployed on cluster 43 (Phase S3)
 
 **What:** fourth Phase S3 model. Brought `models/moirai-large` (Salesforce Moirai 1.1-R-Large, 311M)
