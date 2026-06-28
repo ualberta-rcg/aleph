@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — moirai-large deployed on cluster 43 (Phase S3)
+
+**What:** fourth Phase S3 model. Brought `models/moirai-large` (Salesforce Moirai 1.1-R-Large, 311M)
+to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**.
+- `inferenceservice.yaml` — **dropped the vestigial `kustomization.yaml`** (server was already embedded
+  in the ConfigMap); renamed PVC `moirai-large-data` → bare `moirai-large`; **added
+  `progress-deadline: 1800s`** (preemptively — the moirai lesson: uni2ts slow init).
+- `test.py` (96-pt series → mean+quantiles) + `README.md` + `CLAUDE.md` added.
+
+**Result:** 5/5 PASS — mean + quantiles (len 24, finite); reproducible via clean delete + redeploy.
+The progress-deadline prevented the RevisionFailed the base moirai hit on first deploy.
+
 ## 2026-06-28 — moirai deployed on cluster 43 (Phase S3); progress-deadline for slow uni2ts init
 
 **What:** third Phase S3 model. Brought `models/moirai` (Salesforce Moirai base, ~91M) to the science

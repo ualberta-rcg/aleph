@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: moirai-large-data
+  name: moirai-large
   namespace: models
 spec:
   accessModes: [ReadWriteMany]

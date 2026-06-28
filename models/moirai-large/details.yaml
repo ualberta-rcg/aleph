@@ -11,63 +11,83 @@ data:
       "id": "moirai-large",
       "status": "production",
       "type": "forecast",
-      "description_short": "Salesforce Moirai 1.1-R-Large (311M) universal zero-shot time-series forecasting model.",
-      "description": "Moirai-Large is the larger variant (311M params) of Salesforce's Moirai foundation model for universal time-series forecasting. It supports any-variate, zero-shot forecasting with configurable prediction length, context length (up to 4096), and automatic patch size selection. Provides probabilistic forecasts with quantile outputs. Apache 2.0 license.",
-      "context_window": 4096,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/forecast",
         "health": "/health"
       },
-      "owned_by": "Salesforce",
-      "source": "Salesforce/moirai-1.1-R-large",
-      "source_url": "https://huggingface.co/Salesforce/moirai-1.1-R-large",
-      "license": "Apache-2.0",
-      "parameters": "311M",
-      "precision": "float32",
-      "architecture": "Moirai 1.1-R (patch-based transformer with auto patch size)",
-      "framework": "uni2ts + PyTorch",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 5,
-        "timeout": 120,
-        "pvc": "moirai-large-data",
-        "image": "python:3.11-slim",
-        "venv": true
-      },
       "routing": {
-        "kserve_custom": true,
         "k8s_name": "moirai-large",
-        "api_name": "moirai-large",
-        "gateway_type": "forecast"
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "openai_compatible": false,
-        "streaming": false
+      "limits": {
+        "context_window": 4096,
+        "max_input_tokens": 4096
       },
-      "domain": "time-series",
-      "subdomain": "forecasting",
-      "tags": ["science", "timeseries", "forecast", "zero-shot", "gpu", "salesforce", "moirai"],
-      "content_types": ["application/json"],
-      "tier": 2,
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 min (venv + 311M load + first forecast)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
-        "context": "array of numeric values (historical time series)",
-        "prediction_length": "number of future steps (default: 24)",
-        "freq": "frequency string e.g. 'H' (default: 'H')",
-        "patch_size": "\"auto\" | int (default: auto)",
-        "num_samples": "number of probabilistic samples (default: 100)"
+        "context": {
+          "type": "array",
+          "required": true,
+          "description": "numeric observations (the time series); up to 4096 context length"
+        },
+        "prediction_length": {
+          "type": "integer",
+          "required": false,
+          "default": 24,
+          "description": "future steps to forecast"
+        },
+        "freq": {
+          "type": "string",
+          "required": false,
+          "default": "h",
+          "description": "pandas frequency alias (e.g. 'h', 'D')"
+        },
+        "num_samples": {
+          "type": "integer",
+          "required": false,
+          "default": 100,
+          "description": "number of forecast samples (for quantile estimation)"
+        }
       },
       "output_map": {
-        "mean": "mean forecast values",
-        "quantiles": {"0.1": "10th percentile", "0.5": "median", "0.9": "90th percentile"}
+        "model": {"type": "string", "description": "model name"},
+        "prediction_length": {"type": "integer", "description": "horizon returned"},
+        "mean": {"type": "array", "description": "mean forecast (length = prediction_length)"},
+        "quantiles": {"type": "object", "description": "{0.1, 0.5, 0.9} quantile forecasts"}
       },
-      "server_config": {
-        "port": 8080,
-        "health_path": "/health",
-        "model_path": "/data/model",
-        "hf_model_id": "Salesforce/moirai-1.1-R-large"
+      "catalog": {
+        "description_short": "Salesforce Moirai 1.1-R-Large (311M) universal zero-shot time-series forecasting.",
+        "description": "Moirai-Large (Salesforce/moirai-1.1-R-large, 311M) is the larger variant of the Moirai foundation model for universal time-series forecasting — any-variate, zero-shot, configurable prediction/context length (up to 4096) + automatic patch size. Returns probabilistic forecasts (mean + quantiles). Served via `uni2ts` + GluonTS.",
+        "owned_by": "Salesforce",
+        "source": "Salesforce/moirai-1.1-R-large",
+        "source_url": "https://huggingface.co/Salesforce/moirai-1.1-R-large",
+        "license": "Apache-2.0",
+        "parameters": "311M",
+        "precision": "fp32",
+        "framework": "uni2ts + torch + GluonTS",
+        "domain": "time-series",
+        "subdomain": "forecasting",
+        "tags": ["science", "timeseries", "forecast", "salesforce", "gpu"]
       }
     }
