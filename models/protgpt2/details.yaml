@@ -10,7 +10,7 @@ data:
     {
       "id": "protgpt2",
       "status": "production",
-      "type": "chat",
+      "type": "completions",
       "endpoints": {
         "primary": "/v1/completions",
         "health": "/health"

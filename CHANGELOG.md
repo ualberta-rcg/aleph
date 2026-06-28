@@ -3,6 +3,19 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — protgpt2 deployed on cluster 43 (Phase S2); card type chat→completions
+
+**What:** eighth Phase S2 model. Brought `models/protgpt2` (ProtGPT2 de novo protein generation,
+~1.5B custom transformers server) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — **card `type: chat` → `completions`**. The gateway gates `/v1/completions` by
+  `type=completions` (matches progen2); with `type=chat`/`generate` every completions call 404'd.
+- `inferenceservice.yaml` — PVC `protgpt2-data` → bare `protgpt2` (volume + claim renamed).
+- `test.py` — added the `GW_INSECURE` toggle (it already used `?all=true`). README/CLAUDE already present.
+
+**Result:** 6 PASS + 1 EXP (the EXP is `/health` 404 — the gateway doesn't route /health); generates
+valid protein sequences. Reproducible via clean delete + redeploy. Scale-to-zero.
+
 ## 2026-06-27 — proteinmpnn deployed on cluster 43 (Phase S2)
 
 **What:** seventh Phase S2 model. Brought `models/proteinmpnn` (ProteinMPNN sequence design,

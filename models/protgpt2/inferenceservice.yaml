@@ -126,7 +126,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: protgpt2, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -145,10 +145,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: protgpt2, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: protgpt2-data }
+      - name: protgpt2
+        persistentVolumeClaim: { claimName: protgpt2 }
       - name: app
         configMap: { name: protgpt2-server }
