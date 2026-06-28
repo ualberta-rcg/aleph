@@ -3,6 +3,24 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — leandojo deployed on cluster 43 (Phase S2 COMPLETE)
+
+**What:** fourteenth + final Phase S2 model. Brought `models/leandojo` (LeanDojo Lean 4 premise
+retriever, ByT5-small 125M) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**; card `type: embed` → **`retrieve`** (its real function +
+  `/v1/science/retrieve`).
+- `inferenceservice.yaml` — PVC `leandojo-data` → bare `leandojo` (volume + claim renamed). Server/init
+  unchanged.
+- `test.py` (goal → premises) + `README.md` added.
+
+**Result:** 4/4 PASS — retrieves `rw [← add_zero …]` (score 1.0) for `∀ n : ℕ, n + 0 = n` (the
+correct relevant lemma); reproducible via clean delete + redeploy. Scale-to-zero.
+
+> **Phase S2 (protein/structure/design/dock + genomics + generate) COMPLETE:** esmfold, diffdock,
+> ithaca, enformer, borzoi, ligandmpnn, proteinmpnn, protgpt2, biogpt, chemgpt, biot5, chem-t5,
+> prostt5, leandojo — all 14 live on 43 + pushed.
+
 ## 2026-06-27 — prostt5 deployed on cluster 43 (Phase S2); type embedding→translate
 
 **What:** thirteenth Phase S2 model. Brought `models/prostt5` (ProstT5 AA↔3Di translation, ~800M

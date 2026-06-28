@@ -187,7 +187,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits:   { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: leandojo-data, mountPath: /data }
+          - { name: leandojo, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -210,12 +210,12 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: leandojo-data, mountPath: /data }
+          - { name: leandojo, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
-      - name: leandojo-data
+      - name: leandojo
         persistentVolumeClaim:
-          claimName: leandojo-data
+          claimName: leandojo
       - name: app
         configMap:
           name: leandojo-server
