@@ -47,7 +47,7 @@ data:
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [
-            {"id": "timesfm-500m", "object": "model", "created": 1700000000,
+            {"id": "timesfm", "object": "model", "created": 1700000000,
              "owned_by": "google", "type": "forecast"}
         ]}
 
@@ -91,7 +91,7 @@ data:
         mean_preds = outputs.mean_predictions[0].cpu().numpy()[:horizon].tolist()
 
         result = {
-            "model": "timesfm-500m",
+            "model": "timesfm",
             "horizon": horizon,
             "mean": mean_preds,
             "mean_sample": mean_preds[:5],
@@ -117,7 +117,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
-    serving.knative.dev/progress-deadline-seconds: "600"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     affinity:
@@ -165,7 +165,7 @@ spec:
           requests: { cpu: "2", memory: 8Gi }
           limits: { cpu: "4", memory: 16Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: timesfm, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -187,12 +187,12 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: timesfm, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
+      - name: timesfm
         persistentVolumeClaim:
-          claimName: timesfm-data
+          claimName: timesfm
       - name: app
         configMap:
           name: timesfm-server

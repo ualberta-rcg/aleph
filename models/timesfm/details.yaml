@@ -8,89 +8,75 @@ metadata:
 data:
   details.json: |
     {
-      "id": "timesfm-500m",
+      "id": "timesfm",
+      "status": "production",
       "type": "forecast",
-      "description_short": "TimesFM 2.0 500M zero-shot time series forecasting",
-      "description": "TimesFM 2.0 (google/timesfm-2.0-500m-pytorch) is Google's time-series foundation model for zero-shot forecasting. Decoder-only architecture with 50 layers and 1280 model dims. Supports context lengths up to 2048 time points and any horizon. Returns point forecasts with optional quantile predictions. Patch-based processing (input_patch=32, output_patch=128). GPU accelerated with CPU fallback.",
-      "context_window": 2048,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/forecast",
         "health": "/health"
       },
-      "owned_by": "google",
-      "source": "google/timesfm-2.0-500m-pytorch",
-      "source_url": "https://huggingface.co/google/timesfm-2.0-500m-pytorch",
-      "license": "Apache-2.0",
-      "parameters": "500M",
-      "parameter_count": 500000000,
-      "precision": "fp32",
-      "architecture": "decoder-only transformer (patch-based, 50 layers, 1280 dims)",
-      "framework": "custom",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 0,
-        "max_replicas": 3,
-        "startup_seconds": 180,
-        "container_image": "python:3.11-slim",
-        "timeout": 300
-      },
       "routing": {
         "k8s_name": "timesfm",
-        "path_prefix": "/v1/",
-        "serialize": false,
-        "no_stream": true
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 10000
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 min (venv + TimesFM load + first forecast)"
+      },
+      "behavior": {
         "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
         "reasoning_model": false,
-        "needs_json_fixing": false,
         "strips_thinking": false
       },
-      "domain": "time-series",
-      "subdomain": "forecasting",
-      "tags": ["forecast", "time-series", "zero-shot", "science", "gpu"],
-      "content_types": ["json"],
-      "languages": [],
-      "tier": "production",
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
       "input_map": {
         "values": {
-          "type": "list[number]",
+          "type": "array",
           "required": true,
-          "description": "Time series observations (numeric array)"
+          "description": "numeric observations (the time series); accepts values/time_series/series"
         },
         "horizon": {
           "type": "integer",
           "required": false,
           "default": 12,
-          "description": "Number of future steps to forecast"
-        },
-        "quantile_levels": {
-          "type": "list[float]",
-          "required": false,
-          "default": [0.1, 0.5, 0.9],
-          "description": "Quantile levels for probabilistic forecasts"
+          "description": "future steps to forecast"
         }
       },
       "output_map": {
-        "model": {"type": "string", "description": "Model name (timesfm-500m)"},
-        "horizon": {"type": "integer", "description": "Forecast horizon"},
-        "mean": {"type": "list[float]", "description": "Point forecast values"},
-        "median": {"type": "list[float]", "description": "Median forecast values"},
-        "quantiles": {"type": "object", "description": "Quantile forecasts keyed by level"},
-        "samples": {"type": "integer", "description": "Number of forecast steps returned"}
+        "model": {"type": "string", "description": "model name"},
+        "horizon": {"type": "integer", "description": "forecast horizon"},
+        "mean": {"type": "array", "description": "point forecast (length = horizon)"},
+        "median": {"type": "array", "description": "median forecast"},
+        "quantiles": {"type": "object", "description": "quantile forecasts keyed by level"}
       },
-      "server_config": {
-        "inference_backend": "timesfm library (TimesFmModelForPrediction / timesfm.TimesFm)",
-        "model_path": "/data/model",
-        "batch_size": 1,
-        "max_context_length": 2048,
-        "patch_length": 32,
-        "dependencies": "torch transformers numpy pandas fastapi uvicorn huggingface_hub",
-        "pip_note": "Unpinned deps; venv always reinstalls packages (no idempotent skip for pip); model download is idempotent",
-        "hf_source": "google/timesfm-2.0-500m-pytorch"
+      "catalog": {
+        "description_short": "Google TimesFM (500M) decoder-only time-series foundation model.",
+        "description": "TimesFM (google/timesfm-2.0-500m-pytorch, ~500M) is a decoder-only foundation model for time-series forecasting — patch-decoder trained on real-world time-series. Returns point + median + quantile forecasts via the timesfm package (TimesFmModelForPrediction).",
+        "owned_by": "google",
+        "source": "google/timesfm-2.0-500m-pytorch",
+        "source_url": "https://huggingface.co/google/timesfm-2.0-500m-pytorch",
+        "license": "Apache-2.0",
+        "parameters": "~500M",
+        "precision": "fp32",
+        "framework": "timesfm + torch",
+        "domain": "time-series",
+        "subdomain": "forecasting",
+        "tags": ["science", "timeseries", "forecast", "google", "gpu"]
       }
     }
