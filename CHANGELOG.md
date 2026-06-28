@@ -3,6 +3,22 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — ligandmpnn deployed on cluster 43 (Phase S2)
+
+**What:** sixth Phase S2 model. Brought `models/ligandmpnn` (Baker Lab ligand-aware protein sequence
+design, CPU, subprocess CLI) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**.
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`**, renamed
+  `ligandmpnn-data` → bare `ligandmpnn`; added a `startupProbe`. (Server/init unchanged: clones
+  LigandMPNN, patches `sc_utils`/openfold import optional, CPU venv, downloads IPD checkpoints.)
+- `test.py` + **`test_protein.pdb`** (crambin/1CRN) + `README.md` + `CLAUDE.md` added.
+
+**Result:** 4/4 PASS — 3 designed sequences; **top sequence recovers crambin's near-native
+N-terminus** (`TTCCPSIVARSNFNVCRLPGTPEAICATYT…` ≈ crambin) — strong correctness signal. Reproducible
+via clean delete + redeploy. CPU-only. Cold start ~2-4 min. **Note:** the membrane checkpoint 404s on
+the IPD server (non-fatal — the 3 main checkpoints download fine).
+
 ## 2026-06-27 — borzoi deployed on cluster 43 (Phase S2)
 
 **What:** fifth Phase S2 model. Brought `models/borzoi` (RNA-seq prediction from ~524kb DNA) to the

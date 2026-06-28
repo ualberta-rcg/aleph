@@ -11,31 +11,82 @@ data:
       "id": "ligandmpnn",
       "status": "production",
       "type": "design",
-      "description_short": "Ligand-aware protein sequence design from Baker Lab (UW)",
-      "description": "LigandMPNN from the Baker Lab (UW) designs optimal amino acid sequences given a protein backbone structure (PDB) and optional ligand atoms. Extends ProteinMPNN with ligand-awareness for drug design. Uses the LigandMPNN CLI tool via subprocess. CPU-capable.",
-      "context_window": 1024,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/design",
         "health": "/health"
       },
-      "owned_by": "Baker Lab",
-      "source": "dauparas/LigandMPNN",
-      "source_url": "https://github.com/dauparas/LigandMPNN",
-      "license": "MIT",
-      "parameters": "~1.7M",
-      "precision": "float32",
-      "architecture": "ProteinMPNN + ligand context",
-      "framework": "LigandMPNN CLI + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": false, "min_replicas": 0, "max_replicas": 2, "cpu_request": "4", "memory_request": "8Gi", "pvc": "ligandmpnn-data", "pvc_size": "10Gi", "node_selector": null, "timeout": 600},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "ligandmpnn", "api_name": "ligandmpnn"},
-      "compatibility": {"openai_embeddings": false, "input_fields": ["pdb", "num_sequences", "temperature", "model_type"]},
-      "domain": "proteomics",
-      "subdomain": "protein-design",
-      "tags": ["design", "science", "proteomics", "protein", "drug-discovery", "baker-lab", "cpu"],
-      "content_types": ["text"],
-      "languages": ["protein"],
-      "input_map": {"pdb": "PDB format string", "num_sequences": "int (default 1)", "temperature": "float (default 0.1)", "model_type": "ligand_mpnn|protein_mpnn|per_residue_label_membrane_mpnn"},
-      "output_map": {"sequences": "[{header: str, sequence: str}]", "returncode": "int"},
-      "tier": 2
+      "routing": {
+        "k8s_name": "ligandmpnn",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 10000,
+        "max_input_tokens": 10000
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 min (clone LigandMPNN + venv + weights + first design subprocess)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "pdb": {
+          "type": "string",
+          "required": true,
+          "description": "protein backbone structure in PDB format"
+        },
+        "num_sequences": {
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "description": "number of designed sequences to sample"
+        },
+        "temperature": {
+          "type": "number",
+          "required": false,
+          "default": 0.1,
+          "description": "sampling temperature"
+        },
+        "model_type": {
+          "type": "string",
+          "required": false,
+          "default": "ligand_mpnn",
+          "description": "checkpoint: ligand_mpnn (default) | protein_mpnn | soluble_mpnn | per_residue_label_membrane_mpnn"
+        }
+      },
+      "output_map": {
+        "sequences": {"type": "array", "description": "designed sequences: [{header, sequence}]"},
+        "model_type": {"type": "string", "description": "checkpoint used"},
+        "returncode": {"type": "integer", "description": "subprocess exit code (0 = success)"}
+      },
+      "catalog": {
+        "description_short": "LigandMPNN — ligand-aware protein sequence design from a backbone PDB (Baker Lab).",
+        "description": "LigandMPNN (Baker Lab / UW, dauparas/LigandMPNN) designs amino-acid sequences for a given protein backbone (PDB), extending ProteinMPNN with ligand awareness for drug design. Served via a **subprocess** call to the LigandMPNN CLI (`run.py`); weights from the IPD server. CPU-capable. Supports ligand_mpnn / protein_mpnn / soluble_mpnn / membrane checkpoints.",
+        "owned_by": "Baker Lab",
+        "source": "dauparas/LigandMPNN",
+        "source_url": "https://github.com/dauparas/LigandMPNN",
+        "license": "MIT",
+        "parameters": "~1.7M",
+        "precision": "fp32",
+        "framework": "LigandMPNN CLI + torch (CPU)",
+        "domain": "proteomics",
+        "subdomain": "protein-design",
+        "tags": ["science", "design", "proteomics", "protein", "drug-discovery", "baker-lab", "cpu"]
+      }
     }
