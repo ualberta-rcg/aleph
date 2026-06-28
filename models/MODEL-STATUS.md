@@ -30,7 +30,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | biomedbert-large | embedding | true | /v1/science/embed | READY | PASS | 1024-dim (field: text) |
 | biomedbert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id biomedbert-110m) |
 | biomedclip | embed | true | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: added input_map (images/texts/labels) + output_map (image_embeddings/text_embeddings/classifications 512-dim); test.py expanded to ~15 checks (0 FAIL) |
-| biot5 | science-generate | false | /v1/science/generate | READY | FIXED | task-specific checkpoints + SELFIES; mol2text & text2mol correct (was garbage) |
+| biot5 | science-generate | false | /v1/science/generate | READY | PASS | BioT5 cross-modal T5 (mol2text + text2mol, SELFIES, CPU, 2 checkpoints QizhiPei/biot5-base-*). **Deployed+verified on cluster 43 (2026-06-27, science pass S2):** extracted inlined PVC → standalone `biot5`, renamed volume; (card already v2). test.py (both directions)+README added. 4-check **4/0** — mol2text: aspirin→'member of the class of benzoic acids…' (correct); text2mol: text→valid SMILES; reproducible via clean delete+redeploy. |
 | birdnet-analyzer | audio-classification | false | /v1/science/identify | READY | PASS | end-to-end OK; synthetic tone -> no detections (expected) |
 | boltz-1 | structure | true | /v1/science/predict | READY | PASS | Boltz-1 NIM container; protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (--checkpoint boltz1) |
 | boltz-2 | structure | true | /v1/science/predict | READY | PASS | Boltz-2 NIM container (default); protein structure prediction; Ready on cluster. **NIM:** `nvcr.io/nim/mit/boltz-2` (build.nvidia.com/mit/boltz-2) |

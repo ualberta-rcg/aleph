@@ -3,6 +3,19 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — biot5 deployed on cluster 43 (Phase S2)
+
+**What:** eleventh Phase S2 model. Brought `models/biot5` (BioT5 cross-modal T5: mol2text +
+text2mol, CPU) to the science standards and deployed it live on cluster 43.
+
+- `inferenceservice.yaml` — extracted the inlined PVC → standalone `pvc.yaml`, renamed `biot5-data`
+  → bare `biot5` (volume + claim). Card was already v2; server/init unchanged (loads both
+  `QizhiPei/biot5-base-mol2text` + `-text2mol` checkpoints, `selfies` SMILES↔SELFIES).
+- `test.py` (both directions: SMILES→text and text→SMILES) + `README.md` added.
+
+**Result:** 4/4 PASS — mol2text: aspirin → "member of the class of benzoic acids…" (correct);
+text2mol: text → valid SMILES. Reproducible via clean delete + redeploy. CPU-only. Scale-to-zero.
+
 ## 2026-06-27 — chemgpt deployed on cluster 43 (Phase S2)
 
 **What:** tenth Phase S2 model. Brought `models/chemgpt` (ChemGPT-1.2B SMILES molecule generation)
