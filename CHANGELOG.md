@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — prostt5 deployed on cluster 43 (Phase S2); type embedding→translate
+
+**What:** thirteenth Phase S2 model. Brought `models/prostt5` (ProstT5 AA↔3Di translation, ~800M
+T5, GPU) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**; card `type: embedding` → **`translate`** (its real function
+  + the `/v1/translate` endpoint).
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`**, renamed
+  `prostt5-data` → bare `prostt5`. Server/init unchanged (`transformers==4.40.2` + sentencepiece).
+- `test.py` (seq2struct AA→3Di) + `README.md` added.
+
+**Result:** 4/4 PASS — seq2struct `MKTVVRQEL` → `ddddddddd` (lowercase 3Di tokens); reproducible via
+clean delete + redeploy. Scale-to-zero. **NB:** ran into a shared-login-node `/tmp` full (ENOSPC
+from other users) — switched all test logs to `$SCRATCH`.
+
 ## 2026-06-27 — chem-t5 deployed on cluster 43 (Phase S2)
 
 **What:** twelfth Phase S2 model. Brought `models/chem-t5` (multitask chemistry T5: caption +

@@ -10,32 +10,71 @@ data:
     {
       "id": "prostt5",
       "status": "production",
-      "type": "embedding",
-      "description_short": "Protein sequence to 3Di structure token translation (Rostlab)",
-      "description": "ProstT5 from Rostlab translates between protein amino acid sequences and 3Di (3-state discrete) structure tokens. Enables fast structure prediction without MSA. Based on T5ForConditionalGeneration. Supports seq2struct and struct2seq directions. ~800M parameters. Requires transformers==4.40.2 and sentencepiece.",
-      "context_window": 512,
-      "max_completion_tokens": 512,
+      "type": "translate",
       "endpoints": {
         "primary": "/v1/translate",
         "health": "/health"
       },
-      "owned_by": "Rostlab",
-      "source": "Rostlab/ProstT5",
-      "source_url": "https://huggingface.co/Rostlab/ProstT5",
-      "license": "MIT",
-      "parameters": "~800M",
-      "precision": "float16 (GPU) / float32 (CPU)",
-      "architecture": "T5 (seq2seq)",
-      "framework": "transformers==4.40.2 + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 5, "cpu_request": "4", "memory_request": "8Gi", "pvc": "prostt5-data", "pvc_size": "20Gi", "node_selector": "NVIDIA-L40S-SHARED", "timeout": 120},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "prostt5", "api_name": "prostt5"},
-      "compatibility": {"openai_embeddings": false, "input_fields": ["input", "sequences", "direction"]},
-      "domain": "proteomics",
-      "subdomain": "structure-prediction",
-      "tags": ["embedding", "science", "proteomics", "protein", "structure", "gpu"],
-      "content_types": ["text"],
-      "languages": ["protein"],
-      "input_map": {"input": "amino acid sequence(s) or 3Di tokens", "direction": "seq2struct|fold2AA"},
-      "output_map": {"results": "[str] translated sequences", "direction": "str", "model": "prostt5"},
-      "tier": 2
+      "routing": {
+        "k8s_name": "prostt5",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 512,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 min (venv + ~800M load + first translate)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "input": {
+          "type": "string",
+          "required": true,
+          "description": "amino-acid sequence(s) (seq2struct) or 3Di structure tokens (struct2seq); accepts a single string or array"
+        },
+        "direction": {
+          "type": "string",
+          "required": false,
+          "default": "seq2struct",
+          "description": "seq2struct (AA→3Di, default) or struct2seq (3Di→AA)"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "model name"},
+        "results": {"type": "array", "description": "translated sequences"},
+        "direction": {"type": "string", "description": "direction used"}
+      },
+      "catalog": {
+        "description_short": "ProstT5 — protein AA-sequence ↔ 3Di structure-token translation (Rostlab).",
+        "description": "ProstT5 (Rostlab, ~800M) is a T5 seq2seq model that translates between protein amino-acid sequences and 3Di (3-state discrete) structure tokens — fast structure prediction without MSA. Supports seq2struct (AA→3Di) and struct2seq (3Di→AA). Pinned `transformers==4.40.2` + sentencepiece.",
+        "owned_by": "Rostlab",
+        "source": "Rostlab/ProstT5",
+        "source_url": "https://huggingface.co/Rostlab/ProstT5",
+        "license": "MIT",
+        "parameters": "~800M",
+        "precision": "fp16 (GPU) / fp32 (CPU)",
+        "framework": "transformers==4.40.2 (T5ForConditionalGeneration) + torch",
+        "domain": "proteomics",
+        "subdomain": "structure-prediction",
+        "tags": ["science", "translate", "proteomics", "protein", "structure", "gpu"]
+      }
     }
