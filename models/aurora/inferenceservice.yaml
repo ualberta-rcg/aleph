@@ -106,8 +106,8 @@ data:
 
         def _t(v, ndim=2):
             arr = np.array(v, dtype=np.float32)
-            # Add batch dim: (1, ...) for surf; (1, levels, lat, lon) for atmos
-            return torch.tensor(arr).unsqueeze(0)
+            # Add batch + time dims: surf -> (1,1,lat,lon); atmos -> (1,1,levels,lat,lon)
+            return torch.tensor(arr).unsqueeze(0).unsqueeze(0)
 
         surf_vars  = {k: _t(v) for k, v in req["surf_vars"].items()}
         atmos_vars = {k: _t(v) for k, v in req["atmos_vars"].items()}
@@ -170,6 +170,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "1800s"
 spec:
   predictor:
     affinity:
@@ -239,7 +240,7 @@ spec:
           requests: { cpu: "4", memory: 8Gi }
           limits:   { cpu: "8", memory: 16Gi }
         volumeMounts:
-          - { name: aurora-data, mountPath: /data }
+          - { name: aurora, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -263,12 +264,12 @@ spec:
           periodSeconds: 15
           failureThreshold: 40
         volumeMounts:
-          - { name: aurora-data, mountPath: /data }
+          - { name: aurora, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
-      - name: aurora-data
+      - name: aurora
         persistentVolumeClaim:
-          claimName: aurora-data
+          claimName: aurora
       - name: app
         configMap:
           name: aurora-server

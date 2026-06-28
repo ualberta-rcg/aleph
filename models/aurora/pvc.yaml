@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: aurora-data
+  name: aurora
   namespace: models
 spec:
   accessModes: [ReadWriteMany]

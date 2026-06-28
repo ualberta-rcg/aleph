@@ -3,6 +3,25 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — aurora deployed on cluster 43 (Phase S4 begins); fix tensor shapes for latest API
+
+**What:** first Phase S4 model (weather/climate). Brought `models/aurora` (Microsoft Aurora 0.25°
+small pretrained, ~1.3B) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B** (Pattern 2 nested surf/atmos input_map/output_map).
+- `inferenceservice.yaml` — renamed PVC `aurora-data` → bare `aurora`; added `progress-deadline: 1800s`.
+- **Server fix (research-derived):** the latest `microsoft-aurora` (1.8.0) expects **time-aware tensor
+  shapes** `(batch, time, lat, lon)` for surf_vars and `(batch, time, levels, lat, lon)` for atmos_vars.
+  The old `_t` function only added a batch dim (`unsqueeze(0)`) → "not enough values to unpack (expected
+  6, got 5)" in `model.forward()`. Fixed to `unsqueeze(0).unsqueeze(0)` (adds batch + time). Found via the
+  [GitHub README](https://github.com/microsoft/aurora) example (research step 0 — the lesson: research the
+  model's CURRENT API before deploying, not the 232-era code).
+- `test.py` (17×32 grid matching the README example → 6h forecast) + `README.md` added.
+
+**Result:** 5/5 PASS — surf_vars 272.45 K (plausible) + atmos_vars + step=6h. **NB:** the initial 4×4
+test grid was too small for spherical harmonics ("Height (1) must be larger than 1") — 17×32 from the
+README works.
+
 ## 2026-06-28 — ttm deployed on cluster 43 (Phase S3 COMPLETE)
 
 **What:** eleventh + final Phase S3 model. Brought `models/ttm` (IBM TinyTimeMixer) to standards.
