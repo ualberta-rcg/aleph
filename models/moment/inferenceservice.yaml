@@ -138,18 +138,6 @@ data:
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: moment-data
-  namespace: models
-spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 10Gi
----
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -217,7 +205,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: moment, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -242,10 +230,10 @@ spec:
           periodSeconds: 15
           failureThreshold: 60
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: moment, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: moment-data }
+      - name: moment
+        persistentVolumeClaim: { claimName: moment }
       - name: app
         configMap: { name: moment-server }

@@ -114,7 +114,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | moirai-moe-1-0-r-base | forecast | true | /v1/forecast | READY | FIXED | replaced moirai-moe; rewrote to official uni2ts create_predictor() + GluonTS API; 19 quantile levels PASS |
 | moirai | forecast | true | /v1/forecast | READY | PASS | Salesforce Moirai base; values+horizon -> mean/quantiles; sensible forecast |
 | molformer | embedding | true | /v1/science/embed | READY | PASS | 768-dim (field: smiles) |
-| moment | forecast | true | /v1/forecast | READY | FIXED | output indexing (chan vs horizon); needs 512-len input; 96-step horizon |
+| moment | forecast | true | /v1/forecast | READY | PASS | MOMENT-1-large time-series foundation model (AutonLab/CMU, 385M, momentfm, GPU). **Deployed+verified on cluster 43 (2026-06-27, science pass S3):** extracted inlined **RWO→RWX** PVC → standalone `moment`, renamed volume, v2 Template B card, test.py+README. 5-check **5/0** — 512-pt series → 96-step forecast (finite); reproducible via clean delete+redeploy. |
 | multilingual-e5-small | embedding | false | /v1/embeddings | READY | PASS | 384-dim text embedding |
 | naturecode-earth | embed | true | /v1/science/predict | READY | DEMO | demo OK (seg probs); weights GATED (naturecodeproject/earth 403); needs HF access |
 | neuralgcm | forecast | false | /v1/science/predict | READY | PASS | demo mode (real ERA5 not via API by design) |

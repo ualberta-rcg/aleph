@@ -3,6 +3,18 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — moment deployed on cluster 43 (Phase S3)
+
+**What:** second Phase S3 model. Brought `models/moment` (MOMENT-1-large time-series foundation model,
+385M) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**.
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`**, renamed
+  `moment-data` → bare `moment` (volume + claim). Server/init unchanged (momentfm + torch).
+- `test.py` (512-pt series → 96-step forecast) + `README.md` added.
+
+**Result:** 5/5 PASS — 96-step forecast, finite; reproducible via clean delete + redeploy.
+
 ## 2026-06-27 — chronos-bolt deployed on cluster 43 (Phase S3 begins)
 
 **What:** first Phase S3 model (time-series). Brought `models/chronos-bolt` (Amazon Chronos-Bolt
