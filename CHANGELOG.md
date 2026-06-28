@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-27 — enformer deployed on cluster 43 (Phase S2)
+
+**What:** fourth Phase S2 model. Brought `models/enformer` (gene-expression prediction from ~196kb
+DNA) to the science standards and deployed it live on cluster 43.
+
+- `details.yaml` — v1 → **v2 Template B**; card `status: broken` → **`production`** (stale — the model
+  was already fixed: dict-output handling, `transformers<4.52`, GPU torch, Python 3.12).
+- `inferenceservice.yaml` — **extracted the inlined RWO PVC → standalone RWX `pvc.yaml`** (RWO breaks
+  scale-from-zero weight sharing), renamed `enformer-data` → bare `enformer`; added a `startupProbe`.
+- `test.py` (4kb ACGT → `human_shape [896,5313]` + finite mean) + `README.md` + `CLAUDE.md` added.
+
+**Result:** 5/5 PASS — `human_shape [896, 5313]`, mean 0.489 (summary output; full 896×5313 grid is
+~4.7M values, too large for HTTP); reproducible via clean delete + redeploy. Scale-to-zero. Cold
+start ~4-8 min.
+
 ## 2026-06-27 — ithaca deployed on cluster 43 (Phase S2); venv refactor + gap-char/encoding fixes
 
 **What:** third Phase S2 model. Brought `models/ithaca` (DeepMind ancient-Greek inscription

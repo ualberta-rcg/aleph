@@ -61,7 +61,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | dust3r | 3d | true | /v1/science/reconstruct | READY | PASS | v2 deep pass 2026-06-24: added input_map/output_map; test.py expanded to ~15 checks (0 FAIL); downsample pointcloud; bbox+loss; 2 imgs OK |
 | earthpt | embed | true | /v1/science/predict | READY | FIXED | CPU ckpt load + RAM 24Gi (was GPU+host OOM); predicts OK |
 | efficientnet-b0 | classify | false | /v1/vision/classify | READY | PASS | v2 deep pass 2026-06-24: schema v2 details.yaml rewritten with input_map/output_map; test.py expanded to ~15 checks (0 FAIL) |
-| enformer | predict | true | /v1/science/predict | READY | FIXED | dict output fix (`isinstance(out, dict)`), transformers<4.52, GPU torch, Python 3.12; human_shape [896,5313] PASS |
+| enformer | predict | true | /v1/science/predict | READY | PASS | Enformer gene-expression/regulatory-track prediction (EleutherAI, ~500M, 196kb DNA → 5313 human tracks). **Deployed+verified on cluster 43 (2026-06-27, science pass S2):** extracted inlined **RWO→RWX** PVC → standalone `enformer`, card `status: broken`→`production`, v2 Template B card, added startupProbe, test.py+README+CLAUDE. `transformers<4.52` pin; dict-output handling. 5-check **5/0** — human_shape **[896,5313]** + mean 0.489 (summary output; full grid too large for HTTP); reproducible via clean delete+redeploy. Cold start ~4-8 min. |
 | ernierna | embedding | true | /v1/science/embed | READY | FIXED | GPU torch cu126 reinstall, nodeSelector gpu=on, progress-deadline 600s; 768-dim RNA embeddings PASS |
 | esm1b | embedding | true | /v1/embeddings | READY | PASS | 1280-dim protein (recreated) |
 | esm2-150m | embedding | true | /v1/embeddings | READY | PASS | 640-dim protein (recreated) |

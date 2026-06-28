@@ -9,33 +9,74 @@ data:
   details.json: |
     {
       "id": "enformer",
-      "status": "broken",
+      "status": "production",
       "type": "predict",
-      "description_short": "Gene expression prediction from 196kb DNA sequences (DeepMind/EleutherAI)",
-      "description": "Enformer predicts gene expression (regulatory track values) from 196,608 bp DNA sequences. Trained by DeepMind on human and mouse genomic data. Predicts 5313 human + 1643 mouse regulatory tracks. Requires pinned transformers<4.38 for enformer-pytorch compatibility. ~500M parameters.",
-      "context_window": 196608,
-      "max_completion_tokens": 0,
       "endpoints": {
         "primary": "/v1/science/predict",
         "health": "/health"
       },
-      "owned_by": "EleutherAI",
-      "source": "EleutherAI/enformer-official-rough",
-      "source_url": "https://huggingface.co/EleutherAI/enformer-official-rough",
-      "license": "CC-BY-4.0",
-      "parameters": "~500M",
-      "precision": "float32",
-      "architecture": "Enformer (convolutional trunk + transformer torso)",
-      "framework": "enformer-pytorch + torch",
-      "deployment": {"image": "python:3.11-slim", "gpu": true, "min_replicas": 0, "max_replicas": 2, "cpu_request": "8", "memory_request": "16Gi", "pvc": "enformer-data", "pvc_size": "10Gi", "node_selector": null, "timeout": 595},
-      "routing": {"kserve_custom": true, "path_prefix": "/v1/", "isvc_name": "enformer", "api_name": "enformer"},
-      "compatibility": {"openai_embeddings": false, "input_fields": ["sequence", "organism", "return_tracks"]},
-      "domain": "genomics",
-      "subdomain": "gene-expression",
-      "tags": ["predict", "science", "genomics", "dna", "gene-expression", "regulatory", "gpu"],
-      "content_types": ["text"],
-      "languages": ["dna"],
-      "input_map": {"sequence": "DNA sequence (~196kb bp)", "organism": "human|mouse", "return_tracks": "[int] optional track indices"},
-      "output_map": {"model": "enformer", "human_predictions": "[[float]] shape [896, 5313]", "human_shape": "[int]", "sequence_length": "int"},
-      "tier": 1
+      "routing": {
+        "k8s_name": "enformer",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 196608,
+        "max_input_tokens": 196608
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "4-8 min (venv + ~500M download + Enformer load)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "sequence": {
+          "type": "string",
+          "required": true,
+          "description": "DNA sequence (ACGTN); ~196,608 bp full context — shorter sequences are padded with N"
+        },
+        "organism": {
+          "type": "string",
+          "required": false,
+          "default": "human",
+          "description": "\"human\" (default) or \"mouse\" — selects which track head's predictions to return"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "model name"},
+        "human_shape": {"type": "array", "description": "shape of the human track predictions [bins, 5313]"},
+        "human_mean": {"type": "number", "description": "mean of human predictions (summary — full 896x5313 grid is too large to return)"},
+        "human_sample": {"type": "array", "description": "first 10 human track values of bin 0 (sample)"},
+        "sequence_length": {"type": "integer", "description": "input sequence length"}
+      },
+      "catalog": {
+        "description_short": "Enformer — gene-expression / regulatory-track prediction from ~196kb DNA (EleutherAI).",
+        "description": "Enformer (EleutherAI/enformer-official-rough, ~500M params) predicts gene-regulatory track values from a 196,608 bp DNA sequence — 5313 human + 1643 mouse tracks. Convolutional trunk + transformer torso. The server one-hot encodes the sequence (padding short inputs with N), runs the model, and returns a summarized result (shape + mean + sample; the full 896×5313 grid is ~4.7M values). Pinned `transformers<4.52` for enformer-pytorch compatibility.",
+        "owned_by": "EleutherAI",
+        "source": "EleutherAI/enformer-official-rough",
+        "source_url": "https://huggingface.co/EleutherAI/enformer-official-rough",
+        "license": "CC-BY-4.0",
+        "parameters": "~500M",
+        "precision": "fp32",
+        "framework": "enformer-pytorch + torch",
+        "domain": "genomics",
+        "subdomain": "gene-expression",
+        "tags": ["science", "genomics", "dna", "gene-expression", "regulatory", "gpu"]
+      }
     }
