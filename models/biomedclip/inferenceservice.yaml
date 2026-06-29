@@ -175,7 +175,8 @@ spec:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
     minReplicas: 1
-    scaleTarget: 3
+    maxReplicas: 2
+    scaleTarget: 4
     scaleMetric: concurrency
     timeout: 120
     nodeSelector:
