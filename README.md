@@ -1,6 +1,6 @@
 <img src="./assets/ua_logo_green_rgb.png" alt="University of Alberta Logo" width="50%" />
 
-# Aleph
+# Aleph — The Science Inference Cluster
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-RKE2-blue.svg)](https://www.rke2.io/)
@@ -35,7 +35,7 @@ Models are callable like any other HTTP API — from a Slurm batch job, an agent
 - **Any KServe runtime** — KServe is the orchestration layer, not the engine, so a model card can back onto whatever serves it best: vLLM (most LLMs), Hugging Face/TEI (embeddings, rerank), ONNX Runtime (vision), JAX/Lightning/TensorFlow or a custom FastAPI server.py (science), and NVIDIA NIM (boltz-2, openfold-3). Triton, TorchServe, and TensorFlow Serving are equally deployable when a model calls for them.
 - **Fractional GPU scheduling** — HAMi slices each L40S into virtual GPUs (`nvidia.com/gpumem`); many models share one physical card
 - **Scale-to-zero + cold-start aware** — idle models drop to zero pods; first request gets a `503 + retry-after` while the pod wakes; agent loops handle this natively
-- **Catch-all auth** — accepts `Authorization: Bearer`, `x-api-key`, `api-key`, or `?api_key=`; Tyk normalizes them all
+- **Catch-all auth** — one key, sent however your SDK likes: `Authorization: Bearer` (OpenAI/Cohere), `x-api-key` (Anthropic), `api-key` (Azure OpenAI), `x-goog-api-key` (Google), or query string `?api_key=` / `?api-key=` / `?key=`; Tyk normalizes them all into `Authorization: Bearer` before auth
 - **Usage accounting** — per-request JSON-lines log (identity, tokens, GPU SKU, node, gpu-seconds) + Prometheus metrics on `/metrics`; rate-limiting via Tyk
 - **NFS-backed weights** — model weights on shared NFS PVCs; survive pod and node churn without re-download
 
@@ -70,13 +70,17 @@ Each model in `models/<name>/` includes a `details.yaml` card, `inferenceservice
           ▼
   ┌─────────────────┐
   │     MetalLB     │  public VIP (L2) advertised out the head node's public NIC;
-  │                 │  hands traffic to the Tyk LoadBalancer Service
+  │                 │  hands traffic to the Traefik LoadBalancer Service
   └────────┬────────┘
            ▼
   ┌─────────────────┐  ◄── cert-manager + Let's Encrypt (ACME HTTP-01) issues the
-  │    Tyk OSS      │      public TLS cert; Tyk terminates HTTPS here.
-  │ (TLS terminate) │      catch-all auth (Bearer / x-api-key / api-key / ?api_key=),
-  │                 │      rate-limit, JSVM middleware stamps X-Aleph-* identity headers
+  │  Traefik (RKE2) │      public TLS cert; Traefik terminates HTTPS here, redirects
+  │ (TLS terminate) │      :80 → :443, and routes by Host header to the Tyk Service
+  └────────┬────────┘
+           ▼
+  ┌─────────────────┐
+  │    Tyk OSS      │  catch-all auth (Bearer / x-api-key / api-key / x-goog-api-key / ?api_key),
+  │                 │  rate-limit, JSVM middleware stamps X-Aleph-* identity headers
   └────────┬────────┘
            ▼
   ┌─────────────────┐
@@ -85,7 +89,7 @@ Each model in `models/<name>/` includes a `details.yaml` card, `inferenceservice
   └────────┬────────┘
            ▼
   ┌─────────────────┐
-  │   Istio mesh    │  service mesh Knative programs; cluster-local-gateway routes
+  │   Istio mesh    │  service mesh Knative programs; knative-local-gateway routes
   │                 │  by Host header to the live revision — or to the Knative
   │                 │  activator, which holds the request while a cold pod boots
   └────────┬────────┘
@@ -111,7 +115,7 @@ kubectl rollout restart deploy/model-gateway -n models
 | `11` node-labeler | DaemonSet detects each worker's GPU/CPU/RAM and stamps `aleph.*` node labels — every usage record carries real hardware provenance |
 | `30` NFS | `nfs-models` StorageClass — the default; model weights live here |
 | `40–41` MetalLB | L2 load-balancer + VIP IPAddressPool |
-| `50–54` Tyk | Redis, OSS gateway, LoadBalancer exposure, API definitions, JSVM middleware |
+| `50–54` Tyk | Redis, OSS gateway, Traefik IngressRoute + TLS exposure (RKE2-bundled Traefik fronts it), API definitions, JSVM middleware |
 | `60` Istio | Service mesh + scaffolding the serving stack needs |
 | `61–62` Knative + KServe | Scale-to-zero autoscaling and the InferenceService CRD |
 | `63` model-gateway | The FastAPI router (runs on control-plane nodes only) |
