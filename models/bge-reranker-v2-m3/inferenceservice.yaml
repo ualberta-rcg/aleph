@@ -21,7 +21,12 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
+    # Always-on. TEI is fast and batches internally, so one pod absorbs high
+    # concurrency; target 64 + max 3 bounds GPU to ~3 8GB slices under a real burst.
     minReplicas: 1
+    maxReplicas: 3
+    scaleMetric: concurrency
+    scaleTarget: 64
     timeout: 600
     nodeSelector:
       gpu: "on"

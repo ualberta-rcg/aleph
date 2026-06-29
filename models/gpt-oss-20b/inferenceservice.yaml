@@ -30,8 +30,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 3
+    # Always-on (warm agentic tier). vLLM max-num-seqs=8 is the real per-pod cap, so
+    # target≈8 packs a pod to its batch limit before adding a replica; max 3 bounds GPU.
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
     timeout: 600
     nodeSelector:
