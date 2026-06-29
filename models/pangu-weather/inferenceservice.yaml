@@ -1,10 +1,8 @@
 # Pangu-Weather: Huawei's 3D neural network for global medium-range weather forecasting
-# Published in Nature 2023. ONNX format, 6-hour forecast step.
-# Weights: Google Drive (official Pangu-Weather repo, BY-NC-SA 4.0)
-# API: POST /v1/science/forecast {"demo": true} or {"input_upper": base64, "input_surface": base64}
-# input_upper shape:   (5, 13, 721, 1440) float32 — Z,Q,T,U,V at 13 pressure levels
-# input_surface shape: (4, 721, 1440)     float32 — MSLP,U10,V10,T2M
-# Returns 6h forecast arrays of same shape, plus summary stats.
+# Published in Nature 2023. ONNX format, 6-hour forecast step, rolled forward for lead time.
+# Weights: ECMWF CDN (pangu_weather_6.onnx, BY-NC-SA 4.0)
+# Initial conditions: live ERA5 from the public WeatherBench2 Zarr (GCS), cached on PVC.
+# API: POST /v1/science/forecast {"date": "...", "lead_hours": 24, "coords": [...]} or {"demo": true}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -14,65 +12,92 @@ metadata:
 data:
   server.py: |
     """
-    Pangu-Weather (6-hour model) — Huawei Cloud, Nature 2023.
-    ONNX inference via onnxruntime-gpu.
+    Pangu-Weather (6-hour ONNX model) — Huawei, Nature 2023.
+    Global medium-range forecast at 0.25° (721x1440), 13 pressure levels.
 
     API: POST /v1/science/forecast
-    Modes
-    -----
-    Demo (smoke-test with synthetic ERA5-like data):
+
+    REAL (researcher) mode — initial conditions pulled live from ERA5:
+      {"date": "2018-01-01T00:00:00",
+       "lead_hours": 24,                      # multiple of 6; rolled forward
+       "coords": [{"lat": 53.5, "lon": -113.5}, {"lat": 0.0, "lon": -150.0}]}
+      -> fetches ERA5 from WeatherBench2 (public GCS Zarr), caches on PVC, rolls the
+         6h model forward, returns global summary + per-point forecast values.
+
+    DEMO mode (no network, smoke test):
       {"demo": true}
-    Real (provide ERA5 initial conditions as base64-encoded float32 numpy binary):
-      {
-        "input_upper":   "<base64 of float32 ndarray shape (5,13,721,1440)>",
-        "input_surface": "<base64 of float32 ndarray shape (4,721,1440)>"
-      }
+      -> synthetic ERA5-like input, single 6h step.
+
     Returns:
       {
-        "model": "pangu-weather-6h",
-        "output_upper_shape":   [5, 13, 721, 1440],
-        "output_surface_shape": [4, 721, 1440],
-        "output_upper_stats":   {"mean": ..., "std": ..., "min": ..., "max": ...},
-        "output_surface_stats": {"mean": ..., "std": ..., "min": ..., "max": ...},
-        "inference_ms": ...,
-        "sample_t850": [[...]]   # T (K) at 850 hPa, first 8 lats × 8 lons (top-left corner)
+        "model": "pangu-weather",
+        "init_time": "2018-01-01T00:00:00",
+        "valid_time": "2018-01-02T00:00:00",
+        "lead_hours": 24,
+        "source": "weatherbench2-era5",      # or "demo"
+        "summary": { t2m_K, msl_Pa, t_850hPa_K, z_500hPa_m2s2: {mean,min,max} },
+        "points":   [ {lat,lon,t2m_K,msl_Pa,u10_ms,v10_ms,t_850hPa_K,t_500hPa_K,z_500hPa_m2s2} ]
       }
     """
-    import os, asyncio, base64, time
+    import os, asyncio
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import JSONResponse
     import uvicorn
 
     MODEL_DIR = os.environ.get("MODEL_DIR", "/data")
     ONNX_PATH = os.path.join(MODEL_DIR, "pangu_weather_6.onnx")
+    ERA5_URL = ("gs://weatherbench2/datasets/era5/"
+                "1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr")
 
     app = FastAPI()
     session = None
+    ready = False   # True only after a warmup inference succeeds → honest readiness
+    # Pangu 6h ONNX contract (verified by introspection) — bound by NAME, NO batch dim:
+    #   inputs  : 'input'         [5,13,721,1440]  (Z,Q,T,U,V)
+    #             'input_surface' [4,721,1440]     (MSLP,U10,V10,T2M)
+    #   outputs : 'output' [5,13,721,1440], 'output_surface' [4,721,1440]
+    IN_UPPER, IN_SURFACE = "input", "input_surface"
 
-    PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]  # 13 levels
-    UPPER_VARS      = ["Z", "Q", "T", "U", "V"]  # 5 variables
-    SURFACE_VARS    = ["MSLP", "U10", "V10", "T2M"]  # 4 variables
+    # Pangu pressure levels (DESCENDING, surface->top) — the model's expected order.
+    PANGU_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]
+    IDX_850 = PANGU_LEVELS.index(850)   # 2
+    IDX_500 = PANGU_LEVELS.index(500)   # 5
+    # Upper var order:  Z(0), Q(1), T(2), U(3), V(4)
+    # Surface var order: MSLP(0), U10(1), V10(2), T2M(3)
 
     def load():
-        global session
+        global session, ready
         import onnxruntime as ort
-        import numpy as np
-        print(f"Loading Pangu-Weather 6h from {ONNX_PATH}...", flush=True)
+        print(f"Loading Pangu-Weather 6h ONNX from {ONNX_PATH}...", flush=True)
         opts = ort.SessionOptions()
         opts.enable_cpu_mem_arena = False
-        opts.enable_mem_pattern   = False
-        opts.enable_mem_reuse     = False
+        opts.enable_mem_pattern = False
         opts.intra_op_num_threads = 4
-        cuda_opts = {"arena_extend_strategy": "kSameAsRequested"}
-        providers = [("CUDAExecutionProvider", cuda_opts), "CPUExecutionProvider"]
+        providers = [("CUDAExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
+                     "CPUExecutionProvider"]
         try:
             session = ort.InferenceSession(ONNX_PATH, sess_options=opts, providers=providers)
-            used_provider = session.get_providers()[0]
-            print(f"Pangu-Weather ready (provider: {used_provider}).", flush=True)
+            print(f"Pangu-Weather session created (provider: {session.get_providers()[0]}).", flush=True)
         except Exception as e:
-            print(f"CUDA load failed ({e}), retrying on CPU...", flush=True)
+            print(f"CUDA load failed ({e}); retrying CPU.", flush=True)
             session = ort.InferenceSession(ONNX_PATH, sess_options=opts, providers=["CPUExecutionProvider"])
-            print("Pangu-Weather ready (CPU).", flush=True)
+            print("Pangu-Weather session created (CPU).", flush=True)
+        ins = ", ".join(f"{i.name}{list(i.shape)}" for i in session.get_inputs())
+        outs = ", ".join(f"{o.name}{list(o.shape)}" for o in session.get_outputs())
+        print(f"ONNX inputs: {ins} | outputs: {outs}", flush=True)
+
+        # Warmup: one real inference. Only then is the pod Ready — so a pod that OOMs at
+        # inference (e.g. insufficient VRAM) never reports 3/3 Running / healthy.
+        import numpy as np
+        try:
+            u = np.zeros((5, 13, 721, 1440), dtype=np.float32)
+            s = np.zeros((4, 721, 1440), dtype=np.float32); s[3] = 288.0
+            session.run(None, {IN_UPPER: u, IN_SURFACE: s})
+            ready = True
+            print("Warmup inference OK — marking Ready.", flush=True)
+        except Exception as e:
+            ready = False
+            print(f"Warmup inference FAILED (pod will stay NotReady): {e}", flush=True)
 
     @app.on_event("startup")
     async def startup():
@@ -80,81 +105,149 @@ data:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok" if session else "loading", "model": "pangu-weather-6h"}
+        return {"status": "ok" if ready else "loading", "model": "pangu-weather"}
 
     @app.get("/v1/models")
     async def list_models():
         return {"object": "list", "data": [
-            {"id": "pangu-weather-6h", "object": "model", "owned_by": "huawei",
+            {"id": "pangu-weather", "object": "model", "owned_by": "huawei",
              "type": "weather-forecast", "license": "BY-NC-SA-4.0"}
         ]}
 
     def _stats(arr):
         import numpy as np
+        a = np.asarray(arr)
+        a = a[np.isfinite(a)]
+        if a.size == 0:
+            return {"mean": None, "min": None, "max": None}
+        return {"mean": round(float(a.mean()), 3),
+                "min":  round(float(a.min()), 3),
+                "max":  round(float(a.max()), 3)}
+
+    def _load_era5(date_str):
+        """Fetch one ERA5 timestep from WeatherBench2 (public GCS), cache on PVC.
+        Returns (upper(5,13,721,1440), surface(4,721,1440), init_time_iso) in Pangu order."""
+        import numpy as np, xarray as xr, pandas as pd
+        cache_dir = os.path.join(MODEL_DIR, "era5")
+        os.makedirs(cache_dir, exist_ok=True)
+        safe = date_str.replace("-", "").replace(":", "").replace(" ", "T")
+        cache = os.path.join(cache_dir, f"{safe}.npz")
+        if os.path.exists(cache):
+            d = np.load(cache, allow_pickle=True)
+            return d["upper"], d["surface"], str(d["init_time"])
+
+        print(f"Fetching ERA5 init for {date_str} from WeatherBench2...", flush=True)
+        try:
+            ds = xr.open_zarr(ERA5_URL, storage_options={"token": "anon"}, consolidated=True)
+        except Exception:
+            ds = xr.open_zarr(ERA5_URL, storage_options={"token": "anon"}, consolidated=False)
+
+        t = pd.Timestamp(date_str)
+        tmin = pd.Timestamp(ds.time.values[0]); tmax = pd.Timestamp(ds.time.values[-1])
+        t = min(max(t, tmin), tmax)                       # clamp to 1959-01-01 .. 2023-01-10
+        sel = ds.sel(time=t, method="nearest")            # nearest 6h analysis
+        init_time = pd.Timestamp(sel.time.values).isoformat()
+
+        UPPER = ["geopotential", "specific_humidity", "temperature",
+                 "u_component_of_wind", "v_component_of_wind"]
+        SURF = ["mean_sea_level_pressure", "10m_u_component_of_wind",
+                "10m_v_component_of_wind", "2m_temperature"]
+        # WB2 stores levels ASCENDING (50..1000) and lat 90..-90, lon 0..359.75 — matches Pangu
+        # everywhere except level order, so reverse the level axis only.
+        upper = np.stack([np.asarray(sel[v].values, dtype=np.float32) for v in UPPER], axis=0)
+        upper = upper[:, ::-1, :, :]
+        surface = np.stack([np.asarray(sel[v].values, dtype=np.float32) for v in SURF], axis=0)
+        np.savez(cache, upper=upper, surface=surface, init_time=np.array(init_time))
+        print(f"ERA5 cached ({upper.nbytes/1e6:.0f} MB upper + {surface.nbytes/1e6:.0f} MB surf).", flush=True)
+        return upper, surface, init_time
+
+    def _demo_input():
+        import numpy as np
+        upper = np.zeros((5, 13, 721, 1440), dtype=np.float32)
+        surface = np.zeros((4, 721, 1440), dtype=np.float32)
+        surface[0] = 101325.0  # MSLP (Pa)
+        surface[3] = 288.0     # T2M  (K)
+        return upper, surface
+
+    def _run_step(upper, surface):
+        # No batch dim — Pangu expects upper (5,13,721,1440), surface (4,721,1440).
+        outs = session.run(None, {IN_UPPER: upper, IN_SURFACE: surface})
+        return outs[0], outs[1]   # output=upper (5,13,721,1440), output_surface (4,721,1440)
+
+    def _extract_point(lat, lon, surf, upper):
+        i = max(0, min(720, int(round((90.0 - lat) / 0.25))))
+        j = int(round(lon / 0.25)) % 1440
         return {
-            "mean": float(np.mean(arr)),
-            "std":  float(np.std(arr)),
-            "min":  float(np.min(arr)),
-            "max":  float(np.max(arr)),
+            "lat": round(lat, 3), "lon": round(lon, 3),
+            "t2m_K":         round(float(surf[3, i, j]), 2),
+            "msl_Pa":        round(float(surf[0, i, j]), 1),
+            "u10_ms":        round(float(surf[1, i, j]), 2),
+            "v10_ms":        round(float(surf[2, i, j]), 2),
+            "t_850hPa_K":    round(float(upper[2, IDX_850, i, j]), 2),
+            "t_500hPa_K":    round(float(upper[2, IDX_500, i, j]), 2),
+            "z_500hPa_m2s2": round(float(upper[0, IDX_500, i, j]), 1),
         }
 
     @app.post("/v1/science/forecast")
     async def forecast(req: dict):
         if session is None:
             raise HTTPException(503, "Model not loaded yet")
+        loop = asyncio.get_event_loop()
+        try:
+            return await loop.run_in_executor(None, _forecast, req)
+        except HTTPException:
+            raise
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return JSONResponse({"error": str(e)}, 500)
 
-        import numpy as np
-        demo = req.get("demo", False)
+    def _forecast(req):
+        import numpy as np, pandas as pd
+        demo = bool(req.get("demo", False))
+        date_str = req.get("date")
+        lead = int(req.get("lead_hours", 6))
+        if lead % 6 != 0 or lead < 6:
+            raise HTTPException(400, "lead_hours must be a positive multiple of 6")
+        steps = lead // 6
 
-        if demo:
-            # Synthetic ERA5-like: zeros upper, physically-plausible surface
-            input_upper   = np.zeros((5, 13, 721, 1440), dtype=np.float32)
-            input_surface = np.zeros((4, 721, 1440),     dtype=np.float32)
-            # Rough typical values: MSLP~101325, U10/V10~0, T2M~288
-            input_surface[0] = 101325.0  # MSLP (Pa)
-            input_surface[3] = 288.0     # T2M  (K)
+        if demo or not date_str:
+            upper, surface = _demo_input()
+            source, init_time = "demo", None
         else:
-            if "input_upper" not in req or "input_surface" not in req:
-                raise HTTPException(400, "Provide 'demo':true or base64-encoded 'input_upper'/'input_surface'")
-            raw_u = base64.b64decode(req["input_upper"])
-            raw_s = base64.b64decode(req["input_surface"])
-            input_upper   = np.frombuffer(raw_u, dtype=np.float32).reshape(5, 13, 721, 1440)
-            input_surface = np.frombuffer(raw_s, dtype=np.float32).reshape(4, 721, 1440)
+            upper, surface, init_time = _load_era5(str(date_str))
+            source = "weatherbench2-era5"
 
-        t0 = time.time()
-        output_upper, output_surface = session.run(
-            None,
-            {"input": input_upper, "input_surface": input_surface}
-        )
-        inference_ms = (time.time() - t0) * 1000
+        ub = upper.astype(np.float32)            # (5,13,721,1440) — no batch
+        sb = surface.astype(np.float32)          # (4,721,1440)
+        for _ in range(steps):
+            ub, sb = _run_step(ub, sb)
 
-        # T is variable index 2 in UPPER_VARS; 850hPa is level index 2 (1000,925,850,...)
-        t850 = output_upper[2, 2, :8, :8].tolist()  # 8×8 top-left corner sample
+        valid_time = None
+        if init_time:
+            valid_time = (pd.Timestamp(init_time) + pd.Timedelta(hours=lead)).isoformat()
 
-        return JSONResponse({
-            "model": "pangu-weather-6h",
-            "output_upper_shape":   list(output_upper.shape),
-            "output_surface_shape": list(output_surface.shape),
-            "output_upper_stats":   _stats(output_upper),
-            "output_surface_stats": _stats(output_surface),
-            "inference_ms":         round(inference_ms, 1),
-            "sample_t850_K":        t850,
-            "note": "sample_t850_K: T at 850hPa, first 8x8 grid points (90°N, 0–1.75°E)"
-        })
+        out = {
+            "model": "pangu-weather",
+            "init_time": init_time,
+            "valid_time": valid_time,
+            "lead_hours": lead,
+            "steps": steps,
+            "source": source,
+            "summary": {
+                "t2m_K":         _stats(sb[3]),
+                "msl_Pa":        _stats(sb[0]),
+                "t_850hPa_K":    _stats(ub[2, IDX_850]),
+                "z_500hPa_m2s2": _stats(ub[0, IDX_500]),
+            },
+        }
+        coords = req.get("coords")
+        if coords:
+            out["points"] = [_extract_point(float(c["lat"]), float(c["lon"]), sb, ub)
+                             for c in coords]
+        return JSONResponse(out)
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pangu-weather-data
-  namespace: models
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 10Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -164,6 +257,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "3600s"
 spec:
   predictor:
     affinity:
@@ -185,74 +279,97 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/pangu-weather-ready-v4
-            VENV=/data/venv-v4
-            LOCKDIR=/data/.setup-lock-dir
+            SENTINEL=/data/pangu-weather-ready-v6
+            VENV=/data/venv-v6
 
-            # Quick path: sentinel already set by a previous successful run
             if [ -f "$SENTINEL" ]; then
-              echo "Already set up, skipping."
+              echo "Already set up (v6), skipping."
               exit 0
             fi
 
-            # Atomic mkdir lock (works on NFS unlike flock)
-            if ! mkdir "$LOCKDIR" 2>/dev/null; then
-              echo "Another pod is running setup, waiting for sentinel..."
-              # Wait up to 30 minutes for the other pod to finish
-              for i in $(seq 1 360); do
-                sleep 5
-                if [ -f "$SENTINEL" ]; then
-                  echo "Sentinel appeared after ${i}x5s — setup done by other pod."
-                  exit 0
-                fi
-              done
-              echo "Timed out waiting. Stealing lock."
-              rmdir "$LOCKDIR" 2>/dev/null || true
-              mkdir "$LOCKDIR" || exit 1
-            fi
-            echo "Acquired setup lock."
+            # maxReplicas=1 → only one setup runs at a time; the rm -rf below makes a
+            # mid-build restart idempotent, so a sentinel fast-path is sufficient and we
+            # avoid stale-lock hangs that previously wedged init for 30 min.
 
-            echo "=== Creating venv ==="
+            echo "=== Creating venv (v6) ==="
             rm -rf "$VENV" 2>/dev/null || find "$VENV" -mindepth 1 -delete 2>/dev/null || true
             python3 -m venv "$VENV"
             $VENV/bin/pip install -U pip
 
-            echo "=== Installing packages ==="
+            echo "=== Installing packages (onnxruntime-gpu CUDA-12 + nvidia cu12 runtime + ERA5 stack) ==="
+            # python:3.11-slim ships NO CUDA libs and HAMi only injects the driver, so onnxruntime-gpu
+            # needs the CUDA 12 runtime/cuDNN/cuBLAS libs in the venv (same nvidia-*-cu12 set torch-cu126 pulls).
+            # Pin onnxruntime-gpu==1.20.1 (CUDA-12 build); the latest resolves to CUDA-13 (libcudart.so.13).
             $VENV/bin/pip install \
-              "onnxruntime-gpu>=1.18" \
+              "onnxruntime-gpu==1.20.1" \
+              "nvidia-cuda-runtime-cu12" "nvidia-cuda-nvrtc-cu12" "nvidia-cublas-cu12" \
+              "nvidia-cufft-cu12" "nvidia-curand-cu12" "nvidia-cusolver-cu12" \
+              "nvidia-cusparse-cu12" "nvidia-cudnn-cu12" \
               numpy \
-              fastapi \
-              "uvicorn[standard]"
+              "xarray>=2024.1" "zarr<3" "fsspec>=2024.1" "gcsfs>=2024.1" pandas \
+              fastapi "uvicorn[standard]"
 
-            echo "=== Verifying imports ==="
-            $VENV/bin/python -c "import fastapi, uvicorn, onnxruntime, numpy; print('All packages OK')"
+            echo "=== Verifying imports (with nvidia cu12 libs on LD_LIBRARY_PATH) ==="
+            NVLIBS=$(find "$VENV/lib" -type d -name lib -path '*/nvidia/*' | tr '\n' ':')
+            LD_LIBRARY_PATH="$NVLIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+              $VENV/bin/python -c "import fastapi, uvicorn, onnxruntime, numpy, xarray, zarr, gcsfs, pandas; import onnxruntime as ort; print('All packages OK; ort providers probe:', [p for p in ort.get_available_providers()])"
 
-            echo "=== Downloading Pangu-Weather 6h ONNX (~1.1 GB from ECMWF) ==="
-            apt-get update -qq && apt-get install -y -qq curl
-            curl -L --progress-bar \
-              "https://get.ecmwf.int/repository/test-data/ai-models/pangu-weather/pangu_weather_6.onnx" \
-              -o /data/pangu_weather_6.onnx
-            echo "Download complete: $(du -sh /data/pangu_weather_6.onnx)"
+            echo "=== Downloading Pangu-Weather 6h ONNX (~1.1 GB from ECMWF, retries) ==="
+            if [ ! -s /data/pangu_weather_6.onnx ]; then
+              $VENV/bin/python - <<'PY'
+            import urllib.request, time, os, sys
+            url = "https://get.ecmwf.int/repository/test-data/ai-models/pangu-weather/pangu_weather_6.onnx"
+            dst = "/data/pangu_weather_6.onnx"
+            tmp = dst + ".tmp"
+            for attempt in range(1, 6):
+                try:
+                    print(f"Attempt {attempt}: downloading {url}", flush=True)
+                    req = urllib.request.Request(url, headers={"User-Agent": "pangu-setup"})
+                    with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
+                        while True:
+                            chunk = r.read(1024 * 1024)
+                            if not chunk: break
+                            f.write(chunk)
+                    if os.path.getsize(tmp) < 100_000_000:
+                        raise RuntimeError(f"file too small ({os.path.getsize(tmp)} bytes)")
+                    os.replace(tmp, dst)
+                    print("Download OK:", os.path.getsize(dst), "bytes", flush=True)
+                    break
+                except Exception as e:
+                    print(f"Attempt {attempt} failed: {e}", flush=True)
+                    try: os.remove(tmp)
+                    except OSError: pass
+                    time.sleep(8)
+            else:
+                sys.exit("ONNX download failed after 5 attempts")
+            PY
+            fi
+            echo "ONNX present: $(du -sh /data/pangu_weather_6.onnx 2>/dev/null || echo MISSING)"
 
             touch "$SENTINEL"
-            rmdir "$LOCKDIR" 2>/dev/null || true
-            echo "=== Setup complete ==="
+            echo "=== Setup complete (v6) ==="
         resources:
           requests: { cpu: "4", memory: 8Gi }
           limits:   { cpu: "8", memory: 16Gi }
         volumeMounts:
-          - { name: pangu-weather-data, mountPath: /data }
+          - { name: pangu-weather, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
-        command: ["/data/venv-v4/bin/python", "/app/server.py"]
+        command: ["bash", "-c"]
+        args:
+          - |
+            NVLIBS=$(find /data/venv-v6/lib -type d -name lib -path '*/nvidia/*' | tr '\n' ':')
+            export LD_LIBRARY_PATH="$NVLIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            exec /data/venv-v6/bin/python /app/server.py
         env:
           - { name: MODEL_DIR, value: /data }
         ports:
           - { containerPort: 8080, protocol: TCP }
         resources:
-          requests: { cpu: "4", memory: 16Gi }
-          limits:   { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "30720" }
+          # Pangu's 3D Swin transformer spikes >30 GB VRAM at 0.25° → whole L40S (48 GB).
+          requests: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1" }
+          limits:   { cpu: "8", memory: 32Gi, nvidia.com/gpu: "1" }
         readinessProbe:
           httpGet: { path: /health, port: 8080 }
           initialDelaySeconds: 60
@@ -264,12 +381,12 @@ spec:
           periodSeconds: 15
           failureThreshold: 40
         volumeMounts:
-          - { name: pangu-weather-data, mountPath: /data }
+          - { name: pangu-weather, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
-      - name: pangu-weather-data
+      - name: pangu-weather
         persistentVolumeClaim:
-          claimName: pangu-weather-data
+          claimName: pangu-weather
       - name: app
         configMap:
           name: pangu-weather-server

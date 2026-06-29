@@ -1,41 +1,41 @@
-# Pangu-Weather — Huawei 3D Neural Network Weather Forecast
+# pangu-weather — research notes
 
 ## Source
 - GitHub: https://github.com/SpuriousCorrelations/Pangu-Weather
-- Weights: ECMWF CDN (get.ecmwf.int)
-- License: BY-NC-SA 4.0
+- Weights: ECMWF CDN — `https://get.ecmwf.int/repository/test-data/ai-models/pangu-weather/pangu_weather_6.onnx` (~1.1 GB, 6h model)
+- Initial conditions: WeatherBench2 ERA5 — `gs://weatherbench2/datasets/era5/1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr`
+  (public, anonymous; 13 levels, 6-hourly, 0.25°, 1959-01-01 … 2023-01-10)
+- License: BY-NC-SA-4.0
 
-## Deployment Summary
-- **Model**: Pangu-Weather 6-hour ONNX (~1.1GB)
-- **GPU**: 1x L40S (shared)
-- **PVC**: pangu-weather-data (10Gi, ReadWriteOnce)
-- **Scale-to-zero**: Yes (minReplicas: 0, RawDeployment)
-- **Venv**: Yes (/data/venv-v4 on PVC)
+## Install settings (verified)
+- `onnxruntime-gpu>=1.18` (CUDAExecutionProvider on L40S)
+- ERA5 zarr stack: `xarray>=2024.1`, `zarr<3` (v2 consolidated metadata reader — safest for WB2), `fsspec>=2024.1`, `gcsfs>=2024.1`, `pandas`
+- Read WB2 with `xr.open_zarr(url, storage_options={"token": "anon"}, consolidated=True)` (fall back to `consolidated=False`)
 
-## API
-- `POST /v1/science/forecast` — 6h global weather forecast
-- Input: base64-encoded numpy arrays (upper: 5x13x721x1440, surface: 4x721x1440)
-- Output: forecast arrays + summary stats + sample T850
-- Demo mode: `{"demo": true}` uses synthetic data
+## Model I/O (verified from repo + ONNX introspection)
+- **Inputs** (bound by rank, not name — robust): upper-air 5-D `(1,5,13,721,1440)` = Z,Q,T,U,V; surface 4-D `(1,4,721,1440)` = MSLP,U10,V10,T2M
+- **Outputs**: same shapes — the 6h-ahead state
+- **Pressure levels (Pangu, DESCENDING)**: [1000,925,850,700,600,500,400,300,250,200,150,100,50]
+- **WB2 stores levels ASCENDING** [50…1000] → reverse the level axis after load. Lat (90→-90) and lon (0→359.75) already match.
+- **Units** match WB2 directly — geopotential m²/s², T in K, wind m/s, pressure Pa. No conversion.
+- **Lead time**: the 6h model is rolled autoregressively `lead_hours/6` times for longer forecasts (6–72h).
 
-## Key Files
-- `inferenceservice.yaml` — ConfigMap (server.py) + ISVC + init container
-- `pvc.yaml` — pangu-weather-data PVC (10Gi RWO)
-- `details.yaml` — model metadata ConfigMap
+## API contract
+- `POST /v1/science/forecast`
+- Real: `{"date","lead_hours","coords"}` → pulls ERA5 (cached per date on PVC), rolls forward, returns `summary` (global mean/min/max of t2m, msl, t@850, z@500) + `points` (per-coord t2m/msl/u10/v10/t@850hPa/t@500hPa/z@500hPa).
+- Demo: `{"demo": true}` — synthetic input, single step, no network.
 
-## Dependencies
-- onnxruntime-gpu >= 1.18
-- numpy, fastapi, uvicorn[standard]
+## Deployment
+- Caduceus pattern: ConfigMap `server.py` at `/app`, venv `/data/venv-v5` + ONNX + ERA5 cache on RWX PVC `pangu-weather` (30Gi).
+- initContainer gated by `/data/pangu-weather-ready-v5` + NFS-safe mkdir lock. `progress-deadline: 1800s`.
+- 1× L40S slice (`gpumem 30720`); scale-to-zero, 15m retention.
 
-## Audit Notes
-- Uses atomic mkdir lock for NFS-safe setup (LOCKDIR pattern)
-- Venv at /data/venv-v4 (versioned path)
-- ONNX model from ECMWF CDN (~1.1GB)
-- Arena memory settings tuned for ONNX (no mem arena, no pattern, no reuse)
-- 13 pressure levels: 50-1000 hPa
-- Returns sample_t850_K (8x8 corner) for quick verification
+## Files
+- `inferenceservice.yaml` — ConfigMap (`server.py`) + ISVC + init container
+- `pvc.yaml` — `pangu-weather` PVC (30Gi RWX)
+- `details.yaml` — v2 Template B science card
+- `test.py` — DEMO leg (finite) + REAL leg (ERA5 2018-01-01, Edmonton-vs-tropics sanity); REAL→SKIP if GCS blocked
+- `README.md`
 
-## Update Reminder
-- Monitor for 24h and other timestep ONNX models
-- Consider adding 24-hour model alongside 6-hour
-- Same input format as fengwu — could share infrastructure
+## Reuse
+- The ERA5 fetch+cache+level-reverse pattern is reused by the other global weather models (`fengwu`, `climax`).
