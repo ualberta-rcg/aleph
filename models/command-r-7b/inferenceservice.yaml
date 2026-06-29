@@ -21,9 +21,12 @@ spec:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
     minReplicas: 1
-    maxReplicas: 5
+    maxReplicas: 3
     scaleMetric: concurrency
-    scaleTarget: 5
+    # vLLM continuous-batching handles many concurrent chats per pod (max-num-seqs 256,
+    # 32GB KV-cache slice); target=5 scaled out while KV cache was ~0%. 24 packs real
+    # load onto one pod before adding a second.
+    scaleTarget: 24
     timeout: 600
     nodeSelector:
       gpu: "on"
