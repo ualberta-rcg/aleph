@@ -21,7 +21,7 @@ data:
       "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
       "scaling": {
         "scale_to_zero": true,
-        "min_replicas": 0,
+        "min_replicas": 1,
         "idle_retention": "10m",
         "cold_start_estimate": "30-60 seconds (venv + model on PVC)"
       },
@@ -53,8 +53,8 @@ data:
         "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
       },
       "catalog": {
-        "description_short": "Ancient Greek BERT — 768-dim embeddings for Ancient/Byzantine Greek (GPU, scale-to-zero)",
-        "description": "Ancient Greek BERT (pranaydeeps/Ancient-Greek-BERT): 110M BERT-base pre-trained on Ancient Greek texts for Digital Humanities / classical studies. Supports text embeddings and masked-token prediction for Ancient/Byzantine Greek corpora — philological analysis, authorship attribution, textual similarity. 768-dim [CLS]-pooled embeddings, max 512 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice, scale-to-zero. Serves the standard OpenAI /v1/embeddings (legacy /v1/science/embed kept).",
+        "description_short": "Ancient Greek BERT — 768-dim embeddings for Ancient/Byzantine Greek",
+        "description": "Ancient Greek BERT (pranaydeeps/Ancient-Greek-BERT): 110M BERT-base pre-trained on Ancient Greek texts for Digital Humanities / classical studies. Supports text embeddings and masked-token prediction for Ancient/Byzantine Greek corpora — philological analysis, authorship attribution, textual similarity. 768-dim [CLS]-pooled embeddings, max 512 tokens. Served via a custom transformers FastAPI server. Serves the standard OpenAI /v1/embeddings (legacy /v1/science/embed kept).",
         "owned_by": "pranaydeeps",
         "source": "pranaydeeps/Ancient-Greek-BERT",
         "source_url": "https://huggingface.co/pranaydeeps/Ancient-Greek-BERT",
@@ -64,7 +64,7 @@ data:
         "framework": "transformers (custom FastAPI server)",
         "domain": "nlp",
         "subdomain": "digital-humanities",
-        "gpu": true,
+        "gpu": false,
         "embedding_dimensions": 768,
         "pooling": "cls",
         "max_input_tokens": 512,

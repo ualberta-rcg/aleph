@@ -113,7 +113,7 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
+    minReplicas: 1
     scaleTarget: 1
     scaleMetric: concurrency
     nodeSelector:
