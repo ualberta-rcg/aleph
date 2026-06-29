@@ -1,5 +1,5 @@
 # bge-m3: multilingual text embeddings (BAAI/bge-m3) — ported from the POC cluster.
-# CPU-only via HuggingFace TEI; no GPU, so no HAMi slice and no gpu nodeSelector.
+# GPU via HuggingFace TEI (Ada Lovelace / L40S image, fp16) on a HAMi vGPU slice.
 # Always-on (minReplicas 1). API: POST /v1/embeddings (OpenAI-style, TEI-native).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -20,6 +20,8 @@ spec:
                   operator: DoesNotExist
     minReplicas: 1
     timeout: 600
+    nodeSelector:
+      gpu: "on"
     initContainers:
       - name: hf-fetch-model
         image: python:3.11-slim
@@ -65,23 +67,25 @@ spec:
             mountPath: /data
     containers:
       - name: kserve-container
-        image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.6
+        image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
         args:
           - --model-id=/data
           - --port=8080
-          - --dtype=float32
+          - --dtype=float16
         ports:
           - containerPort: 8080
             protocol: TCP
         resources:
           requests:
+            cpu: "2"
+            memory: 4Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
+          limits:
             cpu: "4"
             memory: 8Gi
-          limits:
-            cpu: "8"
-            memory: 16Gi      # was 8Gi — oversize single inputs OOM-killed TEI (exitCode 137) on the
-                             # fp32 XLM-R forward pass over ~8k tokens; bumped 2026-06-19 so the full
-                             # 8192-token context fits. Reclaim via the truncation test in test.py.
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
         readinessProbe:
           httpGet:
             path: /health

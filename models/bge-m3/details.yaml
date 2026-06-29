@@ -23,7 +23,7 @@ data:
         "scale_to_zero": false,
         "min_replicas": 1,
         "idle_retention": "always-on",
-        "cold_start_estimate": "20-40 seconds (weights on PVC)"
+        "cold_start_estimate": "20-40 seconds (weights on PVC; GPU image pull on first node placement)"
       },
       "behavior": {
         "supports_vision": false,
@@ -64,22 +64,22 @@ data:
         "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
       },
       "catalog": {
-        "description_short": "BAAI BGE-M3 multilingual embeddings: 1024-dim dense (+sparse/ColBERT), 8K ctx, TEI/CPU always-on",
-        "description": "BGE-M3 is a versatile embedding model: Multi-Functionality (dense + sparse/lexical + multi-vector ColBERT retrieval in one model), Multi-Linguality (100+ languages), and Multi-Granularity (up to 8192 tokens). ~568M params, XLM-RoBERTa backbone; dense vectors are 1024-dim, CLS-pooled and L2-normalized. No query instruction prefix needed (unlike BGE v1.5). Served CPU-only via HuggingFace TEI; the gateway exposes only the dense /v1/embeddings (OpenAI-shaped) path.",
+        "description_short": "BAAI BGE-M3 multilingual embeddings: 1024-dim dense (+sparse/ColBERT), 8K ctx, TEI/GPU always-on",
+        "description": "BGE-M3 is a versatile embedding model: Multi-Functionality (dense + sparse/lexical + multi-vector ColBERT retrieval in one model), Multi-Linguality (100+ languages), and Multi-Granularity (up to 8192 tokens). ~568M params, XLM-RoBERTa backbone; dense vectors are 1024-dim, CLS-pooled and L2-normalized. No query instruction prefix needed (unlike BGE v1.5). Served on GPU via HuggingFace TEI (Ada Lovelace / L40S image, fp16) on a HAMi vGPU slice; the gateway exposes only the dense /v1/embeddings (OpenAI-shaped) path.",
         "owned_by": "BAAI",
         "source": "BAAI/bge-m3",
         "source_url": "https://huggingface.co/BAAI/bge-m3",
         "license": "MIT",
         "parameters": "568M",
-        "precision": "fp32",
-        "framework": "text-embeddings-inference (cpu-1.6)",
+        "precision": "fp16",
+        "framework": "text-embeddings-inference (89-1.9, CUDA/Ada)",
         "domain": "nlp",
         "subdomain": "embedding",
-        "gpu": false,
+        "gpu": true,
         "embedding_dimensions": 1024,
         "pooling": "cls",
         "normalization": "l2",
         "max_input_tokens": 8192,
-        "tags": ["embedding", "multilingual", "dense", "sparse", "colbert", "retrieval", "long-context", "cpu"]
+        "tags": ["embedding", "multilingual", "dense", "sparse", "colbert", "retrieval", "long-context", "gpu"]
       }
     }

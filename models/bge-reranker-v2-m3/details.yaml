@@ -23,7 +23,7 @@ data:
         "scale_to_zero": false,
         "min_replicas": 1,
         "idle_retention": "always-on",
-        "cold_start_estimate": "10-40 seconds (weights + ONNX on PVC)"
+        "cold_start_estimate": "10-40 seconds (weights on PVC; GPU image pull on first node placement)"
       },
       "behavior": {
         "supports_vision": false,
@@ -56,20 +56,20 @@ data:
         "model": { "type": "string", "description": "Model name" }
       },
       "catalog": {
-        "description_short": "BAAI bge-reranker-v2-m3 multilingual cross-encoder reranker (TEI/ONNX, CPU always-on)",
-        "description": "BGE-Reranker v2-M3 is a multilingual cross-encoder for re-ranking retrieval results (the second-stage rerank in a hybrid RAG pipeline, after a retriever like bge-m3). ~568M params, XLM-RoBERTa backbone, 100+ languages, up to 8192 tokens. The init container exports the model to ONNX once (idempotent via a sentinel file) so TEI serves it on the ORT backend for fast large-batch scoring. Served CPU-only via TEI; the gateway exposes a Cohere/Jina-style /v1/rerank and translates it to the TEI native /rerank. Relevance scores are sigmoid-normalized to [0,1].",
+        "description_short": "BAAI bge-reranker-v2-m3 multilingual cross-encoder reranker (TEI/GPU always-on)",
+        "description": "BGE-Reranker v2-M3 is a multilingual cross-encoder for re-ranking retrieval results (the second-stage rerank in a hybrid RAG pipeline, after a retriever like bge-m3). ~568M params, XLM-RoBERTa backbone, 100+ languages, up to 8192 tokens. Served on GPU via HuggingFace TEI (Ada Lovelace / L40S image, fp16) on a HAMi vGPU slice — TEI's CUDA backend serves the safetensors weights directly (no ONNX/ORT export needed). The gateway exposes a Cohere/Jina-style /v1/rerank and translates it to the TEI native /rerank. Relevance scores are sigmoid-normalized to [0,1].",
         "owned_by": "BAAI",
         "source": "BAAI/bge-reranker-v2-m3",
         "source_url": "https://huggingface.co/BAAI/bge-reranker-v2-m3",
         "license": "MIT",
         "parameters": "568M",
-        "precision": "onnx-fp32",
-        "framework": "text-embeddings-inference (cpu-1.6, ORT backend)",
+        "precision": "fp16",
+        "framework": "text-embeddings-inference (89-1.9, CUDA/Ada)",
         "domain": "nlp",
         "subdomain": "reranking",
-        "gpu": false,
+        "gpu": true,
         "cross_encoder": true,
         "max_input_tokens": 8192,
-        "tags": ["reranker", "multilingual", "cross-encoder", "rag", "cohere-compatible", "cpu"]
+        "tags": ["reranker", "multilingual", "cross-encoder", "rag", "cohere-compatible", "gpu"]
       }
     }

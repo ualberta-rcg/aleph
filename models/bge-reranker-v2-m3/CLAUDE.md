@@ -5,31 +5,34 @@ Always-on multilingual cross-encoder reranker (`/v1/rerank`) for second-stage RA
 Template-C (`type: reranker`) exemplar — the rerank test-harness reference.
 
 ## Runtime
-- Image: `ghcr.io/huggingface/text-embeddings-inference:cpu-1.6`
-- Entry args: `--model-id=/data --port=8080 --dtype=float32 --max-client-batch-size=128`
+- Image: `ghcr.io/huggingface/text-embeddings-inference:89-1.9` (CUDA build for Ada / SM 8.9 / L40S)
+- Entry args: `--model-id=/data --port=8080 --dtype=float16 --max-client-batch-size=128`
 - API path(s): `POST /v1/rerank` (Cohere-style; gateway → TEI native `/rerank`), `GET /health`
 
 ## Resources
-- CPU request/limit: init 4/8, server 4/8
-- Memory request/limit: init 8Gi/16Gi (ONNX export), server 4Gi/8Gi
-- GPU request: **none** (CPU-only; ORT backend)
+- CPU request/limit: init 2/4, server 2/4
+- Memory request/limit: init 4Gi/8Gi, server 4Gi/8Gi
+- GPU request: **HAMi vGPU slice** — `nvidia.com/gpu: "1"` + `nvidia.com/gpumem: "8192"`; `nodeSelector gpu=on`. Uses ~1.6 GB VRAM (fp16).
 
 ## Storage
 - PVC name: `bge-reranker-v2-m3-data` (ReadWriteMany, nfs-models, 5Gi)
-- Mount path: `/data` (init writes HF weights + ONNX export, server reads readOnly)
-- Warm-cache condition: sentinel `/data/.onnx-ready` → skip download + ONNX export
+- Mount path: `/data` (init writes HF weights, server reads readOnly)
+- Warm-cache condition: `if [ -f /data/config.json ]` → skip download
 
 ## Known quirks
-- **ONNX export at deploy:** the init container exports the model to ONNX (ORT backend) the first
-  time, gated by `/data/.onnx-ready`. Subsequent cold starts skip it (~10s). A fresh PVC = ~1-2min export.
+- **No ONNX export (GPU):** TEI's CUDA backend serves the HF safetensors weights directly, so the
+  init only downloads weights (the old CPU path exported to ONNX/ORT — removed in the GPU migration).
 - **Gateway type-mismatch codes differ by endpoint:** chat-on-rerank → **404**; embed-on-rerank →
   **424** (Failed Dependency). Both are valid rejections — the test accepts any 4xx.
 - **Always-on by design:** `minReplicas: 1`. Leave running; do not add `stop=true`.
 - Scores are sigmoid-normalized to [0,1].
+- **Migrated CPU→GPU (2026-06-28):** was TEI `cpu-1.6` / onnx-fp32 (ORT). Now `89-1.9` (CUDA/Ada) /
+  fp16 on a HAMi slice; dropped the ONNX export. Clean delete+redeploy (PVC reused). Gateway 8/3/0;
+  rerank-x32 ~86 ms/req.
 
 ## Deploy / update steps
-1. `kubectl apply -f pvc.yaml` (RWX; caches weights + ONNX).
-2. `kubectl apply -f inferenceservice.yaml` (TEI cpu-1.6, minReplicas 1; ONNX export in init).
+1. `kubectl apply -f pvc.yaml` (RWX; caches weights).
+2. `kubectl apply -f inferenceservice.yaml` (TEI 89-1.9 CUDA, fp16, HAMi slice, minReplicas 1).
 3. `kubectl apply -f details.yaml` (Template-C card; hot-reloads via ConfigMap watch).
 
 ## Validation checks

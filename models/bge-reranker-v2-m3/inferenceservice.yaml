@@ -1,6 +1,7 @@
 # bge-reranker-v2-m3: multilingual cross-encoder reranker — ported from the POC cluster.
-# CPU-only via HuggingFace TEI (ORT/ONNX backend); no GPU / no HAMi slice.
-# Init container downloads HF weights + exports to ONNX (idempotent via sentinel).
+# GPU via HuggingFace TEI (Ada Lovelace / L40S image, fp16) on a HAMi vGPU slice.
+# Init container downloads HF safetensors weights (TEI's CUDA backend serves them
+# directly — no ONNX/ORT export needed on GPU).
 # Always-on (minReplicas 1). TEI serves native /rerank; the gateway exposes a
 # Cohere-style /v1/rerank and translates {documents}->{texts} + response shape.
 apiVersion: serving.kserve.io/v1beta1
@@ -22,8 +23,10 @@ spec:
                   operator: DoesNotExist
     minReplicas: 1
     timeout: 600
+    nodeSelector:
+      gpu: "on"
     initContainers:
-      - name: hf-fetch-and-export
+      - name: hf-fetch-model
         image: python:3.11-slim
         env:
           - name: HF_TOKEN
@@ -37,16 +40,14 @@ spec:
         args:
           - |
             set -e
-            SENTINEL=/data/.onnx-ready
-            if [ -f "$SENTINEL" ]; then
-              echo "ONNX model already exported, skipping."
-              exit 0
-            fi
-            pip install -q huggingface_hub transformers torch "optimum[onnxruntime]"
             python3 -u <<'PY'
             import os
             from pathlib import Path
-            if not Path("/data/config.json").is_file():
+            if Path("/data/config.json").is_file():
+                print("bge-reranker-v2-m3 weights already on PVC, skipping.", flush=True)
+            else:
+                import subprocess, sys
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "huggingface_hub"])
                 from huggingface_hub import snapshot_download
                 Path("/data").mkdir(parents=True, exist_ok=True)
                 print("Downloading BAAI/bge-reranker-v2-m3 ...", flush=True)
@@ -57,49 +58,39 @@ spec:
                     token=os.environ.get("HF_TOKEN"),
                 )
                 print("Download finished.", flush=True)
-            else:
-                print("HF weights already on PVC.", flush=True)
-            onnx_path = Path("/data/onnx/model.onnx")
-            if not onnx_path.is_file():
-                print("Exporting to ONNX for ORT backend...", flush=True)
-                from optimum.onnxruntime import ORTModelForSequenceClassification
-                model = ORTModelForSequenceClassification.from_pretrained("/data", export=True)
-                onnx_path.parent.mkdir(parents=True, exist_ok=True)
-                model.save_pretrained("/data/onnx")
-                print("ONNX export done.", flush=True)
-            else:
-                print("ONNX model already exists.", flush=True)
-            Path("/data/.onnx-ready").touch()
-            print("Init complete.", flush=True)
             PY
         resources:
           requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
             cpu: "4"
             memory: 8Gi
-          limits:
-            cpu: "8"
-            memory: 16Gi
         volumeMounts:
           - name: bge-reranker-data
             mountPath: /data
     containers:
       - name: kserve-container
-        image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.6
+        image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
         args:
           - --model-id=/data
           - --port=8080
-          - --dtype=float32
+          - --dtype=float16
           - --max-client-batch-size=128
         ports:
           - containerPort: 8080
             protocol: TCP
         resources:
           requests:
-            cpu: "4"
+            cpu: "2"
             memory: 4Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
           limits:
-            cpu: "8"
+            cpu: "4"
             memory: 8Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "8192"
         readinessProbe:
           httpGet:
             path: /health

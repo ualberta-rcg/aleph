@@ -2,13 +2,13 @@
 
 Multilingual text embedding model — 1024-dim **dense** vectors, plus sparse (lexical) and
 multi-vector (ColBERT) retrieval from one model. 100+ languages, up to 8192 tokens. Served
-**CPU-only via HuggingFace TEI**, always-on.
+**on GPU via HuggingFace TEI** (Ada/L40S CUDA image, fp16) on a HAMi vGPU slice, always-on.
 
 ## Deployment
 
 ```bash
 kubectl apply -f pvc.yaml             # RWX weights (nfs-models) — downloaded once, reused
-kubectl apply -f inferenceservice.yaml # TEI cpu-1.6, minReplicas: 1 (always-on)
+kubectl apply -f inferenceservice.yaml # TEI 89-1.9 (CUDA/Ada), fp16, HAMi slice, minReplicas: 1 (always-on)
 kubectl apply -f details.yaml          # Template-C card (type: embedding)
 ```
 
@@ -33,12 +33,13 @@ usage, encoding_format (float + base64), truncation (>8192 tokens), multilingual
 
 | Setting | Value |
 |---------|-------|
-| Framework | HuggingFace TEI `cpu-1.6` (no GPU) |
+| Framework | HuggingFace TEI `89-1.9` (CUDA/Ada, L40S) |
 | Endpoint | `POST /v1/embeddings` (OpenAI-shaped), health `/health` |
 | Embedding dim | 1024 (dense; CLS-pooled, L2-normalized) |
 | Max input | 8192 tokens |
-| Precision | fp32 |
+| Precision | fp16 |
 | Parameters | ~568M (XLM-RoBERTa backbone) |
+| GPU | HAMi vGPU slice (`nvidia.com/gpu: 1`, `gpumem: 8192`); ~1.6 GB VRAM; `nodeSelector gpu=on` |
 | Scale | always-on (`minReplicas: 1`) |
 | Weights | PVC `bge-m3-data` (RWX, nfs-models) |
 

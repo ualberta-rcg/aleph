@@ -3,6 +3,28 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — migrate bge-m3 + bge-reranker-v2-m3 from CPU to GPU (TEI CUDA)
+
+**What:** moved the two always-on BGE-M3 NLP models off CPU TEI onto GPU TEI to cut latency.
+
+- **Image:** `ghcr.io/huggingface/text-embeddings-inference:cpu-1.6` → `:89-1.9` (the CUDA build
+  for Ada Lovelace / SM 8.9, i.e. our L40S workers).
+- **Precision:** `--dtype float32` → `float16`.
+- **Scheduling:** added `nodeSelector: gpu: "on"`; request a **HAMi vGPU slice**
+  (`nvidia.com/gpu: "1"` + `nvidia.com/gpumem: "8192"`) — each model uses ~1.6 GB VRAM, so the two
+  share one physical L40S alongside other tenants.
+- **bge-reranker-v2-m3:** dropped the init-container ONNX/ORT export (and `optimum[onnxruntime]`) —
+  TEI's CUDA backend serves the HF safetensors weights directly; the init now only fetches weights.
+
+**Why:** answer to "can GPU make the reranker + bge faster?" — yes. Both stayed always-on
+(`minReplicas: 1`); PVCs were reused (weights already cached).
+
+**Validation:** clean delete + redeploy from the repo (user confirmed not a live server). Both
+`READY=True`, `3/3 Running` on a GPU worker (rack05-16); confirmed two TEI procs (~1.6 GB each) on
+one L40S via `nvidia-smi`. Gateway batteries: **bge-m3 9 PASS / 2 EXP / 0 FAIL**,
+**bge-reranker-v2-m3 8 PASS / 3 EXP / 0 FAIL**. Latency (batch-32, warm, through the gateway):
+bge-m3 embed ~**183 ms/req**, bge-reranker rerank-x32 ~**86 ms/req**.
+
 ## 2026-06-28 — deploy kandinsky-3-1-flash (Kandinsky 3.1 Flash text-to-image, whole GPU)
 
 **What:** added a new model `models/kandinsky-3-1-flash` — the distilled fast-sampling text-to-image

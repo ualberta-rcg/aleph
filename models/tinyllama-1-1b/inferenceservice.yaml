@@ -84,7 +84,7 @@ spec:
       volumeMounts:
       - mountPath: /mnt/models
         name: tinyllama-1-1b
-    minReplicas: 0
+    minReplicas: 1
     scaleMetric: concurrency
     scaleTarget: 2
     timeout: 600

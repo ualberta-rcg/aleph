@@ -108,6 +108,7 @@ spec:
     minReplicas: 1
     scaleTarget: 1
     scaleMetric: concurrency
+    timeout: 180
     nodeSelector:
       gpu: "on"
     volumes:
