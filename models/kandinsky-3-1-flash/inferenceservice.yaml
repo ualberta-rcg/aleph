@@ -1,0 +1,296 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: kandinsky-3-1-flash
+  namespace: models
+  labels:
+    model: kandinsky-3-1-flash
+    task: text-to-image
+    runtime: custom
+  annotations:
+    autoscaling.knative.dev/target: "1"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11
+        command: ["/bin/bash", "-lc"]
+        args:
+          - |
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+            export VENV=/data/venv
+            export SRC=/data/src/Kandinsky-3
+            export HF_HOME=/data/hf_cache
+            export SENTINEL=/data/.ready
+
+            if [ -f "${SENTINEL}" ] && [ -x "${VENV}/bin/python" ] && [ -d "${SRC}/kandinsky3" ]; then
+              echo "Kandinsky 3.1 Flash runtime already staged"
+              exit 0
+            fi
+
+            apt-get update
+            apt-get install -y --no-install-recommends git ca-certificates
+            rm -rf /var/lib/apt/lists/*
+
+            mkdir -p "${HF_HOME}" /data/src
+            python -m venv "${VENV}"
+            "${VENV}/bin/pip" install --upgrade pip wheel
+            "${VENV}/bin/pip" install --index-url https://download.pytorch.org/whl/cu126 \
+              torch torchvision
+            "${VENV}/bin/pip" install \
+              fastapi "uvicorn[standard]" pillow timm "transformers<5" accelerate diffusers \
+              omegaconf einops scipy scikit-image tqdm huggingface_hub sentencepiece protobuf safetensors
+
+            if [ ! -d "${SRC}/.git" ]; then
+              rm -rf "${SRC}"
+              git clone --depth 1 https://github.com/ai-forever/Kandinsky-3.git "${SRC}"
+            fi
+
+            "${VENV}/bin/python" - <<'PY'
+            import os
+            from huggingface_hub import hf_hub_download, snapshot_download
+
+            token = os.environ.get("HF_TOKEN") or None
+            cache_dir = os.environ["HF_HOME"]
+            repo_id = "ai-forever/Kandinsky3.1"
+
+            hf_hub_download(repo_id=repo_id, filename="weights/kandinsky3_flash.pt", cache_dir=cache_dir, token=token)
+            hf_hub_download(repo_id=repo_id, filename="weights/movq.pt", cache_dir=cache_dir, token=token)
+            snapshot_download(repo_id=repo_id, allow_patterns="weights/flan_ul2_encoder/*", cache_dir=cache_dir, token=token)
+            PY
+
+            touch "${SENTINEL}"
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+                optional: true
+        resources:
+          requests:
+            cpu: "2"
+            memory: 8Gi
+          limits:
+            cpu: "8"
+            memory: 32Gi
+        volumeMounts:
+          - name: kandinsky-3-1-flash
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - name: MODEL_ID
+            value: kandinsky-3-1-flash
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: PYTHONPATH
+            value: /data/src/Kandinsky-3
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+                optional: true
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "2"
+            memory: 24Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "8"
+            memory: 64Gi
+            nvidia.com/gpu: "1"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 60
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          failureThreshold: 80
+        volumeMounts:
+          - name: kandinsky-3-1-flash
+            mountPath: /data
+          - name: app
+            mountPath: /app
+    volumes:
+      - name: kandinsky-3-1-flash
+        persistentVolumeClaim:
+          claimName: kandinsky-3-1-flash
+      - name: app
+        configMap:
+          name: kandinsky-3-1-flash-server
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kandinsky-3-1-flash-server
+  namespace: models
+data:
+  server.py: |
+    import asyncio
+    import base64
+    import io
+    import os
+    import time
+    from typing import Any, Dict, Optional, Tuple
+
+    import torch
+    import uvicorn
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.responses import JSONResponse
+
+    MODEL_ID = os.environ.get("MODEL_ID", "kandinsky-3-1-flash")
+    HF_HOME = os.environ.get("HF_HOME", "/data/hf_cache")
+
+    app = FastAPI(title="Kandinsky 3.1 Flash Server")
+    _pipeline = None
+    _load_error: Optional[str] = None
+    _generation_lock = asyncio.Lock()
+
+
+    def _parse_size(value: Optional[str]) -> Tuple[int, int]:
+      if not value:
+        return 1024, 1024
+      try:
+        width_s, height_s = value.lower().split("x", 1)
+        width, height = int(width_s), int(height_s)
+      except Exception as exc:
+        raise HTTPException(status_code=400, detail="size must use WIDTHxHEIGHT") from exc
+      width = max(256, min(1024, (width // 64) * 64))
+      height = max(256, min(1024, (height // 64) * 64))
+      return width, height
+
+
+    def _b64_png(image) -> str:
+      buf = io.BytesIO()
+      image.save(buf, format="PNG")
+      return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+    def _load_pipeline():
+      global _pipeline, _load_error
+      if _pipeline is not None:
+        return _pipeline
+      try:
+        from kandinsky3 import get_T2I_Flash_pipeline
+
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        dtype_map = {
+          "unet": torch.float32,
+          "text_encoder": torch.float16,
+          "movq": torch.float32,
+        }
+        _pipeline = get_T2I_Flash_pipeline(
+          device_map=device,
+          dtype_map=dtype_map,
+          cache_dir=HF_HOME,
+          low_cpu_mem_usage=True,
+        )
+        _load_error = None
+        return _pipeline
+      except Exception as exc:
+        _load_error = repr(exc)
+        raise
+
+
+    @app.on_event("startup")
+    def startup() -> None:
+      torch.set_grad_enabled(False)
+      _load_pipeline()
+
+
+    @app.get("/health")
+    def health() -> Dict[str, Any]:
+      if _pipeline is not None:
+        return {"status": "ok", "model": MODEL_ID}
+      return JSONResponse(status_code=503, content={"status": "loading", "error": _load_error})
+
+
+    @app.post("/v1/images/generations")
+    async def images_generations(request: Request) -> Dict[str, Any]:
+      body = await request.json()
+      prompt = body.get("prompt")
+      if isinstance(prompt, list):
+        prompt = " ".join(str(x) for x in prompt)
+      if not prompt or not str(prompt).strip():
+        raise HTTPException(status_code=400, detail="prompt is required")
+
+      n = max(1, min(int(body.get("n", 1)), 2))
+      width, height = _parse_size(body.get("size"))
+      guidance = float(body.get("guidance_scale", 3.0))
+      steps = int(body.get("num_inference_steps", body.get("steps", 4)))
+      steps = max(4, min(steps, 50))
+      negative_prompt = body.get("negative_prompt")
+      seed = body.get("seed")
+
+      async with _generation_lock:
+        def run_generation():
+          if seed is not None:
+            seed_i = int(seed)
+            torch.manual_seed(seed_i)
+            if torch.cuda.is_available():
+              torch.cuda.manual_seed_all(seed_i)
+          pipe = _load_pipeline()
+          return pipe(
+            text=str(prompt),
+            negative_text=str(negative_prompt) if negative_prompt else None,
+            images_num=n,
+            bs=1,
+            width=width,
+            height=height,
+            guidance_scale=guidance,
+            steps=steps,
+          )
+
+        images = await asyncio.to_thread(run_generation)
+
+      return {
+        "created": int(time.time()),
+        "data": [{"b64_json": _b64_png(image)} for image in images],
+      }
+
+
+    @app.post("/v1/images/edits")
+    async def images_edits() -> JSONResponse:
+      return JSONResponse(
+        status_code=501,
+        content={
+          "error": {
+            "message": (
+              "kandinsky-3-1-flash serves the upstream Kandinsky 3.1 Flash "
+              "text-to-image pipeline only. For img2img/inpainting use the "
+              "full-featured kandinsky-3-1 deployment."
+            ),
+            "type": "not_implemented",
+          }
+        },
+      )
+
+
+    @app.post("/")
+    async def root(request: Request) -> Dict[str, Any]:
+      return await images_generations(request)
+
+
+    if __name__ == "__main__":
+      uvicorn.run(app, host="0.0.0.0", port=8080)

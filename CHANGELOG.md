@@ -3,6 +3,35 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-06-28 — deploy kandinsky-3-1-flash (Kandinsky 3.1 Flash text-to-image, whole GPU)
+
+**What:** added a new model `models/kandinsky-3-1-flash` — the distilled fast-sampling text-to-image
+variant of Kandinsky 3.1 — and deployed it live on cluster 43. This is separate from the existing
+`kandinsky-3` (Diffusers 3.0) and from the planned full-featured `kandinsky-3-1` (img2img/inpainting).
+
+- New flat 6-file dir: `pvc.yaml`, `inferenceservice.yaml` (ISVC + `kandinsky-3-1-flash-server`
+  ConfigMap), `details.yaml` (v2 card), `README.md`, `CLAUDE.md`, `test.py`.
+- KServe custom predictor: init builds a persisted venv on the RWX PVC, clones upstream
+  `ai-forever/Kandinsky-3`, and stages `ai-forever/Kandinsky3.1` Flash weights
+  (`kandinsky3_flash.pt`, `movq.pt`, `flan_ul2_encoder/`). FastAPI server serves the upstream
+  `get_T2I_Flash_pipeline` behind OpenAI-compatible `/v1/images/generations`.
+- **Whole GPU, no HAMi:** `nvidia.com/gpu: "1"`, no `nvidia.com/gpumem`. `minReplicas: 1` (always-on).
+- **Research-derived fixes (baked into the init so a fresh PVC works in one shot):** pin
+  `transformers<5` (5.x forwards the upstream `load_in_8bit`/`load_in_4bit` kwargs to
+  `T5EncoderModel.__init__` → `TypeError`); add `scikit-image` (upstream `kandinsky3` imports
+  `skimage`); install CUDA 12.6 Torch wheels instead of the upstream `setup.py` CUDA-11.1 pins;
+  `timeout: 600` (Knative cap).
+
+**Why:** bring back fast Kandinsky 3.1 image generation as an always-on endpoint. img2img and
+inpainting (the full Ray-era feature set) are intentionally deferred to a separate `kandinsky-3-1`
+deployment; `/v1/images/edits` here returns `501` pointing at that model.
+
+**Validation:** deployed from a **fresh PVC** (full venv build + weight download) → `READY=True`,
+`3/3 Running` on a whole L40S (rack08-11). Gateway test battery
+(`models/kandinsky-3-1-flash/test.py` via the public edge): **9 PASS / 2 EXP / 0 FAIL** — default +
+512/768 sizes, non-square, n=2, negative_prompt+guidance_scale, seed determinism (identical bytes),
+catalog `type=image`; expected 501 on edits and 404 on bad model.
+
 ## 2026-06-28 — standardize always-on agentic/model tier
 
 **What:** selected a small always-on tier for low-latency agentic and UI use, while leaving most

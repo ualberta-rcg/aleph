@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kandinsky-3-1-flash-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "kandinsky-3-1-flash",
+      "status": "production",
+      "type": "image",
+      "endpoints": {
+        "primary": "/v1/images/generations",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "kandinsky-3-1-flash",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 128
+      },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "max_replicas": 1,
+        "idle_retention": "15m",
+        "cold_start_estimate": "Always-on after the initial code/venv/weight staging. First fresh deployment takes several minutes to build the venv and download Kandinsky 3.1 Flash weights to the PVC."
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "prompt": {"type": "string", "required": true, "description": "Text prompt for image generation"},
+        "negative_prompt": {"type": "string", "required": false, "default": "", "description": "Negative text prompt; forwarded to the upstream classifier-free guidance path"},
+        "n": {"type": "integer", "required": false, "default": 1, "description": "Number of PNG images to return; server caps requests at 2"},
+        "size": {"type": "string", "required": false, "default": "1024x1024", "description": "Output size as WIDTHxHEIGHT; clamped to 256-1024 and rounded down to multiples of 64"},
+        "num_inference_steps": {"type": "integer", "required": false, "default": 4, "description": "Accepted for API compatibility; the Flash pipeline uses its fixed fast sampling schedule"},
+        "guidance_scale": {"type": "float", "required": false, "default": 3.0, "description": "Classifier-free guidance scale"},
+        "seed": {"type": "integer", "required": false, "description": "Optional deterministic seed applied to torch before generation"}
+      },
+      "output_map": {
+        "created": {"type": "integer", "description": "Unix timestamp"},
+        "data": {"type": "array", "description": "List of image objects"},
+        "data[].b64_json": {"type": "string", "description": "Base64-encoded PNG image"}
+      },
+      "catalog": {
+        "description_short": "Kandinsky 3.1 Flash fast text-to-image generation (AI Forever, whole L40S GPU)",
+        "description": "Kandinsky 3.1 Flash is the distilled fast-sampling text-to-image variant of AI Forever / Sber's Kandinsky 3.1, served here through the upstream ai-forever/Kandinsky-3 Python package with ai-forever/Kandinsky3.1 Flash weights. This deployment exposes an OpenAI-compatible /v1/images/generations endpoint on one whole L40S GPU (no HAMi vGPU slicing). It maps prompt, negative_prompt, n, size, guidance_scale, num_inference_steps, and seed to the native Flash pipeline and returns base64 PNG images. img2img and inpainting are NOT served here by design - the full-featured kandinsky-3-1 deployment covers those.",
+        "owned_by": "ai-forever",
+        "source": "ai-forever/Kandinsky3.1",
+        "source_url": "https://huggingface.co/ai-forever/Kandinsky3.1",
+        "code_url": "https://github.com/ai-forever/Kandinsky-3",
+        "license": "Apache-2.0",
+        "variant": "flash (distilled fast text-to-image)",
+        "parameters": "~11.9B family (Flan-UL2 text encoder, Kandinsky U-Net, MoVQ decoder)",
+        "precision": "mixed fp32/fp16",
+        "framework": "custom PyTorch upstream Kandinsky-3 package",
+        "domain": "image-generation",
+        "subdomain": "text-to-image",
+        "unsupported": ["img2img and inpainting are not enabled on the flash deployment (see kandinsky-3-1)"],
+        "tags": ["image-generation", "text-to-image", "gpu", "diffusion", "kandinsky", "kandinsky-3-1", "flash", "kserve"]
+      }
+    }
