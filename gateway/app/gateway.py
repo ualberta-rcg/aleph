@@ -1340,15 +1340,17 @@ def _catalog_html() -> str:
         if cap.get("reasoning"): caps.append("reasoning")
         caps_html = " ".join(badge(c, "cap") for c in caps)
         ao_html = badge("always-on", "ao") if always_on else ""
-        # status line + wake help for cold models
+        # status line + wake help. Scale-to-zero models show wake instructions
+        # whether they're currently up or cold (they can drop to zero when idle).
         if ready:
             status = '<span class="status up">● up now</span>'
-            wake_html = ""
         elif always_on:
             status = '<span class="status warm">○ starting</span>'
-            wake_html = ""
         else:
             status = f'<span class="status cold">○ cold — wakes in {esc(cold_est or "?")} on first request</span>'
+        if always_on:
+            wake_html = ""
+        else:
             main_ep, _ = _entry_paths(e)
             wake_html = (
                 '<details class="wake"><summary>how to wake it up</summary>'
