@@ -1562,10 +1562,11 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  .keylink{{display:inline-block;background:var(--gold);color:#23301f;border-radius:8px;
    padding:10px 16px;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap}}
  .keylink:hover{{background:#ffe14d;text-decoration:none}}
- .titlerow{{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin:16px 0 0}}
- .titlerow h1{{margin:0;font-size:32px;font-weight:700;letter-spacing:-.01em}}
- .amiilogo{{line-height:0;display:inline-flex}} .amiilogo img{{height:48px;width:auto;object-fit:contain;display:block}}
+ .titleblock{{display:flex;justify-content:space-between;align-items:center;gap:28px;flex-wrap:wrap;margin:16px 0 0}}
+ .titletext{{min-width:0;flex:1 1 460px}}
+ .titletext h1{{margin:0;font-size:32px;font-weight:700;letter-spacing:-.01em}}
  header.top .lede{{margin:8px 0 0;color:#dfeae0;max-width:840px;font-size:15px}}
+ .amiilogo{{line-height:0;display:inline-flex;flex:none}} .amiilogo img{{height:94px;width:auto;object-fit:contain;display:block}}
  header.top .lede b{{color:var(--gold)}}
  /* ── intro: 2 columns ── */
  .about{{max-width:1200px;margin:0 auto;padding:18px 24px 4px;display:grid;
@@ -1617,8 +1618,8 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  footer a{{color:var(--ua);font-weight:600}}
  /* responsive */
  @media(max-width:680px){{
-   .ualogo img{{height:44px}} .amiilogo img{{height:34px}} .about{{grid-template-columns:1fr}}
-   .titlerow h1{{font-size:25px}}
+   .ualogo img{{height:44px}} .amiilogo img{{height:62px}} .about{{grid-template-columns:1fr}}
+   .titletext h1{{font-size:25px}}
    grid{{grid-template-columns:1fr;padding:0 16px;gap:12px}}
    .top-inner,.about,.stats,.toolbar,details.cheat,.footer-inner{{padding-left:16px;padding-right:16px}}
  }}
@@ -1633,13 +1634,15 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
       <a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a>
     </div>
   </div>
-  <div class="titlerow">
-    <h1>Aleph Inference Gateway</h1>
+  <div class="titleblock">
+    <div class="titletext">
+      <h1>Aleph Inference Gateway</h1>
+      <p class="lede">OpenAI- &amp; Anthropic-compatible model serving on the Vulcan cluster &mdash;
+         <b>{len(entries)} models</b>, <b>{n_up}</b> scaled up now, <b>{n_zero}</b> scaled to zero. This page lists
+         everything and shows you how to call it. Browse, copy a curl, and use your existing SDK.</p>
+    </div>
     <a class="amiilogo" href="https://amii.ca" target="_blank" rel="noopener" title="Amii"><img src="{amii_logo}" alt="Amii"></a>
   </div>
-  <p class="lede">OpenAI- &amp; Anthropic-compatible model serving on the Vulcan cluster &mdash;
-     <b>{len(entries)} models</b>, <b>{n_up}</b> scaled up now, <b>{n_zero}</b> scaled to zero. This page lists
-     everything and shows you how to call it. Browse, copy a curl, and use your existing SDK.</p>
 </div></header>
 <div class="about">
   <div class="box"><h3>How it works</h3>
