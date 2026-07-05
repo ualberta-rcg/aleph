@@ -14,7 +14,7 @@ SaProt 650M from Westlake University combines amino acid and 3Di structure token
 ## Our config vs source
 - Weights downloaded via snapshot_download to PVC
 - HF_TOKEN required
-- GPU shared (L40S-SHARED), 10Gi PVC, minReplicas: 0
+- GPU shared (L40S-SHARED), 10Gi PVC `saprot-650m` (bare fleet naming, was `saprot-650m-data`/`model-data`), minReplicas: 1 (always-on)
 
 ## Deploy/update/test
 ```bash

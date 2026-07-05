@@ -3,7 +3,7 @@
 **Structure-aware** protein language model — trained on a fused amino-acid + foldseek-3Di
 structure vocabulary, so it captures both sequence and structure (ESM-2 650M backbone).
 **1280-dim mean-pooled** embeddings for function/structure/variant tasks. Custom FastAPI/
-transformers server on a HAMi GPU slice, scale-to-zero. OpenAI-compliant `/v1/embeddings`.
+transformers server on a HAMi GPU slice, always-on (minReplicas: 1). OpenAI-compliant `/v1/embeddings`.
 
 ## Deployment
 
@@ -36,5 +36,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 1024 residues |
 | Parameters | 650M (ESM-2 backbone, AA+3Di vocab) |
 | GPU | HAMi slice 10 GiB (`nvidia.com/gpumem: 10240`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `saprot-650m-data` (RWX, nfs-models; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `saprot-650m` (RWX, nfs-models; bare fleet naming) |
