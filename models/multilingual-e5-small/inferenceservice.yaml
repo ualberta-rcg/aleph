@@ -88,6 +88,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -97,10 +98,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 2
+    minReplicas: 1
+    maxReplicas: 5
+    scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 180
+    timeout: 300
     initContainers:
       - name: setup
         image: python:3.11-slim
@@ -153,7 +155,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - name: model-data
+          - name: multilingual-e5-small
             mountPath: /data
     containers:
       - name: kserve-container
@@ -172,15 +174,15 @@ spec:
           periodSeconds: 10
           failureThreshold: 20
         volumeMounts:
-          - name: model-data
+          - name: multilingual-e5-small
             mountPath: /data
             readOnly: true
           - name: app
             mountPath: /app
     volumes:
-      - name: model-data
+      - name: multilingual-e5-small
         persistentVolumeClaim:
-          claimName: multilingual-e5-small-data
+          claimName: multilingual-e5-small
       - name: app
         configMap:
           name: multilingual-e5-small-server

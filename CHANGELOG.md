@@ -3,6 +3,13 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy multilingual-e5-small on cluster 43 (always-on CPU embedder)
+
+- minReplicas 0->1 (max 5 — high-traffic multilingual, scaleTarget 8), progress-deadline 600s.
+- bare `multilingual-e5-small` PVC/volume naming (was `multilingual-e5-small-data` / `model-data`).
+- 384-dim (100+ languages); pinned torch 2.5.1 + transformers 4.44.2 (XLM-RoBERTa). Gateway 9/2/0;
+  clean delete+redeploy reproduces (PVC reused).
+
 ## 2026-07-05 — deploy specter2 on cluster 43 (always-on CPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.

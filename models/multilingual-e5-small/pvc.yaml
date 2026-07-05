@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: multilingual-e5-small-data
+  name: multilingual-e5-small
   namespace: models
 spec:
   accessModes:

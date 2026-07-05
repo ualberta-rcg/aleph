@@ -18,7 +18,7 @@ Template-C (`type: embedding`) — custom-transformers-server variant.
 - GPU request: **none** (CPU-only)
 
 ## Storage
-- PVC name: `multilingual-e5-small-data` (**ReadWriteMany**, nfs-models, 5Gi)
+- PVC name: `multilingual-e5-small` (**ReadWriteMany**, nfs-models, 5Gi; bare fleet naming, was `multilingual-e5-small-data`/`model-data`)
 - Mount path: `/data` (init writes venv + model; server reads readOnly). App at `/app` (ConfigMap).
 - Warm-cache condition: `/data/venv/bin/python` imports sentencepiece + transformers==4.44.2 AND `/data/model/config.json` present
 
@@ -30,7 +30,7 @@ Template-C (`type: embedding`) — custom-transformers-server variant.
 - **L2-normalized** server-side; mean pooling over attention-masked tokens.
 - **No prefix enforcement:** `query:`/`passage:` is the caller's responsibility for retrieval.
 - **Truncation safe:** tokenizer `max_length=512` pre-truncates → no OOM (small CPU model).
-- **Scale-to-zero** (`minReplicas: 0`): first request scales 0→1 (cold start ~30–60s).
+- **Always-on** (`minReplicas: 1`, max 5, scaleTarget 8): warm multilingual tier.
 
 ## Deploy / update steps
 1. `kubectl apply -f pvc.yaml` (RWX; caches venv + model).

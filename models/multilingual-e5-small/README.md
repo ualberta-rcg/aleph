@@ -2,7 +2,7 @@
 
 ~118M-param multilingual embedding model — **384-dim** dense vectors for **100+ languages**.
 12-layer MiniLM (Multilingual-MiniLM-L12-H384), mean-pooled + L2-normalized. Custom FastAPI/
-transformers server, CPU-only, scale-to-zero.
+transformers server, CPU-only, always-on (minReplicas: 1).
 
 > **Retrieval convention:** prefix queries with `query: ` and passages with `passage: `. For generic
 > similarity/clustering, no prefix is needed (the server embeds input as-is).
@@ -47,8 +47,8 @@ truncation (>512 tokens), guardrails (chat→embed 404, unknown-model 404), cata
 | Languages | 100+ |
 | Precision | fp32 |
 | Parameters | ~118M (12-layer MiniLM) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `multilingual-e5-small-data` (RWX, nfs-models, 5Gi) |
+| Scale | always-on (`minReplicas: 1`, max 5, 15m retention) |
+| Weights | PVC `multilingual-e5-small` (RWX, nfs-models, 5Gi; bare fleet naming) |
 
 ## Model Highlights
 
