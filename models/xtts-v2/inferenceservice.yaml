@@ -13,6 +13,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -51,7 +52,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: xtts-v2, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -73,10 +74,10 @@ spec:
           periodSeconds: 20
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: xtts-v2, mountPath: /data }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: xtts-v2-data }
+      - name: xtts-v2
+        persistentVolumeClaim: { claimName: xtts-v2 }
       - name: app
         configMap: { name: xtts-v2-server }

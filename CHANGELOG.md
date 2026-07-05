@@ -3,6 +3,23 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — verify xtts-v2 on cluster 43 (strict naming rename)
+
+**What:** verified the live `xtts-v2` Coqui TTS model reproduces from its repo dir under the fleet
+strict-naming standard, and authored the missing artifacts.
+
+- **Naming:** bare `xtts-v2` PVC + volume (was `xtts-v2-data` / `model-data`).
+- **Artifacts:** authored the missing `test.py` (TTS battery: WAKE+audio/wav, voice param, longer
+  input, empty-input 4xx, unknown-model 404, catalog), `README.md`, `CLAUDE.md`.
+- **Tuning:** added `progress-deadline: 600s`.
+
+**Why:** xtts-v2 was already live + PASSing but its repo files had naming drift and lacked
+test/README/CLAUDE; the campaign standard requires the live model to reproduce from the repo dir.
+
+**Validation:** full verify gate — deleted the ISVC + both ConfigMaps + the old `xtts-v2-data` PVC,
+re-applied the renamed repo files → fresh cold rebuild (venv + ~1.8B XTTS weights re-downloaded) →
+gateway test **4 PASS / 2 EXP / 0 FAIL** (119 KB WAV returned).
+
 ## 2026-07-05 — deploy geneformer on cluster 43 (always-on GPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 900s (V2-104M trust_remote_code load).
