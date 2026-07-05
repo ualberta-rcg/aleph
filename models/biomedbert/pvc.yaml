@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: biomedbert-data
+  name: biomedbert
   namespace: models
 spec:
   accessModes:

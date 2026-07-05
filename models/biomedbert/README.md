@@ -3,7 +3,7 @@
 Microsoft **BiomedBERT** — BERT-base pre-trained from scratch on biomedical text (PubMed
 abstracts + PMC full text). 768-dim mean-pooled embeddings for biomedical literature mining,
 clinical NLP, NER, and relation extraction. Custom FastAPI/transformers server, CPU-only,
-scale-to-zero.
+always-on (minReplicas: 1).
 
 > Requests use `model: "biomedbert-110m"` (the card id / served name).
 
@@ -17,8 +17,8 @@ kubectl apply -f details.yaml          # Template-C card (type: embedding)
 
 ## Testing
 
-The 10-check biomedical-embedding battery runs inside the gateway pod (first call wakes a
-scaled-to-zero model — cold start ~1–2 min):
+The 10-check biomedical-embedding battery runs inside the gateway pod (always-on; first deploy
+cold start ~1–2 min):
 
 ```bash
 # External via gateway VIP + Tyk auth (preferred)
@@ -42,10 +42,10 @@ distinctness, encoding_format, truncation (>512 tokens), guardrails (chat→embe
 | Max input | 512 tokens (tokenizer truncates longer) |
 | Precision | fp32 |
 | Parameters | 110M (BERT-base) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `biomedbert-data` (RWX, nfs-models) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `biomedbert` (RWX, nfs-models; bare fleet naming) |
 
 ## Model Highlights
 
 - Pre-trained from scratch on PubMed + PMC → strong for biomedical NER/relation extraction/literature mining.
-- 768-dim mean-pooled embeddings; CPU-only with scale-to-zero.
+- 768-dim mean-pooled embeddings; CPU-only, always-on.

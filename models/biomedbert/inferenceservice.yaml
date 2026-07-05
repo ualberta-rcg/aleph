@@ -75,6 +75,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -84,10 +85,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 2
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 120
+    timeout: 300
     initContainers:
       - name: setup
         image: python:3.11-slim
@@ -124,7 +126,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: biomedbert, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -142,10 +144,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 20
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: biomedbert, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: biomedbert-data }
+      - name: biomedbert
+        persistentVolumeClaim: { claimName: biomedbert }
       - name: app
         configMap: { name: biomedbert-server }

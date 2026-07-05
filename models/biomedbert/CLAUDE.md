@@ -17,7 +17,7 @@ biomedical text embeddings via `/v1/embeddings`.
   `biomedbert-110m`, ISVC name is `biomedbert`).
 
 ## Resources
-- CPU req/limit 2/4; mem 2Gi/4Gi. PVC `biomedbert-data` 5Gi (RWX, nfs-models).
+- CPU req/limit 2/4; mem 2Gi/4Gi. PVC `biomedbert` 5Gi (RWX, nfs-models; bare fleet naming, was `biomedbert-data`/`model-data`).
 
 ## Validation
 - **Embeddings pass (2026-06-19):** 10-check battery via the gateway — **8 PASS / 2 EXP / 0 FAIL**
