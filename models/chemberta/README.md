@@ -2,7 +2,7 @@
 
 RoBERTa-style model pre-trained on ZINC SMILES — **768-dim mean-pooled embeddings of chemical
 SMILES strings** for molecular property prediction, similarity search, and cheminformatics.
-Custom FastAPI/transformers server, CPU-only, scale-to-zero.
+Custom FastAPI/transformers server, CPU-only, always-on (minReplicas: 1).
 
 ## Deployment
 
@@ -34,5 +34,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Embedding dim | 768 (mean-pooled) |
 | Max input | 512 tokens |
 | Parameters | 125M (RoBERTa) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `chemberta-data` (RWX, nfs-models) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `chemberta` (RWX, nfs-models; bare fleet naming) |

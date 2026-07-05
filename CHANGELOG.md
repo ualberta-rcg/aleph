@@ -3,6 +3,13 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy chemberta on cluster 43 (always-on CPU embedder)
+
+- minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.
+- bare `chemberta` PVC/volume naming (was `chemberta-data` / `model-data`).
+- 768-dim SMILES (id `chemberta-125m`), pinned torch 2.5.1 + transformers 4.46.3. Gateway 8/2/0;
+  clean delete+redeploy reproduces (PVC reused).
+
 ## 2026-07-05 — deploy clinicalbert on cluster 43 (always-on CPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.

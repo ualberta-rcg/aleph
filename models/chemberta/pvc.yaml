@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: chemberta-data
+  name: chemberta
   namespace: models
 spec:
   accessModes:
