@@ -96,6 +96,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -105,15 +106,17 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 1
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
+    timeout: 300
     nodeSelector:
       gpu: "on"
     volumes:
-      - name: model-data
+      - name: biomedbert-large
         persistentVolumeClaim:
-          claimName: biomedbert-large-data
+          claimName: biomedbert-large
       - name: server-code
         configMap:
           name: biomedbert-large-server
@@ -128,7 +131,7 @@ spec:
             memory: "4Gi"
             cpu: "2"
         volumeMounts:
-          - name: model-data
+          - name: biomedbert-large
             mountPath: /data
         env:
           - name: HF_TOKEN
@@ -143,11 +146,12 @@ spec:
           - |
             set -e
             VENV=/data/venv
-            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, fastapi" 2>/dev/null; then
+            if [ ! -f "$VENV/.cu126" ]; then
               python -m venv $VENV --clear
               $VENV/bin/pip install --quiet --upgrade pip
-              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet "torch>=2.6" --index-url https://download.pytorch.org/whl/cu126
               $VENV/bin/pip install --quiet transformers huggingface_hub fastapi uvicorn
+              touch $VENV/.cu126
               echo "Venv ready"
             else
               echo "Venv OK"
@@ -176,7 +180,7 @@ spec:
 
             nvidia.com/gpumem: "10240"
         volumeMounts:
-          - name: model-data
+          - name: biomedbert-large
             mountPath: /data
           - name: server-code
             mountPath: /app

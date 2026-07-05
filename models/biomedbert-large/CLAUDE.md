@@ -21,7 +21,7 @@ Key info from source:
 - **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`.
 - **Init container**: creates venv, installs torch+transformers, downloads model to PVC.
 - **ConfigMap**: `biomedbert-large-server` (server code embedded in inferenceservice.yaml).
-- **PVC**: `biomedbert-large-data` — RWX, nfs-models (venv + weights; migrated RWO→RWX).
+- **PVC**: `biomedbert-large` — RWX, nfs-models (venv + weights; bare fleet naming, was `biomedbert-large-data`/`model-data`).
 - **GPU**: HAMi slice (`gpu: "on"`, `nvidia.com/gpumem: 10240`).
 - **Env**: `MODEL_DIR=/data/model`, `HF_HUB_OFFLINE=1`.
 - **Pooling**: [CLS] token → 1024-dim.
@@ -37,7 +37,7 @@ Key info from source:
 - **k8s ISVC name**: `biomedbert-large`
 - **API model ID**: `biomedbert-large`
 - **type**: `embedding` (details.yaml schema v2)
-- **Scale-to-zero**: minReplicas=0, 10m retention.
+- **Always-on**: minReplicas=1 (max 3, scaleTarget 8), 15m retention.
 
 ## Deploy / Update / Test
 
@@ -59,7 +59,7 @@ cat models/biomedbert-large/test.py | kubectl exec -i -n models deploy/model-gat
 ## Known Issues / Gotchas
 
 1. **Dual endpoint**: `/v1/embeddings` is primary; `/v1/science/embed` kept for back-compat — keep both in sync if the server changes.
-2. **GPU sized for headroom**: 340M BERT-large fits a 10 GiB slice; CPU works but is slower.
+2. **Runs on GPU (cu126 torch)**: the init installs `torch>=2.6` from the **cu126** index. Do NOT use cu121 (caps at torch 2.5.1, which recent `transformers` reject per CVE-2025-32434) or the cpu wheel (340M CPU inference blocks the single-worker event loop → readiness probe flaps → gateway 503s the next request). A `/data/venv/.cu126` marker gates the build so a wheel change forces a clean rebuild.
 3. Last run (2026-06-19): **8 PASS / 2 EXP / 0 FAIL** (dim 1024, batch, model-echo, usage, distinctness, encoding_format, truncation, guardrails, catalog).
 
 ## Files
@@ -68,7 +68,7 @@ cat models/biomedbert-large/test.py | kubectl exec -i -n models deploy/model-gat
 |------|---------|
 | `details.yaml` | Model card (schema v2, type: embedding) |
 | `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
-| `pvc.yaml` | PVC `biomedbert-large-data` (RWX, nfs-models) |
+| `pvc.yaml` | PVC `biomedbert-large` (RWX, nfs-models) |
 | `test.py` | Gateway test battery (10 checks) |
 | `README.md` | Model overview |
 

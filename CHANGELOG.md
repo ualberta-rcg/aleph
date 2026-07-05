@@ -3,6 +3,26 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy biomedbert-large on cluster 43 (always-on GPU embedder, CPU→GPU fix)
+
+**What:** brought `biomedbert-large` (Microsoft BiomedBERT-large 340M, 1024-dim [CLS]-pooled, custom
+transformers server on a HAMi GPU slice) live on cluster 43 as an always-on embedder.
+
+- **Scaling:** `minReplicas: 0` → `1` (max 3, scaleTarget 8), added `progress-deadline: 600s`; card
+  `scaling.min_replicas` updated to match.
+- **Naming:** bare `biomedbert-large` PVC + volume (was `biomedbert-large-data` / `model-data`).
+- **CPU→GPU fix:** the init installed the **cpu** torch wheel (inference blocked the single-worker
+  event loop → readiness probe flapped → gateway 503'd the next request). Switched to `torch>=2.6`
+  from the **cu126** index — cu121 is wrong here (caps at torch 2.5.1, rejected by recent `transformers`
+  per CVE-2025-32434). A `/data/venv/.cu126` marker now gates the venv build so a wheel change forces a
+  clean rebuild.
+
+**Why:** repo-complete + PASS on the old cluster but not on the rebuilt cluster 43; the CPU wheel made
+it flaky under the always-on test battery.
+
+**Validation:** gateway test 8 PASS / 2 EXP / 0 FAIL; clean delete (ISVC + cms, keep PVC) + redeploy
+from repo → still 8/2/0 (`.cu126` marker → init skips rebuild, fast cold start).
+
 ## 2026-07-05 — deploy biomedbert on cluster 43 (always-on CPU embedder)
 
 **What:** brought `biomedbert` (Microsoft BiomedBERT 110M, 768-dim, custom transformers server,

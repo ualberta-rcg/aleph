@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: biomedbert-large-data
+  name: biomedbert-large
   namespace: models
 spec:
   accessModes: ["ReadWriteMany"]

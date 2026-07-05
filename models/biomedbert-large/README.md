@@ -2,8 +2,8 @@
 
 Microsoft **BiomedBERT-large** (340M, BERT-large) — pre-trained from scratch on PubMed abstracts
 (domain-specific vocabulary); state-of-the-art on BioASQ/PubMedQA/BLURB. **1024-dim [CLS]-pooled
-embeddings** of biomedical text. Custom FastAPI/transformers server on a HAMi GPU slice, scale-to-zero.
-Serves the standard OpenAI `/v1/embeddings` (legacy `/v1/science/embed` kept).
+embeddings** of biomedical text. Custom FastAPI/transformers server on a HAMi GPU slice,
+always-on (minReplicas: 1). Serves the standard OpenAI `/v1/embeddings` (legacy `/v1/science/embed` kept).
 
 ## Deployment
 
@@ -36,5 +36,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 512 tokens |
 | Parameters | 340M (BERT-large) |
 | GPU | HAMi slice 10 GiB (`nvidia.com/gpumem: 10240`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 10m retention) |
-| Weights | PVC `biomedbert-large-data` (RWX, nfs-models; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `biomedbert-large` (RWX, nfs-models; bare fleet naming) |
