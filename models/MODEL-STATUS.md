@@ -5,6 +5,7 @@ Master tracker for the per-model verification loop. Gateway ClusterIP `http://mo
 Test-status legend: `PENDING` (not yet verified by this loop) - `PASS` - `FIXED` (was broken, now PASS) - `FAIL` (hard fail, see note).
 
 Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (of 157).
+**Cluster 43 live (2026-07-05): 96 ISVCs, all Ready** (was 75; +20 always-on embeddings + speaches ISVC). 43 model pods Running. 20 embeddings + xtts-v2 redeployed+verified this round; speaches converted to ISVC but deferred (gateway multipart + model-id blockers — see speaches row).
 
 | Model | Type | GPU | Primary endpoint | Cluster state | Test status | Note |
 |---|---|---|---|---|---|---|
