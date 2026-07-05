@@ -21,7 +21,7 @@ Key info from source:
 - **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`
 - **Init container**: Creates venv, installs torch+transformers (CUDA), downloads model from HF
 - **ConfigMap**: `scincl-server` — server code embedded in inferenceservice.yaml
-- **PVC**: `scincl-data` — stores venv + model weights (3Gi, NFS)
+- **PVC**: `scincl` — stores venv + model weights (3Gi, NFS; bare fleet naming, was `scincl-data`/`model-data`)
 - **Health**: Custom `/health` endpoint
 - **GPU**: 1x shared L40S via time-slicing, float16 on GPU / float32 on CPU
 - **Env vars**: `HF_HOME=/data/hf_cache`

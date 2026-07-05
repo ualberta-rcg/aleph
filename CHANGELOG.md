@@ -3,6 +3,12 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy scincl on cluster 43 (always-on GPU embedder)
+
+- minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.
+- bare `scincl` PVC/volume naming (was `scincl-data` / `model-data`).
+- 768-dim [CLS]; cu126 torch + unpinned transformers. Gateway 8/2/0; clean delete+redeploy reproduces.
+
 ## 2026-07-05 — deploy scibert on cluster 43 (always-on CPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.

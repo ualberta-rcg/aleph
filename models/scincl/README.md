@@ -2,7 +2,7 @@
 
 Scientific-text embedding model trained with **in-category learning on citation triplets** — strong
 for scientific document similarity, citation recommendation, and classification. 768-dim
-[CLS]-pooled embeddings. Custom FastAPI/transformers server on a HAMi GPU slice, scale-to-zero.
+[CLS]-pooled embeddings. Custom FastAPI/transformers server on a HAMi GPU slice, always-on (minReplicas: 1).
 OpenAI-compliant `/v1/embeddings` (batch + usage).
 
 ## Deployment
@@ -36,5 +36,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 512 tokens |
 | Parameters | 110M |
 | GPU | HAMi slice 10 GiB (`nvidia.com/gpumem: 10240`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `scincl-data` (RWX, nfs-models; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `scincl` (RWX, nfs-models; bare fleet naming) |

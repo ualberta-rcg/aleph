@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: scincl-data
+  name: scincl
   namespace: models
 spec:
   accessModes: ["ReadWriteMany"]

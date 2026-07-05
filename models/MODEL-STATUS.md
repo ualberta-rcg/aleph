@@ -159,7 +159,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | scgpt | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias; GPU (was card said CPU); 512-dim; 7/0 test; was parked |
 | scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m). **Deployed+verified on cluster 43 (2026-07-05):** always-on CPU (minReplicas:1/maxReplicas:3, progress-deadline 600s); bare `scibert` PVC/volume naming (was `scibert-data`/`model-data`); card scaling min_replicas 0→1. Clean delete+redeploy (PVC reused); gateway 8/2/0. |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
-| scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper |
+| scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper. **Deployed+verified on cluster 43 (2026-07-05):** always-on GPU (minReplicas:1/maxReplicas:3, progress-deadline 600s); bare `scincl` PVC/volume naming (was `scincl-data`/`model-data`); card scaling min_replicas 0→1. Clean delete+redeploy (PVC reused); gateway 8/2/0. |
 | seisbench | classify | true | /v1/science/detect | READY | PASS | phasenet runs (P/S detection) |
 | speaches | tts+stt | true | /v1/audio/speech, /v1/audio/transcriptions | READY | PASS | DEEP-FIX: chmod HF cache (root init -> non-root container PermissionError on whisper refs). TTS Kokoro-82M (af_heart/am_michael, wav+mp3 ~9s); STT faster-whisper-large-v3 ~6s. Round-trip transcription exact (x2). Always-on Deployment (heavily used) |
 | specter2 | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id specter2-110m) |
