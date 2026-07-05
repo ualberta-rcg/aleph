@@ -53,13 +53,13 @@ data:
         "usage": { "type": "object", "description": "{prompt_tokens, total_tokens} (residue counts)" }
       },
       "catalog": {
-        "description_short": "Ankh-base — 768-dim protein embeddings from a T5 encoder (GPU, scale-to-zero)",
-        "description": "Ankh-base (ElnaggarLab/ankh-base): protein language model based on a T5 encoder (trained on ~30M unlabeled protein sequences). Produces 768-dim mean-pooled protein embeddings — input is space-separated amino acids; fp32 (T5 encoders overflow to NaN in fp16, sanitized via nan_to_num). Max 1024 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice (8 GiB), scale-to-zero. Serves the standard OpenAI /v1/embeddings (batch + usage compliant).",
+        "description_short": "Ankh-base — 768-dim protein embeddings from a T5 encoder (always-on GPU)",
+        "description": "Ankh-base (ElnaggarLab/ankh-base): protein language model based on a T5 encoder (~450M params, trained on ~30M unlabeled protein sequences). Produces 768-dim mean-pooled protein embeddings — input is space-separated amino acids; fp32 (T5 encoders overflow to NaN in fp16, sanitized via nan_to_num). Max 1024 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice (8 GiB), always-on. Serves the standard OpenAI /v1/embeddings (batch + usage compliant).",
         "owned_by": "ElnaggarLab (TUM)",
         "source": "ElnaggarLab/ankh-base",
         "source_url": "https://huggingface.co/ElnaggarLab/ankh-base",
         "license": "Apache-2.0",
-        "parameters": "T5-encoder",
+        "parameters": "T5 encoder (~450M)",
         "precision": "fp32",
         "framework": "transformers T5EncoderModel (custom FastAPI server)",
         "domain": "proteomics",
