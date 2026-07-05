@@ -1256,6 +1256,21 @@ async def list_models(request: Request):
 # backup host (Traefik strips /serving/api → /). The /v1 API paths are untouched.
 _MAIN_HOST = "https://inference.vulcan.alliancecan.ca"
 _KEY_MAILTO = "research.support+aleph@ualberta.ca"
+_REPO_URL = "https://github.com/ualberta-rcg/aleph"
+
+
+def _data_uri(filename: str, mime: str) -> str:
+    """Read a static asset and return a data: URI. Inlining logos means they
+    render on every host/path — the backup host strips /serving/api and only
+    routes /serving/api + /anthropic, so a /static URL would 404 there."""
+    path = os.path.join(_STATIC_DIR, filename)
+    try:
+        import base64
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    except Exception:
+        return ""
 
 
 def _main_url(entry: dict) -> str:
@@ -1491,6 +1506,9 @@ def _catalog_html() -> str:
           {wake_html}
         </article>""")
 
+    ua_logo = _data_uri("ualberta.png", "image/png")
+    amii_logo = _data_uri("amii.svg", "image/svg+xml")
+    drac_logo = _data_uri("drac.svg", "image/svg+xml")
     cheatsheet = f"""
     <pre># OpenAI Python SDK (chat, embeddings, rerank, audio)
 from openai import OpenAI
@@ -1525,102 +1543,118 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
 <title>Aleph Inference Gateway &mdash; Vulcan</title>
 <style>
  :root {{
-   --bg:#0d1117;--card:#161b22;--ink:#d6dee8;--mut:#8b974f;--mut2:#8b949e;--bd:#2a3a33;
-   --green:#3fb950;--zero:#e0a82e;--acc:#5fb6ff;
-   --ua:#275d38;          /* University of Alberta primary green */
-   --ua-dark:#1c4630;--gold:#f2cd00;--cream:#f6f5ef;--ink2:#1f2a24;
+   --bg:#ffffff;--ink:#22302a;--mut:#5d6b62;--card:#ffffff;--alt:#f6f5ef;--bd:#e2dfd5;
+   --ua:#275d38;--ua-d:#1c4630;--gold:#f2cd00;--amii:#be477b;
+   --green:#1f8a3d;--zero:#bd8217;--acc:#1c6ebb;
  }}
  *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--ink);
  font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}}
  a{{color:var(--acc);text-decoration:none}} a:hover{{text-decoration:underline}}
- /* ── top banner: cream so the green/colour logos read; green title ── */
- .banner{{background:var(--cream);border-bottom:4px solid var(--ua)}}
- .banner-inner{{max-width:1180px;margin:0 auto;padding:18px 24px 6px}}
- .logos{{display:flex;gap:22px;align-items:center;flex-wrap:wrap}}
- .logos a{{line-height:0}} .logos img{{height:46px;width:auto;object-fit:contain;display:block}}
- .banner h1{{margin:14px 0 2px;font-size:30px;color:var(--ua);font-weight:700;letter-spacing:-.01em}}
- .banner .lede{{margin:0;color:#33433a;max-width:820px;font-size:15px}}
- .banner .lede b{{color:var(--ua)}}
- .keylink{{display:inline-block;background:var(--ua);color:#fff;border-radius:8px;
-   padding:9px 15px;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}}
- .keylink:hover{{background:var(--ua-dark);text-decoration:none}}
- .about{{max-width:1180px;margin:0 auto;padding:8px 24px 16px;display:grid;
-   grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;color:#33433a}}
- .about .card-l{{background:#fff;border:1px solid #e3e0d6;border-radius:10px;padding:12px 14px;font-size:13.5px}}
- .about h3{{margin:0 0 4px;font-size:13px;color:var(--ua);text-transform:uppercase;letter-spacing:.04em}}
- .about code{{background:#eeece4;border:1px solid #e0dccf;padding:0 4px;border-radius:4px;font-size:12px;color:#33433a}}
- /* ── dark stats + toolbar + grid ── */
- .stats{{max-width:1180px;margin:18px auto 0;padding:0 24px;color:var(--mut2);font-size:13px}}
+ code{{background:var(--alt);border:1px solid var(--bd);padding:0 4px;border-radius:4px;font-size:12.5px;color:#33433a}}
+ /* ── header: U of A green, logos whitened so they read on green ── */
+ header.top{{background:var(--ua);color:#fff;border-bottom:5px solid var(--gold)}}
+ .top-inner{{max-width:1200px;margin:0 auto;padding:16px 24px 18px}}
+ .toprow{{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}}
+ .logos{{display:flex;gap:20px;align-items:center;flex-wrap:wrap}}
+ .logos a{{line-height:0;display:inline-flex}} .logos img{{height:44px;width:auto;object-fit:contain;display:block}}
+ .logos img.inv{{filter:brightness(0) invert(1)}}     /* U of A green logo -> white */
+ .actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}
+ .gh{{color:#ffffffcc;font-size:13px}} .gh:hover{{color:#fff}}
+ .keylink{{display:inline-block;background:var(--gold);color:#23301f;border-radius:8px;
+   padding:9px 15px;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap}}
+ .keylink:hover{{background:#ffe14d;text-decoration:none}}
+ header.top h1{{margin:14px 0 2px;font-size:32px;font-weight:700;letter-spacing:-.01em}}
+ header.top .lede{{margin:0;color:#dfeae0;max-width:840px;font-size:15px}}
+ header.top .lede b{{color:var(--gold)}}
+ /* ── intro: 2 columns ── */
+ .about{{max-width:1200px;margin:0 auto;padding:18px 24px 4px;display:grid;
+   grid-template-columns:repeat(2,1fr);gap:16px}}
+ .about .box{{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 16px;font-size:14px;color:#33433a}}
+ .about h3{{margin:0 0 6px;font-size:13px;color:var(--ua);text-transform:uppercase;letter-spacing:.05em}}
+ .about p{{margin:0 0 6px}} .about p:last-child{{margin:0}}
+ .doti{{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle}}
+ .doti.g{{background:var(--green)}} .doti.a{{background:var(--zero)}}
+ /* ── stats + toolbar + grid ── */
+ .stats{{max-width:1200px;margin:16px auto 0;padding:0 24px;color:var(--mut);font-size:13.5px}}
  .stats b.up{{color:var(--green)}} .stats b.zero{{color:var(--zero)}}
- .toolbar{{max-width:1180px;margin:10px auto 0;padding:0 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
- input.srch{{flex:1;min-width:220px;background:var(--card);border:1px solid var(--bd);color:var(--ink);
- border-radius:8px;padding:10px 12px;font-size:15px}} .count{{color:var(--mut2);font-size:13px}}
- details.cheat{{max-width:1180px;margin:14px auto 0;padding:0 24px}}
- details.cheat summary{{cursor:pointer;color:var(--gold);font-size:14px;font-weight:600}}
- pre{{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto;
- font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#9ca7b3;white-space:pre-wrap;word-break:break-word}}
- grid{{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
- max-width:1180px;margin:16px auto 24px;padding:0 24px}}
- .card{{background:var(--card);border:1px solid var(--bd);border-left:3px solid var(--zero);border-radius:10px;
-   padding:14px;display:flex;flex-direction:column;gap:8px}}
+ .toolbar{{max-width:1200px;margin:10px auto 0;padding:0 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
+ input.srch{{flex:1;min-width:220px;background:#fff;border:1px solid var(--bd);color:var(--ink);
+ border-radius:8px;padding:10px 12px;font-size:15px}} .count{{color:var(--mut);font-size:13px}}
+ details.cheat{{max-width:1200px;margin:14px auto 0;padding:0 24px}}
+ details.cheat summary{{cursor:pointer;color:var(--ua);font-size:14px;font-weight:700}}
+ pre{{background:var(--alt);border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto;
+ font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#2a332c;white-space:pre-wrap;word-break:break-word}}
+ grid{{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(460px,1fr));
+ max-width:1200px;margin:16px auto 28px;padding:0 24px}}
+ .card{{background:var(--card);border:1px solid var(--bd);border-left:4px solid var(--zero);border-radius:12px;
+   padding:16px;display:flex;flex-direction:column;gap:9px;box-shadow:0 1px 2px rgba(0,0,0,.03)}}
  .card.up{{border-left-color:var(--green)}}
  .card header{{display:flex;justify-content:space-between;align-items:center;gap:8px}}
- .card header>div{{display:flex;align-items:center;gap:8px;min-width:0}}
- .card h3{{margin:0;font-size:16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#fff;word-break:break-all}}
- .dot{{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none;background:var(--zero)}}
- .card.up .dot{{background:var(--green);box-shadow:0 0 6px var(--green)}}
- .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--mut2)}}
- .badge.type{{color:#79c0ff;border-color:#1f6ebb}} .badge.gpu{{color:var(--green);border-color:#238636}} .badge.cpu{{color:var(--mut2)}}
- .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut2)}}
- .desc{{margin:0;color:var(--mut2);font-size:13px}} .src{{margin-left:6px;font-size:11px}}
- .status{{font-size:12px;font-weight:500}} .status.up{{color:var(--green)}} .status.zero{{color:var(--zero)}}
- .facts{{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 12px;font-size:12px}}
- .facts div{{display:flex;justify-content:space-between;gap:6px;min-width:0}} .k{{color:var(--mut2);flex:none}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}}
- .ep{{font-size:11px;display:flex;gap:6px;align-items:baseline}} .ep .k{{color:var(--mut2)}}
- .card details summary{{cursor:pointer;color:var(--gold);font-size:12px}} .card pre{{margin:6px 0 0;font-size:11px}}
- .params table{{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}}
- .params th,.params td{{border:1px solid var(--bd);padding:3px 6px;text-align:left;vertical-align:top}}
- .params th{{color:var(--mut2)}} .params td:first-child{{color:#79c0ff;font-family:ui-monospace,monospace}}
- .wake{{margin-top:2px}} .wake summary{{cursor:pointer;color:var(--zero);font-size:12px}} .wake-note{{margin:6px 0 4px;color:var(--mut2);font-size:12px}} .wake code{{color:var(--ink)}}
- /* ── footer: cream, DRAC logo ── */
- footer{{background:var(--cream);border-top:1px solid #e3e0d6;color:#33433a}}
- .footer-inner{{max-width:1180px;margin:0 auto;padding:18px 24px 26px;display:flex;
-   justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}}
- footer img{{height:42px;width:auto;object-fit:contain;display:block}}
- footer .credit{{font-size:12.5px;line-height:1.6;max-width:560px}}
+ .card header>div{{display:flex;align-items:center;gap:9px;min-width:0}}
+ .card h3{{margin:0;font-size:17px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ua-d);word-break:break-all}}
+ .dot{{width:12px;height:12px;border-radius:50%;display:inline-block;flex:none;background:var(--zero)}}
+ .card.up .dot{{background:var(--green);box-shadow:0 0 0 3px rgba(31,138,61,.18)}}
+ .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 8px;border-radius:11px;border:1px solid var(--bd);background:var(--alt);color:var(--mut)}}
+ .badge.type{{color:var(--ua);border-color:#cdd9cb;background:#eef3ec}} .badge.gpu{{color:var(--green);border-color:#9ccfa6;background:#eef6ef}} .badge.cpu{{color:var(--mut)}}
+ .badge.cap{{color:#7a3f9e;border-color:#d8c2e3;background:#f3ecf8}} .badge.tag{{color:var(--mut)}}
+ .desc{{margin:0;color:#41524a;font-size:13.5px}} .src{{margin-left:6px;font-size:11px}}
+ .status{{font-size:12.5px;font-weight:600}} .status.up{{color:var(--green)}} .status.zero{{color:var(--zero)}}
+ .facts{{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 14px;font-size:12.5px;margin-top:2px}}
+ .facts div{{display:flex;justify-content:space-between;gap:6px;min-width:0}} .k{{color:var(--mut);flex:none}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}}
+ .ep{{font-size:11.5px;display:flex;gap:6px;align-items:baseline}} .ep .k{{color:var(--mut)}}
+ .card details{{margin-top:2px}} .card details summary{{cursor:pointer;color:var(--ua);font-size:12.5px;font-weight:600}} .card pre{{margin:6px 0 0;font-size:11.5px}}
+ .params table{{width:100%;border-collapse:collapse;margin-top:6px;font-size:11.5px;background:var(--alt)}}
+ .params th,.params td{{border:1px solid var(--bd);padding:3px 6px;text-align:left;vertical-align:top;background:#fff}}
+ .params th{{color:var(--mut);background:var(--alt)}} .params td:first-child{{color:var(--ua);font-family:ui-monospace,monospace}}
+ .wake summary{{color:var(--zero)!important}} .wake-note{{margin:6px 0 4px;color:#41524a;font-size:12.5px}}
+ /* ── footer: white with border, DRAC native ── */
+ footer{{background:#fff;border-top:1px solid var(--bd);color:#33433a}}
+ .footer-inner{{max-width:1200px;margin:0 auto;padding:20px 24px 28px;display:flex;
+   justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}}
+ footer img.flogo{{height:40px;width:auto;object-fit:contain;display:block}}
+ footer .credit{{font-size:13px;line-height:1.7;max-width:620px}}
  footer a{{color:var(--ua);font-weight:600}}
- /* responsive: shrink logos / stack on phones */
- @media(max-width:640px){{
-   .logos img{{height:32px}} .logos{{gap:14px}}
-   .banner h1{{font-size:23px}} .about{{grid-template-columns:1fr}}
-   footer img{{height:34px}}
+ /* responsive */
+ @media(max-width:680px){{
+   .logos img{{height:30px}} .logos{{gap:14px}} .about{{grid-template-columns:1fr}}
+   header.top h1{{font-size:25px}}
+   grid{{grid-template-columns:1fr;padding:0 16px;gap:12px}}
+   .top-inner,.about,.stats,.toolbar,details.cheat,.footer-inner{{padding-left:16px;padding-right:16px}}
  }}
 </style></head><body>
-<div class="banner"><div class="banner-inner">
-  <div class="logos">
-    <a href="https://www.ualberta.ca" target="_blank" rel="noopener" title="University of Alberta"><img src="/static/ualberta.png" alt="University of Alberta"></a>
-    <a href="https://amii.ca" target="_blank" rel="noopener" title="Amii"><img src="/static/amii.svg" alt="Amii"></a>
+<header class="top"><div class="top-inner">
+  <div class="toprow">
+    <div class="logos">
+      <a href="https://www.ualberta.ca" target="_blank" rel="noopener" title="University of Alberta"><img class="inv" src="{ua_logo}" alt="University of Alberta"></a>
+      <a href="https://amii.ca" target="_blank" rel="noopener" title="Amii"><img src="{amii_logo}" alt="Amii"></a>
+    </div>
+    <div class="actions">
+      <a class="gh" href="{_REPO_URL}" target="_blank" rel="noopener">GitHub &#8599;</a>
+      <a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a>
+    </div>
   </div>
   <h1>Aleph Inference Gateway</h1>
-  <p class="lede">OpenAI- &amp; Anthropic-compatible model serving on the Vulcan cluster. Point your existing
-     SDK at the host below and use any of {len(entries)} models &mdash; <b class="up">{n_up}</b> are scaled up right now,
-     <b class="zero">{n_zero}</b> are scaled to zero (wake on first request).</p>
-  <div style="margin-top:12px"><a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a></div>
-</div></div>
+  <p class="lede">OpenAI- &amp; Anthropic-compatible model serving on the Vulcan cluster &mdash;
+     <b>{len(entries)} models</b>, <b>{n_up}</b> scaled up now, <b>{n_zero}</b> scaled to zero. This page lists
+     everything and shows you how to call it. Browse, copy a curl, and use your existing SDK.</p>
+</div></header>
 <div class="about">
-  <div class="card-l"><h3>One API, both SDKs</h3>
-    <b>OpenAI SDK</b>: <code>base_url="{_MAIN_HOST}/v1"</code>. <b>Anthropic SDK</b>: <code>base_url="{_MAIN_HOST}"</code>.
-    Your key works as <code>Authorization: Bearer</code>, <code>x-api-key</code>, <code>api-key</code>,
-    <code>x-goog-api-key</code>, or <code>?api_key=</code>.</div>
-  <div class="card-l"><h3>Scale-to-zero</h3>
-    Models release their GPUs after ~15 min idle. The dot on each card is
-    <b style="color:var(--green)">green</b> when scaled up, <b style="color:var(--zero)">amber</b> when at zero.
-    A first request to a cold model returns <code>503 model_scaled_to_zero</code> with <code>Retry-After</code>;
-    retry until 200 (OpenWebUI &amp; most SDKs do this for you). Each card lists its wake time.</div>
-  <div class="card-l"><h3>Endpoints</h3>
-    <code>/v1/chat/completions</code>, <code>/v1/messages</code>, <code>/v1/embeddings</code>, <code>/v1/rerank</code>,
-    <code>/v1/audio/transcriptions</code> (STT), <code>/v1/audio/speech</code> (TTS), plus per-model science paths.
-    Open any card for its full parameter map and a copy-paste example.</div>
+  <div class="box"><h3>How it works</h3>
+    <p>Models <b>scale to zero</b> when idle so we can host many without wasting GPUs &mdash; and they
+       <b>scale back up under load</b>. A model stays up until <b>~15 minutes after its last call</b>, then releases its GPU.</p>
+    <p>The dot on each card is <span class="doti g"></span> <b>green</b> when scaled up now,
+       <span class="doti a"></span> <b>amber</b> when at zero. The first request to a cold model returns
+       <code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; retry until 200 (OpenWebUI &amp; most
+       SDKs do this automatically). Each card lists its wake time and a wake-up command.</p>
+  </div>
+  <div class="box"><h3>Use it</h3>
+    <p>Point your existing SDK at <code>{_MAIN_HOST}</code>: <b>OpenAI</b> <code>base_url="…/v1"</code>,
+       <b>Anthropic</b> <code>base_url="…"</code>. Your key is accepted as <code>Authorization: Bearer</code>,
+       <code>x-api-key</code>, <code>api-key</code>, <code>x-goog-api-key</code>, or <code>?api_key=</code>.</p>
+    <p>Endpoints: <code>/v1/chat/completions</code>, <code>/v1/messages</code>, <code>/v1/embeddings</code>,
+       <code>/v1/rerank</code>, <code>/v1/audio/transcriptions</code> (STT), <code>/v1/audio/speech</code> (TTS),
+       plus per-model science paths. Open any card for its full parameter map and example.</p>
+  </div>
 </div>
 <div class="stats">{len(entries)} models &mdash; <b class="up">{n_up} scaled up</b>, <b class="zero">{n_zero} scaled to zero</b>. Host: <a href="{_MAIN_HOST}/">{_MAIN_HOST}</a></div>
 <div class="toolbar">
@@ -1631,10 +1665,10 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
 <grid id="grid">{''.join(cards_html)}</grid>
 <footer><div class="footer-inner">
   <a href="https://www.alliancecan.ca/en" target="_blank" rel="noopener" title="Digital Research Alliance of Canada">
-    <img src="/static/drac.svg" alt="Digital Research Alliance of Canada"></a>
-  <div class="credit">Aleph Inference Gateway &middot; <a href="https://www.ualberta.ca">University of Alberta</a> /
-    <a href="https://amii.ca">Amii</a> on the <a href="https://www.alliancecan.ca/en">Digital Research Alliance</a> Vulcan cluster.
-    Questions or need a key? <a href="mailto:{_KEY_MAILTO}">{_KEY_MAILTO}</a>.</div>
+    <img class="flogo" src="{drac_logo}" alt="Digital Research Alliance of Canada"></a>
+  <div class="credit">Vulcan cluster operated by <a href="https://www.ualberta.ca">University of Alberta</a> /
+    <a href="https://amii.ca">Amii</a> / <a href="https://www.alliancecan.ca/en">Digital Research Alliance</a>.
+    Questions or need a key? <a href="mailto:{_KEY_MAILTO}">research.support+aleph@ualberta.ca</a>.</div>
 </div></footer>
 <script>
  const cards=[...document.querySelectorAll('.card')];
