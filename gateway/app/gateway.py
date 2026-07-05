@@ -1611,10 +1611,11 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  .wake summary{{color:var(--zero)!important}} .wake-note{{margin:6px 0 4px;color:#41524a;font-size:12.5px}}
  /* ── footer: white with border, DRAC native ── */
  footer{{background:#fff;border-top:1px solid var(--bd);color:#33433a}}
- .footer-inner{{max-width:1200px;margin:0 auto;padding:20px 24px 28px;display:flex;
-   justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}}
- footer img.flogo{{height:40px;width:auto;object-fit:contain;display:block}}
- footer .credit{{font-size:13px;line-height:1.7;max-width:620px}}
+ .footer-inner{{max-width:1200px;margin:0 auto;padding:30px 24px 38px;display:flex;
+   justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px}}
+ footer img.flogo{{height:48px;width:auto;object-fit:contain;display:block}}
+ footer .credit{{font-size:13.5px;line-height:1.8;max-width:640px}}
+ footer .credit .l2{{display:block;margin-top:2px}}
  footer a{{color:var(--ua);font-weight:600}}
  /* responsive */
  @media(max-width:680px){{
@@ -1674,7 +1675,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
     <img class="flogo" src="{drac_logo}" alt="Digital Research Alliance of Canada"></a>
   <div class="credit">Vulcan cluster operated by <a href="https://www.ualberta.ca">University of Alberta</a> /
     <a href="https://amii.ca">Amii</a> / <a href="https://www.alliancecan.ca/en">Digital Research Alliance</a>.
-    Questions or need a key? <a href="mailto:{_KEY_MAILTO}">research.support+aleph@ualberta.ca</a>.</div>
+    <span class="l2">Questions or need a key? <a href="mailto:{_KEY_MAILTO}">research.support+aleph@ualberta.ca</a>.</span></div>
 </div></footer>
 <script>
  const cards=[...document.querySelectorAll('.card')];
