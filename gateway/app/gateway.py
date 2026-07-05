@@ -12,6 +12,7 @@ handlers, /v1/{custom} forward catch-all, /healthz /readyz /metrics.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import os
 import threading
@@ -21,7 +22,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from kubernetes import client, config, watch
 
 import usage
@@ -1218,6 +1219,197 @@ async def list_models(request: Request):
     return {"object": "list", "data": data}
 
 
+# ── "How to use it" web page at GET / ──────────────────────────────────────────
+# Same gateway route is reached as `/` on the main host and `/serving/api/` on the
+# backup host (Traefik strips /serving/api → /). The /v1 API paths are untouched.
+_MAIN_HOST = "https://inference.vulcan.alliancecan.ca"
+_BACKUP_HOST = "https://inference.kubeflow.vulcan.alliancecan.ca"
+
+
+def _backup_path(path: str) -> str:
+    """Map a gateway path to its form on the backup host.
+    /v1/messages → /anthropic/v1/messages (stripPrefix /anthropic);
+    every other /v1/* → /serving/api/v1/* (stripPrefix /serving/api)."""
+    if path.startswith("/v1/messages"):
+        return f"/anthropic{path}"
+    return f"/serving/api{path}"
+
+
+def _entry_paths(entry: dict) -> tuple[str, str]:
+    path = entry.get("endpoint") or ""
+    if not path.startswith("/"):
+        path = "/v1/chat/completions"
+    return f"{_MAIN_HOST}{path}", f"{_BACKUP_HOST}{_backup_path(path)}"
+
+
+def _usage_snippet(entry: dict) -> str:
+    """One short curl line for the model's primary endpoint, both hosts."""
+    t = (entry.get("type") or "chat").lower()
+    ep = entry.get("endpoint") or "/v1/chat/completions"
+    mid = entry["id"]
+    main, backup = _entry_paths(entry)
+    if ep.startswith("/v1/audio/transcriptions"):
+        body = f"-F model={mid} -F file=@audio.wav"
+    elif ep.startswith("/v1/audio/speech"):
+        body = f'-H "Content-Type: application/json" -d \'{{"model":"{mid}","input":"hello"}}\''
+    elif ep.startswith("/v1/embeddings"):
+        body = f'-H "Content-Type: application/json" -d \'{{"model":"{mid}","input":"text"}}\''
+    elif ep.startswith("/v1/rerank"):
+        body = f'-H "Content-Type: application/json" -d \'{{"model":"{mid}","query":"q","documents":["a","b"]}}\''
+    else:
+        body = (f'-H "Content-Type: application/json" '
+                f'-d \'{{"model":"{mid}","messages":[{{"role":"user","content":"hi"}}]}}\'')
+    return f"curl {main} {body}\n#  backup: curl {backup} {body}"
+
+
+def _catalog_html() -> str:
+    with _STATE_LOCK:
+        cards = list(CARDS.values())
+        isvc_state = dict(ISVC_STATE)
+    entries = sorted((_model_entry(c, isvc_state) for c in cards), key=lambda x: x["id"])
+    n_ready = sum(1 for e in entries if e.get("ready"))
+
+    def esc(s):
+        return html.escape(str(s) if s is not None else "")
+
+    def badge(label, cls):
+        return f'<span class="badge {cls}">{esc(label)}</span>'
+
+    cards_html = []
+    for e in entries:
+        cap = e.get("capabilities", {}) or {}
+        facts = []
+        if e.get("context_window"):
+            facts.append(("context", f'{e["context_window"]:,}'))
+        if e.get("max_completion_tokens"):
+            facts.append(("max out", f'{e["max_completion_tokens"]:,}'))
+        for k, label in (("parameters", "params"), ("precision", "precision"),
+                         ("framework", "framework"), ("license", "license"),
+                         ("domain", "domain")):
+            if e.get(k):
+                facts.append((label, e[k]))
+        facts_html = "".join(
+            f"<div><span class='k'>{esc(k)}</span><span class='v'>{esc(v)}</span></div>"
+            for k, v in facts)
+        tags = " ".join(badge(t, "tag") for t in (e.get("tags") or [])[:4])
+        caps = []
+        if cap.get("vision"): caps.append("vision")
+        if cap.get("tools"): caps.append("tools")
+        if cap.get("reasoning"): caps.append("reasoning")
+        caps_html = " ".join(badge(c, "cap") for c in caps)
+        search = " ".join(str(x) for x in (
+            e["id"], e.get("type"), e.get("description"), e.get("domain"),
+            e.get("subdomain"), *(e.get("tags") or []))).lower()
+        main, backup = _entry_paths(e)
+        cards_html.append(f"""
+        <article class="card" data-search="{esc(search)}">
+          <header>
+            <h3>{esc(e["id"])}</h3>
+            <span class="dot {'ok' if e.get('ready') else 'cold'}" title="{'ready' if e.get('ready') else 'cold/not-ready'}"></span>
+          </header>
+          <div class="badges">{badge(e.get('type','chat'),'type')}{badge('gpu' if e.get('gpu') else 'cpu','gpu' if e.get('gpu') else 'cpu')}{caps_html}{tags}</div>
+          <p class="desc">{esc((e.get('description') or '').split('. ')[0][:240])}</p>
+          <div class="facts">{facts_html}</div>
+          <div class="ep">
+            <div><span class="k">endpoint</span>
+              <a href="{esc(main)}">{esc(main)}</a></div>
+            <div><span class="k">backup</span>
+              <a href="{esc(backup)}">{esc(backup)}</a></div>
+          </div>
+          <details><summary>curl example</summary>
+            <pre>{esc(_usage_snippet(e))}</pre>
+          </details>
+        </article>""")
+
+    cheatsheet = f"""
+    <pre># OpenAI chat (main | backup)
+curl {_MAIN_HOST}/v1/chat/completions -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{{"model":"command-r-7b","messages":[{{"role":"user","content":"hi"}}]}}'
+curl {_BACKUP_HOST}/serving/api/v1/chat/completions ...   # same, valid-LE host
+
+# Anthropic messages (main | backup)
+curl {_MAIN_HOST}/v1/messages       -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{{"model":"command-r-7b","max_tokens":20,"messages":[{{"role":"user","content":"hi"}}]}}'
+curl {_BACKUP_HOST}/anthropic/v1/messages ...             # same, valid-LE host
+
+# Speech-to-text (multipart) — streaming: add  -F stream=true
+curl {_MAIN_HOST}/v1/audio/transcriptions -H "Authorization: Bearer $KEY" -F model=whisper-large-v3 -F file=@audio.wav
+curl {_BACKUP_HOST}/serving/api/v1/audio/transcriptions ...
+
+# Embeddings / rerank
+curl {_MAIN_HOST}/v1/embeddings  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-m3","input":"text"}}'
+curl {_MAIN_HOST}/v1/rerank      -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-reranker-v2-m3","query":"q","documents":["a","b"]}}'
+
+# Machine-readable catalogue:  GET {_MAIN_HOST}/v1/models   (or {_BACKUP_HOST}/serving/api/v1/models)</pre>"""
+
+    return f"""<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aleph Inference Gateway</title>
+<style>
+ :root {{--bg:#0e1116;--card:#161b22;--ink:#c9d1d9;--mut:#8b949e;--acc:#58a6ff;--ok:#3fb950;--cold:#f85149;--bd:#30363d;}}
+ *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--ink);
+ font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}}
+ a{{color:var(--acc);text-decoration:none}} a:hover{{text-decoration:underline}}
+ header.top{{padding:28px 24px 8px;max-width:1180px;margin:0 auto}}
+ header.top h1{{margin:0 0 4px;font-size:28px}} header.top p{{color:var(--mut);margin:0 0 12px}}
+ .hosts{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}} .host{{background:var(--card);border:1px solid var(--bd);
+ border-radius:8px;padding:8px 12px;font-size:13px}} .host b{{color:var(--mut);font-weight:500;display:block;font-size:11px;text-transform:uppercase}}
+ .toolbar{{max-width:1180px;margin:14px auto 0;padding:0 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
+ input.srch{{flex:1;min-width:220px;background:var(--card);border:1px solid var(--bd);color:var(--ink);
+ border-radius:8px;padding:10px 12px;font-size:15px}} .count{{color:var(--mut);font-size:13px}}
+ details.cheat{{max-width:1180px;margin:16px auto 0;padding:0 24px}}
+ details.cheat summary{{cursor:pointer;color:var(--acc);font-size:14px}}
+ pre{{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto;
+ font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#9ca7b3;white-space:pre-wrap;word-break:break-word}}
+ grid{{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+ max-width:1180px;margin:16px auto 40px;padding:0 24px}}
+ .card{{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}}
+ .card header{{display:flex;justify-content:space-between;align-items:center}}
+ .card h3{{margin:0;font-size:16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#fff;word-break:break-all}}
+ .dot{{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}} .ok{{background:var(--ok)}} .cold{{background:var(--cold);opacity:.5}}
+ .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--mut)}}
+ .badge.type{{color:#79c0ff;border-color:#1f6feb}} .badge.gpu{{color:var(--ok);border-color:#238636}} .badge.cpu{{color:var(--mut)}}
+ .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut)}}
+ .desc{{margin:0;color:var(--mut);font-size:13px}}
+ .facts{{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 12px;font-size:12px}}
+ .facts div{{display:flex;justify-content:space-between;gap:6px}} .k{{color:var(--mut)}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+ .ep{{font-size:11px;display:flex;flex-direction:column;gap:2px}} .ep .k{{display:inline-block;width:52px}}
+ .card details summary{{cursor:pointer;color:var(--acc);font-size:12px}} .card pre{{margin:6px 0 0;font-size:11px}}
+ footer{{max-width:1180px;margin:0 auto 40px;padding:0 24px;color:var(--mut);font-size:12px}}
+</style></head><body>
+<header class="top">
+ <h1>Aleph Inference Gateway</h1>
+ <p>OpenAI- &amp; Anthropic-compatible inference on the Vulcan cluster. {len(entries)} models discovered ({n_ready} ready).
+    Pick a host below (both serve every endpoint); the main host uses a self-signed cert, the backup a valid Let&rsquo;s Encrypt cert.</p>
+ <div class="hosts">
+   <div class="host"><b>main (self-signed)</b><a href="{_MAIN_HOST}/">{_MAIN_HOST}/</a></div>
+   <div class="host"><b>backup (valid LE cert)</b><a href="{_BACKUP_HOST}/serving/api/">{_BACKUP_HOST}/serving/api/</a></div>
+ </div>
+</header>
+<div class="toolbar">
+ <input class="srch" id="q" placeholder="Search models by name, type, domain, tag…" autocomplete="off">
+ <span class="count" id="cnt"></span>
+</div>
+<details class="cheat"><summary>How to use it — curl cheatsheet (both hosts)</summary>{cheatsheet}</details>
+<grid id="grid">{''.join(cards_html)}</grid>
+<footer>Machine-readable: <a href="/v1/models">/v1/models</a> · health: <a href="/healthz">/healthz</a> ·
+ metrics: <a href="/metrics">/metrics</a>. Public traffic is authenticated by a Tyk API key (<code>Authorization: Bearer $KEY</code>).</footer>
+<script>
+ const cards=[...document.querySelectorAll('.card')];
+ const cnt=document.getElementById('cnt');
+ function upd(){{const q=document.getElementById('q').value.toLowerCase().trim();let n=0;
+  cards.forEach(c=>{{const m=!q||c.dataset.search.includes(q);c.style.display=m?'':'none';n+=m;}});
+  cnt.textContent=n+' / '+cards.length+' models';}}
+ document.getElementById('q').addEventListener('input',upd);upd();
+</script>
+</body></html>"""
+
+
+@app.get("/", include_in_schema=False)
+async def catalog_page():
+    return HTMLResponse(_catalog_html())
+
+
 def _strips_thinking(info: dict) -> bool:
     """Card opt-in: remove reasoning/thinking from responses (only the answer ships)."""
     return bool(((info.get("card", {}) or {}).get("behavior", {}) or {}).get("strips_thinking"))
@@ -1784,6 +1976,86 @@ async def anthropic_messages(request: Request):
     _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
                status=200, latency_ms=latency_ms, usage_obj=raw_oai.get("usage"))
     return JSONResponse(out)
+
+
+@app.post("/v1/audio/transcriptions")
+async def audio_transcriptions(request: Request):
+    """OpenAI-compatible STT (multipart). Resolve the model from the form, then
+    forward the RAW body unchanged so the multipart boundary survives, with raw
+    streaming passthrough when stream=true. Registered before the catch-all so
+    multipart uploads don't hit forward_custom's JSON-only model parser.
+
+    Backend e.g. speaches (faster-whisper), reached via the card's k8s_name like
+    any other model. Non-multipart (JSON) requests are also accepted.
+    """
+    _METRICS["requests_total"] += 1
+    ctype = request.headers.get("content-type", "")
+    model_id = None
+    stream = False
+    if ctype.lower().startswith("multipart/"):
+        # form() populates+ caches the body; raw bytes come back identically below.
+        try:
+            form = await request.form()
+        except Exception:
+            form = None
+        if form is not None:
+            m = form.get("model")
+            model_id = m if isinstance(m, str) else None
+            s = form.get("stream")
+            stream = (s if isinstance(s, str) else "").lower() in ("1", "true", "yes")
+    body = await request.body()
+    if model_id is None:
+        # JSON fallback: {model, stream, ...}
+        try:
+            parsed = json.loads(body)
+            model_id = parsed.get("model")
+            stream = bool(parsed.get("stream"))
+        except Exception:
+            model_id = None
+    if not model_id:
+        _METRICS["requests_error"] += 1
+        return JSONResponse(
+            {"error": "model field required (multipart 'model' or JSON 'model')"}, 400)
+    info = resolve(model_id)
+    if not info:
+        _METRICS["requests_error"] += 1
+        return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    cold = await _guard_cold(request, info, "/v1/audio/transcriptions", "openai")
+    if cold is not None:
+        return cold
+    # Forward the original multipart bytes with the original Content-Type so the
+    # boundary is preserved. Host header still routes to the predictor.
+    headers = upstream_headers(info, content_type=ctype or "application/json")
+    url = upstream_url("/v1/audio/transcriptions")
+    log_kwargs = {"endpoint": "/v1/audio/transcriptions", "api": "openai"}
+
+    if stream and not info.get("no_stream"):
+        # Raw byte passthrough — STT streams text/SSE chunks we must not rewrite
+        # (NOT the chat-aware _forward stream branch that parses OpenAI choices).
+        async def gen():
+            t0 = time.monotonic()
+            status_code = 200
+            async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+                async with c.stream("POST", url, content=body, headers=headers) as r:
+                    status_code = r.status_code
+                    async for chunk in r.aiter_raw():
+                        yield chunk
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            _log_usage(request, info, status=status_code, latency_ms=latency_ms,
+                       stream=True, **log_kwargs)
+        return StreamingResponse(
+            gen(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    t0 = time.monotonic()
+    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+        r = await c.post(url, content=body, headers=headers)
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    _log_usage(request, info, status=r.status_code, latency_ms=latency_ms, **log_kwargs)
+    if r.status_code >= 400:
+        _METRICS["requests_error"] += 1
+    return Response(content=r.content, status_code=r.status_code,
+                    media_type=r.headers.get("content-type", "application/json"))
 
 
 @app.api_route("/v1/{path:path}", methods=["POST", "GET"])
