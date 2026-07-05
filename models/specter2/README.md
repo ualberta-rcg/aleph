@@ -3,7 +3,7 @@
 AllenAI **SPECTER2** — scientific paper embedding model (SciBERT backbone further trained on
 ~6M citation triplets across 23 fields). Takes title+abstract, produces **768-dim mean-pooled
 embeddings** for paper search, citation recommendation, and document clustering. Custom
-FastAPI/transformers server, CPU-only, scale-to-zero.
+FastAPI/transformers server, CPU-only, always-on (minReplicas: 1).
 
 ## Deployment
 
@@ -35,5 +35,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Embedding dim | 768 (mean-pooled) |
 | Max input | 512 tokens |
 | Parameters | 110M (SciBERT backbone) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `specter2-data` (RWX, nfs-models) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `specter2` (RWX, nfs-models; bare fleet naming) |

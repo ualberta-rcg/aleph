@@ -8,7 +8,7 @@
 ## Migration notes
 - Ported from 232 with existing server.py embedding pattern.
 - Only change: `HF_TOKEN` inline → `secretKeyRef: hf-token`.
-- StorageClass already `nfs-models`. PVC: `specter2-data` (5Gi RWX).
+- StorageClass already `nfs-models`. PVC: `specter2` (5Gi RWX; bare fleet naming, was `specter2-data`/`model-data`).
 - Added `routing.k8s_name: specter2` to details.yaml.
 
 ## Key quirks
