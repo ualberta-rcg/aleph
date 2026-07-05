@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from kubernetes import client, config, watch
 
 import usage
@@ -308,6 +309,12 @@ _DISCOVERY = {"cards_seeded": False, "isvc_seeded": False, "last_event": 0.0}
 _METRICS = {"requests_total": 0, "requests_error": 0}
 
 app = FastAPI(title="model-gateway", version="0.1")
+
+# Logos / static assets for the GET / page. Served keyless (the model-web Tyk
+# API proxies / to the gateway). dir is .../static next to this file.
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
 # ── K8s clients ────────────────────────────────────────────────────────────────
@@ -1485,57 +1492,75 @@ def _catalog_html() -> str:
         </article>""")
 
     cheatsheet = f"""
-    <pre># OpenAI chat
+    <pre># OpenAI Python SDK (chat, embeddings, rerank, audio)
+from openai import OpenAI
+c = OpenAI(base_url="{_MAIN_HOST}/v1", api_key="$KEY")
+c.chat.completions.create(model="command-r-7b",
+    messages=[{{"role":"user","content":"hi"}}], max_tokens=256)
+
+# Anthropic Python SDK (native /v1/messages path)
+import anthropic
+a = anthropic.Anthropic(base_url="{_MAIN_HOST}", api_key="$KEY")
+a.messages.create(model="command-r-7b", max_tokens=256,
+    messages=[{{"role":"user","content":"hi"}}])
+
+# curl — chat
 curl {_MAIN_HOST}/v1/chat/completions -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
   -d '{{"model":"command-r-7b","messages":[{{"role":"user","content":"hi"}}],"max_tokens":256}}'
 
-# Anthropic messages (same backends, native SDK path)
-curl {_MAIN_HOST}/v1/messages -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
-  -d '{{"model":"command-r-7b","max_tokens":256,"messages":[{{"role":"user","content":"hi"}}]}}'
-
-# Speech-to-text (multipart) — streaming: add  -F stream=true
+# Speech-to-text (multipart) — add  -F stream=true  for streaming
 curl {_MAIN_HOST}/v1/audio/transcriptions -H "Authorization: Bearer $KEY" -F model=whisper-large-v3 -F file=@audio.wav
-
 # Text-to-speech -> audio/mp3
 curl {_MAIN_HOST}/v1/audio/speech -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
-  -d '{{"model":"kokoro-82m","input":"Hello world.","voice":"af_heart"}}' --output out.mp3
+  -d '{{"model":"kokoro-82m","input":"Hello world.","voice":"af_heart"}}' -o out.mp3
 
-# Embeddings / rerank
-curl {_MAIN_HOST}/v1/embeddings -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-m3","input":"text"}}'
-curl {_MAIN_HOST}/v1/rerank     -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-reranker-v2-m3","query":"q","documents":["a","b"]}}'
+# List model ids (JSON)         # The key works in any of these forms:
+curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].id'
+#   Authorization: Bearer $KEY | x-api-key: $KEY | api-key: $KEY | x-goog-api-key: $KEY | ?api_key=$KEY
 
-# Per-model parameters + examples: open a card below. Machine-readable: GET {_MAIN_HOST}/v1/models</pre>"""
+# Per-model parameters + a ready-made example: open any card below.</pre>"""
 
     return f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Aleph Inference Gateway &mdash; Vulcan (AMII / UAlberta)</title>
+<title>Aleph Inference Gateway &mdash; Vulcan</title>
 <style>
  :root {{
-   --bg:#0b0f0d;--panel:#121a16;--card:#161b22;--ink:#d6dee8;--mut:#8b978f;--bd:#2a3a33;
-   --green:#3fb950;--zero:#e0a82e;--acc:#5fb6ff;--ua:#1c5d3a;--gold:#e0a82e;--alliance:#1f6fb2;
+   --bg:#0d1117;--card:#161b22;--ink:#d6dee8;--mut:#8b974f;--mut2:#8b949e;--bd:#2a3a33;
+   --green:#3fb950;--zero:#e0a82e;--acc:#5fb6ff;
+   --ua:#275d38;          /* University of Alberta primary green */
+   --ua-dark:#1c4630;--gold:#f2cd00;--cream:#f6f5ef;--ink2:#1f2a24;
  }}
  *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--ink);
- font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}}
+ font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}}
  a{{color:var(--acc);text-decoration:none}} a:hover{{text-decoration:underline}}
- .banner{{background:linear-gradient(90deg,var(--ua),#0f3a24);border-bottom:3px solid var(--gold);padding:26px 24px}}
- .banner-inner{{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}}
- .banner h1{{margin:0;font-size:30px;color:#fff;font-weight:650}}
- .banner h1 .sub{{color:var(--gold);font-weight:500;font-size:15px;display:block;margin-top:2px}}
- .banner p{{margin:8px 0 0;color:#bcd;color:#cfe;max-width:760px}}
- .keylink{{background:rgba(255,255,255,.08);border:1px solid var(--gold);color:#fff;border-radius:8px;
-   padding:9px 14px;font-size:13px;text-decoration:none;white-space:nowrap}}
- .keylink:hover{{background:rgba(224,168,46,.18)}}
- .stats{{max-width:1180px;margin:14px auto 0;padding:0 24px;color:var(--mut);font-size:13px}}
- .stats b.up{{color:var(--green)}} b.zero{{color:var(--zero)}}
+ /* ── top banner: cream so the green/colour logos read; green title ── */
+ .banner{{background:var(--cream);border-bottom:4px solid var(--ua)}}
+ .banner-inner{{max-width:1180px;margin:0 auto;padding:18px 24px 6px}}
+ .logos{{display:flex;gap:22px;align-items:center;flex-wrap:wrap}}
+ .logos a{{line-height:0}} .logos img{{height:46px;width:auto;object-fit:contain;display:block}}
+ .banner h1{{margin:14px 0 2px;font-size:30px;color:var(--ua);font-weight:700;letter-spacing:-.01em}}
+ .banner .lede{{margin:0;color:#33433a;max-width:820px;font-size:15px}}
+ .banner .lede b{{color:var(--ua)}}
+ .keylink{{display:inline-block;background:var(--ua);color:#fff;border-radius:8px;
+   padding:9px 15px;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}}
+ .keylink:hover{{background:var(--ua-dark);text-decoration:none}}
+ .about{{max-width:1180px;margin:0 auto;padding:8px 24px 16px;display:grid;
+   grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;color:#33433a}}
+ .about .card-l{{background:#fff;border:1px solid #e3e0d6;border-radius:10px;padding:12px 14px;font-size:13.5px}}
+ .about h3{{margin:0 0 4px;font-size:13px;color:var(--ua);text-transform:uppercase;letter-spacing:.04em}}
+ .about code{{background:#eeece4;border:1px solid #e0dccf;padding:0 4px;border-radius:4px;font-size:12px;color:#33433a}}
+ /* ── dark stats + toolbar + grid ── */
+ .stats{{max-width:1180px;margin:18px auto 0;padding:0 24px;color:var(--mut2);font-size:13px}}
+ .stats b.up{{color:var(--green)}} .stats b.zero{{color:var(--zero)}}
  .toolbar{{max-width:1180px;margin:10px auto 0;padding:0 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
  input.srch{{flex:1;min-width:220px;background:var(--card);border:1px solid var(--bd);color:var(--ink);
- border-radius:8px;padding:10px 12px;font-size:15px}} .count{{color:var(--mut);font-size:13px}}
+ border-radius:8px;padding:10px 12px;font-size:15px}} .count{{color:var(--mut2);font-size:13px}}
  details.cheat{{max-width:1180px;margin:14px auto 0;padding:0 24px}}
- details.cheat summary{{cursor:pointer;color:var(--gold);font-size:14px}}
+ details.cheat summary{{cursor:pointer;color:var(--gold);font-size:14px;font-weight:600}}
  pre{{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto;
  font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#9ca7b3;white-space:pre-wrap;word-break:break-word}}
  grid{{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
- max-width:1180px;margin:16px auto 40px;padding:0 24px}}
+ max-width:1180px;margin:16px auto 24px;padding:0 24px}}
  .card{{background:var(--card);border:1px solid var(--bd);border-left:3px solid var(--zero);border-radius:10px;
    padding:14px;display:flex;flex-direction:column;gap:8px}}
  .card.up{{border-left-color:var(--green)}}
@@ -1544,44 +1569,73 @@ curl {_MAIN_HOST}/v1/rerank     -H "Authorization: Bearer $KEY" -H "Content-Type
  .card h3{{margin:0;font-size:16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#fff;word-break:break-all}}
  .dot{{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none;background:var(--zero)}}
  .card.up .dot{{background:var(--green);box-shadow:0 0 6px var(--green)}}
- .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--mut)}}
- .badge.type{{color:#79c0ff;border-color:#1f6ebb}} .badge.gpu{{color:var(--green);border-color:#238636}} .badge.cpu{{color:var(--mut)}}
- .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut)}}
- .desc{{margin:0;color:var(--mut);font-size:13px}} .src{{margin-left:6px;font-size:11px}}
+ .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--mut2)}}
+ .badge.type{{color:#79c0ff;border-color:#1f6ebb}} .badge.gpu{{color:var(--green);border-color:#238636}} .badge.cpu{{color:var(--mut2)}}
+ .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut2)}}
+ .desc{{margin:0;color:var(--mut2);font-size:13px}} .src{{margin-left:6px;font-size:11px}}
  .status{{font-size:12px;font-weight:500}} .status.up{{color:var(--green)}} .status.zero{{color:var(--zero)}}
  .facts{{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 12px;font-size:12px}}
- .facts div{{display:flex;justify-content:space-between;gap:6px;min-width:0}} .k{{color:var(--mut);flex:none}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}}
- .ep{{font-size:11px;display:flex;gap:6px;align-items:baseline}} .ep .k{{color:var(--mut)}}
+ .facts div{{display:flex;justify-content:space-between;gap:6px;min-width:0}} .k{{color:var(--mut2);flex:none}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}}
+ .ep{{font-size:11px;display:flex;gap:6px;align-items:baseline}} .ep .k{{color:var(--mut2)}}
  .card details summary{{cursor:pointer;color:var(--gold);font-size:12px}} .card pre{{margin:6px 0 0;font-size:11px}}
  .params table{{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}}
  .params th,.params td{{border:1px solid var(--bd);padding:3px 6px;text-align:left;vertical-align:top}}
- .params th{{color:var(--mut)}} .params td:first-child{{color:#79c0ff;font-family:ui-monospace,monospace}}
- .wake{{margin-top:2px}} .wake summary{{cursor:pointer;color:var(--zero);font-size:12px}} .wake-note{{margin:6px 0 4px;color:var(--mut);font-size:12px}} .wake code{{color:var(--ink)}}
- footer{{max-width:1180px;margin:0 auto 40px;padding:0 24px;color:var(--mut);font-size:12px;line-height:1.7}}
- footer a{{color:var(--acc)}}
+ .params th{{color:var(--mut2)}} .params td:first-child{{color:#79c0ff;font-family:ui-monospace,monospace}}
+ .wake{{margin-top:2px}} .wake summary{{cursor:pointer;color:var(--zero);font-size:12px}} .wake-note{{margin:6px 0 4px;color:var(--mut2);font-size:12px}} .wake code{{color:var(--ink)}}
+ /* ── footer: cream, DRAC logo ── */
+ footer{{background:var(--cream);border-top:1px solid #e3e0d6;color:#33433a}}
+ .footer-inner{{max-width:1180px;margin:0 auto;padding:18px 24px 26px;display:flex;
+   justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}}
+ footer img{{height:42px;width:auto;object-fit:contain;display:block}}
+ footer .credit{{font-size:12.5px;line-height:1.6;max-width:560px}}
+ footer a{{color:var(--ua);font-weight:600}}
+ /* responsive: shrink logos / stack on phones */
+ @media(max-width:640px){{
+   .logos img{{height:32px}} .logos{{gap:14px}}
+   .banner h1{{font-size:23px}} .about{{grid-template-columns:1fr}}
+   footer img{{height:34px}}
+ }}
 </style></head><body>
 <div class="banner"><div class="banner-inner">
-  <div>
-    <h1>Aleph Inference Gateway<span class="sub">OpenAI &amp; Anthropic-compatible serving on Vulcan &mdash; AMII, University of Alberta · Digital Research Alliance</span></h1>
-    <p>Every model below is installed (Ready). The dot shows which are <b class="up">scaled up</b> right now vs
-       <b class="zero">scaled to zero</b> (wake-on-request). Open a card for its full parameter map and a copy-paste curl.</p>
+  <div class="logos">
+    <a href="https://www.ualberta.ca" target="_blank" rel="noopener" title="University of Alberta"><img src="/static/ualberta.png" alt="University of Alberta"></a>
+    <a href="https://amii.ca" target="_blank" rel="noopener" title="Amii"><img src="/static/amii.svg" alt="Amii"></a>
   </div>
-  <a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a>
+  <h1>Aleph Inference Gateway</h1>
+  <p class="lede">OpenAI- &amp; Anthropic-compatible model serving on the Vulcan cluster. Point your existing
+     SDK at the host below and use any of {len(entries)} models &mdash; <b class="up">{n_up}</b> are scaled up right now,
+     <b class="zero">{n_zero}</b> are scaled to zero (wake on first request).</p>
+  <div style="margin-top:12px"><a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a></div>
 </div></div>
-<div class="stats">{len(entries)} models &mdash; <b class="up">{n_up} scaled up</b>, <b class="zero">{n_zero} scaled to zero</b>. Endpoint: <a href="{_MAIN_HOST}/v1/models">{_MAIN_HOST}</a></div>
+<div class="about">
+  <div class="card-l"><h3>One API, both SDKs</h3>
+    <b>OpenAI SDK</b>: <code>base_url="{_MAIN_HOST}/v1"</code>. <b>Anthropic SDK</b>: <code>base_url="{_MAIN_HOST}"</code>.
+    Your key works as <code>Authorization: Bearer</code>, <code>x-api-key</code>, <code>api-key</code>,
+    <code>x-goog-api-key</code>, or <code>?api_key=</code>.</div>
+  <div class="card-l"><h3>Scale-to-zero</h3>
+    Models release their GPUs after ~15 min idle. The dot on each card is
+    <b style="color:var(--green)">green</b> when scaled up, <b style="color:var(--zero)">amber</b> when at zero.
+    A first request to a cold model returns <code>503 model_scaled_to_zero</code> with <code>Retry-After</code>;
+    retry until 200 (OpenWebUI &amp; most SDKs do this for you). Each card lists its wake time.</div>
+  <div class="card-l"><h3>Endpoints</h3>
+    <code>/v1/chat/completions</code>, <code>/v1/messages</code>, <code>/v1/embeddings</code>, <code>/v1/rerank</code>,
+    <code>/v1/audio/transcriptions</code> (STT), <code>/v1/audio/speech</code> (TTS), plus per-model science paths.
+    Open any card for its full parameter map and a copy-paste example.</div>
+</div>
+<div class="stats">{len(entries)} models &mdash; <b class="up">{n_up} scaled up</b>, <b class="zero">{n_zero} scaled to zero</b>. Host: <a href="{_MAIN_HOST}/">{_MAIN_HOST}</a></div>
 <div class="toolbar">
  <input class="srch" id="q" placeholder="Search by name, type, domain, tag, 'scaled up'…" autocomplete="off">
  <span class="count" id="cnt"></span>
 </div>
-<details class="cheat"><summary>Quickstart &mdash; curl cheatsheet</summary>{cheatsheet}</details>
+<details class="cheat"><summary>Quickstart &mdash; SDK + curl examples</summary>{cheatsheet}</details>
 <grid id="grid">{''.join(cards_html)}</grid>
-<footer>
- Need an API key? <a href="mailto:{_KEY_MAILTO}">{_KEY_MAILTO}</a> &mdash; include your name, affiliation, and intended use.<br>
- Run by <a href="https://www.ualberta.ca">University of Alberta</a> / <a href="https://amii.ca">AMII</a> on the
- <a href="https://www.alliancecan.ca/en">Digital Research Alliance</a> Vulcan cluster.
- Machine-readable: <a href="/v1/models">/v1/models</a> · health <a href="/healthz">/healthz</a> · <a href="/metrics">/metrics</a>.
- Authenticated by a Tyk key (<code>Authorization: Bearer $KEY</code>).
-</footer>
+<footer><div class="footer-inner">
+  <a href="https://www.alliancecan.ca/en" target="_blank" rel="noopener" title="Digital Research Alliance of Canada">
+    <img src="/static/drac.svg" alt="Digital Research Alliance of Canada"></a>
+  <div class="credit">Aleph Inference Gateway &middot; <a href="https://www.ualberta.ca">University of Alberta</a> /
+    <a href="https://amii.ca">Amii</a> on the <a href="https://www.alliancecan.ca/en">Digital Research Alliance</a> Vulcan cluster.
+    Questions or need a key? <a href="mailto:{_KEY_MAILTO}">{_KEY_MAILTO}</a>.</div>
+</div></footer>
 <script>
  const cards=[...document.querySelectorAll('.card')];
  const cnt=document.getElementById('cnt');
