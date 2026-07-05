@@ -5,7 +5,7 @@ single-cell transcriptomes. Takes ranked gene tokens (gene names + expression va
 a **cell-level embedding** (mean-pooled hidden states). Use cases: cell-type classification, gene
 network analysis, in silico perturbation.
 
-Custom FastAPI/transformers server on CPU, scale-to-zero, venv-on-PVC.
+Custom FastAPI/transformers server on a HAMi GPU slice, always-on (minReplicas: 1), venv-on-PVC.
 
 **Non-text domain model**: gene-expression input — does **not** expose OpenAI `/v1/embeddings`.
 Serves `POST /v1/science/embed` (with `/v1/embed` as a secondary alias).
@@ -41,5 +41,5 @@ deterministic, model-echo, malformed.
 | Input | `genes` [names] + `expression` [floats] (tokenized + ranked; max 4096) |
 | Parameters | 104M (V2) |
 | GPU | none (CPU) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| PVC | `geneformer-data-rwx` (RWX, nfs-models, 8Gi) — venv + weights + tokenizer |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| PVC | `geneformer` (RWX, nfs-models, 8Gi; bare fleet naming) — venv + weights + tokenizer |

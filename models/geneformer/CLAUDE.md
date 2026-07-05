@@ -15,10 +15,10 @@ Body needs `"model": "geneformer"`:
 - Returns `{"embeddings":[[...]], "embedding_dim":N, "model":"geneformer"}`.
 
 ## Deployment
-- **CPU-only** (104M transformer; runs on CPU).
-- **PVC**: `geneformer-data-rwx` — **ReadWriteMany**, nfs-models, 8 Gi (`pvc.yaml`). Migrated
-  RWO→RWX 2026-06-19 via **cp-from-RWO** (venv + weights + tokenizer preserved; old
-  `geneformer-data` deleted). Split out of the ISVC (was inline + RWO).
+- **GPU** (HAMi 8 GiB slice; 104M transformer).
+- **PVC**: `geneformer` — **ReadWriteMany**, nfs-models, 8 Gi (`pvc.yaml`; bare fleet naming, was
+  `geneformer-data-rwx`/`model-data`). Migrated RWO→RWX 2026-06-19 via cp-from-RWO (venv + weights +
+  tokenizer preserved). Split out of the ISVC (was inline + RWO).
 - **Venv-on-PVC**: `/data/venv` (transformers + torch, guarded). Loads via `AutoModel(trust_remote_code)`.
 - **Scale-to-zero**: minReplicas 0, 15m retention.
 

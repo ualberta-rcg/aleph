@@ -3,6 +3,13 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy geneformer on cluster 43 (always-on GPU embedder)
+
+- minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 900s (V2-104M trust_remote_code load).
+- bare `geneformer` PVC/volume naming (was `geneformer-data-rwx` / `model-data`).
+- 768-dim cell-level (Geneformer V2-104M); cu126 torch + transformers (trust_remote_code). Domain
+  endpoint `/v1/science/embed` (`/v1/embed` alias), input=gene_ids. Gateway 6/0; clean delete+redeploy.
+
 ## 2026-07-05 — deploy dnabert-2 on cluster 43 (always-on CPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s.
