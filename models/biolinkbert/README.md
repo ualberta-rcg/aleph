@@ -3,7 +3,7 @@
 Stanford's BioLinkBERT — BERT pre-trained with a **linked-document objective** on PubMed, improving
 biomedical NLP tasks that benefit from document context (entity linking, relation extraction,
 retrieval). 768-dim mean-pooled embeddings. Custom FastAPI/transformers server on a HAMi GPU slice,
-scale-to-zero. OpenAI-compliant `/v1/embeddings` (batch + usage).
+always-on (minReplicas: 1). OpenAI-compliant `/v1/embeddings` (batch + usage).
 
 ## Deployment
 
@@ -36,5 +36,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 512 tokens |
 | Parameters | 110M (BERT-base) |
 | GPU | HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `biolinkbert-data` (RWX, nfs-models; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `biolinkbert` (RWX, nfs-models; bare fleet naming) |

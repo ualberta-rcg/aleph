@@ -20,8 +20,8 @@ data:
       },
       "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
       "scaling": {
-        "scale_to_zero": true,
-        "min_replicas": 0,
+        "scale_to_zero": false,
+        "min_replicas": 1,
         "idle_retention": "15m",
         "cold_start_estimate": "1-2 minutes (venv + model cached on PVC)"
       },
@@ -53,7 +53,7 @@ data:
         "usage": { "type": "object", "description": "{prompt_tokens, total_tokens}" }
       },
       "catalog": {
-        "description_short": "BioLinkBERT-base — 768-dim biomedical embeddings (GPU, scale-to-zero)",
+        "description_short": "BioLinkBERT-base — 768-dim biomedical embeddings (GPU, always-on)",
         "description": "BioLinkBERT-base (michiyasunaga/BioLinkBERT-base, Stanford): BERT pre-trained with a linked-document objective on PubMed, improving biomedical NLP tasks that benefit from document context (entity linking, relation extraction, retrieval). Produces 768-dim mean-pooled dense embeddings, max 512 tokens. Served via a custom transformers FastAPI server on a HAMi GPU slice (8 GiB), scale-to-zero. OpenAI-compliant /v1/embeddings (batch + usage).",
         "owned_by": "Michihiro Yasunaga (Stanford)",
         "source": "michiyasunaga/BioLinkBERT-base",

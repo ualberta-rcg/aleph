@@ -22,7 +22,7 @@ Key info from source:
 - **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`.
 - **Init container**: creates venv, installs torch+transformers (CUDA), downloads model to PVC.
 - **ConfigMap**: `biolinkbert-server` (server code embedded in inferenceservice.yaml).
-- **PVC**: `biolinkbert-data` — RWX, nfs-models (venv + weights; migrated RWO→RWX).
+- **PVC**: `biolinkbert` — RWX, nfs-models (venv + weights; bare fleet naming, was `biolinkbert-data`/`model-data`).
 - **GPU**: HAMi slice (`gpu: "on"`, `nvidia.com/gpumem: 8192`), fp16.
 - **Env**: `HF_HOME=/data/hf_cache`.
 - **Pooling**: mean pooling with attention mask.
@@ -37,7 +37,7 @@ Key info from source:
 - **k8s ISVC name**: `biolinkbert`
 - **API model ID**: `biolinkbert`
 - **type**: `embedding` (details.yaml schema v2)
-- **Scale-to-zero**: minReplicas=0, 15m retention.
+- **Always-on**: minReplicas=1 (max 3, scaleTarget 8), 15m retention.
 
 ## Deploy / Update / Test
 
@@ -68,7 +68,7 @@ cat models/biolinkbert/test.py | kubectl exec -i -n models deploy/model-gateway 
 |------|---------|
 | `details.yaml` | Model card (schema v2, type: embedding) |
 | `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
-| `pvc.yaml` | PVC `biolinkbert-data` (RWX, nfs-models) |
+| `pvc.yaml` | PVC `biolinkbert` (RWX, nfs-models) |
 | `test.py` | Gateway test battery (10 checks) |
 | `README.md` | Model overview |
 
