@@ -3,6 +3,13 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy dnabert-2 on cluster 43 (always-on CPU embedder)
+
+- minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s.
+- bare `dnabert-2` PVC/volume naming (was `dnabert-2-data` / `model-data`).
+- 768-dim DNA (id `dnabert-2-117m`); pinned torch 2.5.1+cpu + transformers 4.40.2 (custom ops break
+  on torch>=2.6; `.pin-torch251` sentinel gates the venv). Gateway 8/2/0; clean delete+redeploy.
+
 ## 2026-07-05 — deploy saprot-650m on cluster 43 (always-on GPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 900s (650M cold start).

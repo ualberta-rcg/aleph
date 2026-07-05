@@ -3,7 +3,7 @@
 ~117M-param **multi-species DNA foundation model** — 768-dim mean-pooled embeddings of DNA
 sequences for variant-effect prediction, genome annotation, regulatory-element analysis, and
 epigenomic prediction. Uses BPE tokenization (not fixed k-mers). Custom FastAPI/transformers
-server, CPU-only, scale-to-zero.
+server, CPU-only, always-on (minReplicas: 1).
 
 ## Deployment
 
@@ -45,8 +45,8 @@ unknown-model 404), catalog (type=embedding, ctx 512).
 | Precision | fp32 |
 | Parameters | ~117M |
 | Pins | torch 2.5.1+cpu, transformers 4.40.2, TORCHDYNAMO_DISABLE=1 |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `dnabert-2-data` (RWX, nfs-models, 5Gi) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `dnabert-2` (RWX, nfs-models, 5Gi; bare fleet naming) |
 
 ## Model Highlights
 
