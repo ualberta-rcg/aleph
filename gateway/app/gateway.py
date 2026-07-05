@@ -1275,12 +1275,26 @@ def _usage_snippet(entry: dict) -> str:
     return f"curl {main} {body}\n#  backup: curl {backup} {body}"
 
 
+def _wake_body(entry: dict) -> str:
+    """Minimal valid request body to probe/wake a cold model by endpoint type."""
+    mid = entry["id"]
+    ep = (entry.get("endpoint") or "/v1/chat/completions").lower()
+    t = (entry.get("type") or "chat").lower()
+    if t in ("embedding", "embed") or ep.startswith("/v1/embeddings"):
+        return f'{{"model":"{mid}","input":"."}}'
+    if t == "reranker" or ep.startswith("/v1/rerank"):
+        return f'{{"model":"{mid}","query":".","documents":["."]}}'
+    return f'{{"model":"{mid}","messages":[{{"role":"user","content":"hi"}}],"max_tokens":1}}'
+
+
 def _catalog_html() -> str:
     with _STATE_LOCK:
         cards = list(CARDS.values())
         isvc_state = dict(ISVC_STATE)
-    entries = sorted((_model_entry(c, isvc_state) for c in cards), key=lambda x: x["id"])
+    entries = sorted((_model_entry(c, isvc_state) for c in cards),
+                     key=lambda x: (not x.get("ready"), x["id"].lower()))
     n_ready = sum(1 for e in entries if e.get("ready"))
+    n_cold = len(entries) - n_ready
 
     def esc(s):
         return html.escape(str(s) if s is not None else "")
@@ -1291,18 +1305,33 @@ def _catalog_html() -> str:
     cards_html = []
     for e in entries:
         cap = e.get("capabilities", {}) or {}
+        scaling = e.get("scaling", {}) or {}
+        res = e.get("resources", {}) or {}
+        always_on = bool(scaling.get("min_replicas"))
+        cold_est = scaling.get("cold_start_estimate") or ""
+        ready = bool(e.get("ready"))
         facts = []
         if e.get("context_window"):
             facts.append(("context", f'{e["context_window"]:,}'))
         if e.get("max_completion_tokens"):
             facts.append(("max out", f'{e["max_completion_tokens"]:,}'))
+        # "size" = allocated GPU/VRAM footprint from the live ISVC spec
+        if res.get("gpus"):
+            sz = f'{res["gpus"]}×GPU'
+            if res.get("vram_mib"):
+                sz += f' {res["vram_mib"] // 1024}GB'
+            facts.append(("size", sz))
+        elif res.get("cpu_cores") or res.get("system_ram_mib"):
+            facts.append(("size", f'{res.get("cpu_cores", "?")} CPU'
+                          + (f' {res.get("system_ram_mib", 0) // 1024}GB' if res.get("system_ram_mib") else '')))
         for k, label in (("parameters", "params"), ("precision", "precision"),
-                         ("framework", "framework"), ("license", "license"),
-                         ("domain", "domain")):
+                         ("license", "license"), ("domain", "domain")):
             if e.get(k):
                 facts.append((label, e[k]))
+        if cold_est:
+            facts.append(("cold start", cold_est))
         facts_html = "".join(
-            f"<div><span class='k'>{esc(k)}</span><span class='v'>{esc(v)}</span></div>"
+            f"<div><span class='k'>{esc(k)}</span><span class='v' title='{esc(v)}'>{esc(v)}</span></div>"
             for k, v in facts)
         tags = " ".join(badge(t, "tag") for t in (e.get("tags") or [])[:4])
         caps = []
@@ -1310,18 +1339,41 @@ def _catalog_html() -> str:
         if cap.get("tools"): caps.append("tools")
         if cap.get("reasoning"): caps.append("reasoning")
         caps_html = " ".join(badge(c, "cap") for c in caps)
+        ao_html = badge("always-on", "ao") if always_on else ""
+        # status line + wake help for cold models
+        if ready:
+            status = '<span class="status up">● up now</span>'
+            wake_html = ""
+        elif always_on:
+            status = '<span class="status warm">○ starting</span>'
+            wake_html = ""
+        else:
+            status = f'<span class="status cold">○ cold — wakes in {esc(cold_est or "?")} on first request</span>'
+            main_ep, _ = _entry_paths(e)
+            wake_html = (
+                '<details class="wake"><summary>how to wake it up</summary>'
+                '<p class="wake-note">Scale-to-zero: the first request returns '
+                '<code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; '
+                "retry until 200 (OpenWebUI does this automatically).</p>"
+                f'<pre># wakes the model; retry on 503 (~{esc(cold_est or "1-2 min")} to ready)\n'
+                f'while ! curl -s -o /dev/null -w "%{{http_code}}" {esc(main_ep)} '
+                f'-H "Authorization: Bearer $KEY" -H "Content-Type: application/json" '
+                f"-d '{esc(_wake_body(e))}' | grep -q 200; do sleep 5; done</pre>"
+                '</details>')
         search = " ".join(str(x) for x in (
             e["id"], e.get("type"), e.get("description"), e.get("domain"),
-            e.get("subdomain"), *(e.get("tags") or []))).lower()
+            e.get("subdomain"), "always-on" if always_on else "cold",
+            *(e.get("tags") or []))).lower()
         main, backup = _entry_paths(e)
         cards_html.append(f"""
         <article class="card" data-search="{esc(search)}">
           <header>
             <h3>{esc(e["id"])}</h3>
-            <span class="dot {'ok' if e.get('ready') else 'cold'}" title="{'ready' if e.get('ready') else 'cold/not-ready'}"></span>
+            <span class="dot {'ok' if ready else 'cold'}" title="{'ready' if ready else 'cold/not-ready'}"></span>
           </header>
-          <div class="badges">{badge(e.get('type','chat'),'type')}{badge('gpu' if e.get('gpu') else 'cpu','gpu' if e.get('gpu') else 'cpu')}{caps_html}{tags}</div>
+          <div class="badges">{badge(e.get('type','chat'),'type')}{badge('gpu' if e.get('gpu') else 'cpu','gpu' if e.get('gpu') else 'cpu')}{ao_html}{caps_html}{tags}</div>
           <p class="desc">{esc((e.get('description') or '').split('. ')[0][:240])}</p>
+          {status}
           <div class="facts">{facts_html}</div>
           <div class="ep">
             <div><span class="k">endpoint</span>
@@ -1332,6 +1384,7 @@ def _catalog_html() -> str:
           <details><summary>curl example</summary>
             <pre>{esc(_usage_snippet(e))}</pre>
           </details>
+          {wake_html}
         </article>""")
 
     cheatsheet = f"""
@@ -1382,18 +1435,21 @@ curl {_MAIN_HOST}/v1/rerank      -H "Authorization: Bearer $KEY" -H "Content-Typ
  .dot{{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}} .ok{{background:var(--ok)}} .cold{{background:var(--cold);opacity:.5}}
  .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--mut)}}
  .badge.type{{color:#79c0ff;border-color:#1f6feb}} .badge.gpu{{color:var(--ok);border-color:#238636}} .badge.cpu{{color:var(--mut)}}
- .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut)}}
+ .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut)}} .badge.ao{{color:#3fb950;border-color:#238636}}
  .desc{{margin:0;color:var(--mut);font-size:13px}}
+ .status{{font-size:12px;font-weight:500}} .status.up{{color:var(--ok)}} .status.cold{{color:#f0883e}} .status.warm{{color:var(--mut)}}
  .facts{{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 12px;font-size:12px}}
- .facts div{{display:flex;justify-content:space-between;gap:6px}} .k{{color:var(--mut)}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+ .facts div{{display:flex;justify-content:space-between;gap:6px;min-width:0}} .k{{color:var(--mut);flex:none}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}}
+ .wake{{margin-top:2px}} .wake summary{{cursor:pointer;color:#f0883e;font-size:12px}} .wake-note{{margin:6px 0 4px;color:var(--mut);font-size:12px}} .wake code{{color:var(--ink)}}
  .ep{{font-size:11px;display:flex;flex-direction:column;gap:2px}} .ep .k{{display:inline-block;width:52px}}
  .card details summary{{cursor:pointer;color:var(--acc);font-size:12px}} .card pre{{margin:6px 0 0;font-size:11px}}
  footer{{max-width:1180px;margin:0 auto 40px;padding:0 24px;color:var(--mut);font-size:12px}}
 </style></head><body>
 <header class="top">
  <h1>Aleph Inference Gateway</h1>
- <p>OpenAI- &amp; Anthropic-compatible inference on the Vulcan cluster. {len(entries)} models discovered ({n_ready} ready).
-    Pick a host below (both serve every endpoint); the main host uses a self-signed cert, the backup a valid Let&rsquo;s Encrypt cert.</p>
+ <p>OpenAI- &amp; Anthropic-compatible inference on the Vulcan cluster. {len(entries)} models discovered &mdash;
+    <b style="color:var(--ok)">{n_ready} up now</b>, <b style="color:#f0883e">{n_cold} cold</b> (scale-to-zero, wake on first request).
+    Both hosts below serve every endpoint; the main host uses a self-signed cert, the backup a valid Let&rsquo;s Encrypt cert.</p>
  <div class="hosts">
    <div class="host"><b>main (self-signed)</b><a href="{_MAIN_HOST}/">{_MAIN_HOST}/</a></div>
    <div class="host"><b>backup (valid LE cert)</b><a href="{_BACKUP_HOST}/serving/api/">{_BACKUP_HOST}/serving/api/</a></div>
