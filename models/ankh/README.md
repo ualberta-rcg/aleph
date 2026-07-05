@@ -3,7 +3,7 @@
 Protein language model based on a **T5 encoder** (trained on ~30M unlabeled protein sequences) —
 **768-dim mean-pooled protein embeddings**. Input is space-separated amino acids; fp32 (T5 encoders
 overflow to NaN in fp16, sanitized). Custom FastAPI/transformers server on a HAMi GPU slice,
-scale-to-zero. OpenAI-compliant `/v1/embeddings` (batch + usage).
+always-on (minReplicas: 1). OpenAI-compliant `/v1/embeddings` (batch + usage).
 
 ## Deployment
 
@@ -36,5 +36,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 1024 residues |
 | Precision | fp32 (T5 encoder NaN in fp16) |
 | GPU | HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `ankh-data` (RWX, nfs-models; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `ankh` (RWX, nfs-models; bare fleet naming) |

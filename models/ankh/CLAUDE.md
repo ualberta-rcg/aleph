@@ -18,8 +18,8 @@ Ankh is a T5-based protein language model from ElnaggarLab (TUM). Produces embed
 ## Our config vs source
 - venv-on-PVC pattern, torch>=2.6 with CUDA
 - Pre-downloads model in init container
-- GPU HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`), minReplicas: 0
-- PVC `ankh-data` (RWX, nfs-models; migrated from RWO)
+- GPU HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`), minReplicas: 1 (always-on, max 3)
+- PVC `ankh` (RWX, nfs-models; bare fleet naming, was `ankh-data`/`model-data`)
 
 ## Deploy/update/test commands
 ```bash
