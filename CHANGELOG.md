@@ -3,6 +3,14 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy sapbert on cluster 43 (always-on GPU embedder)
+
+- minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.
+- bare `sapbert` PVC/volume naming (was `sapbert-data` / `model-data`).
+- 768-dim [CLS] entity embeddings (max 25 tokens). NB: init still uses the cpu torch wheel — 110M /
+  25-token inputs are fast on CPU; the GPU slice is reserved-but-unused (left as-is, not a rebuild).
+  Gateway 6/2/0; clean delete+redeploy reproduces (PVC reused).
+
 ## 2026-07-05 — deploy pubmedbert on cluster 43 (always-on CPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.

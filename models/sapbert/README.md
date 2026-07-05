@@ -2,7 +2,7 @@
 
 Self-alignment pre-trained on PubMedBERT for **biomedical entity linking** — maps biomedical
 mentions (diseases, drugs, etc.) to UMLS concept embeddings. **768-dim [CLS] entity embeddings**
-(max 25 tokens). Custom FastAPI/transformers server on a HAMi GPU slice, scale-to-zero. Serves the
+(max 25 tokens). Custom FastAPI/transformers server on a HAMi GPU slice, always-on (minReplicas: 1). Serves the
 standard OpenAI `/v1/embeddings` (`/v1/science/embed` kept as secondary).
 
 ## Deployment
@@ -36,5 +36,5 @@ distinctness, guardrails, catalog.
 | Max input | 25 tokens (entity mentions — short) |
 | Parameters | 110M |
 | GPU | HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 10m retention) |
-| Weights | PVC `sapbert-data` (RWX, nfs-models; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `sapbert` (RWX, nfs-models; bare fleet naming) |

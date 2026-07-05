@@ -153,7 +153,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | rnabert | embedding | true | /v1/science/embed | READY | PASS | 120-dim RNA (recreated) |
 | rnafm | embedding | true | /v1/science/embed | READY | PASS | 640-dim RNA (recreated) |
 | rnamsm | embedding | true | /v1/science/embed | READY | PASS | 768-dim RNA (field: sequence) |
-| sapbert | embedding | true | /v1/science/embed | READY | PASS | 768-dim biomedical |
+| sapbert | embedding | true | /v1/science/embed | READY | PASS | 768-dim biomedical. **Deployed+verified on cluster 43 (2026-07-05):** always-on GPU (minReplicas:1/maxReplicas:3, progress-deadline 600s); bare `sapbert` PVC/volume naming (was `sapbert-data`/`model-data`); card scaling min_replicas 0→1. (Note: init still installs the cpu torch wheel — 110M/25-token is fast on CPU; GPU slice reserved-but-unused, left as-is.) Clean delete+redeploy (PVC reused); gateway 6/2/0. |
 | saprot-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim (AA+3Di tokens; recreated) |
 | satmae | embed | false | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (1024-dim CLS); test.py expanded to ~12 checks (0 FAIL); RWX PVC |
 | scgpt | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias; GPU (was card said CPU); 512-dim; 7/0 test; was parked |

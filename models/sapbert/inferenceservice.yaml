@@ -97,6 +97,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -106,15 +107,17 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 1
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
+    timeout: 300
     nodeSelector:
       gpu: "on"
     volumes:
-      - name: model-data
+      - name: sapbert
         persistentVolumeClaim:
-          claimName: sapbert-data
+          claimName: sapbert
       - name: server-code
         configMap:
           name: sapbert-server
@@ -129,7 +132,7 @@ spec:
             memory: "4Gi"
             cpu: "2"
         volumeMounts:
-          - name: model-data
+          - name: sapbert
             mountPath: /data
         env:
           - name: HF_TOKEN
@@ -178,7 +181,7 @@ spec:
             nvidia.com/gpu: "1"
             nvidia.com/gpumem: "8192"
         volumeMounts:
-          - name: model-data
+          - name: sapbert
             mountPath: /data
           - name: server-code
             mountPath: /app

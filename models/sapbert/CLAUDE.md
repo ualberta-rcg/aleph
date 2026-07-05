@@ -22,7 +22,7 @@ Key info from source:
 - **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`
 - **Init container**: Creates venv, installs torch+transformers (CPU), downloads model from HF to PVC
 - **ConfigMap**: `sapbert-server` — server code embedded in inferenceservice.yaml
-- **PVC**: `sapbert-data` — stores venv + model weights (5Gi)
+- **PVC**: `sapbert` — stores venv + model weights (5Gi; bare fleet naming, was `sapbert-data`/`model-data`)
 - **Health**: Custom `/health` endpoint
 - **GPU**: 1x shared L40S via time-slicing
 - **Env vars**: `MODEL_DIR=/data/model`, `HF_HUB_OFFLINE=1`
