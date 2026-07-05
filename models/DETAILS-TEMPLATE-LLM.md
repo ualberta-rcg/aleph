@@ -39,7 +39,7 @@ The gateway reads these fields from cards. Everything else is catalog/documentat
 | `limits.max_completion_tokens` | Hard output cap | Yes for LLMs |
 | `scaling.scale_to_zero` | Cold-start guard (503 + ETA) | Yes |
 | `scaling.idle_retention` | How long to keep pod alive | Recommended |
-| `scaling.cold_start_estimate` | Human-readable ETA in 503 | Recommended |
+| `scaling.cold_start_estimate` | Human-readable ETA in 503; the **0→1 wake time after the first start** (weights/venv already cached), NOT the first-ever deploy time | Recommended |
 | `defaults.chat.*` | Auto-fill missing params (temperature, max_tokens) | Recommended for LLMs |
 | `defaults.meta_tasks.*` | OpenWebUI title/tags/followups | Recommended for LLMs |
 | `param_translation.thinking.*` | Effort → budget mapping | Yes for reasoning models |
