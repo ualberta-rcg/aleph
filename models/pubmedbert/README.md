@@ -3,7 +3,7 @@
 Microsoft **PubMedBERT** — BERT-base pre-trained **from scratch** on PubMed abstracts (no
 general-domain pre-training, fully biomedical vocabulary). Outperforms BioBERT on domain-specific
 tasks. 768-dim mean-pooled biomedical embeddings. Custom FastAPI/transformers server, CPU-only,
-scale-to-zero.
+always-on (minReplicas: 1).
 
 > Requests use `model: "pubmedbert"`; the server echoes `pubmedbert-110m` (its internal id).
 
@@ -42,11 +42,11 @@ unknown-model 404), catalog (type=embedding, ctx 512).
 | Max input | 512 tokens (tokenizer truncates longer) |
 | Precision | fp32 |
 | Parameters | 110M (BERT-base) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `pubmedbert-data` (RWX, nfs-models, 5Gi) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `pubmedbert` (RWX, nfs-models, 5Gi; bare fleet naming) |
 
 ## Model Highlights
 
 - Pre-trained from scratch on PubMed → domain-specific vocabulary; strong on biomedical NER/classification.
 - 768-dim mean-pooled embeddings.
-- CPU-only, scale-to-zero.
+- CPU-only, always-on.

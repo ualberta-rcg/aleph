@@ -9,7 +9,7 @@
 - 232 source was a stub (card only, no server.py/ISVC). Built fresh from the
   biomedbert pattern (same standard HF embedding server template).
 - `tier: planned` → `production`; removed "NOTE: stub" from description.
-- PVC: pubmedbert-data (5Gi RWX, nfs-models). HF_TOKEN secretKeyRef.
+- PVC: pubmedbert (5Gi RWX, nfs-models; bare fleet naming, was `pubmedbert-data`/`model-data`). HF_TOKEN secretKeyRef.
 
 ## Key quirks
 - Pre-trained from scratch on PubMed abstracts only (no Wikipedia/books), resulting
