@@ -3,6 +3,13 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy esm2-650m on cluster 43 (always-on GPU embedder)
+
+- minReplicas 0->1 (max 5 — high-traffic protein, scaleTarget 8), progress-deadline 600s.
+- bare `esm2-650m` PVC/volume naming (was `esm2-650m-data` / `model-data`).
+- 1280-dim protein (Meta ESM-2 650M); cu121 torch + pinned transformers 4.46.3. Gateway 8/2/0;
+  clean delete+redeploy reproduces (PVC reused).
+
 ## 2026-07-05 — deploy multilingual-e5-small on cluster 43 (always-on CPU embedder)
 
 - minReplicas 0->1 (max 5 — high-traffic multilingual, scaleTarget 8), progress-deadline 600s.

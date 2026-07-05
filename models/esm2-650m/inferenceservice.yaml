@@ -92,6 +92,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -101,10 +102,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 5
+    minReplicas: 1
+    maxReplicas: 5
+    scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 120
+    timeout: 300
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -150,7 +152,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: esm2-650m, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -170,10 +172,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: esm2-650m, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: esm2-650m-data }
+      - name: esm2-650m
+        persistentVolumeClaim: { claimName: esm2-650m }
       - name: app
         configMap: { name: esm2-650m-server }

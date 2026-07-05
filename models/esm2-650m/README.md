@@ -3,7 +3,7 @@
 Meta AI's ESM-2 650M protein language model — produces **1280-dim mean-pooled per-protein
 embeddings** of amino-acid sequences for downstream structure/function prediction, variant
 effect, and similarity search. Custom FastAPI/transformers server on a HAMi sub-GPU slice,
-scale-to-zero.
+always-on (minReplicas: 1).
 
 ## Deployment
 
@@ -44,12 +44,12 @@ guardrails (chat→embed 404, unknown-model 404), catalog (type=embedding, ctx 1
 | Precision | fp16 (GPU) |
 | Parameters | 650M (33-layer MLM transformer) |
 | GPU | HAMi slice 4 GiB (`nvidia.com/gpumem: 4096`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `esm2-650m-data` (RWX, nfs-models, 15Gi) |
+| Scale | always-on (`minReplicas: 1`, max 5, 15m retention) |
+| Weights | PVC `esm2-650m` (RWX, nfs-models, 15Gi; bare fleet naming) |
 
 ## Model Highlights
 
 - The most widely used protein language model; strong transfer to structure/function/variant tasks.
 - 1280-dim per-protein embeddings via mean pooling over residue tokens.
 - Input is a 1-letter amino-acid sequence (or list); sequences >1022 residues are truncated.
-- Served on a sub-GPU HAMi slice (<1/11 of an L40S) with scale-to-zero.
+- Served on a sub-GPU HAMi slice (<1/11 of an L40S), always-on.

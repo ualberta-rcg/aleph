@@ -17,7 +17,7 @@ Template-C (`type: embedding`) — custom-transformers-server variant.
 - GPU request: `nvidia.com/gpu: 1` · HAMi `nvidia.com/gpumem: 4096` (4 GiB slice; model fp16 ~1.3 GiB)
 
 ## Storage
-- PVC name: `esm2-650m-data` (**ReadWriteMany**, nfs-models, 15Gi) — split out of inferenceservice.yaml 2026-06-19
+- PVC name: `esm2-650m` (**ReadWriteMany**, nfs-models, 15Gi; bare fleet naming, was `esm2-650m-data`/`model-data`)
 - Mount path: `/data` (init writes venv + model; server reads readOnly). App at `/app` (ConfigMap).
 - Warm-cache condition: `/data/venv/bin/python` imports torch AND `/data/model/config.json` exists
 
@@ -27,7 +27,7 @@ Template-C (`type: embedding`) — custom-transformers-server variant.
 - **Truncation is safe here:** the tokenizer uses `truncation=True, max_length=1022`, so >1022-residue
   inputs are pre-truncated before the model — no OOM (unlike TEI bge-m3). The test exercises this.
 - **usage.prompt_tokens = raw residue count** (server sums `len(seq)`), not the truncated token count.
-- **Scale-to-zero** (`minReplicas: 0`): first request scales 0→1 (cold start ~1–2 min). Leave at 0, no stop.
+- **Always-on** (`minReplicas: 1`, max 5, scaleTarget 8): warm protein-embedder tier.
 
 ## Deploy / update steps
 1. `kubectl apply -f pvc.yaml` (RWX; caches venv + model).
