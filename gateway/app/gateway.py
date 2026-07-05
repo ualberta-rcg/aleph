@@ -1553,18 +1553,19 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  code{{background:var(--alt);border:1px solid var(--bd);padding:0 4px;border-radius:4px;font-size:12.5px;color:#33433a}}
  /* ── header: U of A green, logos whitened so they read on green ── */
  header.top{{background:var(--ua);color:#fff;border-bottom:5px solid var(--gold)}}
- .top-inner{{max-width:1200px;margin:0 auto;padding:16px 24px 18px}}
- .toprow{{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}}
- .logos{{display:flex;gap:20px;align-items:center;flex-wrap:wrap}}
- .logos a{{line-height:0;display:inline-flex}} .logos img{{height:44px;width:auto;object-fit:contain;display:block}}
- .logos img.inv{{filter:brightness(0) invert(1)}}     /* U of A green logo -> white */
- .actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}
- .gh{{color:#ffffffcc;font-size:13px}} .gh:hover{{color:#fff}}
+ .top-inner{{max-width:1200px;margin:0 auto;padding:18px 24px 18px}}
+ .toprow{{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}}
+ .ualogo{{line-height:0;display:inline-flex}} .ualogo img{{height:66px;width:auto;object-fit:contain;display:block;filter:brightness(0) invert(1)}}
+ .actions{{display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
+ .gh{{display:inline-flex;align-items:center;gap:6px;color:#ffffffd9;font-size:13px;font-weight:600}}
+ .gh:hover{{color:#fff;text-decoration:none}} .gh svg{{fill:currentColor}}
  .keylink{{display:inline-block;background:var(--gold);color:#23301f;border-radius:8px;
-   padding:9px 15px;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap}}
+   padding:10px 16px;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap}}
  .keylink:hover{{background:#ffe14d;text-decoration:none}}
- header.top h1{{margin:14px 0 2px;font-size:32px;font-weight:700;letter-spacing:-.01em}}
- header.top .lede{{margin:0;color:#dfeae0;max-width:840px;font-size:15px}}
+ .titlerow{{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin:16px 0 0}}
+ .titlerow h1{{margin:0;font-size:32px;font-weight:700;letter-spacing:-.01em}}
+ .amiilogo{{line-height:0;display:inline-flex}} .amiilogo img{{height:48px;width:auto;object-fit:contain;display:block}}
+ header.top .lede{{margin:8px 0 0;color:#dfeae0;max-width:840px;font-size:15px}}
  header.top .lede b{{color:var(--gold)}}
  /* ── intro: 2 columns ── */
  .about{{max-width:1200px;margin:0 auto;padding:18px 24px 4px;display:grid;
@@ -1616,24 +1617,26 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  footer a{{color:var(--ua);font-weight:600}}
  /* responsive */
  @media(max-width:680px){{
-   .logos img{{height:30px}} .logos{{gap:14px}} .about{{grid-template-columns:1fr}}
-   header.top h1{{font-size:25px}}
+   .ualogo img{{height:44px}} .amiilogo img{{height:34px}} .about{{grid-template-columns:1fr}}
+   .titlerow h1{{font-size:25px}}
    grid{{grid-template-columns:1fr;padding:0 16px;gap:12px}}
    .top-inner,.about,.stats,.toolbar,details.cheat,.footer-inner{{padding-left:16px;padding-right:16px}}
  }}
 </style></head><body>
 <header class="top"><div class="top-inner">
   <div class="toprow">
-    <div class="logos">
-      <a href="https://www.ualberta.ca" target="_blank" rel="noopener" title="University of Alberta"><img class="inv" src="{ua_logo}" alt="University of Alberta"></a>
-      <a href="https://amii.ca" target="_blank" rel="noopener" title="Amii"><img src="{amii_logo}" alt="Amii"></a>
-    </div>
+    <a class="ualogo" href="https://www.ualberta.ca" target="_blank" rel="noopener" title="University of Alberta"><img src="{ua_logo}" alt="University of Alberta"></a>
     <div class="actions">
-      <a class="gh" href="{_REPO_URL}" target="_blank" rel="noopener">GitHub &#8599;</a>
+      <a class="gh" href="{_REPO_URL}" target="_blank" rel="noopener" title="Aleph on GitHub">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub &#8599;</a>
       <a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a>
     </div>
   </div>
-  <h1>Aleph Inference Gateway</h1>
+  <div class="titlerow">
+    <h1>Aleph Inference Gateway</h1>
+    <a class="amiilogo" href="https://amii.ca" target="_blank" rel="noopener" title="Amii"><img src="{amii_logo}" alt="Amii"></a>
+  </div>
   <p class="lede">OpenAI- &amp; Anthropic-compatible model serving on the Vulcan cluster &mdash;
      <b>{len(entries)} models</b>, <b>{n_up}</b> scaled up now, <b>{n_zero}</b> scaled to zero. This page lists
      everything and shows you how to call it. Browse, copy a curl, and use your existing SDK.</p>
