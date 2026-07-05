@@ -1981,37 +1981,55 @@ async def anthropic_messages(request: Request):
 @app.post("/v1/audio/transcriptions")
 async def audio_transcriptions(request: Request):
     """OpenAI-compatible STT (multipart). Resolve the model from the form, then
-    forward the RAW body unchanged so the multipart boundary survives, with raw
-    streaming passthrough when stream=true. Registered before the catch-all so
-    multipart uploads don't hit forward_custom's JSON-only model parser.
+    rebuild and forward the multipart so the boundary is valid, with raw streaming
+    passthrough when stream=true. Registered before the catch-all so multipart
+    uploads don't hit forward_custom's JSON-only model parser.
 
-    Backend e.g. speaches (faster-whisper), reached via the card's k8s_name like
-    any other model. Non-multipart (JSON) requests are also accepted.
+    We CANNOT read both request.form() and request.body() (Starlette raises
+    "Stream consumed"), so we parse the form once via multi_items() and let httpx
+    reconstruct the upstream multipart from data=/files=. Non-multipart (JSON)
+    requests are also accepted.
     """
     _METRICS["requests_total"] += 1
-    ctype = request.headers.get("content-type", "")
+    ctype = request.headers.get("content-type", "").lower()
     model_id = None
     stream = False
-    if ctype.lower().startswith("multipart/"):
-        # form() populates+ caches the body; raw bytes come back identically below.
+    fwd: dict = {}              # httpx kwargs for the upstream POST
+    host_hdr = None
+
+    if ctype.startswith("multipart/"):
         try:
             form = await request.form()
         except Exception:
             form = None
         if form is not None:
-            m = form.get("model")
-            model_id = m if isinstance(m, str) else None
-            s = form.get("stream")
-            stream = (s if isinstance(s, str) else "").lower() in ("1", "true", "yes")
-    body = await request.body()
-    if model_id is None:
+            data: dict[str, str] = {}
+            files = []
+            for k, v in form.multi_items():
+                lk = k.lower()
+                # UploadFile instances have .read(); str fields don't.
+                if hasattr(v, "read"):
+                    content = await v.read()
+                    files.append((k, (getattr(v, "filename", k),
+                                      content, getattr(v, "content_type", None))))
+                else:
+                    sv = v if isinstance(v, str) else str(v)
+                    data[k] = sv
+                    if lk == "model":
+                        model_id = sv
+                    elif lk == "stream":
+                        stream = sv.lower() in ("1", "true", "yes")
+            fwd = {"data": data, "files": files or None}
+    else:
         # JSON fallback: {model, stream, ...}
         try:
-            parsed = json.loads(body)
+            parsed = json.loads(await request.body())
             model_id = parsed.get("model")
             stream = bool(parsed.get("stream"))
+            fwd = {"json": parsed}
         except Exception:
             model_id = None
+
     if not model_id:
         _METRICS["requests_error"] += 1
         return JSONResponse(
@@ -2023,20 +2041,23 @@ async def audio_transcriptions(request: Request):
     cold = await _guard_cold(request, info, "/v1/audio/transcriptions", "openai")
     if cold is not None:
         return cold
-    # Forward the original multipart bytes with the original Content-Type so the
-    # boundary is preserved. Host header still routes to the predictor.
-    headers = upstream_headers(info, content_type=ctype or "application/json")
+    # Only the Host header is needed — httpx sets the multipart Content-Type with a
+    # fresh boundary (or application/json for the JSON branch).
+    host_hdr = {"Host": info["host"]}
     url = upstream_url("/v1/audio/transcriptions")
     log_kwargs = {"endpoint": "/v1/audio/transcriptions", "api": "openai"}
 
     if stream and not info.get("no_stream"):
         # Raw byte passthrough — STT streams text/SSE chunks we must not rewrite
         # (NOT the chat-aware _forward stream branch that parses OpenAI choices).
+        fwd_stream = {k: v for k, v in fwd.items() if v is not None}
+
         async def gen():
             t0 = time.monotonic()
             status_code = 200
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-                async with c.stream("POST", url, content=body, headers=headers) as r:
+                async with c.stream("POST", url, headers=host_hdr,
+                                    **fwd_stream) as r:
                     status_code = r.status_code
                     async for chunk in r.aiter_raw():
                         yield chunk
@@ -2047,9 +2068,10 @@ async def audio_transcriptions(request: Request):
             gen(), media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+    fwd_post = {k: v for k, v in fwd.items() if v is not None}
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        r = await c.post(url, content=body, headers=headers)
+        r = await c.post(url, headers=host_hdr, **fwd_post)
     latency_ms = int((time.monotonic() - t0) * 1000)
     _log_usage(request, info, status=r.status_code, latency_ms=latency_ms, **log_kwargs)
     if r.status_code >= 400:
