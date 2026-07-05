@@ -1155,9 +1155,13 @@ def _derive_input_format(card: dict) -> dict:
     return base
 
 
-def _model_entry(card: dict, isvc_state: dict) -> dict:
+def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict:
     """Build the public catalog entry for a model entirely from its card +
-    live ISVC state. Schema is a superset of the POC (232) /v1/models shape."""
+    live ISVC state. Schema is a superset of the POC (232) /v1/models shape.
+
+    `pods` = {k8s_name: running_pod_count} (from POD_NODE). `scaled_up` is True
+    when the model has >=1 running predictor pod RIGHT NOW — distinct from
+    `ready` (ISVC Ready = deployed/installed, which is True even at 0 replicas)."""
     catalog = card.get("catalog", {}) or {}
     limits = card.get("limits", {}) or {}
     behavior = card.get("behavior", {}) or {}
@@ -1167,6 +1171,7 @@ def _model_entry(card: dict, isvc_state: dict) -> dict:
     k8s_name = routing.get("k8s_name") or card["id"]
     st = isvc_state.get(k8s_name, {}) or {}
     res = st.get("resources", {}) or {}
+    pod_count = (pods or {}).get(k8s_name, 0)
 
     source = catalog.get("source", "")
     source_url = catalog.get("source_url") or (
@@ -1191,7 +1196,10 @@ def _model_entry(card: dict, isvc_state: dict) -> dict:
         "parameters": catalog.get("parameters", ""),
         "gpu": bool(res.get("gpus")) if res else bool(catalog.get("gpu", True)),
         # ── card-driven extras (richer than 232) ────────────────────────────
-        "ready": st.get("ready", False),
+        "ready": st.get("ready", False),           # ISVC Ready = installed/deployed
+        "scaled_up": pod_count > 0,                # >=1 running predictor pod right now
+        "replicas": pod_count,                     # running predictor pod count
+        "k8s_name": k8s_name,
         "license": catalog.get("license", ""),
         "precision": catalog.get("precision", ""),
         "framework": catalog.get("framework", ""),
@@ -1211,6 +1219,9 @@ def _model_entry(card: dict, isvc_state: dict) -> dict:
             "min_replicas": scaling.get("min_replicas"),
             "cold_start_estimate": scaling.get("cold_start_estimate", ""),
         },
+        # parameter map — drives the per-model curl example on the web page
+        "input_map": card.get("input_map", {}) or {},
+        "custom_params": card.get("custom_params", {}) or {},
         # allocated compute footprint (live from the ISVC predictor spec)
         "resources": res,
     }
@@ -1223,8 +1234,9 @@ async def list_models(request: Request):
     with _STATE_LOCK:
         cards = list(CARDS.values())
         isvc_state = dict(ISVC_STATE)
+        pods = {k: len(v) for k, v in POD_NODE.items()}
     data = [
-        _model_entry(c, isvc_state)
+        _model_entry(c, isvc_state, pods)
         for c in cards
         if show_all or c.get("type", "chat") == "chat"
     ]
@@ -1236,65 +1248,135 @@ async def list_models(request: Request):
 # Same gateway route is reached as `/` on the main host and `/serving/api/` on the
 # backup host (Traefik strips /serving/api → /). The /v1 API paths are untouched.
 _MAIN_HOST = "https://inference.vulcan.alliancecan.ca"
-_BACKUP_HOST = "https://inference.kubeflow.vulcan.alliancecan.ca"
+_KEY_MAILTO = "research.support+aleph@ualberta.ca"
 
 
-def _backup_path(path: str) -> str:
-    """Map a gateway path to its form on the backup host.
-    /v1/messages → /anthropic/v1/messages (stripPrefix /anthropic);
-    every other /v1/* → /serving/api/v1/* (stripPrefix /serving/api)."""
-    if path.startswith("/v1/messages"):
-        return f"/anthropic{path}"
-    return f"/serving/api{path}"
-
-
-def _entry_paths(entry: dict) -> tuple[str, str]:
+def _main_url(entry: dict) -> str:
     path = entry.get("endpoint") or ""
     if not path.startswith("/"):
         path = "/v1/chat/completions"
-    return f"{_MAIN_HOST}{path}", f"{_BACKUP_HOST}{_backup_path(path)}"
+    return f"{_MAIN_HOST}{path}"
 
 
-def _usage_snippet(entry: dict) -> str:
-    """One short curl line for the model's primary endpoint, both hosts."""
-    t = (entry.get("type") or "chat").lower()
-    ep = entry.get("endpoint") or "/v1/chat/completions"
-    mid = entry["id"]
-    main, backup = _entry_paths(entry)
-    if ep.startswith("/v1/audio/transcriptions"):
-        body = f"-F model={mid} -F file=@audio.wav"
-    elif ep.startswith("/v1/audio/speech"):
-        body = f'-H "Content-Type: application/json" -d \'{{"model":"{mid}","input":"hello"}}\''
-    elif ep.startswith("/v1/embeddings"):
-        body = f'-H "Content-Type: application/json" -d \'{{"model":"{mid}","input":"text"}}\''
-    elif ep.startswith("/v1/rerank"):
-        body = f'-H "Content-Type: application/json" -d \'{{"model":"{mid}","query":"q","documents":["a","b"]}}\''
-    else:
-        body = (f'-H "Content-Type: application/json" '
-                f'-d \'{{"model":"{mid}","messages":[{{"role":"user","content":"hi"}}]}}\'')
-    return f"curl {main} {body}\n#  backup: curl {backup} {body}"
+def _example_value(name: str, spec) -> object:
+    """Best-effort example value for an input_map/custom_params field."""
+    spec = spec if isinstance(spec, dict) else {}
+    t = (spec.get("type") or "").lower()
+    default = spec.get("default")
+    n = name.lower()
+    if n == "messages":
+        return [{"role": "user", "content": "hi"}]
+    if n in ("input", "text"):
+        return "text"
+    if n == "query":
+        return "search query"
+    if n in ("documents", "texts"):
+        return ["first document", "second document"]
+    if n == "prompt":
+        return "Once upon a time"
+    if n in ("top_n", "num_poses", "n"):
+        return default if isinstance(default, int) else 5
+    if n == "max_tokens":
+        return default if isinstance(default, int) else 256
+    if n == "temperature":
+        return default if isinstance(default, (int, float)) else 0.7
+    if n == "stream":
+        return False
+    if "enum" in spec and spec["enum"]:
+        return spec["enum"][0]
+    if default is not None:
+        return default
+    if t in ("integer", "int"):
+        return 1
+    if t in ("float", "number"):
+        return 0.7
+    if t == "boolean":
+        return False
+    if t == "array":
+        return []
+    if isinstance(spec.get("description"), str) and not t:
+        return spec["description"].split(" e.g.")[0][:40] or "value"
+    return "value"
 
 
-def _wake_body(entry: dict) -> str:
-    """Minimal valid request body to probe/wake a cold model by endpoint type."""
+def _example_body(entry: dict) -> tuple[dict | None, str]:
+    """Build a per-model example body from the card's input_map + custom_params.
+    Returns (json_body | None, multipart_flags). None body => multipart."""
     mid = entry["id"]
     ep = (entry.get("endpoint") or "/v1/chat/completions").lower()
     t = (entry.get("type") or "chat").lower()
-    if t in ("embedding", "embed") or ep.startswith("/v1/embeddings"):
-        return f'{{"model":"{mid}","input":"."}}'
-    if t == "reranker" or ep.startswith("/v1/rerank"):
-        return f'{{"model":"{mid}","query":".","documents":["."]}}'
-    return f'{{"model":"{mid}","messages":[{{"role":"user","content":"hi"}}],"max_tokens":1}}'
+    if ep.startswith("/v1/audio/transcriptions"):
+        return None, f"-F model={mid} -F file=@audio.wav"
+    body: dict[str, object] = {"model": mid}
+    # custom_params.schema fields are model-specific knobs worth surfacing
+    schema = ((entry.get("custom_params") or {}).get("schema") or {})
+    for k, v in schema.items():
+        body[k] = _example_value(k, v)
+    imap = entry.get("input_map") or {}
+    if ep.startswith("/v1/audio/speech") and not imap:
+        body.update({"input": "Hello world.", "voice": "af_heart"})
+    for k, v in imap.items():
+        if k == "model":
+            continue
+        if isinstance(v, dict) and ("type" in v or "description" in v):
+            body[k] = _example_value(k, v)
+        else:
+            # nested object map (weather/crystal patterns) — placeholder scalar
+            body[k] = "<see input map>"
+    # trim noisy placeholders for the curl line
+    return body, ""
+
+
+def _param_rows(entry: dict) -> list[tuple[str, str, str, str, str]]:
+    """Flatten input_map + custom_params.schema into (name,type,req,default,desc) rows."""
+    rows = []
+    seen = set()
+
+    def add(name, spec):
+        if name in seen:
+            return
+        seen.add(name)
+        spec = spec if isinstance(spec, dict) else {}
+        t = spec.get("type", "")
+        if not t and isinstance(spec.get("description"), str):
+            t = "object" if "{" in str(spec) else "string"
+        req = "yes" if spec.get("required") else ""
+        dflt = "" if spec.get("default") is None else str(spec["default"])
+        desc = (spec.get("description") or "").split(" e.g.")[0][:90]
+        rows.append((name, str(t), req, dflt, desc))
+
+    for k, v in (entry.get("input_map") or {}).items():
+        add(k, v)
+    for k, v in (((entry.get("custom_params") or {}).get("schema")) or {}).items():
+        add(k, v)
+    return rows
+
+
+def _wake_body(entry: dict) -> str:
+    """Minimal valid request body to probe/wake a cold model."""
+    body, mp = _example_body(entry)
+    if body is None:
+        # multipart (STT) — can't easily loop; return a JSON probe for the catch path
+        return f'{{"model":"{entry["id"]}"}}'
+    body = dict(body)
+    # keep the wake probe cheap
+    if "messages" in body:
+        body = {"model": entry["id"], "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
+    elif "input" in body and "messages" not in body:
+        body = {"model": entry["id"], "input": "."}
+    return json.dumps(body)
 
 
 def _catalog_html() -> str:
     with _STATE_LOCK:
         cards = list(CARDS.values())
         isvc_state = dict(ISVC_STATE)
-    entries = sorted((_model_entry(c, isvc_state) for c in cards),
-                     key=lambda x: (not x.get("ready"), x["id"].lower()))
-    n_ready = sum(1 for e in entries if e.get("ready"))
-    n_cold = len(entries) - n_ready
+        pods = {k: len(v) for k, v in POD_NODE.items()}
+    entries = sorted((_model_entry(c, isvc_state, pods) for c in cards),
+                     # scaled-up first, then by id
+                     key=lambda x: (not x.get("scaled_up"), x["id"].lower()))
+    n_up = sum(1 for e in entries if e.get("scaled_up"))
+    n_zero = len(entries) - n_up
 
     def esc(s):
         return html.escape(str(s) if s is not None else "")
@@ -1307,164 +1389,199 @@ def _catalog_html() -> str:
         cap = e.get("capabilities", {}) or {}
         scaling = e.get("scaling", {}) or {}
         res = e.get("resources", {}) or {}
-        always_on = bool(scaling.get("min_replicas"))
         cold_est = scaling.get("cold_start_estimate") or ""
-        ready = bool(e.get("ready"))
+        up = bool(e.get("scaled_up"))
+        reps = e.get("replicas", 0) or 0
+        source_url = e.get("source_url") or ""
+        ep_url = _main_url(e)
+
         facts = []
         if e.get("context_window"):
             facts.append(("context", f'{e["context_window"]:,}'))
         if e.get("max_completion_tokens"):
             facts.append(("max out", f'{e["max_completion_tokens"]:,}'))
-        # "size" = allocated GPU/VRAM footprint from the live ISVC spec
         if res.get("gpus"):
             sz = f'{res["gpus"]}×GPU'
             if res.get("vram_mib"):
                 sz += f' {res["vram_mib"] // 1024}GB'
-            facts.append(("size", sz))
+            facts.append(("alloc", sz))
         elif res.get("cpu_cores") or res.get("system_ram_mib"):
-            facts.append(("size", f'{res.get("cpu_cores", "?")} CPU'
+            facts.append(("alloc", f'{res.get("cpu_cores", "?")} CPU'
                           + (f' {res.get("system_ram_mib", 0) // 1024}GB' if res.get("system_ram_mib") else '')))
         for k, label in (("parameters", "params"), ("precision", "precision"),
                          ("license", "license"), ("domain", "domain")):
             if e.get(k):
                 facts.append((label, e[k]))
         if cold_est:
-            facts.append(("cold start", cold_est))
+            facts.append(("wake~", cold_est))
         facts_html = "".join(
             f"<div><span class='k'>{esc(k)}</span><span class='v' title='{esc(v)}'>{esc(v)}</span></div>"
             for k, v in facts)
+
         tags = " ".join(badge(t, "tag") for t in (e.get("tags") or [])[:4])
-        caps = []
-        if cap.get("vision"): caps.append("vision")
-        if cap.get("tools"): caps.append("tools")
-        if cap.get("reasoning"): caps.append("reasoning")
-        caps_html = " ".join(badge(c, "cap") for c in caps)
-        ao_html = badge("always-on", "ao") if always_on else ""
-        # status line + wake help. Scale-to-zero models show wake instructions
-        # whether they're currently up or cold (they can drop to zero when idle).
-        if ready:
-            status = '<span class="status up">● up now</span>'
-        elif always_on:
-            status = '<span class="status warm">○ starting</span>'
-        else:
-            status = f'<span class="status cold">○ cold — wakes in {esc(cold_est or "?")} on first request</span>'
-        if always_on:
+        capbadges = []
+        if cap.get("vision"): capbadges.append("vision")
+        if cap.get("tools"): capbadges.append("tools")
+        if cap.get("reasoning"): capbadges.append("reasoning")
+        caps_html = " ".join(badge(c, "cap") for c in capbadges)
+        src_html = (f'<a class="src" href="{esc(source_url)}" target="_blank" rel="noopener">source &#8599;</a>'
+                    if source_url else "")
+
+        if up:
+            status = f'<span class="status up" title="{reps} running predictor pod(s)">&#9679; scaled up</span>'
             wake_html = ""
         else:
-            main_ep, _ = _entry_paths(e)
+            status = (f'<span class="status zero">&#9675; scaled to zero'
+                      + (f' &mdash; wakes in ~{esc(cold_est)}' if cold_est else '') + '</span>')
             wake_html = (
-                '<details class="wake"><summary>how to wake it up</summary>'
-                '<p class="wake-note">Scale-to-zero: the first request returns '
-                '<code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; '
-                "retry until 200 (OpenWebUI does this automatically).</p>"
-                f'<pre># wakes the model; retry on 503 (~{esc(cold_est or "1-2 min")} to ready)\n'
-                f'while ! curl -s -o /dev/null -w "%{{http_code}}" {esc(main_ep)} '
+                '<details class="wake"><summary>how to scale it up</summary>'
+                '<p class="wake-note">Any request wakes it (0&rarr;1). The first call returns '
+                '<code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; retry until 200 '
+                '(OpenWebUI does this automatically).</p>'
+                f'<pre># retry on 503 until the model is up (~{esc(cold_est or "1-2 min")})\n'
+                f'while ! curl -s -o /dev/null -w "%{{http_code}}" {esc(ep_url)} '
                 f'-H "Authorization: Bearer $KEY" -H "Content-Type: application/json" '
                 f"-d '{esc(_wake_body(e))}' | grep -q 200; do sleep 5; done</pre>"
                 '</details>')
+
+        # per-model curl example, built from the card's parameter map
+        body, mp = _example_body(e)
+        if body is None:
+            curl = (f'curl {ep_url} -H "Authorization: Bearer $KEY" {mp}'
+                    + ('\n# streaming: add  -F stream=true' if 'transcriptions' in ep_url else ''))
+        else:
+            curl = (f'curl {ep_url} -H "Authorization: Bearer $KEY" '
+                    f'-H "Content-Type: application/json" -d \'{json.dumps(body)}\'')
+        # parameter map table
+        rows = _param_rows(e)
+        if rows:
+            thead = "<tr><th>param</th><th>type</th><th>req</th><th>default</th><th>notes</th></tr>"
+            trows = "".join(
+                f"<tr><td>{esc(n)}</td><td>{esc(ty)}</td><td>{esc(rq)}</td>"
+                f"<td>{esc(df)}</td><td>{esc(ds)}</td></tr>" for n, ty, rq, df, ds in rows)
+            params_html = ('<details class="params"><summary>parameters</summary>'
+                           f'<table>{thead}{trows}</table></details>')
+        else:
+            params_html = ""
+
         search = " ".join(str(x) for x in (
             e["id"], e.get("type"), e.get("description"), e.get("domain"),
-            e.get("subdomain"), "always-on" if always_on else "cold",
+            e.get("subdomain"), "scaled up" if up else "scaled to zero",
             *(e.get("tags") or []))).lower()
-        main, backup = _entry_paths(e)
         cards_html.append(f"""
-        <article class="card" data-search="{esc(search)}">
+        <article class="card {'up' if up else 'zero'}" data-search="{esc(search)}">
           <header>
-            <h3>{esc(e["id"])}</h3>
-            <span class="dot {'ok' if ready else 'cold'}" title="{'ready' if ready else 'cold/not-ready'}"></span>
+            <div><h3>{esc(e["id"])}</h3>{badge(e.get('type','chat'),'type')}</div>
+            <span class="dot" title="{'scaled up' if up else 'scaled to zero'}"></span>
           </header>
-          <div class="badges">{badge(e.get('type','chat'),'type')}{badge('gpu' if e.get('gpu') else 'cpu','gpu' if e.get('gpu') else 'cpu')}{ao_html}{caps_html}{tags}</div>
-          <p class="desc">{esc((e.get('description') or '').split('. ')[0][:240])}</p>
+          <div class="badges">{badge('gpu' if e.get('gpu') else 'cpu','gpu' if e.get('gpu') else 'cpu')}{caps_html}{tags}</div>
+          <p class="desc">{esc((e.get('description') or '').split('. ')[0][:220])}{src_html}</p>
           {status}
           <div class="facts">{facts_html}</div>
-          <div class="ep">
-            <div><span class="k">endpoint</span>
-              <a href="{esc(main)}">{esc(main)}</a></div>
-            <div><span class="k">backup</span>
-              <a href="{esc(backup)}">{esc(backup)}</a></div>
-          </div>
-          <details><summary>curl example</summary>
-            <pre>{esc(_usage_snippet(e))}</pre>
-          </details>
+          <div class="ep"><span class="k">endpoint</span> <a href="{esc(ep_url)}">{esc(ep_url)}</a></div>
+          <details><summary>curl example</summary><pre>{esc(curl)}</pre></details>
+          {params_html}
           {wake_html}
         </article>""")
 
     cheatsheet = f"""
-    <pre># OpenAI chat (main | backup)
+    <pre># OpenAI chat
 curl {_MAIN_HOST}/v1/chat/completions -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
-  -d '{{"model":"command-r-7b","messages":[{{"role":"user","content":"hi"}}]}}'
-curl {_BACKUP_HOST}/serving/api/v1/chat/completions ...   # same, valid-LE host
+  -d '{{"model":"command-r-7b","messages":[{{"role":"user","content":"hi"}}],"max_tokens":256}}'
 
-# Anthropic messages (main | backup)
-curl {_MAIN_HOST}/v1/messages       -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
-  -d '{{"model":"command-r-7b","max_tokens":20,"messages":[{{"role":"user","content":"hi"}}]}}'
-curl {_BACKUP_HOST}/anthropic/v1/messages ...             # same, valid-LE host
+# Anthropic messages (same backends, native SDK path)
+curl {_MAIN_HOST}/v1/messages -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{{"model":"command-r-7b","max_tokens":256,"messages":[{{"role":"user","content":"hi"}}]}}'
 
 # Speech-to-text (multipart) — streaming: add  -F stream=true
 curl {_MAIN_HOST}/v1/audio/transcriptions -H "Authorization: Bearer $KEY" -F model=whisper-large-v3 -F file=@audio.wav
-curl {_BACKUP_HOST}/serving/api/v1/audio/transcriptions ...
+
+# Text-to-speech -> audio/mp3
+curl {_MAIN_HOST}/v1/audio/speech -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{{"model":"kokoro-82m","input":"Hello world.","voice":"af_heart"}}' --output out.mp3
 
 # Embeddings / rerank
-curl {_MAIN_HOST}/v1/embeddings  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-m3","input":"text"}}'
-curl {_MAIN_HOST}/v1/rerank      -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-reranker-v2-m3","query":"q","documents":["a","b"]}}'
+curl {_MAIN_HOST}/v1/embeddings -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-m3","input":"text"}}'
+curl {_MAIN_HOST}/v1/rerank     -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{{"model":"bge-reranker-v2-m3","query":"q","documents":["a","b"]}}'
 
-# Machine-readable catalogue:  GET {_MAIN_HOST}/v1/models   (or {_BACKUP_HOST}/serving/api/v1/models)</pre>"""
+# Per-model parameters + examples: open a card below. Machine-readable: GET {_MAIN_HOST}/v1/models</pre>"""
 
     return f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Aleph Inference Gateway</title>
+<title>Aleph Inference Gateway &mdash; Vulcan (AMII / UAlberta)</title>
 <style>
- :root {{--bg:#0e1116;--card:#161b22;--ink:#c9d1d9;--mut:#8b949e;--acc:#58a6ff;--ok:#3fb950;--cold:#f85149;--bd:#30363d;}}
+ :root {{
+   --bg:#0b0f0d;--panel:#121a16;--card:#161b22;--ink:#d6dee8;--mut:#8b978f;--bd:#2a3a33;
+   --green:#3fb950;--zero:#e0a82e;--acc:#5fb6ff;--ua:#1c5d3a;--gold:#e0a82e;--alliance:#1f6fb2;
+ }}
  *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--ink);
  font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}}
  a{{color:var(--acc);text-decoration:none}} a:hover{{text-decoration:underline}}
- header.top{{padding:28px 24px 8px;max-width:1180px;margin:0 auto}}
- header.top h1{{margin:0 0 4px;font-size:28px}} header.top p{{color:var(--mut);margin:0 0 12px}}
- .hosts{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}} .host{{background:var(--card);border:1px solid var(--bd);
- border-radius:8px;padding:8px 12px;font-size:13px}} .host b{{color:var(--mut);font-weight:500;display:block;font-size:11px;text-transform:uppercase}}
- .toolbar{{max-width:1180px;margin:14px auto 0;padding:0 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
+ .banner{{background:linear-gradient(90deg,var(--ua),#0f3a24);border-bottom:3px solid var(--gold);padding:26px 24px}}
+ .banner-inner{{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}}
+ .banner h1{{margin:0;font-size:30px;color:#fff;font-weight:650}}
+ .banner h1 .sub{{color:var(--gold);font-weight:500;font-size:15px;display:block;margin-top:2px}}
+ .banner p{{margin:8px 0 0;color:#bcd;color:#cfe;max-width:760px}}
+ .keylink{{background:rgba(255,255,255,.08);border:1px solid var(--gold);color:#fff;border-radius:8px;
+   padding:9px 14px;font-size:13px;text-decoration:none;white-space:nowrap}}
+ .keylink:hover{{background:rgba(224,168,46,.18)}}
+ .stats{{max-width:1180px;margin:14px auto 0;padding:0 24px;color:var(--mut);font-size:13px}}
+ .stats b.up{{color:var(--green)}} b.zero{{color:var(--zero)}}
+ .toolbar{{max-width:1180px;margin:10px auto 0;padding:0 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
  input.srch{{flex:1;min-width:220px;background:var(--card);border:1px solid var(--bd);color:var(--ink);
  border-radius:8px;padding:10px 12px;font-size:15px}} .count{{color:var(--mut);font-size:13px}}
- details.cheat{{max-width:1180px;margin:16px auto 0;padding:0 24px}}
- details.cheat summary{{cursor:pointer;color:var(--acc);font-size:14px}}
+ details.cheat{{max-width:1180px;margin:14px auto 0;padding:0 24px}}
+ details.cheat summary{{cursor:pointer;color:var(--gold);font-size:14px}}
  pre{{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto;
  font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#9ca7b3;white-space:pre-wrap;word-break:break-word}}
- grid{{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+ grid{{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
  max-width:1180px;margin:16px auto 40px;padding:0 24px}}
- .card{{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}}
- .card header{{display:flex;justify-content:space-between;align-items:center}}
+ .card{{background:var(--card);border:1px solid var(--bd);border-left:3px solid var(--zero);border-radius:10px;
+   padding:14px;display:flex;flex-direction:column;gap:8px}}
+ .card.up{{border-left-color:var(--green)}}
+ .card header{{display:flex;justify-content:space-between;align-items:center;gap:8px}}
+ .card header>div{{display:flex;align-items:center;gap:8px;min-width:0}}
  .card h3{{margin:0;font-size:16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#fff;word-break:break-all}}
- .dot{{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}} .ok{{background:var(--ok)}} .cold{{background:var(--cold);opacity:.5}}
+ .dot{{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none;background:var(--zero)}}
+ .card.up .dot{{background:var(--green);box-shadow:0 0 6px var(--green)}}
  .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--mut)}}
- .badge.type{{color:#79c0ff;border-color:#1f6feb}} .badge.gpu{{color:var(--ok);border-color:#238636}} .badge.cpu{{color:var(--mut)}}
- .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut)}} .badge.ao{{color:#3fb950;border-color:#238636}}
- .desc{{margin:0;color:var(--mut);font-size:13px}}
- .status{{font-size:12px;font-weight:500}} .status.up{{color:var(--ok)}} .status.cold{{color:#f0883e}} .status.warm{{color:var(--mut)}}
+ .badge.type{{color:#79c0ff;border-color:#1f6ebb}} .badge.gpu{{color:var(--green);border-color:#238636}} .badge.cpu{{color:var(--mut)}}
+ .badge.cap{{color:#d2a8ff;border-color:#6e40c9}} .badge.tag{{color:var(--mut)}}
+ .desc{{margin:0;color:var(--mut);font-size:13px}} .src{{margin-left:6px;font-size:11px}}
+ .status{{font-size:12px;font-weight:500}} .status.up{{color:var(--green)}} .status.zero{{color:var(--zero)}}
  .facts{{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 12px;font-size:12px}}
  .facts div{{display:flex;justify-content:space-between;gap:6px;min-width:0}} .k{{color:var(--mut);flex:none}} .v{{color:var(--ink);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}}
- .wake{{margin-top:2px}} .wake summary{{cursor:pointer;color:#f0883e;font-size:12px}} .wake-note{{margin:6px 0 4px;color:var(--mut);font-size:12px}} .wake code{{color:var(--ink)}}
- .ep{{font-size:11px;display:flex;flex-direction:column;gap:2px}} .ep .k{{display:inline-block;width:52px}}
- .card details summary{{cursor:pointer;color:var(--acc);font-size:12px}} .card pre{{margin:6px 0 0;font-size:11px}}
- footer{{max-width:1180px;margin:0 auto 40px;padding:0 24px;color:var(--mut);font-size:12px}}
+ .ep{{font-size:11px;display:flex;gap:6px;align-items:baseline}} .ep .k{{color:var(--mut)}}
+ .card details summary{{cursor:pointer;color:var(--gold);font-size:12px}} .card pre{{margin:6px 0 0;font-size:11px}}
+ .params table{{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}}
+ .params th,.params td{{border:1px solid var(--bd);padding:3px 6px;text-align:left;vertical-align:top}}
+ .params th{{color:var(--mut)}} .params td:first-child{{color:#79c0ff;font-family:ui-monospace,monospace}}
+ .wake{{margin-top:2px}} .wake summary{{cursor:pointer;color:var(--zero);font-size:12px}} .wake-note{{margin:6px 0 4px;color:var(--mut);font-size:12px}} .wake code{{color:var(--ink)}}
+ footer{{max-width:1180px;margin:0 auto 40px;padding:0 24px;color:var(--mut);font-size:12px;line-height:1.7}}
+ footer a{{color:var(--acc)}}
 </style></head><body>
-<header class="top">
- <h1>Aleph Inference Gateway</h1>
- <p>OpenAI- &amp; Anthropic-compatible inference on the Vulcan cluster. {len(entries)} models discovered &mdash;
-    <b style="color:var(--ok)">{n_ready} up now</b>, <b style="color:#f0883e">{n_cold} cold</b> (scale-to-zero, wake on first request).
-    Both hosts below serve every endpoint; the main host uses a self-signed cert, the backup a valid Let&rsquo;s Encrypt cert.</p>
- <div class="hosts">
-   <div class="host"><b>main (self-signed)</b><a href="{_MAIN_HOST}/">{_MAIN_HOST}/</a></div>
-   <div class="host"><b>backup (valid LE cert)</b><a href="{_BACKUP_HOST}/serving/api/">{_BACKUP_HOST}/serving/api/</a></div>
- </div>
-</header>
+<div class="banner"><div class="banner-inner">
+  <div>
+    <h1>Aleph Inference Gateway<span class="sub">OpenAI &amp; Anthropic-compatible serving on Vulcan &mdash; AMII, University of Alberta · Digital Research Alliance</span></h1>
+    <p>Every model below is installed (Ready). The dot shows which are <b class="up">scaled up</b> right now vs
+       <b class="zero">scaled to zero</b> (wake-on-request). Open a card for its full parameter map and a copy-paste curl.</p>
+  </div>
+  <a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a>
+</div></div>
+<div class="stats">{len(entries)} models &mdash; <b class="up">{n_up} scaled up</b>, <b class="zero">{n_zero} scaled to zero</b>. Endpoint: <a href="{_MAIN_HOST}/v1/models">{_MAIN_HOST}</a></div>
 <div class="toolbar">
- <input class="srch" id="q" placeholder="Search models by name, type, domain, tag…" autocomplete="off">
+ <input class="srch" id="q" placeholder="Search by name, type, domain, tag, 'scaled up'…" autocomplete="off">
  <span class="count" id="cnt"></span>
 </div>
-<details class="cheat"><summary>How to use it — curl cheatsheet (both hosts)</summary>{cheatsheet}</details>
+<details class="cheat"><summary>Quickstart &mdash; curl cheatsheet</summary>{cheatsheet}</details>
 <grid id="grid">{''.join(cards_html)}</grid>
-<footer>Machine-readable: <a href="/v1/models">/v1/models</a> · health: <a href="/healthz">/healthz</a> ·
- metrics: <a href="/metrics">/metrics</a>. Public traffic is authenticated by a Tyk API key (<code>Authorization: Bearer $KEY</code>).</footer>
+<footer>
+ Need an API key? <a href="mailto:{_KEY_MAILTO}">{_KEY_MAILTO}</a> &mdash; include your name, affiliation, and intended use.<br>
+ Run by <a href="https://www.ualberta.ca">University of Alberta</a> / <a href="https://amii.ca">AMII</a> on the
+ <a href="https://www.alliancecan.ca/en">Digital Research Alliance</a> Vulcan cluster.
+ Machine-readable: <a href="/v1/models">/v1/models</a> · health <a href="/healthz">/healthz</a> · <a href="/metrics">/metrics</a>.
+ Authenticated by a Tyk key (<code>Authorization: Bearer $KEY</code>).
+</footer>
 <script>
  const cards=[...document.querySelectorAll('.card')];
  const cnt=document.getElementById('cnt');
