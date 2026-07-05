@@ -1,0 +1,60 @@
+# whisper-large-v3 — STT card. Routes to the shared `speaches` ISVC predictor (Systran/faster-whisper).
+# Paired with kokoro-82m (details.yaml); both carry routing.k8s_name: speaches.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: whisper-large-v3-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "whisper-large-v3",
+      "status": "production",
+      "type": "audio",
+      "endpoints": { "primary": "/v1/audio/transcriptions", "health": "/health" },
+      "routing": {
+        "k8s_name": "speaches",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 0, "context_window": 0 },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "idle_retention": "always-on",
+        "cold_start_estimate": "1-2 minutes (HF cache on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" }, "max_tokens": { "field": null } },
+      "custom_params": {
+        "schema": {
+          "file": { "type": "audio file (multipart form)", "required": true },
+          "language": { "type": "string (ISO code)", "required": false }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "faster-whisper-large-v3 STT (Systran) — OpenAI-style /v1/audio/transcriptions",
+        "description": "Faster-whisper speech-to-text (Systran/faster-whisper-large-v3, CTranslate2 fp16) served by the speaches server. 99 languages. OpenAI-style multipart POST /v1/audio/transcriptions {model,file} -> {text}. Shares one GPU slice + one pod with kokoro-82m TTS via the speaches InferenceService.",
+        "owned_by": "Systran",
+        "source": "Systran/faster-whisper-large-v3",
+        "source_url": "https://huggingface.co/Systran/faster-whisper-large-v3",
+        "license": "MIT",
+        "parameters": "1.5B",
+        "precision": "fp16 (CTranslate2)",
+        "framework": "speaches (faster-whisper)",
+        "domain": "audio",
+        "subdomain": "speech-to-text",
+        "gpu": true,
+        "languages": "99 (Whisper large-v3 coverage)",
+        "tags": ["stt", "audio", "transcription", "whisper", "gpu"]
+      }
+    }

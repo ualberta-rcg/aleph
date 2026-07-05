@@ -1,127 +1,106 @@
-# Speaches: OpenAI-compatible STT (faster-whisper-large-v3) + TTS (Kokoro-82M)
-# Standalone Deployment (not KServe) — gateway routes whisper-large-v3 and kokoro-82m here.
-# GPU: 1x L40S slice (HAMi). Port 8000.
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: speaches-data
-  namespace: models
-spec:
-  storageClassName: nfs-models
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 30Gi
----
-apiVersion: apps/v1
-kind: Deployment
+# Speaches: OpenAI-compatible STT (faster-whisper-large-v3) + TTS (Kokoro-82M).
+# KServe InferenceService (custom predictor) running the speaches server on :8000.
+# Two gateway cards route here via routing.k8s_name: speaches:
+#   kokoro-82m        -> POST /v1/audio/speech        (TTS)
+#   whisper-large-v3  -> POST /v1/audio/transcriptions (STT)
+# GPU: 1x L40S HAMi slice (16 GiB). Always-on (minReplicas: 1).
+# Init prefetches both HF caches once (gated marker) + opens cache perms for the non-root server.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
 metadata:
   name: speaches
   namespace: models
-  labels:
-    app: speaches
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: speaches
-  template:
-    metadata:
-      labels:
-        app: speaches
-    spec:
-      nodeSelector:
-        gpu: "on"
-      initContainers:
-        - name: hf-prefetch
-          image: python:3.11-slim
-          env:
-            - name: HF_HOME
-              value: /data
-            - name: HF_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: hf-token
-                  key: token
-          command: ["bash", "-c"]
-          args:
-            - |
-              set -e
-              pip install -q huggingface_hub
-              python3 -u <<'PY'
-              from pathlib import Path
-              import os
-              marker = Path("/data/.speaches-hf-prefetch-ok")
-              if marker.exists():
-                  print("HF cache already present, skipping.", flush=True)
-                  raise SystemExit(0)
-              from huggingface_hub import snapshot_download
-              token = os.environ.get("HF_TOKEN")
-              for repo in ["Systran/faster-whisper-large-v3", "speaches-ai/Kokoro-82M-v1.0-ONNX-fp16"]:
-                  print(f"Prefetch {repo}...", flush=True)
-                  snapshot_download(repo_id=repo, token=token)
-              marker.write_text("ok\n")
-              print("Prefetch complete.", flush=True)
-              PY
-              # The init container runs as root; the speaches container runs as a non-root
-              # user (ubuntu) and faster-whisper needs to WRITE refs/main on load. Make the
-              # HF cache world-writable so STT model load doesn't hit PermissionError.
-              chmod -R a+rwX /data
-              echo "Cache permissions opened."
-          resources:
-            requests: { cpu: "2", memory: 4Gi }
-            limits: { cpu: "4", memory: 8Gi }
-          volumeMounts:
-            - { name: data, mountPath: /data }
-      containers:
-        - name: speaches
-          image: ghcr.io/speaches-ai/speaches@sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac
-          imagePullPolicy: IfNotPresent
-          ports:
-            - { containerPort: 8000, protocol: TCP }
-          env:
-            - { name: HF_HOME, value: /data }
-            - { name: SPEACHES__ENABLE_UI, value: "false" }
-            - { name: LOG_LEVEL, value: "info" }
-            - { name: STT_MODEL_TTL, value: "-1" }
-            - { name: TTS_MODEL_TTL, value: "-1" }
-            - { name: CUDA_VISIBLE_DEVICES, value: "0" }
-            - { name: OMP_NUM_THREADS, value: "4" }
-            - { name: MKL_NUM_THREADS, value: "4" }
-          resources:
-            requests:
-              cpu: "2"
-              memory: 8Gi
-              nvidia.com/gpu: "1"
-              nvidia.com/gpumem: "16384"
-            limits:
-              cpu: "8"
-              memory: 16Gi
-              nvidia.com/gpu: "1"
-              nvidia.com/gpumem: "16384"
-          readinessProbe:
-            httpGet: { path: /health, port: 8000 }
-            initialDelaySeconds: 120
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 40
-          volumeMounts:
-            - { name: data, mountPath: /data }
-      volumes:
-        - name: data
-          persistentVolumeClaim: { claimName: speaches-data }
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: speaches
-  namespace: models
-  labels:
-    app: speaches
-spec:
-  type: ClusterIP
-  ports:
-    - { port: 8000, targetPort: 8000, protocol: TCP, name: http }
-  selector:
-    app: speaches
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 1
+    maxReplicas: 1
+    scaleMetric: concurrency
+    scaleTarget: 4
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: hf-prefetch
+        image: python:3.11-slim
+        env:
+          - name: HF_HOME
+            value: /data
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            pip install -q huggingface_hub
+            python3 -u <<'PY'
+            from pathlib import Path
+            import os
+            marker = Path("/data/.speaches-hf-prefetch-ok")
+            if marker.exists():
+                print("HF cache already present, skipping.", flush=True)
+                raise SystemExit(0)
+            from huggingface_hub import snapshot_download
+            token = os.environ.get("HF_TOKEN")
+            for repo in ["Systran/faster-whisper-large-v3", "speaches-ai/Kokoro-82M-v1.0-ONNX-fp16"]:
+                print(f"Prefetch {repo}...", flush=True)
+                snapshot_download(repo_id=repo, token=token)
+            marker.write_text("ok\n")
+            print("Prefetch complete.", flush=True)
+            PY
+            # The init runs as root; the speaches container runs non-root (ubuntu) and
+            # faster-whisper needs to WRITE refs/main on load. Make the cache world-writable.
+            chmod -R a+rwX /data
+            echo "Cache permissions opened."
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: speaches, mountPath: /data }
+    containers:
+      - name: speaches
+        image: ghcr.io/speaches-ai/speaches@sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac
+        imagePullPolicy: IfNotPresent
+        ports:
+          - { containerPort: 8000, protocol: TCP }
+        env:
+          - { name: HF_HOME, value: /data }
+          - { name: SPEACHES__ENABLE_UI, value: "false" }
+          - { name: LOG_LEVEL, value: "info" }
+          - { name: STT_MODEL_TTL, value: "-1" }
+          - { name: TTS_MODEL_TTL, value: "-1" }
+          - { name: CUDA_VISIBLE_DEVICES, value: "0" }
+          - { name: OMP_NUM_THREADS, value: "4" }
+          - { name: MKL_NUM_THREADS, value: "4" }
+        resources:
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8000 }
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 40
+        startupProbe:
+          httpGet: { path: /health, port: 8000 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 60
+        volumeMounts:
+          - { name: speaches, mountPath: /data }
+    volumes:
+      - name: speaches
+        persistentVolumeClaim: { claimName: speaches }

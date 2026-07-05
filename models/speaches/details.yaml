@@ -1,87 +1,61 @@
+# kokoro-82m — TTS card. Routes to the shared `speaches` ISVC predictor (speaches-ai/Kokoro-82M).
+# Paired with whisper-large-v3 (details-whisper.yaml); both carry routing.k8s_name: speaches.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: speaches-details
+  name: kokoro-82m-details
   namespace: models
   labels:
     model-details: "true"
 data:
   details.json: |
     {
-      "id": "speaches",
-      "type": "standalone",
-      "description_short": "Speaches: STT (Whisper Large v3) + TTS (Kokoro-82M) combined deployment",
-      "description": "Speaches is an OpenAI-compatible STT/TTS server providing two models behind a single deployment: (1) whisper-large-v3 (Systran/faster-whisper-large-v3) for speech-to-text in 99 languages, and (2) kokoro-82m (speaches-ai/Kokoro-82M-v1.0-ONNX-fp16) for text-to-speech with multiple voice presets. Both models share one time-sliced L40S GPU. Registered in gateway as two separate models (whisper-large-v3 and kokoro-82m) via EXTRA_MODELS routing to http://speaches.models.svc.cluster.local:8000. Always-on (standalone Deployment, not KServe).",
-      "context_window": 448,
-      "max_completion_tokens": 0,
-      "endpoints": {
-        "stt": "/v1/audio/transcriptions",
-        "tts": "/v1/audio/speech",
-        "health": "/health"
-      },
-      "owned_by": "speaches-ai",
-      "source": "speaches-ai/speaches",
-      "source_url": "https://github.com/speaches-ai/speaches",
-      "license": "MIT",
-      "parameters": "whisper: 1.5B + kokoro: 82M",
-      "parameter_count": 1582000000,
-      "precision": "fp16 (faster-whisper) / fp16 (Kokoro ONNX)",
-      "architecture": "faster-whisper (CTranslate2) + Kokoro ONNX Runtime",
-      "framework": "standalone",
-      "deployment": {
-        "gpu": true,
-        "gpu_count": 1,
-        "gpu_type": "L40S-SHARED",
-        "min_replicas": 1,
-        "max_replicas": 1,
-        "startup_seconds": 120,
-        "container_image": "ghcr.io/speaches-ai/speaches@sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac",
-        "timeout": 600,
-        "k8s_resource_type": "Deployment + Service"
-      },
+      "id": "kokoro-82m",
+      "status": "production",
+      "type": "tts",
+      "endpoints": { "primary": "/v1/audio/speech", "health": "/health" },
       "routing": {
-        "backend": "http://speaches.models.svc.cluster.local:8000",
-        "health_path": "/health"
+        "k8s_name": "speaches",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
       },
-      "compatibility": {
-        "supports_streaming": false,
+      "limits": { "max_completion_tokens": 0, "context_window": 0 },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "idle_retention": "always-on",
+        "cold_start_estimate": "1-2 minutes (HF cache on PVC)"
+      },
+      "behavior": {
         "supports_vision": false,
-        "reasoning_model": false,
-        "needs_json_fixing": false,
+        "supports_tools": false,
         "strips_thinking": false
       },
-      "domain": "audio",
-      "subdomain": "speech",
-      "tags": ["audio", "speech-to-text", "tts", "gpu", "standalone"],
-      "content_types": ["text", "audio"],
-      "languages": ["multilingual (99 for STT)"],
-      "tier": "production",
-      "gateway_registered_models": {
-        "whisper-large-v3": {
-          "type": "audio",
-          "owned_by": "openai",
-          "source": "openai/whisper-large-v3",
-          "endpoint": "/v1/audio/transcriptions",
-          "input_format": {"file": "audio file (multipart form)", "model": "whisper-large-v3", "language": "ISO code (optional)"}
+      "param_translation": { "thinking": { "mode": "none" }, "max_tokens": { "field": null } },
+      "custom_params": {
+        "schema": {
+          "input": { "type": "string", "required": true },
+          "voice": { "type": "string", "default": "af_heart", "description": "Kokoro voice preset" }
         },
-        "kokoro-82m": {
-          "type": "tts",
-          "owned_by": "hexgrad",
-          "source": "hexgrad/Kokoro-82M",
-          "endpoint": "/v1/audio/speech",
-          "voices": ["af", "af_bella", "af_sky", "am_adam", "am_michael", "bf_emma", "bm_george"],
-          "input_format": {"input": "str", "voice": "voice preset ID", "model": "kokoro-82m"}
-        }
+        "passthrough": true
       },
-      "server_config": {
-        "inference_backend": "Speaches (OpenAI-compatible STT/TTS server)",
-        "container_image_digest": "sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac",
-        "whisper_model": "Systran/faster-whisper-large-v3",
-        "whisper_device": "cuda",
-        "whisper_compute_type": "float16",
-        "kokoro_model": "speaches-ai/Kokoro-82M-v1.0-ONNX-fp16",
-        "hf_cache": "/data (on PVC speaches-data)",
-        "model_ttl": "-1 (keep models loaded permanently)",
-        "prefetch_marker": "/data/.speaches-hf-prefetch-ok"
+      "schema_version": 2,
+      "catalog": {
+        "description_short": "Kokoro-82M TTS (speaches-ai/Kokoro-82M-v1.0-ONNX-fp16) — OpenAI-style /v1/audio/speech",
+        "description": "Kokoro-82M text-to-speech served by the speaches server (ONNX Runtime, fp16). OpenAI-style POST /v1/audio/speech {model,input,voice} -> audio bytes. Shares one GPU slice + one pod with whisper-large-v3 STT via the speaches InferenceService. Voices: af, af_bella, af_sky, am_adam, am_michael, bf_emma, bm_george, etc.",
+        "owned_by": "speaches-ai",
+        "source": "speaches-ai/Kokoro-82M-v1.0-ONNX-fp16",
+        "source_url": "https://huggingface.co/speaches-ai/Kokoro-82M-v1.0-ONNX-fp16",
+        "license": "Apache-2.0",
+        "parameters": "82M",
+        "precision": "fp16 (ONNX)",
+        "framework": "speaches (ONNX Runtime)",
+        "domain": "audio",
+        "subdomain": "text-to-speech",
+        "gpu": true,
+        "output_format": "audio/wav",
+        "voices": ["af", "af_bella", "af_sky", "am_adam", "am_michael", "bf_emma", "bm_george"],
+        "tags": ["tts", "audio", "speech-synthesis", "gpu", "kokoro"]
       }
     }

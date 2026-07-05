@@ -3,6 +3,30 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — speaches: Deployment → ISVC conversion (in progress, deferred)
+
+**What:** began converting `speaches` (Kokoro-82M TTS + faster-whisper-large-v3 STT) from a legacy
+standalone Deployment to the fleet's KServe ISVC pattern so the gateway can discover it (the `.43`
+gateway has no `EXTRA_MODELS` and routes only to `{k8s_name}-predictor` ISVC hosts).
+
+- **ISVC:** `speaches` custom predictor (speaches image on :8000, HAMi 16 GiB slice, always-on
+  minReplicas 1), PVC `speaches` (RWX, bare naming); HF-cache prefetch + chmod init preserved.
+- **Cards:** two v2 cards authored — `kokoro-82m` (tts, `/v1/audio/speech`) and `whisper-large-v3`
+  (audio, `/v1/audio/transcriptions`), both `routing.k8s_name: speaches`.
+
+**Blockers (deferred — not yet PASSing):**
+1. **STT can't route through the gateway:** `forward_custom` parses the body as JSON and hard-requires
+   a `model` field; `/v1/audio/transcriptions` is multipart form-data → gateway returns
+   `400 "model field required"`. Needs a multipart-aware catch-all (gateway PR + image rebuild).
+2. **TTS model id:** speaches 404s `kokoro-82m` and `kokoro` ("Model not installed locally") — needs
+   the correct speaches model id, likely wired via the card's `upstream_model_id` + speaches
+   model-load config.
+
+**State:** ISVC + PVC live and Ready (healthy pod); the broken `kokoro-82m` catalog card was removed
+so it doesn't 404 for users; cards stay in the repo (`details.yaml`, `details-whisper.yaml`) for
+re-application once the gateway + model-id are sorted. Next: a focused gateway change (multipart
+catch-all) + speaches model-id follow-up.
+
 ## 2026-07-05 — verify xtts-v2 on cluster 43 (strict naming rename)
 
 **What:** verified the live `xtts-v2` Coqui TTS model reproduces from its repo dir under the fleet

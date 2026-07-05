@@ -1,5 +1,18 @@
 # Speaches -- Model Context
 
+> **2026-07-05 — ISVC conversion (in progress, deferred).** Converted from the legacy standalone
+> Deployment to a KServe **InferenceService** `speaches` (custom predictor, speaches image on :8000,
+> HAMi 16 GiB slice, always-on). PVC renamed to bare `speaches` (RWX). HF-cache prefetch + chmod init
+> preserved. Two v2 cards authored (`kokoro-82m` TTS, `whisper-large-v3` STT), both
+> `routing.k8s_name: speaches`. **Two blockers, not yet PASSing:**
+> 1. **STT multipart can't route** — the gateway catch-all (`forward_custom`) parses JSON + requires a
+>    `model` field; `/v1/audio/transcriptions` is multipart → `400`. Needs a multipart-aware catch-all.
+> 2. **TTS model id** — speaches 404s `kokoro-82m`/`kokoro` ("not installed locally"); needs the right
+>    speaches model id (likely `upstream_model_id` rewrite + model-load config).
+> State: ISVC + PVC live/Ready; the broken `kokoro-82m` card was removed from the cluster (kept in
+> repo) so the catalog stays clean. Next: gateway multipart fix + speaches model-id follow-up.
+> The Deployment/EXTRA_MODELS notes below are the **old** design (pre-conversion), kept for history.
+
 ## What This Model Does
 
 Speaches is an OpenAI-compatible STT/TTS server providing two models behind a single Kubernetes Deployment:
