@@ -2041,6 +2041,14 @@ async def audio_transcriptions(request: Request):
     cold = await _guard_cold(request, info, "/v1/audio/transcriptions", "openai")
     if cold is not None:
         return cold
+    # Rewrite the model id if the card declares one (e.g. speaches wants the full
+    # HF id `Systran/faster-whisper-large-v3`, not the friendly `whisper-large-v3`).
+    upstream_mid = info.get("upstream_model_id")
+    if upstream_mid:
+        if isinstance(fwd.get("data"), dict):
+            fwd["data"]["model"] = upstream_mid
+        elif isinstance(fwd.get("json"), dict):
+            fwd["json"]["model"] = upstream_mid
     # Only the Host header is needed — httpx sets the multipart Content-Type with a
     # fresh boundary (or application/json for the JSON branch).
     host_hdr = {"Host": info["host"]}
