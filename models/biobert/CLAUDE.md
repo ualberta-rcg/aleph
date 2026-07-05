@@ -17,15 +17,15 @@ extraction, search. Template-C (`type: embedding`) — custom-transformers-on-GP
 - GPU request: `nvidia.com/gpu: 1` · HAMi `nvidia.com/gpumem: 3072` (3 GiB slice; fp16)
 
 ## Storage
-- PVC name: `biobert-data` (**ReadWriteMany**, **nfs-models** SC, 15Gi) — split out of inferenceservice.yaml
-  2026-06-19. NOTE: live PVC is on `nfs-models` (the dedicated model-weights share), not `nfs-client`.
+- PVC name: `biobert` (**ReadWriteMany**, **nfs-models** SC, 15Gi) — bare fleet naming (was
+  `biobert-data`/`model-data`, renamed 2026-07-05). Live PVC is on `nfs-models` (the dedicated model-weights share), not `nfs-client`.
 - Mount path: `/data` (venv + model; `HF_HOME=/data/hf_cache`). App at `/app` (ConfigMap).
 
 ## Known quirks
 - `ignore_mismatched_sizes=True` on load (BioBERT checkpoint vs config head size).
 - **usage quirk:** `prompt_tokens`/`total_tokens` = the **number of input strings** (not token counts).
 - **Truncation safe:** tokenizer `max_length=512` pre-truncates → no OOM (small model, 3 GiB slice).
-- **Scale-to-zero** (`minReplicas: 0`): first request scales 0→1 (cold start ~1–2 min).
+- **Always-on** (`minReplicas: 1`, max 3, scaleTarget 8): warm biomedical-embedder tier. Cold start ~1–2 min on a fresh PVC (venv build + torch cu121 install); ~40s on a cached PVC.
 
 ## Deploy / update steps
 1. `kubectl apply -f pvc.yaml` (RWX; caches venv + model).

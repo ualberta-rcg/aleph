@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy biobert on cluster 43 (always-on embedder)
+
+**What:** brought `biobert` (768-dim biomedical text embeddings, custom transformers server on a HAMi
+GPU slice) live on the rebuilt cluster 43 as an always-on embedder.
+
+- **Scaling:** `minReplicas: 0` → `1` (max 3, scaleTarget 8), added `progress-deadline: 600s`; card
+  `scaling.min_replicas` updated to match.
+- **Naming:** bare `biobert` PVC + volume (was `biobert-data` / `model-data`) — fleet naming standard.
+
+**Why:** the cluster-43 rebuild left only ~75 ISVCs live; biobert was repo-complete + PASS on the old
+cluster but not deployed here. Always-on per the light-embedder policy.
+
+**Validation:** gateway test 8 PASS / 2 EXP / 0 FAIL; clean delete (ISVC + cms, keep PVC) + redeploy
+from repo → still 8/2/0 (PVC reused, ~40s cold start).
+
 ## 2026-06-28 — migrate bge-m3 + bge-reranker-v2-m3 from CPU to GPU (TEI CUDA)
 
 **What:** moved the two always-on BGE-M3 NLP models off CPU TEI onto GPU TEI to cut latency.

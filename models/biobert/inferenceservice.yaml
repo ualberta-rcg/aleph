@@ -1,5 +1,5 @@
 # BioBERT: Biomedical NER and text model from DMIS Lab
-# GPU (~1GB VRAM), scale-to-zero. HF: dmis-lab/biobert-base-cased-v1.1
+# GPU (~1GB VRAM), always-on (minReplicas:1). HF: dmis-lab/biobert-base-cased-v1.1
 # 124k downloads, Apache 2.0
 # API: POST /v1/embeddings
 ---
@@ -89,6 +89,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -98,10 +99,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 5
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 120
+    timeout: 300
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -129,7 +131,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: biobert, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -148,10 +150,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: biobert, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: biobert-data }
+      - name: biobert
+        persistentVolumeClaim: { claimName: biobert }
       - name: app
         configMap: { name: biobert-server }

@@ -2,7 +2,7 @@
 
 DMIS Lab **BioBERT v1.1** — BERT pre-trained on PubMed abstracts + PMC full-text. 768-dim
 mean-pooled biomedical text embeddings for NER, relation extraction, and search. Custom
-FastAPI/transformers server on a HAMi GPU slice, scale-to-zero.
+FastAPI/transformers server on a HAMi GPU slice, always-on (minReplicas: 1).
 
 ## Deployment
 

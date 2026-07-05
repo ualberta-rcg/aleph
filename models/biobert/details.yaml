@@ -25,8 +25,8 @@ data:
         "max_input_tokens": 512
       },
       "scaling": {
-        "scale_to_zero": true,
-        "min_replicas": 0,
+        "scale_to_zero": false,
+        "min_replicas": 1,
         "idle_retention": "15m",
         "cold_start_estimate": "1-2 minutes"
       },
@@ -78,7 +78,7 @@ data:
         }
       },
       "catalog": {
-        "description_short": "BioBERT base v1.1 — 768-dim biomedical text embeddings (GPU, scale-to-zero)",
+        "description_short": "BioBERT base v1.1 — 768-dim biomedical text embeddings (GPU, always-on)",
         "description": "BioBERT base (v1.1), BERT pre-trained on PubMed abstracts + PMC full text. Produces 768-dim biomedical text embeddings for NER, relation extraction and search. Served on a HAMi sub-GPU slice.",
         "owned_by": "DMIS Lab",
         "source": "dmis-lab/biobert-base-cased-v1.1",
