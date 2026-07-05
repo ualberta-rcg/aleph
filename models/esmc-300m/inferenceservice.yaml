@@ -83,18 +83,6 @@ data:
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: esmc-300m-data
-  namespace: models
-spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 5Gi
----
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -103,6 +91,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "1200s"
 spec:
   predictor:
     affinity:
@@ -112,10 +101,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 5
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 120
+    timeout: 300
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -157,7 +147,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: esmc-300m, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -176,10 +166,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: esmc-300m, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: esmc-300m-data }
+      - name: esmc-300m
+        persistentVolumeClaim: { claimName: esmc-300m }
       - name: app
         configMap: { name: esmc-300m-server }

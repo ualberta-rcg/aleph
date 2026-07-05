@@ -4,7 +4,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: esmc-300m-data
+  name: esmc-300m
   namespace: models
 spec:
   accessModes: ["ReadWriteMany"]

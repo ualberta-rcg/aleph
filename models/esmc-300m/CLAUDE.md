@@ -14,7 +14,7 @@ ESM-C (Cambrian) 300M from EvolutionaryScale (Meta spinoff). Next-gen protein LM
 ## Our config vs source
 - venv-on-PVC with esm package, torch>=2.6 CUDA
 - HF_TOKEN required for download
-- GPU shared (L40S-SHARED), 5Gi PVC, minReplicas: 0
+- GPU shared (L40S-SHARED), 5Gi PVC `esmc-300m` (bare fleet naming, was `esmc-300m-data`/`model-data`), minReplicas: 1 (always-on)
 
 ## Deploy/update/test
 ```bash

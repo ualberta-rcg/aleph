@@ -20,8 +20,8 @@ data:
       },
       "limits": { "max_completion_tokens": 0, "context_window": 2048, "max_input_tokens": 2048 },
       "scaling": {
-        "scale_to_zero": true,
-        "min_replicas": 0,
+        "scale_to_zero": false,
+        "min_replicas": 1,
         "idle_retention": "15m",
         "cold_start_estimate": "1-2 minutes (GPU, model cached on PVC)"
       },

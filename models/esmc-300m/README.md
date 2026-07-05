@@ -3,7 +3,7 @@
 **ESM-C (Cambrian) 300M** — EvolutionaryScale's next-gen protein language model, a drop-in
 replacement for ESM-2 with improved performance. Uses the **esm SDK**. 960-dim mean-pooled
 per-protein embeddings of amino-acid sequences (up to 2048 residues). Custom FastAPI server on a
-HAMi GPU slice, scale-to-zero.
+HAMi GPU slice, always-on (minReplicas: 1).
 
 ## Deployment
 
@@ -40,11 +40,11 @@ unknown-model 404), catalog (type=embedding, ctx 2048).
 | Max input | 2048 residues (tokenizer truncates longer) |
 | Parameters | 300M |
 | GPU | HAMi sub-GPU slice |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `esmc-300m-data` (RWX, nfs-models, 5Gi; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `esmc-300m` (RWX, nfs-models, 5Gi; bare fleet naming) |
 
 ## Model Highlights
 
 - Next-gen ESM (Cambrian) — improved over ESM-2; uses the esm SDK.
 - 960-dim per-protein embeddings via mean pooling.
-- Long context (2048 residues); GPU slice + scale-to-zero.
+- Long context (2048 residues); GPU slice, always-on.
