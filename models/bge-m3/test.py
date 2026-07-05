@@ -16,6 +16,7 @@ import base64, httpx, json, os, struct, time
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 MODEL = os.environ.get("MODEL", "bge-m3")
 EXP_DIM = 1024          # catalog.embedding_dimensions (BGE-M3 dense)
 MAX_INPUT = 8192        # catalog.max_input_tokens
@@ -23,7 +24,7 @@ results = []
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
 
 
 def record(icon, status, name, detail):
