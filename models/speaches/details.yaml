@@ -18,7 +18,7 @@ data:
         "k8s_name": "speaches",
         "serialize": false,
         "no_stream": true,
-        "upstream_model_id": null
+        "upstream_model_id": "speaches-ai/Kokoro-82M-v1.0-ONNX-fp16"
       },
       "limits": { "max_completion_tokens": 0, "context_window": 0 },
       "scaling": {

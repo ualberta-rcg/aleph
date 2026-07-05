@@ -870,6 +870,19 @@ def upstream_headers(info: dict, content_type: str = "application/json") -> dict
     return {"Content-Type": content_type, "Host": info["host"]}
 
 
+def _apply_upstream_model_id(info: dict, target: dict) -> bool:
+    """Rewrite the `model` field to the card's routing.upstream_model_id when the
+    backend speaks a different id than the friendly one clients send — e.g. speaches
+    wants the full HF id (`Systran/faster-whisper-large-v3`,
+    `speaches-ai/Kokoro-82M-v1.0-ONNX-fp16`), not `whisper-large-v3`/`kokoro-82m`.
+    Card-driven: no model names hardcoded in the gateway. Mutates `target` in place."""
+    mid = info.get("upstream_model_id")
+    if mid and isinstance(target, dict) and target.get("model") is not None:
+        target["model"] = mid
+        return True
+    return False
+
+
 def apply_defaults(card: dict, body: dict) -> dict:
     """Fill in card defaults for fields the client didn't set."""
     defaults = (card.get("defaults", {}) or {}).get("chat", {}) or {}
@@ -2043,12 +2056,10 @@ async def audio_transcriptions(request: Request):
         return cold
     # Rewrite the model id if the card declares one (e.g. speaches wants the full
     # HF id `Systran/faster-whisper-large-v3`, not the friendly `whisper-large-v3`).
-    upstream_mid = info.get("upstream_model_id")
-    if upstream_mid:
-        if isinstance(fwd.get("data"), dict):
-            fwd["data"]["model"] = upstream_mid
-        elif isinstance(fwd.get("json"), dict):
-            fwd["json"]["model"] = upstream_mid
+    if isinstance(fwd.get("data"), dict):
+        _apply_upstream_model_id(info, fwd["data"])
+    elif isinstance(fwd.get("json"), dict):
+        _apply_upstream_model_id(info, fwd["json"])
     # Only the Host header is needed — httpx sets the multipart Content-Type with a
     # fresh boundary (or application/json for the JSON branch).
     host_hdr = {"Host": info["host"]}
@@ -2086,6 +2097,35 @@ async def audio_transcriptions(request: Request):
         _METRICS["requests_error"] += 1
     return Response(content=r.content, status_code=r.status_code,
                     media_type=r.headers.get("content-type", "application/json"))
+
+
+@app.post("/v1/audio/speech")
+async def audio_speech(request: Request):
+    """OpenAI-compatible TTS (JSON {model, input, voice} -> raw audio bytes).
+    Registered before the catch-all so the model id is rewritten from the card's
+    upstream_model_id (e.g. kokoro-82m -> speaches-ai/Kokoro-82M-v1.0-ONNX-fp16),
+    which the catch-all does not do. Raw audio bytes are passed through verbatim
+    via _forward (stream=False returns Response with the upstream content-type)."""
+    _METRICS["requests_total"] += 1
+    body = await request.body()
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        _METRICS["requests_error"] += 1
+        return JSONResponse({"error": "invalid JSON body"}, 400)
+    model_id = parsed.get("model")
+    info = resolve(model_id) if model_id else None
+    if not info:
+        _METRICS["requests_error"] += 1
+        return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    cold = await _guard_cold(request, info, "/v1/audio/speech", "openai")
+    if cold is not None:
+        return cold
+    _apply_upstream_model_id(info, parsed)
+    return await _forward(info, "/v1/audio/speech", json.dumps(parsed).encode(),
+                          stream=False, log_ctx={"request": request,
+                                                 "endpoint": "/v1/audio/speech",
+                                                 "api": "openai"})
 
 
 @app.api_route("/v1/{path:path}", methods=["POST", "GET"])
