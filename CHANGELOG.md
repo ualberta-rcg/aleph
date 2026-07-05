@@ -3,6 +3,14 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy matscibert on cluster 43 (always-on GPU embedder)
+
+- minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.
+- bare `matscibert` PVC/volume naming (was `matscibert-data` / `model-data`).
+- dropped a stray duplicate camelCase `scaleToZeroPodRetentionPeriod` annotation (Knative uses kebab-case).
+- 768-dim [CLS]-pooled; cu121 torch + transformers 4.46.3 (pinned, no CVE issue). Gateway 8/2/0;
+  clean delete+redeploy reproduces (PVC reused).
+
 ## 2026-07-05 — deploy chemberta on cluster 43 (always-on CPU embedder)
 
 - minReplicas 0->1 (max 3, scaleTarget 8), progress-deadline 600s; card scaling matches.

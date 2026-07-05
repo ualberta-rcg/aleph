@@ -114,7 +114,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
-    autoscaling.knative.dev/scaleToZeroPodRetentionPeriod: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -124,15 +124,17 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 1
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
+    timeout: 300
     nodeSelector:
       gpu: "on"
     volumes:
-      - name: model-data
+      - name: matscibert
         persistentVolumeClaim:
-          claimName: matscibert-data
+          claimName: matscibert
       - name: server-code
         configMap:
           name: matscibert-server
@@ -147,7 +149,7 @@ spec:
             memory: "4Gi"
             cpu: "2"
         volumeMounts:
-          - name: model-data
+          - name: matscibert
             mountPath: /data
         env:
           - name: HF_TOKEN
@@ -204,7 +206,7 @@ spec:
             nvidia.com/gpu: "1"
             nvidia.com/gpumem: "3072"
         volumeMounts:
-          - name: model-data
+          - name: matscibert
             mountPath: /data
           - name: server-code
             mountPath: /app

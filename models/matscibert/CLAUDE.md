@@ -16,7 +16,7 @@ Template-C (`type: embedding`), custom-transformers-on-GPU.
 - GPU: HAMi `nvidia.com/gpumem: 3072` (3 GiB slice)
 
 ## Storage
-- PVC `matscibert-data` (**ReadWriteMany**, nfs-models, 15Gi) — split out of inferenceservice.yaml 2026-06-19.
+- PVC `matscibert` (**ReadWriteMany**, nfs-models, 15Gi) — bare fleet naming (was `matscibert-data`/`model-data`).
 - Mount `/data` (venv + model + HF cache); server code at `/app` (ConfigMap).
 
 ## Known quirks
@@ -26,7 +26,7 @@ Template-C (`type: embedding`), custom-transformers-on-GPU.
   to backend `/v1/embeddings`). Added an OpenAI-contract `/v1/embeddings` route (keeps the legacy route).
   Apply = update the `matscibert-server` ConfigMap + restart the pod (delete it; wake-on-demand recreates).
 - usage: `prompt_tokens` = whitespace word count.
-- Scale-to-zero (`minReplicas: 0`).
+- Always-on (`minReplicas: 1`, max 3, scaleTarget 8).
 
 ## Deploy / update steps
 1. `kubectl apply -f pvc.yaml` (RWX; caches venv + model).
