@@ -42,12 +42,12 @@ unknown-model 404), catalog (type=embedding, ctx 512).
 | Max input | 512 tokens (tokenizer truncates longer) |
 | Precision | fp32 |
 | Parameters | 110M (BERT-base) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `scibert-data` (RWX, nfs-models, 5Gi) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `scibert` (RWX, nfs-models, 5Gi; bare fleet naming) |
 
 ## Model Highlights
 
 - Pre-trained on scientific text (biomedical + CS) → strong for scientific NER/classification.
 - SciVocab SentencePiece tokenizer (uncased).
 - 768-dim mean-pooled embeddings; good for retrieval and similarity over papers/abstracts.
-- Served CPU-only on a sub-core footprint with scale-to-zero.
+- Served CPU-only on a sub-core footprint, always-on (minReplicas: 1).

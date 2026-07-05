@@ -15,7 +15,7 @@ similarity. Template-C (`type: embedding`), custom-transformers-server variant.
 - GPU request: **none** (CPU-only)
 
 ## Storage
-- PVC name: `scibert-data` (**ReadWriteMany**, nfs-models, 5Gi)
+- PVC name: `scibert` (**ReadWriteMany**, nfs-models, 5Gi; bare fleet naming, was `scibert-data`/`model-data`)
 - Mount path: `/data` (init writes venv + model; server reads readOnly). App at `/app` (ConfigMap).
 - Warm-cache condition: `/data/venv/bin/python` + `/data/model/config.json` present
 

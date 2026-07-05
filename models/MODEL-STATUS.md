@@ -157,7 +157,7 @@ Cluster-state at snapshot start: **93 READY**, **58 NOT-READY**, **6 NO-ISVC** (
 | saprot-650m | embedding | true | /v1/embeddings | READY | PASS | 1280-dim (AA+3Di tokens; recreated) |
 | satmae | embed | false | /v1/science/embed | READY | PASS | v2 deep pass 2026-06-24: schema v2 with input_map/output_map (1024-dim CLS); test.py expanded to ~12 checks (0 FAIL); RWX PVC |
 | scgpt | embedding | true | /v1/science/embed | READY | PASS | v2 2026-06-19: +/v1/science/embed alias; GPU (was card said CPU); 512-dim; 7/0 test; was parked |
-| scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m) |
+| scibert | embedding | false | /v1/embeddings | READY | PASS | embeddings PASS dim=768 (id scibert-110m). **Deployed+verified on cluster 43 (2026-07-05):** always-on CPU (minReplicas:1/maxReplicas:3, progress-deadline 600s); bare `scibert` PVC/volume naming (was `scibert-data`/`model-data`); card scaling min_replicas 0→1. Clean delete+redeploy (PVC reused); gateway 8/2/0. |
 | science-embed | embedding | ? | - | NO-ISVC | CANCELLED | superseded by individual ESM2/NT ISVCs; not deployed |
 | scincl | embedding | true | /v1/embeddings | READY | PASS | 768-dim scientific paper |
 | seisbench | classify | true | /v1/science/detect | READY | PASS | phasenet runs (P/S detection) |
