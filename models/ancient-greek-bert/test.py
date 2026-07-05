@@ -16,6 +16,9 @@ import httpx, json, os, time
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+# Public edge may serve a self-signed cert (cert-manager.local) — opt out of
+# verification with GW_INSECURE=1 for login-node runs. Default stays strict.
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 MODEL = os.environ.get("MODEL", "ancient-greek-bert")
 EXP_DIM = 768
 MAX_INPUT = 512
@@ -27,7 +30,7 @@ T3 = "Γνῶθι σεαυτόν."
 
 
 def req(method, path, body=None, timeout=300):
-    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.request(method, f"{G}{path}", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
 
 def record(icon, status, name, detail):
     results.append((icon, status, name, detail)); print(f"[{icon}] {status} | {name}: {detail}", flush=True)
