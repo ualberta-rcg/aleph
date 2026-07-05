@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-05 — deploy biomed-roberta on cluster 43 (always-on GPU embedder)
+
+**What:** brought `biomed-roberta` (AllenAI BioMed-RoBERTa, 768-dim, custom transformers server on a
+HAMi GPU slice) live on cluster 43 as an always-on embedder.
+
+- **Scaling:** `minReplicas: 0` → `1` (max 3, scaleTarget 8), added `progress-deadline: 600s`; card
+  `scaling.min_replicas` updated to match.
+- **Naming:** bare `biomed-roberta` PVC + volume (was `biomed-roberta-data` / `model-data`).
+
+**Why:** repo-complete + PASS on the old cluster but not on the rebuilt cluster 43. Always-on per the
+light-embedder policy.
+
+**Validation:** gateway test 8 PASS / 2 EXP / 0 FAIL; clean delete (ISVC + cms, keep PVC) + redeploy
+from repo → still 8/2/0.
+
 ## 2026-07-05 — deploy biomedbert-large on cluster 43 (always-on GPU embedder, CPU→GPU fix)
 
 **What:** brought `biomedbert-large` (Microsoft BiomedBERT-large 340M, 1024-dim [CLS]-pooled, custom

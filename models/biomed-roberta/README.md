@@ -2,7 +2,7 @@
 
 AllenAI BioMed-RoBERTa — RoBERTa pre-trained from scratch on PubMed + PMC + MIMIC-III biomedical
 text. 768-dim mean-pooled embeddings for biomedical NLP. Custom FastAPI/transformers server on a
-HAMi GPU slice, scale-to-zero. OpenAI-compliant `/v1/embeddings` (batch + usage).
+HAMi GPU slice, always-on (minReplicas: 1). OpenAI-compliant `/v1/embeddings` (batch + usage).
 
 ## Deployment
 
@@ -35,5 +35,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Max input | 512 tokens |
 | Parameters | 125M (RoBERTa) |
 | GPU | HAMi slice 8 GiB (`nvidia.com/gpumem: 8192`) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `biomed-roberta-data` (RWX, nfs-models; migrated from RWO) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `biomed-roberta` (RWX, nfs-models; bare fleet naming) |

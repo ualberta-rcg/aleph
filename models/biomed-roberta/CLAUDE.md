@@ -21,7 +21,7 @@ Key info from source:
 - **Container**: `python:3.11-slim` running `/data/venv/bin/python /app/server.py`.
 - **Init container**: creates venv, installs torch+transformers, downloads model to PVC.
 - **ConfigMap**: `biomed-roberta-server` (server code embedded in inferenceservice.yaml).
-- **PVC**: `biomed-roberta-data` — RWX, nfs-models (venv + weights; migrated RWO→RWX).
+- **PVC**: `biomed-roberta` — RWX, nfs-models (venv + weights; bare fleet naming, was `biomed-roberta-data`/`model-data`).
 - **GPU**: HAMi slice (`gpu: "on"`, `nvidia.com/gpumem: 8192`), fp16.
 - **Env**: `HF_HOME=/data/hf_cache`.
 - **Pooling**: mean pooling with attention mask → 768-dim.
@@ -36,7 +36,7 @@ Key info from source:
 - **k8s ISVC name**: `biomed-roberta`
 - **API model ID**: `biomed-roberta`
 - **type**: `embedding` (details.yaml schema v2)
-- **Scale-to-zero**: minReplicas=0, 15m retention.
+- **Always-on**: minReplicas=1 (max 3, scaleTarget 8), 15m retention.
 
 ## Deploy / Update / Test
 
@@ -66,7 +66,7 @@ cat models/biomed-roberta/test.py | kubectl exec -i -n models deploy/model-gatew
 |------|---------|
 | `details.yaml` | Model card (schema v2, type: embedding) |
 | `inferenceservice.yaml` | ConfigMap (server.py) + ISVC spec |
-| `pvc.yaml` | PVC `biomed-roberta-data` (RWX, nfs-models) |
+| `pvc.yaml` | PVC `biomed-roberta` (RWX, nfs-models) |
 | `test.py` | Gateway test battery (10 checks) |
 | `README.md` | Model overview |
 

@@ -1,5 +1,5 @@
 # BioMed-RoBERTa: Biomedical RoBERTa from Allen AI
-# GPU (~1GB VRAM), scale-to-zero. HF: allenai/biomed_roberta_base
+# GPU (~1GB VRAM), always-on (minReplicas:1). HF: allenai/biomed_roberta_base
 # 33k downloads, Apache 2.0
 # API: POST /v1/embeddings
 ---
@@ -87,6 +87,7 @@ metadata:
   annotations:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "600s"
 spec:
   predictor:
     affinity:
@@ -96,10 +97,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 5
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 120
+    timeout: 300
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -126,7 +128,7 @@ spec:
           requests: { cpu: "2", memory: 4Gi }
           limits: { cpu: "4", memory: 8Gi }
         volumeMounts:
-          - { name: model-data, mountPath: /data }
+          - { name: biomed-roberta, mountPath: /data }
     containers:
       - name: kserve-container
         image: python:3.11-slim
@@ -145,10 +147,10 @@ spec:
           periodSeconds: 10
           failureThreshold: 30
         volumeMounts:
-          - { name: model-data, mountPath: /data, readOnly: true }
+          - { name: biomed-roberta, mountPath: /data, readOnly: true }
           - { name: app, mountPath: /app }
     volumes:
-      - name: model-data
-        persistentVolumeClaim: { claimName: biomed-roberta-data }
+      - name: biomed-roberta
+        persistentVolumeClaim: { claimName: biomed-roberta }
       - name: app
         configMap: { name: biomed-roberta-server }
