@@ -2,7 +2,7 @@
 
 BERT initialized from BioBERT and trained on **MIMIC-III clinical notes** — 768-dim mean-pooled
 embeddings for clinical NLP (de-identification context, clinical NER, similarity/retrieval).
-Custom FastAPI/transformers server, CPU-only, scale-to-zero.
+Custom FastAPI/transformers server, CPU-only, always-on (minReplicas: 1).
 
 ## Deployment
 
@@ -34,5 +34,5 @@ distinctness, encoding_format, truncation, guardrails, catalog.
 | Embedding dim | 768 (mean-pooled) |
 | Max input | 512 tokens |
 | Parameters | 110M (BERT-base) |
-| Scale | scale-to-zero (`minReplicas: 0`, 15m retention) |
-| Weights | PVC `clinicalbert-data` (RWX, nfs-models) |
+| Scale | always-on (`minReplicas: 1`, max 3, 15m retention) |
+| Weights | PVC `clinicalbert` (RWX, nfs-models; bare fleet naming) |
