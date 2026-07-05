@@ -5,13 +5,20 @@
 # Creates the ConfigMap that Tyk reads its API definition from. Mounted into the Tyk gateway
 # pod at /opt/tyk-gateway/apps (see extraVolumeMounts in 51-tyk.yaml) so Tyk auto-loads it.
 #
-# This file is the committed + auto-deployed form of gateway/tyk/model-gateway-api.json.
-# If the API definition changes, update both this manifest and that source file, then let
-# the WW overlay re-provision apply the new ConfigMap (or: kubectl apply -f 53-tyk-api-definitions.yaml
+# This file is the committed + auto-deployed form of gateway/tyk/model-gateway-api.json
+# + gateway/tyk/model-web-api.json. If either API definition changes, update both this
+# manifest and those source files, then let the WW overlay re-provision apply the new
+# ConfigMap (or: kubectl apply -f 53-tyk-api-definitions.yaml
 # + kubectl rollout restart deploy/gateway-tyk-oss-tyk-gateway -n tyk).
 #
-# The definition:
-#   - Proxies all traffic (listen_path: /) to model-gateway.models.svc.cluster.local:80
+# Two APIs, split by listen_path so the public landing page is keyless while the API
+# stays token-auth'd. Tyk longest-prefix-matches, so:
+#   - model-gateway  listen_path /v1/  (auth'd) — all /v1/* API traffic
+#   - model-web      listen_path /     (keyless) — GET / (how-to page), /healthz, /metrics
+# Both proxy to the same model-gateway service. The /v1/ API keeps api_id=model-gateway
+# so existing Tyk keys (access_rights["model-gateway"]) still work unchanged.
+#
+# model-gateway definition:
 #   - Requires Bearer token auth (use_keyless: false, use_standard_auth: true)
 #   - custom_middleware (JSVM): normalizeAuth (pre) accepts the key under any
 #     common convention (Authorization Bearer, x-api-key, api-key, x-goog-api-key,
@@ -41,7 +48,7 @@ data:
         }
       },
       "proxy": {
-        "listen_path": "/",
+        "listen_path": "/v1/",
         "target_url": "http://model-gateway.models.svc.cluster.local:80",
         "strip_listen_path": false
       },
@@ -56,6 +63,28 @@ data:
         "auth_check": { "name": "" },
         "post_key_auth": [],
         "response": []
+      },
+      "active": true,
+      "enable_context_vars": true,
+      "do_not_track": false
+    }
+  model-web.json: |
+    {
+      "name": "model-web",
+      "slug": "model-web",
+      "api_id": "model-web",
+      "org_id": "orgid",
+      "use_keyless": true,
+      "version_data": {
+        "not_versioned": true,
+        "versions": {
+          "Default": { "name": "Default", "use_extended_paths": true }
+        }
+      },
+      "proxy": {
+        "listen_path": "/",
+        "target_url": "http://model-gateway.models.svc.cluster.local:80",
+        "strip_listen_path": false
       },
       "active": true,
       "enable_context_vars": true,

@@ -1,0 +1,21 @@
+{
+  "name": "model-web",
+  "slug": "model-web",
+  "api_id": "model-web",
+  "org_id": "orgid",
+  "use_keyless": true,
+  "version_data": {
+    "not_versioned": true,
+    "versions": {
+      "Default": { "name": "Default", "use_extended_paths": true }
+    }
+  },
+  "proxy": {
+    "listen_path": "/",
+    "target_url": "http://model-gateway.models.svc.cluster.local:80",
+    "strip_listen_path": false
+  },
+  "active": true,
+  "enable_context_vars": true,
+  "do_not_track": false
+}

@@ -13,7 +13,7 @@
     }
   },
   "proxy": {
-    "listen_path": "/",
+    "listen_path": "/v1/",
     "target_url": "http://model-gateway.models.svc.cluster.local:80",
     "strip_listen_path": false
   },
