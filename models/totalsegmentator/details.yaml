@@ -54,7 +54,7 @@ data:
       "status": "production",
       "schema_version": 2,
       "behavior": { "supports_vision": true, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
-      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "3-6 minutes (venv-on-PVC; weights ~2GB)" },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "3-6 min" },
       "limits": { "context_window": 0, "max_input_tokens": 0 },
       "param_translation": { "thinking": { "mode": "none" } },
       "defaults": {},

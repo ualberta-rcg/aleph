@@ -23,7 +23,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "~2 minutes (6 GB BF16, 1x L40S slice, 64K ctx)"
+        "cold_start_estimate": "2-4 min"
       },
       "behavior": {
         "supports_vision": true,

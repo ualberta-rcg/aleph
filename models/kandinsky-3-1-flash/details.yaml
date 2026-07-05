@@ -29,7 +29,7 @@ data:
         "min_replicas": 1,
         "max_replicas": 1,
         "idle_retention": "15m",
-        "cold_start_estimate": "Always-on after the initial code/venv/weight staging. First fresh deployment takes several minutes to build the venv and download Kandinsky 3.1 Flash weights to the PVC."
+        "cold_start_estimate": "Always on"
       },
       "behavior": {
         "supports_vision": false,

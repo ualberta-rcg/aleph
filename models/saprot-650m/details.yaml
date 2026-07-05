@@ -23,7 +23,7 @@ data:
         "scale_to_zero": false,
         "min_replicas": 1,
         "idle_retention": "15m",
-        "cold_start_estimate": "1-2 minutes (venv + model cached on PVC)"
+        "cold_start_estimate": "Always on"
       },
       "behavior": {
         "supports_vision": false,

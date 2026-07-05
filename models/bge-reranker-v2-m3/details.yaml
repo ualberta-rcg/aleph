@@ -23,7 +23,7 @@ data:
         "scale_to_zero": false,
         "min_replicas": 1,
         "idle_retention": "always-on",
-        "cold_start_estimate": "10-40 seconds (weights on PVC; GPU image pull on first node placement)"
+        "cold_start_estimate": "Always on"
       },
       "behavior": {
         "supports_vision": false,

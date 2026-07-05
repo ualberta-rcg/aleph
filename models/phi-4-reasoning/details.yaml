@@ -23,7 +23,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "3-5 minutes (14B BF16 load; progress-deadline 2400s)"
+        "cold_start_estimate": "3-6 min"
       },
       "behavior": {
         "supports_vision": false,

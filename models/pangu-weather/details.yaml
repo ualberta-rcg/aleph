@@ -14,7 +14,7 @@ data:
       "endpoints": { "primary": "/v1/science/forecast", "health": "/health" },
       "routing": { "k8s_name": "pangu-weather", "no_stream": true, "upstream_model_id": null },
       "limits": { "context_window": 0, "max_input_tokens": 0 },
-      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "3-5 min (onnxruntime-gpu load + ~1.1GB ONNX; first real run adds ~30s ERA5 fetch)" },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "3-6 min" },
       "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
       "param_translation": { "thinking": { "mode": "none" } },
       "defaults": { "lead_hours": 24 },

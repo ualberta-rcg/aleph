@@ -28,7 +28,7 @@ data:
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "cold_start_estimate": "3-5 minutes (TP4, 70B)",
+        "cold_start_estimate": "3-6 min",
         "idle_retention": "15m"
       },
       "behavior": {

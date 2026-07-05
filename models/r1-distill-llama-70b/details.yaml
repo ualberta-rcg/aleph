@@ -23,7 +23,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "~4-5 minutes (130 GB BF16, TP4 whole node)"
+        "cold_start_estimate": "3-6 min"
       },
       "behavior": {
         "supports_vision": false,

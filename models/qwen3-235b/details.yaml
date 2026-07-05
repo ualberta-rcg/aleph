@@ -23,7 +23,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "30m",
-        "cold_start_estimate": "~6 minutes (118 GB AWQ int4, 4x L40S)"
+        "cold_start_estimate": "5-10 min"
       },
       "behavior": {
         "supports_vision": false,

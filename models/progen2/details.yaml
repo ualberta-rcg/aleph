@@ -27,7 +27,7 @@ data:
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "cold_start_estimate": "2-3 minutes (custom server, 6.4B transformers)",
+        "cold_start_estimate": "2-4 min",
         "idle_retention": "15m"
       },
       "behavior": {

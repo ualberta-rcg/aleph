@@ -28,7 +28,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "3-6 min (weights + ESM2 cache on PVC; first dock runs the DiffDock CLI)"
+        "cold_start_estimate": "3-6 min"
       },
       "behavior": {
         "supports_vision": false,

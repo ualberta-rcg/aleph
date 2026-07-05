@@ -14,7 +14,7 @@ data:
       "endpoints": { "primary": "/v1/embeddings", "secondary": ["/v1/science/embed"], "health": "/health" },
       "routing": { "k8s_name": "sapbert", "serialize": false, "no_stream": true, "upstream_model_id": null },
       "limits": { "max_completion_tokens": 0, "context_window": 25, "max_input_tokens": 25 },
-      "scaling": { "scale_to_zero": false, "min_replicas": 1, "idle_retention": "15m", "cold_start_estimate": "30-60 seconds (venv + model on PVC)" },
+      "scaling": { "scale_to_zero": false, "min_replicas": 1, "idle_retention": "15m", "cold_start_estimate": "Always on" },
       "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
       "param_translation": { "thinking": { "mode": "none" }, "max_tokens": { "field": null } },
       "defaults": {}, "custom_params": { "passthrough": true }, "schema_version": 2,

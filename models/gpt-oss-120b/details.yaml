@@ -29,7 +29,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "~2-3 minutes (MXFP4 MoE 60GB, TP2 over NFS)"
+        "cold_start_estimate": "2-4 min"
       },
       "behavior": {
         "supports_vision": false,

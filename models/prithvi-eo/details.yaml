@@ -18,7 +18,7 @@ data:
       },
       "routing": { "k8s_name": "prithvi-eo", "no_stream": true, "upstream_model_id": null },
       "limits": { "context_window": 0, "max_input_tokens": 0 },
-      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "2-4 minutes (venv-on-PVC; weights already downloaded)" },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "2-4 min" },
       "behavior": { "supports_vision": true, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
       "param_translation": { "thinking": { "mode": "none" } },
       "defaults": {},

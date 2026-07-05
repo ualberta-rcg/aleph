@@ -28,7 +28,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "2-4 min (venv + retriever load + first retrieve)"
+        "cold_start_estimate": "2-4 min"
       },
       "behavior": {
         "supports_vision": false,

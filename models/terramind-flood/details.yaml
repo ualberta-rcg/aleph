@@ -25,7 +25,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "5-10 minutes (pip install on boot; no venv-on-PVC)"
+        "cold_start_estimate": "5-10 min"
       },
       "behavior": {
         "supports_vision": true,

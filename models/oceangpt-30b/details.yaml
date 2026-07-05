@@ -28,7 +28,7 @@ data:
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
-        "cold_start_estimate": "2-4 minutes (TP2, MoE 30B)",
+        "cold_start_estimate": "2-4 min",
         "idle_retention": "15m"
       },
       "behavior": {

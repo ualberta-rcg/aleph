@@ -14,7 +14,7 @@ data:
       "endpoints": { "primary": "/v1/embeddings", "secondary": ["/v1/science/embed"], "health": "/health" },
       "routing": { "k8s_name": "gena-lm-large", "serialize": false, "no_stream": true, "upstream_model_id": null },
       "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
-      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "10m", "cold_start_estimate": "30-60 seconds (venv + model on PVC)" },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "10m", "cold_start_estimate": "<1 min" },
       "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
       "param_translation": { "thinking": { "mode": "none" }, "max_tokens": { "field": null } },
       "defaults": {}, "custom_params": { "passthrough": true }, "schema_version": 2,

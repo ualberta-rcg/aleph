@@ -29,7 +29,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "~3-5 minutes (27B BF16, 2x L40S)"
+        "cold_start_estimate": "3-6 min"
       },
       "behavior": {
         "supports_vision": true,

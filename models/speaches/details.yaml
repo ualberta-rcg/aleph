@@ -25,7 +25,7 @@ data:
         "scale_to_zero": false,
         "min_replicas": 1,
         "idle_retention": "always-on",
-        "cold_start_estimate": "1-2 minutes (HF cache on PVC)"
+        "cold_start_estimate": "Always on"
       },
       "behavior": {
         "supports_vision": false,
