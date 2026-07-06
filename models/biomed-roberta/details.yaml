@@ -60,7 +60,7 @@ data:
         "source_url": "https://huggingface.co/allenai/biomed_roberta_base",
         "license": "Apache-2.0",
         "parameters": "125M",
-        "precision": "fp16 (GPU)",
+        "precision": "fp16",
         "framework": "transformers (custom FastAPI server)",
         "domain": "biomedical",
         "subdomain": "biomedical-nlp",
