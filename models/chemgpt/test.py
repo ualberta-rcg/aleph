@@ -10,7 +10,7 @@ G = os.environ.get("GW_URL", "http://localhost:8080").rstrip("/")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 _VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
-MODEL = os.environ.get("MODEL", "chemgpt")
+MODEL = os.environ.get("MODEL", "chemgpt-1.2b")
 ENDPOINT = "/v1/science/generate"
 # Body uses `smiles` (the server reads that, not `model`); `model` is the gateway routing id.
 PAYLOAD = {"model": MODEL, "smiles": "CCO", "max_new_tokens": 60, "num_return_sequences": 2}

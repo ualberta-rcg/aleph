@@ -71,7 +71,7 @@ data:
                 pad_token_id=tokenizer.eos_token_id,
             )
         generated = [tokenizer.decode(o, skip_special_tokens=True) for o in out]
-        return {"generated": generated, "model": "chemgpt", "prompt": prompt}
+        return {"generated": generated, "model": payload.get("model", "chemgpt"), "prompt": prompt}
 
     @app.post("/v1/science/embed")
     async def embed(payload: dict):
@@ -89,7 +89,7 @@ data:
         last_hidden = out.hidden_states[-1]
         mask = enc["attention_mask"].unsqueeze(-1).float()
         embeddings = (last_hidden * mask).sum(1) / mask.sum(1)
-        return {"embeddings": embeddings.cpu().tolist(), "model": "chemgpt", "dim": embeddings.shape[-1]}
+        return {"embeddings": embeddings.cpu().tolist(), "model": payload.get("model", "chemgpt"), "dim": embeddings.shape[-1]}
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)

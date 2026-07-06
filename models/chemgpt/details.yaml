@@ -8,7 +8,7 @@ metadata:
 data:
   details.json: |
     {
-      "id": "chemgpt",
+      "id": "chemgpt-1.2b",
       "status": "production",
       "type": "generate",
       "endpoints": {
