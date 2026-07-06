@@ -70,7 +70,7 @@ data:
         "source_url": "https://huggingface.co/microsoft/biogpt",
         "license": "MIT",
         "parameters": "347M",
-        "precision": "fp16 (GPU) / fp32 (CPU)",
+        "precision": "fp16",
         "framework": "transformers (BioGptForCausalLM) + torch",
         "domain": "biomedical",
         "subdomain": "biomedical-text-generation",
