@@ -293,6 +293,9 @@ _OWUI_SIGNALS = {
 # ── In-memory state (updated by background watches) ────────────────────────────
 # model_id -> card dict (parsed details.json)
 CARDS: dict[str, dict] = {}
+# ConfigMap name -> card id (so a card whose id is edited/renamed evicts
+# its old id from CARDS instead of leaving a ghost entry until restart).
+CARD_NAME_TO_ID: dict[str, str] = {}
 # isvc_name -> {"ready": bool}
 ISVC_STATE: dict[str, dict] = {}
 # node name -> {aleph.* label: value} (hardware provenance from node-labeler DS)
@@ -451,22 +454,40 @@ def _parse_card(cm: Any) -> dict | None:
     return card
 
 
+def _cm_name(cm: Any) -> str | None:
+    return getattr(getattr(cm, "metadata", None), "name", None)
+
+
 def _ingest_card(cm: Any) -> None:
     card = _parse_card(cm)
     if not card:
         return
+    new_id = card["id"]
+    cm_name = _cm_name(cm)
     with _STATE_LOCK:
-        CARDS[card["id"]] = card
-    print(f"[CARD] loaded {card['id']} (type={card.get('type')})", flush=True)
+        # If this ConfigMap previously held a different id (card renamed),
+        # evict the old id so it doesn't linger as a ghost entry.
+        if cm_name:
+            old_id = CARD_NAME_TO_ID.get(cm_name)
+            if old_id and old_id != new_id:
+                CARDS.pop(old_id, None)
+            CARD_NAME_TO_ID[cm_name] = new_id
+        CARDS[new_id] = card
+    print(f"[CARD] loaded {new_id} (type={card.get('type')})", flush=True)
 
 
 def _remove_card(cm: Any) -> None:
-    card = _parse_card(cm)
-    if not card:
-        return
+    cm_name = _cm_name(cm)
     with _STATE_LOCK:
-        CARDS.pop(card["id"], None)
-    print(f"[CARD] removed {card['id']}", flush=True)
+        # Prefer the tracked id (robust even if the CM body is already gone);
+        # fall back to parsing the body for safety.
+        old_id = (CARD_NAME_TO_ID.pop(cm_name, None) if cm_name else None)
+        if old_id is None:
+            card = _parse_card(cm)
+            old_id = card["id"] if card else None
+        if old_id:
+            CARDS.pop(old_id, None)
+    print(f"[CARD] removed {old_id}", flush=True)
 
 
 def _isvc_ready(isvc: dict) -> bool:
