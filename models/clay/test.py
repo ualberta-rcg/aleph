@@ -15,6 +15,7 @@ import httpx, math, os, time
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 MODEL = os.environ.get("MODEL", "clay")
 EXP_DIM = 1024
 BANDS = 4
@@ -29,7 +30,7 @@ def record(icon, status, name, detail):
 
 def embed(body, timeout=300):
     body = {**body, "model": MODEL}
-    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS)
+    r = httpx.post(f"{G}/v1/science/embed", json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
     try: return r, r.json()
     except Exception: return r, {}
 
@@ -97,7 +98,7 @@ def checks(dim):
     record("PASS" if r.status_code == 200 and present == required else "FAIL",
            r.status_code, "response fields", f"present={sorted(present)} required={sorted(required)}")
 
-    r = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS)
+    r = httpx.get(f"{G}/v1/models", timeout=30, headers=_HEADERS, verify=_VERIFY)
     try: mlist = r.json().get("data", [])
     except Exception: mlist = []
     found = any(m.get("id","").startswith(MODEL.split("-")[0]) for m in mlist) if mlist else False
