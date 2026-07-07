@@ -12,6 +12,7 @@ import base64, httpx, os, struct, time, zlib
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
 _HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
+_VERIFY = os.environ.get("GW_INSECURE", "").lower() not in ("1", "true", "yes", "on")
 MODEL = "depth-anything-v2"
 EP = f"{G}/v1/vision/depth"
 results = []
@@ -44,7 +45,7 @@ def png_b64(seed=7, w=320, h=192):
 
 
 def call(body, timeout=300):
-    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS)
+    return httpx.post(EP, json=body, timeout=timeout, headers=_HEADERS, verify=_VERIFY)
 
 
 # ── 1. Wake ──────────────────────────────────────────────────────────
@@ -175,12 +176,12 @@ def checks():
         record("FAIL", r6a.status_code, "determinism same image", "request failed")
 
     # 16. guard — bad model
-    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60, headers=_HEADERS)
+    rg1 = httpx.post(EP, json={"model": "fake-nope-999", "image": png_b64(3)}, timeout=60, headers=_HEADERS, verify=_VERIFY)
     record("EXP" if rg1.status_code == 404 else "FAIL",
            rg1.status_code, "guard bad model", rg1.text[:80])
 
     # 17. guard — missing image
-    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60, headers=_HEADERS)
+    rg2 = httpx.post(EP, json={"model": MODEL}, timeout=60, headers=_HEADERS, verify=_VERIFY)
     record("EXP" if rg2.status_code >= 400 else "FAIL",
            rg2.status_code, "guard missing image", rg2.text[:80])
 
