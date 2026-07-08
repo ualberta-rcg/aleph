@@ -20,10 +20,10 @@ data:
       },
       "limits": { "max_completion_tokens": 0, "context_window": 512, "max_input_tokens": 512 },
       "scaling": {
-        "scale_to_zero": false,
-        "min_replicas": 1,
+        "scale_to_zero": true,
+        "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "Always on"
+        "cold_start_estimate": "1-2 min"
       },
       "behavior": {
         "supports_vision": false,
