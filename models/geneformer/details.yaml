@@ -18,7 +18,7 @@ data:
       },
       "routing": { "k8s_name": "geneformer", "no_stream": true, "upstream_model_id": null },
       "limits": { "context_window": 4096, "max_input_tokens": 4096 },
-      "scaling": { "scale_to_zero": false, "min_replicas": 1, "idle_retention": "15m", "cold_start_estimate": "Always on" },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "1-2 min" },
       "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
       "param_translation": { "thinking": { "mode": "none" } },
       "defaults": {},

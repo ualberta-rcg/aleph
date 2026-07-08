@@ -21,7 +21,7 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 1
+    minReplicas: 0
     maxReplicas: 2
     scaleTarget: 8
     scaleMetric: concurrency
