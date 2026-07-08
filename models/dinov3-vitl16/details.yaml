@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dinov3-vitl16-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "dinov3-vitl16",
+      "status": "production",
+      "type": "embedding",
+      "endpoints": {
+        "primary": "/v1/science/embed",
+        "secondary": ["/v1/vision/embed"],
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "dinov3-vitl16",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-2 min"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "image": {
+          "type": "string",
+          "required": true,
+          "format": "base64",
+          "description": "Base64-encoded JPEG or PNG image (data-URI prefix stripped automatically)"
+        }
+      },
+      "output_map": {
+        "model": { "type": "string", "description": "Model name" },
+        "embedding": { "type": "array", "description": "1024-dim CLS-token embedding" },
+        "dim": { "type": "integer", "description": "Embedding dimensionality (1024)" }
+      },
+      "catalog": {
+        "description_short": "DINOv3 ViT-L/16 (Meta) — 1024-dim self-supervised visual embeddings.",
+        "description": "DINOv3 ViT-Large/16 (Meta AI, 303M) is a self-supervised Vision Transformer trained with the DINOv3 distillation framework on 1.69B images. Produces 1024-dim CLS-token embeddings of images via the native image processor (resize + ImageNet normalize). Excellent for image similarity, retrieval, clustering, and as a visual feature extractor for downstream tasks. Distilled from the ViT-7B teacher. Served via transformers on CPU.",
+        "owned_by": "facebook",
+        "source": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+        "source_url": "https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m",
+        "license": "Apache-2.0",
+        "parameters": "303M",
+        "precision": "fp32",
+        "framework": "transformers (custom FastAPI server)",
+        "domain": "computer-vision",
+        "subdomain": "self-supervised-embeddings",
+        "gpu": false,
+        "embedding_dimensions": 1024,
+        "pooling": "cls token (ViT-L/16)",
+        "tags": ["embedding", "vision", "dinov3", "self-supervised", "vit", "facebook", "image-similarity"]
+      }
+    }

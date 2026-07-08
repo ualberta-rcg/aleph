@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dinov3-vitl16
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 5Gi
