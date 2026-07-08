@@ -116,6 +116,7 @@ metadata:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     serving.knative.dev/progress-deadline: "900s"
+    autoscaling.knative.dev/initial-scale: "0"
 spec:
   predictor:
     affinity:
