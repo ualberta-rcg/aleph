@@ -1,0 +1,112 @@
+# aya-expanse-8b (CohereLabs/aya-expanse-8b) — 8B multilingual chat LLM.
+# cohere arch, bf16, 8K context. vLLM TP1 on a HAMi GPU slice (32GB).
+# Scale-to-zero. HF token from secret (gated repo).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: aya-expanse-8b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/initial-scale: "0"
+    serving.knative.dev/progress-deadline: "2400s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 2
+    scaleMetric: concurrency
+    scaleTarget: 4
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            VENV=/data/venv
+            if [ ! -d "$VENV/bin" ]; then
+                echo "Creating venv..."
+                python3 -m venv $VENV
+                $VENV/bin/pip install -U pip
+                $VENV/bin/pip install huggingface_hub
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            if [ ! -f /data/model/model.safetensors ]; then
+                echo "Downloading CohereLabs/aya-expanse-8b..."
+                $VENV/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="CohereLabs/aya-expanse-8b",
+                local_dir="/data/model",
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            else
+                echo "Weights already present."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+        volumeMounts:
+          - { name: aya-expanse-8b, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.20.2
+        command: ["vllm"]
+        args:
+          - serve
+          - /data/model
+          - --served-model-name=aya-expanse-8b
+          - --port=8080
+          - --tensor-parallel-size=1
+          - --max-model-len=8192
+          - --dtype=bfloat16
+          - --gpu-memory-utilization=0.90
+          - --trust-remote-code
+        env:
+          - { name: VLLM_WORKER_MULTIPROC_METHOD, value: spawn }
+        ports:
+          - { containerPort: 8080, protocol: TCP }
+        resources:
+          requests: { cpu: "4", memory: 16Gi }
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "32768"
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - { name: aya-expanse-8b, mountPath: /data }
+    volumes:
+      - name: aya-expanse-8b
+        persistentVolumeClaim:
+          claimName: aya-expanse-8b
