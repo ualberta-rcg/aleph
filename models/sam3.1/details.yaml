@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sam3-1-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "sam3.1",
+      "status": "production",
+      "type": "segment",
+      "endpoints": {
+        "primary": "/v1/science/segment",
+        "secondary": ["/v1/vision/segment"],
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "sam3-1",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "6-10 min (venv build + checkpoint download on first cold start)"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "image": {
+          "type": "string",
+          "required": true,
+          "format": "base64",
+          "description": "Base64-encoded JPEG or PNG image (data-URI prefix stripped automatically)"
+        },
+        "text": {
+          "type": "string",
+          "required": true,
+          "description": "Open-vocabulary text prompt naming the concept to segment (e.g. 'a dog', 'person', 'car'). SAM3 detects & segments ALL instances of the concept."
+        },
+        "return_masks": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "If true, each instance includes a base64 PNG of its boolean mask (large payloads). Default false returns only scores, boxes, and areas."
+        }
+      },
+      "output_map": {
+        "model": { "type": "string", "description": "Model name" },
+        "count": { "type": "integer", "description": "Number of instances found" },
+        "image_size": { "type": "array", "description": "[height, width] of the input image" },
+        "instances": { "type": "array", "description": "Per-instance {score, box:[x1,y1,x2,y2], area, mask_png?}" }
+      },
+      "catalog": {
+        "description_short": "SAM 3 (Meta) — text-prompted open-vocabulary image segmentation.",
+        "description": "SAM 3 'Segment Anything with Concepts' (Meta AI, 848M) is a unified promptable segmentation model. Give it a short text phrase (e.g. 'a player in red', 'car', 'dog') and it detects and segments ALL instances of that open-vocabulary concept in the image, returning per-instance masks, bounding boxes, and confidence scores. Handles 270K+ unique concepts. Built on a ViT-L vision encoder shared by a DETR-style text-conditioned detector and a SAM2-style tracker. Served via the official sam3 package (build_sam3_image_model + Sam3Processor) on a HAMi GPU slice. Cold start is long on first boot (builds a torch cu128 venv and downloads the ~3.4 GB checkpoint).",
+        "owned_by": "facebook",
+        "source": "facebook/sam3",
+        "source_url": "https://huggingface.co/facebook/sam3",
+        "license": "MIT (code), custom (weights — see HF)",
+        "parameters": "848M",
+        "precision": "fp32",
+        "framework": "sam3 package (custom FastAPI server)",
+        "domain": "computer-vision",
+        "subdomain": "segmentation",
+        "gpu": true,
+        "tags": ["segmentation", "vision", "sam3", "open-vocabulary", "promptable", "facebook", "mask", "detection"]
+      }
+    }

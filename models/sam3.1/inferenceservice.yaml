@@ -1,0 +1,249 @@
+# SAM 3 (facebook/sam3) — promptable image segmentation (text → masks).
+# 848M params, ViT-L vision backbone + DETR-style detector. Checkpoint sam3.pt
+# (fp32, ~3.4 GB) from facebook/sam3 (gated; access confirmed).
+# Custom FastAPI server using the `sam3` pip package (build_sam3_image_model +
+# Sam3Processor). torch cu128 venv-on-PVC, HAMi GPU slice. Scale-to-zero.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sam3-1-server
+  namespace: models
+data:
+  server.py: |
+    """SAM 3 promptable image segmentation server.
+
+    POST /v1/science/segment  {model, image(base64), text, return_masks?}
+      -> {model, task, count, image_size, instances:[{score, box, area, mask_png?}]}
+    """
+    import os, io, base64, asyncio
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_NAME = os.environ.get("MODEL_NAME", "sam3.1")
+    CKPT = os.environ.get("SAM3_CHECKPOINT", "/data/model/sam3.pt")
+    DEFAULT_PROMPT = os.environ.get("SAM3_DEFAULT_PROMPT", "object")
+
+    app = FastAPI()
+    model = None
+    processor = None
+
+    def _t(x):
+        import torch
+        if isinstance(x, torch.Tensor):
+            # outputs are bfloat16 under autocast -> numpy() can't handle bf16, cast to fp32
+            return x.detach().cpu().float().numpy()
+        return x
+
+    def load():
+        global model, processor
+        import torch
+        # SAM3 runs under bfloat16 autocast (per official notebooks) — without it the
+        # text/image encoders hit a BFloat16-vs-Float matmul dtype mismatch.
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
+        print(f"Loading SAM 3 image model (ckpt={CKPT}) on cuda...", flush=True)
+        from sam3.model_builder import build_sam3_image_model
+        from sam3.model.sam3_image_processor import Sam3Processor
+        m = build_sam3_image_model(
+            checkpoint_path=CKPT,
+            load_from_HF=False,
+            device="cuda",
+        )
+        m.eval()
+        model = m
+        processor = Sam3Processor(m)
+        print("SAM 3 ready on cuda", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if model is not None else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "type": "segment", "owned_by": "facebook"}]}
+
+    def _encode_mask(mask_arr):
+        from PIL import Image
+        import zlib
+        img = Image.fromarray((mask_arr.astype("uint8") * 255), mode="L")
+        buf = io.BytesIO(); img.save(buf, format="PNG", optimize=True)
+        return base64.b64encode(buf.getvalue()).decode()
+
+    def _infer(img_bytes, text, return_masks):
+        import torch
+        import numpy as np
+        from PIL import Image
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        W, H = img.size
+        state = processor.set_image(img)
+        out = processor.set_text_prompt(state=state, prompt=text or DEFAULT_PROMPT)
+        masks = _t(out.get("masks"))
+        boxes = _t(out.get("boxes"))
+        scores = _t(out.get("scores"))
+        masks = np.asarray(masks)
+        boxes = np.asarray(boxes).reshape(-1, 4) if boxes is not None and getattr(boxes, "size", 0) else np.zeros((0, 4))
+        scores = np.asarray(scores).reshape(-1)
+        n = int(scores.shape[0])
+        # masks may be [N,H,W] or [N,1,H,W]
+        if masks.ndim == 4:
+            masks = masks[:, 0]
+        if masks.ndim == 3 and masks.shape[0] != n:
+            # align: take first n
+            try:
+                masks = masks[:n]
+            except Exception:
+                pass
+        instances = []
+        for i in range(n):
+            area = 0
+            mask_png = None
+            if masks.ndim == 3 and i < masks.shape[0]:
+                m = masks[i].astype(bool)
+                area = int(m.sum())
+                if return_masks and area > 0:
+                    mask_png = _encode_mask(m)
+            box = [float(x) for x in boxes[i].tolist()] if i < boxes.shape[0] else []
+            inst = {"score": float(scores[i]), "box": box, "area": area}
+            if return_masks:
+                inst["mask_png"] = mask_png
+            instances.append(inst)
+        return {"count": n, "image_size": [H, W], "instances": instances}
+
+    @app.post("/v1/science/segment")
+    @app.post("/v1/vision/segment")
+    async def segment(request: dict):
+        if model is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        b64 = request.get("image", "")
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        if not b64:
+            return JSONResponse({"error": "provide 'image' (base64 PNG/JPEG)"}, 400)
+        text = request.get("text") or request.get("prompt") or ""
+        return_masks = bool(request.get("return_masks", False))
+        try:
+            res = await asyncio.get_event_loop().run_in_executor(
+                None, _infer, base64.b64decode(b64), text, return_masks)
+        except Exception as e:
+            return JSONResponse({"error": f"inference failed: {e!r}"}, 500)
+        res["model"] = MODEL_NAME
+        res["task"] = "segment"
+        res["prompt"] = text
+        return res
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sam3-1
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/initial-scale: "0"
+    serving.knative.dev/progress-deadline: "3000s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 2
+    scaleMetric: concurrency
+    scaleTarget: 2
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: sam3-1
+        persistentVolumeClaim:
+          claimName: sam3-1
+      - name: server-code
+        configMap:
+          name: sam3-1-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests: { cpu: "4", memory: "8Gi" }
+          limits: { cpu: "8", memory: "16Gi" }
+        volumeMounts:
+          - { name: sam3-1, mountPath: /data }
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef: { name: hf-token, key: token }
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: GIT_LFS_SKIP_SMUDGE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1 || true
+            VENV=/data/venv
+            # Idempotent: create venv once, then pip installs are no-ops when satisfied.
+            # sam3's __init__ imports einops + pycocotools at import time, so the cv stack
+            # must be present before `import sam3` succeeds.
+            if [ ! -f "$VENV/bin/python" ]; then
+              echo "Creating venv..."
+              python -m venv $VENV
+              $VENV/bin/pip install -U pip
+            fi
+            $VENV/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+            $VENV/bin/pip install "numpy<2" Pillow fastapi uvicorn einops pycocotools opencv-python-headless scikit-image scikit-learn psutil
+            $VENV/bin/python -c "import sam3" 2>/dev/null || $VENV/bin/pip install git+https://github.com/facebookresearch/sam3.git
+            echo "Venv ready"
+            if [ ! -f /data/model/sam3.pt ]; then
+              echo "Downloading facebook/sam3 checkpoint (sam3.pt, ~3.4 GB)..."
+              $VENV/bin/python -c "
+            from huggingface_hub import hf_hub_download; import os, shutil
+            os.makedirs('/data/model', exist_ok=True)
+            for f in ['config.json','sam3.pt']:
+                p = hf_hub_download(repo_id='facebook/sam3', filename=f, token=os.environ['HF_TOKEN'])
+                shutil.copy(p, f'/data/model/{f}')
+                print('downloaded', f, flush=True)
+            "
+            else
+              echo "Checkpoint already present"
+            fi
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_NAME, value: "sam3.1" }
+          - { name: SAM3_CHECKPOINT, value: "/data/model/sam3.pt" }
+        resources:
+          requests: { cpu: "4", memory: "16Gi" }
+          limits:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "10240"
+        volumeMounts:
+          - { name: sam3-1, mountPath: /data }
+          - { name: server-code, mountPath: /app }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 120
