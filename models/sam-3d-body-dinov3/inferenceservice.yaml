@@ -1,0 +1,269 @@
+# SAM 3D Body (facebook/sam-3d-body-dinov3) — single-image full-body 3D human mesh recovery.
+# Image of a person -> 3D mesh vertices, 3D/2D keypoints, camera translation, shape/pose params.
+# Uses the sam-3d-body GitHub repo (load_sam_3d_body + SAM3DBodyEstimator) + ViTDet human
+# detector (detectron2, CPU) + MoGe FOV estimator (moge2, GPU). Checkpoint model.ckpt +
+# assets/mhr_model.pt from gated facebook/sam-3d-body-dinov3. torch cu128 venv-on-PVC, GPU slice.
+# Scale-to-zero. HEAVY first cold start (~15-25 min: big venv + detectron2 compile + ckpt downloads).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sam-3d-body-server
+  namespace: models
+data:
+  server.py: |
+    """SAM 3D Body single-image 3D human mesh recovery server.
+
+    POST /v1/science/pose3d  {model, image(base64), bbox_thr?, return_vertices?}
+      -> {model, task, count, persons:[{keypoints_2d, keypoints_3d, cam_t,
+                                        focal_length, vertex_count, vertex_bounds,
+                                        vertices?(N x 3), shape_params, ...}]}
+    Mirrors demo.py: load_sam_3d_body(local ckpt) + HumanDetector(vitdet,cpu) + FOVEstimator(moge2).
+    """
+    import os, sys, io, base64, asyncio
+    sys.path.insert(0, "/data/sam-3d-body")  # repo root: sam_3d_body/, tools/
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    MODEL_NAME = os.environ.get("MODEL_NAME", "sam-3d-body-dinov3")
+    CKPT = os.environ.get("SAM3DB_CKPT", "/data/ckpt/model.ckpt")
+    MHR = os.environ.get("SAM3DB_MHR", "/data/ckpt/assets/mhr_model.pt")
+
+    app = FastAPI()
+    estimator = None
+
+    def _arr(x, max_rows=None):
+        import numpy as np
+        if x is None:
+            return None
+        a = np.asarray(x.float().cpu() if hasattr(x, "float") else x).tolist() if hasattr(x, "cpu") else np.asarray(x).tolist()
+        if max_rows and isinstance(a, list) and len(a) > max_rows:
+            a = a[:max_rows]
+        return a
+
+    def load():
+        global estimator
+        import torch
+        from sam_3d_body import load_sam_3d_body, SAM3DBodyEstimator
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading SAM 3D Body core (ckpt={CKPT}) on {device}...", flush=True)
+        model, model_cfg = load_sam_3d_body(CKPT, device=device, mhr_path=MHR)
+        human_detector = fov_estimator = None
+        try:
+            from tools.build_detector import HumanDetector
+            human_detector = HumanDetector(name="vitdet", device="cpu")
+            print("ViTDet detector loaded (cpu)", flush=True)
+        except Exception as e:
+            print(f"detector unavailable: {e!r}", flush=True)
+        try:
+            from tools.build_fov_estimator import FOVEstimator
+            fov_estimator = FOVEstimator(name="moge2", device=device)
+            print("MoGe FOV estimator loaded", flush=True)
+        except Exception as e:
+            print(f"fov unavailable: {e!r}", flush=True)
+        estimator = SAM3DBodyEstimator(
+            sam_3d_body_model=model, model_cfg=model_cfg,
+            human_detector=human_detector, human_segmentor=None,
+            fov_estimator=fov_estimator,
+        )
+        print("SAM 3D Body ready", flush=True)
+
+    @app.on_event("startup")
+    async def startup():
+        await asyncio.get_event_loop().run_in_executor(None, load)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok" if estimator is not None else "loading", "model": MODEL_NAME}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {"object": "list", "data": [{"id": MODEL_NAME, "object": "model", "type": "pose3d", "owned_by": "facebook"}]}
+
+    def _infer(img_bytes, bbox_thr, return_vertices):
+        import numpy as np
+        from PIL import Image
+        rgb = np.array(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
+        outputs = estimator.process_one_image(rgb, bbox_thr=bbox_thr, use_mask=False)
+        persons = []
+        outs = outputs if isinstance(outputs, list) else [outputs]
+        for o in outs:
+            if o is None:
+                continue
+            verts = o.get("pred_vertices")
+            vlist = _arr(verts) if return_vertices else None
+            vcount = int(np.asarray(verts).shape[0]) if verts is not None else 0
+            bounds = None
+            if verts is not None:
+                a = np.asarray(verts.float().cpu() if hasattr(verts, "float") else verts)
+                if a.ndim == 2 and a.shape[0]:
+                    bounds = [[float(a[:, 0].min()), float(a[:, 1].min()), float(a[:, 2].min())],
+                              [float(a[:, 0].max()), float(a[:, 1].max()), float(a[:, 2].max())]]
+            persons.append({
+                "keypoints_2d": _arr(o.get("pred_keypoints_2d")),
+                "keypoints_3d": _arr(o.get("pred_keypoints_3d")),
+                "cam_t": _arr(o.get("pred_cam_t")),
+                "focal_length": float(np.asarray(o.get("focal_length")).reshape(-1)[0]) if o.get("focal_length") is not None else None,
+                "vertex_count": vcount,
+                "vertex_bounds": bounds,
+                "vertices": vlist,
+                "shape_params": _arr(o.get("shape_params")),
+                "body_pose_params": _arr(o.get("body_pose_params"), max_rows=3),
+                "hand_pose_params": _arr(o.get("hand_pose_params"), max_rows=3),
+            })
+        return {"count": len(persons), "persons": persons}
+
+    @app.post("/v1/science/pose3d")
+    @app.post("/v1/vision/pose3d")
+    async def pose3d(request: dict):
+        if estimator is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        b64 = request.get("image", "")
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        if not b64:
+            return JSONResponse({"error": "provide 'image' (base64 PNG/JPEG)"}, 400)
+        bbox_thr = float(request.get("bbox_thr", 0.5))
+        return_vertices = bool(request.get("return_vertices", False))
+        try:
+            res = await asyncio.get_event_loop().run_in_executor(
+                None, _infer, base64.b64decode(b64), bbox_thr, return_vertices)
+        except Exception as e:
+            return JSONResponse({"error": f"inference failed: {e!r}"}, 500)
+        res["model"] = MODEL_NAME
+        res["task"] = "pose3d"
+        return res
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sam-3d-body-dinov3
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/initial-scale: "0"
+    serving.knative.dev/progress-deadline: "3600s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 1
+    scaleMetric: concurrency
+    scaleTarget: 1
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    volumes:
+      - name: sam-3d-body
+        persistentVolumeClaim:
+          claimName: sam-3d-body-dinov3
+      - name: server-code
+        configMap:
+          name: sam-3d-body-server
+    initContainers:
+      - name: model-setup
+        image: python:3.11-slim
+        resources:
+          requests: { cpu: "4", memory: "8Gi" }
+          limits: { cpu: "8", memory: "16Gi" }
+        volumeMounts:
+          - { name: sam-3d-body, mountPath: /data }
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef: { name: hf-token, key: token }
+          - name: HF_HOME
+            value: /data/hf_cache
+          - name: TORCH_HOME
+            value: /data/torch_cache
+          - name: GIT_LFS_SKIP_SMUDGE
+            value: "1"
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update -qq && apt-get install -y -qq git gcc g++ make python3-dev pkg-config libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 util-linux > /dev/null 2>&1 || true
+            # Serialize the venv build across pods sharing this RWX PVC (knative may run >1).
+            exec 9>/data/build.lock
+            flock 9
+            VENV=/data/venv
+            # recreate venv if missing OR broken (e.g. pip unimportable after an interrupted build)
+            if [ ! -x "$VENV/bin/python" ] || ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+              echo "Creating venv..."
+              rm -rf "$VENV"
+              python -m venv $VENV
+              $VENV/bin/pip install -U pip setuptools wheel
+            fi
+            # torch (cu128) + core science/cv stack (idempotent)
+            $VENV/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+            $VENV/bin/pip install "numpy<2" Pillow opencv-python pyrender pytorch-lightning yacs scikit-image einops timm dill pandas rich \
+              hydra-core hydra-submitit-launcher hydra-colorlog pyrootutils webdataset chump "networkx==3.2.1" roma joblib appdirs appnope \
+              cython jsonlines xtcocotools loguru optree fvcore pycocotools huggingface_hub
+            # detectron2 CPU-only build (no nvcc on slim image) -> ViTDet detector runs on cpu
+            $VENV/bin/python -c "import detectron2" 2>/dev/null || \
+              FORCE_CUDA=0 TORCH_CUDA_ARCH_LIST="" $VENV/bin/pip install 'git+https://github.com/facebookresearch/detectron2.git@a1ce2f9' --no-build-isolation --no-deps
+            # MoGe (FOV estimator, moge2) from git
+            $VENV/bin/python -c "import moge" 2>/dev/null || $VENV/bin/pip install git+https://github.com/microsoft/MoGe.git || echo "MoGe install failed (non-fatal)"
+            # sam-3d-body repo (provides sam_3d_body/ + tools/ on sys.path)
+            if [ ! -d /data/sam-3d-body/sam_3d_body ]; then
+              rm -rf /data/sam-3d-body
+              git clone --depth 1 https://github.com/facebookresearch/sam-3d-body.git /data/sam-3d-body
+            fi
+            # checkpoints (gated)
+            if [ ! -f /data/ckpt/model.ckpt ]; then
+              echo "Downloading facebook/sam-3d-body-dinov3 checkpoints..."
+              $VENV/bin/python -c "
+            from huggingface_hub import snapshot_download; import os
+            snapshot_download(repo_id='facebook/sam-3d-body-dinov3', local_dir='/data/ckpt', token=os.environ['HF_TOKEN'])
+            print('checkpoints downloaded', flush=True)
+            "
+            else
+              echo "Checkpoints already present"
+            fi
+            echo "Setup complete"
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            apt-get update -qq && apt-get install -y -qq libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 >/dev/null 2>&1 || true
+            exec /data/venv/bin/python /app/server.py
+        env:
+          - { name: MODEL_NAME, value: "sam-3d-body-dinov3" }
+          - { name: SAM3DB_CKPT, value: "/data/ckpt/model.ckpt" }
+          - { name: SAM3DB_MHR, value: "/data/ckpt/assets/mhr_model.pt" }
+          - { name: HF_TOKEN, valueFrom: { secretKeyRef: { name: hf-token, key: token } } }
+          - { name: HF_HOME, value: /data/hf_cache }
+          - { name: TORCH_HOME, value: /data/torch_cache }
+        resources:
+          requests: { cpu: "4", memory: "16Gi" }
+          limits:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "16384"
+        volumeMounts:
+          - { name: sam-3d-body, mountPath: /data }
+          - { name: server-code, mountPath: /app }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 20
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          failureThreshold: 150

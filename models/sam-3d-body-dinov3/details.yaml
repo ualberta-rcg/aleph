@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sam-3d-body-dinov3-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "sam-3d-body-dinov3",
+      "status": "production",
+      "type": "pose3d",
+      "endpoints": {
+        "primary": "/v1/science/pose3d",
+        "secondary": ["/v1/vision/pose3d"],
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "sam-3d-body-dinov3",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": { "context_window": 0, "max_input_tokens": 0 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "15-25 min first boot (heavy venv + detectron2 compile + checkpoint downloads); ~2-3 min after"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": { "thinking": { "mode": "none" }, "max_tokens": { "field": null } },
+      "defaults": {},
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "image": { "type": "string", "required": true, "format": "base64", "description": "Base64-encoded JPEG/PNG of a person (data-URI prefix stripped automatically)" },
+        "bbox_thr": { "type": "float", "required": false, "default": 0.5, "description": "Human-detector confidence threshold" },
+        "return_vertices": { "type": "boolean", "required": false, "default": false, "description": "If true, include full pred_vertices (Nx3) per person (large payloads). Default false returns vertex_count + bounds only." }
+      },
+      "output_map": {
+        "model": { "type": "string" },
+        "count": { "type": "integer", "description": "Number of people detected" },
+        "persons": { "type": "array", "description": "Per-person 3D-body dict: keypoints_2d, keypoints_3d, cam_t, focal_length, vertex_count, vertex_bounds, (vertices?), shape/body/hand pose params" }
+      },
+      "catalog": {
+        "description_short": "SAM 3D Body (Meta) — single-image full-body 3D human mesh recovery.",
+        "description": "SAM 3D Body '3DB' (Meta Superintelligence Labs) recovers a full-body 3D human mesh from a single image, estimating body + feet + hands pose on the Momentum Human Rig (MHR) — a parametric mesh that decouples skeleton from surface. Each detected person returns 3D mesh vertices (pred_vertices), 3D and 2D keypoints, camera translation, focal length, and body/hand/shape params. Robust to occlusion, hard poses, and unusual viewpoints. Built on a DINOv3-conditioned encoder-decoder, with a ViTDet human detector (detectron2, CPU) and a MoGe field-of-view estimator (GPU). Served via the official sam-3d-body repo (load_sam_3d_body + SAM3DBodyEstimator) on a HAMi GPU slice. First cold start is long (heavy venv build + detectron2 compile + checkpoint download).",
+        "owned_by": "facebook",
+        "source": "facebook/sam-3d-body-dinov3",
+        "source_url": "https://huggingface.co/facebook/sam-3d-body-dinov3",
+        "license": "SAM License (see HF repo)",
+        "parameters": "~600M (est.)",
+        "precision": "fp32",
+        "framework": "sam-3d-body repo (custom FastAPI server)",
+        "domain": "computer-vision",
+        "subdomain": "3d-human-pose-mesh",
+        "gpu": true,
+        "tags": ["3d", "pose", "human-mesh", "hmr", "sam-3d-body", "vision", "facebook", "keypoints", "reconstruction"]
+      }
+    }

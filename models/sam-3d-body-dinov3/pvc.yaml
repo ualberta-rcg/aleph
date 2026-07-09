@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sam-3d-body-dinov3
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 60Gi
