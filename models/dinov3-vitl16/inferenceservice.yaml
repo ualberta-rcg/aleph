@@ -124,17 +124,17 @@ spec:
           - |
             set -e
             VENV=/data/venv
-            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, torch, fastapi" 2>/dev/null; then
+            if [ ! -f "$VENV/bin/python" ] || ! $VENV/bin/python -c "import transformers, torch, torchvision, fastapi" 2>/dev/null; then
               echo "Building venv..."
               python -m venv $VENV --clear
               $VENV/bin/pip install --quiet --upgrade pip
-              $VENV/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+              $VENV/bin/pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
               $VENV/bin/pip install --quiet transformers Pillow fastapi uvicorn huggingface_hub
               echo "Venv ready"
             else
               echo "Venv OK"
             fi
-            if [ ! -f /data/model/config.json ]; then
+            if [ ! -f /data/model/model.safetensors ]; then
               echo "Downloading facebook/dinov3-vitl16-pretrain-lvd1689m..."
               $VENV/bin/python -c "
             from huggingface_hub import snapshot_download; import os

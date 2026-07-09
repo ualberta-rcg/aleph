@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tiny-aya-global-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "tiny-aya-global",
+      "status": "production",
+      "type": "chat",
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
+      "routing": {
+        "k8s_name": "tiny-aya-global",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 4096, "context_window": 8192 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-4 min"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 0.3, "max_tokens": 4096 },
+        "meta_tasks": {
+          "title": { "max_tokens": 80 },
+          "tags": { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
+      },
+      "custom_params": { "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "messages": { "type": "array", "required": true, "description": "Chat messages [{role,content}]" },
+        "max_tokens": { "type": "integer", "required": false, "default": 4096, "max": 4096 },
+        "temperature": { "type": "float", "required": false, "default": 0.3, "min": 0.0, "max": 2.0 },
+        "top_p": { "type": "float", "required": false, "default": 1.0 },
+        "stream": { "type": "boolean", "required": false, "default": false },
+        "frequency_penalty": { "type": "float", "required": false, "default": 0.0 }
+      },
+      "output_map": {
+        "id": { "type": "string" },
+        "object": { "type": "string" },
+        "model": { "type": "string" },
+        "choices": { "type": "array", "items": { "message": "object", "finish_reason": "string" } },
+        "usage": { "type": "object" }
+      },
+      "catalog": {
+        "description_short": "Cohere Aya 3.35B — compact multilingual chat (23+ languages)",
+        "description": "CohereLabs/tiny-aya-global is a 3.35B parameter multilingual chat LLM from Cohere's Aya family. Supports 23+ languages including English, French, German, Arabic, Spanish, and more. Built on the Cohere2 architecture (hidden_size 2048, 36 layers, 262K vocab). Compact size makes it fast and efficient while retaining strong multilingual chat quality. 8K context. Served via vLLM (bf16) on a HAMi GPU slice.",
+        "owned_by": "CohereLabs",
+        "source": "CohereLabs/tiny-aya-global",
+        "source_url": "https://huggingface.co/CohereLabs/tiny-aya-global",
+        "license": "CC-BY-NC",
+        "parameters": "3.35B",
+        "precision": "bfloat16",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "multilingual-chat",
+        "tags": ["chat", "llm", "multilingual", "cohere", "aya"]
+      }
+    }
