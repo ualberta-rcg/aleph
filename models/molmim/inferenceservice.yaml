@@ -1,6 +1,6 @@
 # MolMIM: Generative molecular design
 # NVIDIA NIM container — pre-built
-# NIM: nvcr.io/nim/nvidia/molmim
+# NIM: nvcr.io/nim/nvidia/molmim:1.0.0
 # API: POST /biology/nvidia/molmim/generate
 #      Input: {"smi": "CC(=O)Oc1ccccc1C(=O)O", "num_molecules": 10, ...}
 #      Returns: generated SMILES molecules
@@ -28,7 +28,7 @@ spec:
       gpu: "on"
     containers:
       - name: kserve-container
-        image: nvcr.io/nim/nvidia/molmim-generate:latest
+        image: nvcr.io/nim/nvidia/molmim:1.0.0
         imagePullPolicy: IfNotPresent
         ports:
           - containerPort: 8000

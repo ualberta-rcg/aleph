@@ -1,6 +1,6 @@
 # GenMol: Generative molecular design (SAFE)
 # NVIDIA NIM container — pre-built
-# NIM: nvcr.io/nim/nvidia/genmol-generate
+# NIM: nvcr.io/nim/nvidia/genmol:2.0
 # API: POST /biology/nvidia/genmol/generate
 #      Input: {"smiles": "C124CN3C1...", "num_molecules": 10, ...}
 #      Returns: generated molecules + scores
@@ -28,7 +28,7 @@ spec:
       gpu: "on"
     containers:
       - name: kserve-container
-        image: nvcr.io/nim/nvidia/genmol-generate:latest
+        image: nvcr.io/nim/nvidia/genmol:2.0
         imagePullPolicy: IfNotPresent
         ports:
           - containerPort: 8000

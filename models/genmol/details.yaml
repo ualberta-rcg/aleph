@@ -102,9 +102,9 @@ data:
       },
       "catalog": {
         "description_short": "GenMol generative molecular design (SAFE, NVIDIA NIM).",
-        "description": "GenMol generates novel molecules from a seed SMILES/SAFE sequence using a diffusion-style model. Served via the NVIDIA NIM container nvcr.io/nim/nvidia/genmol-generate on a HAMi GPU slice.",
+        "description": "GenMol generates novel molecules from a seed SMILES/SAFE sequence using a diffusion-style model. Served via the NVIDIA NIM container nvcr.io/nim/nvidia/genmol:2.0 on a HAMi GPU slice.",
         "owned_by": "NVIDIA",
-        "source": "nvcr.io/nim/nvidia/genmol-generate",
+        "source": "nvcr.io/nim/nvidia/genmol:2.0",
         "source_url": "https://build.nvidia.com/nvidia/genmol-generate",
         "license": "NVIDIA AI Product Agreement",
         "parameters": "",

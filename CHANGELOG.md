@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-17 — gateway: per-card `upstream_path` override for science NIMs
+
+**What:** added an opt-in `routing.upstream_path` flag so science NIMs whose native endpoint
+path does not match the public path can be routed without an nginx sidecar.
+
+- **Change:** `gateway/app/gateway.py` `forward_custom` now checks the resolved card's
+  `routing.upstream_path`. When set, that exact path is used as the upstream request path
+  instead of the default `/v1/{path}` or strip-v1 behavior. Public endpoint and usage logging
+  still show `/v1/{path}`.
+- **Why:** GenMol and MolMIM NIMs expose `POST /generate` only; the public endpoint is
+  `/v1/biology/nvidia/{genmol,molmim}/generate`.
+- **Safety:** only cards that explicitly declare `upstream_path` are affected; all existing
+  models keep their current upstream path.
+
 ## 2026-07-17 — model: new NVIDIA NIM attempts (key rotation + GPU headroom)
 
 **What:** rotated `NGC_API_KEY` to the new key across `.env` files and the cluster `models/ngc-api-key`
@@ -20,7 +34,8 @@ secret, then attempted the remaining requested NIMs.
   ISVC left at `minReplicas: 0`.
 - **cosmos3-nano-reasoner:** no accessible self-hosted NIM image found; both assumed paths return 403.
 - **fourcastnet:** NGC returns 402 Payment Required for `nvcr.io/nim/nvidia/fourcastnet`.
-- **molmim / genmol:** retried with the new key — still 403 entitlement denied.
+- **molmim / genmol:** the earlier 403 was the wrong image tag. Correct tags are
+  `nvcr.io/nim/nvidia/genmol:2.0` and `nvcr.io/nim/nvidia/molmim:1.0.0`; see the dedicated entries below.
 
 ## 2026-07-17 — model: rfdiffusion NIM deployed and verified
 

@@ -2443,9 +2443,16 @@ async def forward_custom(path: str, request: Request):
     if cold is not None:
         return cold
     # Per-card opt-in: strip the /v1 prefix before forwarding to upstreams whose
-    # native endpoints are not versioned (e.g. NVIDIA science NIMs).
+    # native endpoints are not versioned (e.g. NVIDIA science NIMs), or use an
+    # explicit upstream path override when the public path should differ from the
+    # upstream path (e.g. a NIM whose native endpoint is just /generate).
     routing = (info.get("card") or {}).get("routing", {}) or {}
-    upstream_path = f"/{path}" if routing.get("strip_v1_prefix") else f"/v1/{path}"
+    if routing.get("upstream_path"):
+        upstream_path = routing["upstream_path"]
+    elif routing.get("strip_v1_prefix"):
+        upstream_path = f"/{path}"
+    else:
+        upstream_path = f"/v1/{path}"
     # Science / custom NIMs often reject the OpenAI-ism `model` and the
     # `stream` flag. When the card declares `custom_params.passthrough`,
     # forward only the model-native payload.
