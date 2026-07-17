@@ -2444,6 +2444,18 @@ async def forward_custom(path: str, request: Request):
     # native endpoints are not versioned (e.g. NVIDIA science NIMs).
     routing = (info.get("card") or {}).get("routing", {}) or {}
     upstream_path = f"/{path}" if routing.get("strip_v1_prefix") else f"/v1/{path}"
+    # Science / custom NIMs often reject the OpenAI-ism `model` and the
+    # `stream` flag. When the card declares `custom_params.passthrough`,
+    # forward only the model-native payload.
+    custom_params = (info.get("card") or {}).get("custom_params", {}) or {}
+    if custom_params.get("passthrough"):
+        try:
+            d = json.loads(body)
+            d.pop("model", None)
+            d.pop("stream", None)
+            body = json.dumps(d).encode()
+        except Exception:
+            pass
     return await _forward(info, upstream_path, body, stream=False,
                           log_ctx={"request": request, "endpoint": f"/v1/{path}",
                                    "api": "custom"})

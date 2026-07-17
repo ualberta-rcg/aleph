@@ -3,6 +3,15 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-17 — gateway: science NIM passthrough strips `model`/`stream`
+
+**What:** `forward_custom` now removes the `model` and `stream` fields from the upstream body
+when a card sets `custom_params.passthrough: true`.
+
+- **Why:** NVIDIA science NIMs (e.g. Boltz-2) reject both fields as extra inputs.
+- **Safety:** only cards with `custom_params.passthrough: true` are affected; LLM/chat cards keep
+  the OpenAI-shaped payload.
+
 ## 2026-07-17 — gateway: per-card `strip_v1_prefix` for science NIMs
 
 **What:** added an opt-in `routing.strip_v1_prefix` flag so science NIMs whose native endpoints do
