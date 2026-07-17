@@ -1,22 +1,10 @@
 # Boltz-2: Biomolecular structure prediction + binding affinity (MIT license)
 # NVIDIA NIM container — pre-built with TensorRT, no pip compile needed
-# Repo: github.com/jwohlwend/boltz | NIM: nvcr.io/nim/mit/boltz2
+# NIM: nvcr.io/nim/mit/boltz2
 # API: POST /biology/mit/boltz2/predict
 #      Input: {"polymers": [{"id":"A","molecule_type":"protein","sequence":"MKTAY..."}]}
 #      Returns: structure + confidence + optional affinity
 # Note: NIM v1.7.0 has a confidence_score KeyError — patched at startup below
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: boltz-2-nim-cache
-  namespace: models
-spec:
-  accessModes: [ReadWriteMany]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 30Gi
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -94,16 +82,16 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - name: nim-cache
+          - name: boltz-2
             mountPath: /opt/nim/.cache
           - name: shm
             mountPath: /dev/shm
     imagePullSecrets:
       - name: ngc-registry-secret
     volumes:
-      - name: nim-cache
+      - name: boltz-2
         persistentVolumeClaim:
-          claimName: boltz-2-nim-cache
+          claimName: boltz-2
       - name: shm
         emptyDir:
           medium: Memory

@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boltz-2-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "boltz-2",
+      "status": "production",
+      "type": "structure",
+      "endpoints": {
+        "primary": "/v1/biology/mit/boltz2/predict",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "boltz-2",
+        "no_stream": true,
+        "strip_v1_prefix": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "polymers": {
+          "type": "array",
+          "required": true,
+          "description": "1-5 polymers, each with id, molecule_type (dna|rna|protein), sequence (1-4096 chars), optional cyclic/msa/modifications"
+        },
+        "ligands": {
+          "type": "array",
+          "required": false,
+          "description": "Optional 0-5 ligands, each with id and either ccd or smiles"
+        },
+        "constraints": {
+          "type": "array",
+          "required": false,
+          "description": "Optional pocket/bond constraints"
+        },
+        "recycling_steps": {
+          "type": "integer",
+          "required": false,
+          "default": 3,
+          "description": "Recycling steps, 1-6"
+        },
+        "sampling_steps": {
+          "type": "integer",
+          "required": false,
+          "default": 50,
+          "description": "Diffusion sampling steps, 10-1000"
+        },
+        "diffusion_samples": {
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "description": "Number of structure samples, 1-5"
+        },
+        "step_scale": {
+          "type": "float",
+          "required": false,
+          "default": 1.638,
+          "description": "Diffusion temperature scale, 0.5-5.0"
+        },
+        "output_format": {
+          "type": "string",
+          "required": false,
+          "default": "mmcif",
+          "description": "Output format; currently only mmcif"
+        }
+      },
+      "output_map": {
+        "structures": {
+          "type": "array",
+          "description": "Predicted structures as mmCIF strings with format/name/source"
+        },
+        "confidence_scores": {
+          "type": "array",
+          "description": "Confidence score per predicted structure"
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Runtime/debugging metrics"
+        }
+      },
+      "catalog": {
+        "description_short": "Boltz-2 biomolecular structure prediction and binding affinity (MIT, NVIDIA NIM).",
+        "description": "Boltz-2 is a biomolecular structure prediction model that predicts protein, DNA, RNA, and small-molecule structures from polymer sequences and optional ligands/constraints. Served via the NVIDIA NIM container nvcr.io/nim/mit/boltz2 on a HAMi GPU slice.",
+        "owned_by": "MIT",
+        "source": "nvcr.io/nim/mit/boltz2",
+        "source_url": "https://build.nvidia.com/mit/boltz-2",
+        "license": "MIT",
+        "parameters": "",
+        "precision": "fp16",
+        "framework": "nim",
+        "domain": "structural-biology",
+        "subdomain": "protein-structure-prediction",
+        "tags": ["science", "structure", "protein", "nim", "gpu"]
+      }
+    }

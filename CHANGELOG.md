@@ -3,6 +3,17 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-17 — model: boltz-2 NIM deployed and verified
+
+**What:** added `models/boltz-2/` as a flat 6-file NVIDIA NIM deployment.
+
+- **Files:** `pvc.yaml`, `inferenceservice.yaml`, `details.yaml`, `test.py`, `README.md`, `CLAUDE.md`.
+- **Endpoint:** `POST /v1/biology/mit/boltz2/predict` (native NIM path `/biology/mit/boltz2/predict`).
+- **Routing:** `routing.strip_v1_prefix: true` + `custom_params.passthrough: true` so the gateway
+  strips `/v1` and removes `model`/`stream` before forwarding.
+- **Startup patch:** idempotent fix for NIM v1.7.0 `confidence_score` KeyError.
+- **Test:** science smoke test passes **4/0** after clean delete+redeploy.
+
 ## 2026-07-17 — gateway: science NIM passthrough strips `model`/`stream`
 
 **What:** `forward_custom` and `_forward` now remove the `model` and `stream` fields from the
