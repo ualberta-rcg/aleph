@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evo2-40b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "evo2-40b",
+      "status": "production",
+      "type": "generate",
+      "endpoints": {
+        "primary": "/v1/biology/arc/evo2/generate",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "evo2-40b",
+        "no_stream": true,
+        "strip_v1_prefix": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "5-10 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {},
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "sequence": {
+          "type": "string",
+          "required": true,
+          "description": "Input DNA sequence (ACGT)"
+        },
+        "num_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 8,
+          "description": "Number of DNA tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7
+        },
+        "top_k": {
+          "type": "integer",
+          "required": false,
+          "default": 1
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 0.9
+        },
+        "enable_sampled_probs": {
+          "type": "boolean",
+          "required": false,
+          "default": false
+        }
+      },
+      "output_map": {
+        "sequence": {
+          "type": "string",
+          "description": "Generated DNA sequence"
+        }
+      },
+      "catalog": {
+        "description_short": "Evo2 40B genome modeling and design NIM (Arc Institute).",
+        "description": "Evo2 40B is a genome foundation model for DNA sequence generation and embedding across all domains of life, served via the NVIDIA NIM container nvcr.io/nim/arc/evo2-40b on a single L40S HAMi vGPU slice.",
+        "owned_by": "Arc Institute",
+        "source": "nvcr.io/nim/arc/evo2-40b",
+        "source_url": "https://build.nvidia.com/arc/evo2-40b",
+        "license": "Arc Institute",
+        "parameters": "40B",
+        "precision": "fp8",
+        "framework": "nim",
+        "domain": "biology",
+        "subdomain": "genomics",
+        "tags": ["biology", "genomics", "generate", "dna", "nim", "gpu"]
+      }
+    }
