@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-17 — gateway: per-card `strip_v1_prefix` for science NIMs
+
+**What:** added an opt-in `routing.strip_v1_prefix` flag so science NIMs whose native endpoints do
+not start with `/v1/` can be routed through the gateway without an nginx sidecar.
+
+- **Change:** `gateway/app/gateway.py` `forward_custom` now checks the resolved card's
+  `routing.strip_v1_prefix`. When `true`, the upstream path is `/{path}` instead of `/v1/{path}`.
+  The public endpoint and usage logging remain `/v1/{path}`.
+- **Safety:** the flag defaults to `false`; no existing card has it, so all currently running models
+  keep their exact current upstream path. Only science NIM cards explicitly authored with the flag
+  are affected.
+- **Rollout:** committed to `main`; CI builds `rkhoja/aleph:gateway-<shortsha>`; cluster 43 is pinned
+  to the immutable tag before any NIM deploy.
+
 ## 2026-07-05 — speaches: Deployment → ISVC conversion (in progress, deferred)
 
 **What:** began converting `speaches` (Kokoro-82M TTS + faster-whisper-large-v3 STT) from a legacy

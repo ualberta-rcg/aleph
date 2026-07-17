@@ -2440,7 +2440,11 @@ async def forward_custom(path: str, request: Request):
     cold = await _guard_cold(request, info, f"/v1/{path}", "custom")
     if cold is not None:
         return cold
-    return await _forward(info, f"/v1/{path}", body, stream=False,
+    # Per-card opt-in: strip the /v1 prefix before forwarding to upstreams whose
+    # native endpoints are not versioned (e.g. NVIDIA science NIMs).
+    routing = (info.get("card") or {}).get("routing", {}) or {}
+    upstream_path = f"/{path}" if routing.get("strip_v1_prefix") else f"/v1/{path}"
+    return await _forward(info, upstream_path, body, stream=False,
                           log_ctx={"request": request, "endpoint": f"/v1/{path}",
                                    "api": "custom"})
 
