@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openfold-3-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "openfold-3",
+      "status": "production",
+      "type": "structure",
+      "endpoints": {
+        "primary": "/v1/biology/openfold/openfold3/predict",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "openfold-3",
+        "no_stream": true,
+        "strip_v1_prefix": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "request_id": {
+          "type": "string",
+          "required": false,
+          "description": "Optional request identifier/tag, <=128 chars"
+        },
+        "inputs": {
+          "type": "array",
+          "required": true,
+          "description": "List of inputs (currently length 1)",
+          "items": {
+            "input_id": {
+              "type": "string",
+              "required": false,
+              "description": "Optional input identifier/tag, <=128 chars"
+            },
+            "molecules": {
+              "type": "array",
+              "required": true,
+              "description": "1-32 molecules, each protein|rna|dna|ligand",
+              "items": {
+                "type": {
+                  "type": "string",
+                  "required": true,
+                  "enum": ["protein", "rna", "dna", "ligand"]
+                },
+                "id": {
+                  "type": "string",
+                  "required": false,
+                  "description": "Unique chain identifier"
+                },
+                "sequence": {
+                  "type": "string",
+                  "required": false,
+                  "description": "Amino-acid, DNA, or RNA sequence (2-4096 chars)"
+                },
+                "ccd_codes": {
+                  "type": "string",
+                  "required": false,
+                  "description": "CCD code for a ligand (1-5 uppercase chars/digits)"
+                },
+                "smiles": {
+                  "type": "string",
+                  "required": false,
+                  "description": "SMILES string for a ligand"
+                },
+                "msa": {
+                  "type": "object",
+                  "required": false,
+                  "description": "Optional precomputed MSA, e.g. {main_db: {csv: {alignment: 'key,sequence\\n-1,<QUERY>', format: 'csv'}}}"
+                },
+                "paired_msa": {
+                  "type": "object",
+                  "required": false,
+                  "description": "Optional paired MSA dictionary"
+                }
+              }
+            }
+          }
+        },
+        "diffusion_samples": {
+          "type": "integer",
+          "required": false,
+          "description": "Number of independent structure samples"
+        },
+        "output_format": {
+          "type": "string",
+          "required": false,
+          "enum": ["cif", "pdb"],
+          "description": "Output structure format"
+        }
+      },
+      "output_map": {
+        "outputs": {
+          "type": "array",
+          "description": "One entry per input_id, each containing structures_with_scores",
+          "items": {
+            "input_id": "string",
+            "structures_with_scores": {
+              "type": "array",
+              "description": "Predicted complex structures with confidence scores"
+            }
+          }
+        }
+      },
+      "catalog": {
+        "description_short": "OpenFold-3 biomolecular complex structure prediction (Apache 2.0, NVIDIA NIM).",
+        "description": "OpenFold-3 predicts biomolecular complex structures from protein, DNA, RNA, and ligand inputs. Served via the NVIDIA NIM container nvcr.io/nim/openfold/openfold3 on a HAMi GPU slice.",
+        "owned_by": "OpenFold / AQLaboratory",
+        "source": "nvcr.io/nim/openfold/openfold3",
+        "source_url": "https://build.nvidia.com/openfold/openfold3",
+        "license": "Apache-2.0",
+        "parameters": "",
+        "precision": "bf16",
+        "framework": "nim",
+        "domain": "structural-biology",
+        "subdomain": "protein-structure-prediction",
+        "tags": ["science", "structure", "protein", "nim", "gpu"]
+      }
+    }

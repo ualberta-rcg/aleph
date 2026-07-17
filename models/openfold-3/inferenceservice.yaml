@@ -1,23 +1,10 @@
 # OpenFold-3: Biomolecular complex structure prediction (protein/DNA/RNA/ligand)
 # NVIDIA NIM container — pre-built, Apache 2.0 license
-# Repo: github.com/aqlaboratory/openfold | NIM: nvcr.io/nim/openfold/openfold3
+# NIM: nvcr.io/nim/openfold/openfold3
 # API: POST /biology/openfold/openfold3/predict
 #      Input: {"inputs": [{"input_id": "X", "molecules": [
-#               {"type": "protein", "id": "A", "sequence": "MKTAY..."},
-#               {"type": "dna", "id": "B", "sequence": "AGGAAC..."}]}]}
-#      Returns: PDB structure + confidence scores
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: openfold-3-nim-cache
-  namespace: models
-spec:
-  accessModes: [ReadWriteMany]
-  storageClassName: nfs-models
-  resources:
-    requests:
-      storage: 30Gi
+#               {"type": "protein", "id": "A", "sequence": "MKTAY..."}]}]}
+#      Returns: biomolecular complex structure + confidence scores
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -81,16 +68,16 @@ spec:
           periodSeconds: 10
           failureThreshold: 60
         volumeMounts:
-          - name: nim-cache
+          - name: openfold-3
             mountPath: /opt/nim/.cache
           - name: shm
             mountPath: /dev/shm
     imagePullSecrets:
       - name: ngc-registry-secret
     volumes:
-      - name: nim-cache
+      - name: openfold-3
         persistentVolumeClaim:
-          claimName: openfold-3-nim-cache
+          claimName: openfold-3
       - name: shm
         emptyDir:
           medium: Memory

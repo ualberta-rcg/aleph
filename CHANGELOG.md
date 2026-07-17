@@ -3,6 +3,20 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-17 — model: openfold-3 NIM deployed and verified
+
+**What:** added `models/openfold-3/` as a flat 6-file NVIDIA NIM deployment.
+
+- **Files:** `pvc.yaml`, `inferenceservice.yaml`, `details.yaml`, `test.py`, `README.md`, `CLAUDE.md`.
+- **Endpoint:** `POST /v1/biology/openfold/openfold3/predict` (native NIM path
+  `/biology/openfold/openfold3/predict`).
+- **Routing:** `routing.strip_v1_prefix: true` + `custom_params.passthrough: true`.
+- **Input quirk:** protein sequences require a non-empty MSA; the smoke test supplies the query
+  sequence as a CSV MSA (`key,sequence\n-1,<QUERY>`).
+- **Response shape:** `outputs[0].structures_with_scores` with `structure`, `format`,
+  `confidence_score`, `plddt`, `iptm`, `ptm`.
+- **Test:** science smoke test passes **4/0** after clean delete+redeploy.
+
 ## 2026-07-17 — model: boltz-2 NIM deployed and verified
 
 **What:** added `models/boltz-2/` as a flat 6-file NVIDIA NIM deployment.
