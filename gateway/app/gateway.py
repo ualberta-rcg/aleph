@@ -1877,8 +1877,10 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
         )
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        # Ensure no_stream models never get stream=true upstream
-        if info.get("no_stream"):
+        # Ensure no_stream models never get stream=true upstream, unless the
+        # card is a science/custom passthrough where `stream` is rejected.
+        custom_params = (info.get("card") or {}).get("custom_params", {}) or {}
+        if info.get("no_stream") and not custom_params.get("passthrough"):
             try:
                 b = json.loads(body)
                 b["stream"] = False
