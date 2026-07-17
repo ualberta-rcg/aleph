@@ -1,0 +1,83 @@
+# MolMIM: Generative molecular design
+# NVIDIA NIM container — pre-built
+# NIM: nvcr.io/nim/nvidia/molmim
+# API: POST /biology/nvidia/molmim/generate
+#      Input: {"smi": "CC(=O)Oc1ccccc1C(=O)O", "num_molecules": 10, ...}
+#      Returns: generated SMILES molecules
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: molmim
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline-seconds: "600"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nim/nvidia/molmim-generate:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "20480"
+        readinessProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        startupProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 60
+        volumeMounts:
+          - name: molmim
+            mountPath: /opt/nim/.cache
+          - name: shm
+            mountPath: /dev/shm
+    imagePullSecrets:
+      - name: ngc-registry-secret
+    volumes:
+      - name: molmim
+        persistentVolumeClaim:
+          claimName: molmim
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

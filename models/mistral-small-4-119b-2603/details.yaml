@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mistral-small-4-119b-2603-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "mistral-small-4-119b-2603",
+      "status": "production",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "mistral-small-4-119b-2603",
+        "no_stream": false,
+        "strip_v1_prefix": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 131072,
+        "max_input_tokens": 131072
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "5-10 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {},
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "top_p": 0.9
+        }
+      },
+      "custom_params": {
+        "passthrough": false
+      },
+      "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "OpenAI-format messages"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 0.9
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 1024
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false
+        }
+      },
+      "output_map": {
+        "choices": {
+          "type": "array",
+          "description": "OpenAI chat completion choices"
+        }
+      },
+      "catalog": {
+        "description_short": "Mistral Small 4 (119B MoE) chat model, NVIDIA NIM.",
+        "description": "Mistral Small 4 is a 119B-parameter mixture-of-experts chat model served via the NVIDIA NIM container nvcr.io/nim/mistralai/mistral-small-4-119b-2603 on 2x L40S whole devices.",
+        "owned_by": "Mistral AI",
+        "source": "nvcr.io/nim/mistralai/mistral-small-4-119b-2603",
+        "source_url": "https://build.nvidia.com/mistralai/mistral-small-4-119b-2603",
+        "license": "Mistral AI",
+        "parameters": "119B MoE",
+        "precision": "fp8",
+        "framework": "nim",
+        "domain": "nlp",
+        "subdomain": "chat",
+        "tags": ["chat", "moe", "nim", "gpu"]
+      }
+    }

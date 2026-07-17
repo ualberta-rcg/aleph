@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: molmim-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "molmim",
+      "status": "production",
+      "type": "generate",
+      "endpoints": {
+        "primary": "/v1/biology/nvidia/molmim/generate",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "molmim",
+        "no_stream": true,
+        "strip_v1_prefix": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "smi": {
+          "type": "string",
+          "required": true,
+          "description": "Seed molecule in SMILES format"
+        },
+        "num_molecules": {
+          "type": "integer",
+          "required": false,
+          "default": 10,
+          "description": "Number of molecules to generate (1-100)"
+        },
+        "algorithm": {
+          "type": "string",
+          "required": false,
+          "enum": ["CMA-ES", "none"],
+          "default": "CMA-ES",
+          "description": "Optimization/sampling algorithm"
+        },
+        "property_name": {
+          "type": "string",
+          "required": false,
+          "enum": ["QED", "plogP"],
+          "default": "QED",
+          "description": "Molecular property to optimize"
+        },
+        "minimize": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Whether to minimize rather than maximize the property"
+        },
+        "min_similarity": {
+          "type": "float",
+          "required": false,
+          "default": 0.7,
+          "description": "Minimum similarity threshold (0-1)"
+        },
+        "particles": {
+          "type": "integer",
+          "required": false,
+          "default": 20,
+          "description": "Population size for CMA-ES (2-1000)"
+        },
+        "iterations": {
+          "type": "integer",
+          "required": false,
+          "default": 10,
+          "description": "Number of optimization iterations (1-1000)"
+        },
+        "scaled_radius": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Radius for latent-space sampling (0-2)"
+        }
+      },
+      "output_map": {
+        "generated_smiles": {
+          "type": "array",
+          "description": "List of generated SMILES strings"
+        }
+      },
+      "catalog": {
+        "description_short": "MolMIM generative molecular design (NVIDIA NIM).",
+        "description": "MolMIM generates novel molecules around a seed SMILES, optionally optimizing molecular properties with CMA-ES. Served via the NVIDIA NIM container nvcr.io/nim/nvidia/molmim on a HAMi GPU slice.",
+        "owned_by": "NVIDIA",
+        "source": "nvcr.io/nim/nvidia/molmim",
+        "source_url": "https://build.nvidia.com/nvidia/molmim-generate",
+        "license": "NVIDIA AI Product Agreement",
+        "parameters": "",
+        "precision": "fp16",
+        "framework": "nim",
+        "domain": "chemistry",
+        "subdomain": "molecule-generation",
+        "tags": ["science", "chemistry", "generation", "smiles", "nim", "gpu"]
+      }
+    }

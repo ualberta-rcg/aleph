@@ -1,0 +1,79 @@
+# DeepSeek-V4-Flash: MoE chat model (284B total / 13B active, FP8, 1M context)
+# NVIDIA NIM container — pre-built
+# NIM: nvcr.io/nim/deepseek-ai/deepseek-v4-flash
+# API: POST /v1/chat/completions
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: deepseek-v4-flash
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline-seconds: "1200"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nim/deepseek-ai/deepseek-v4-flash:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "8"
+            memory: 64Gi
+            nvidia.com/gpu: "4"
+          limits:
+            cpu: "16"
+            memory: 128Gi
+            nvidia.com/gpu: "4"
+        readinessProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        startupProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 120
+        volumeMounts:
+          - name: deepseek-v4-flash
+            mountPath: /opt/nim/.cache
+          - name: shm
+            mountPath: /dev/shm
+    imagePullSecrets:
+      - name: ngc-registry-secret
+    volumes:
+      - name: deepseek-v4-flash
+        persistentVolumeClaim:
+          claimName: deepseek-v4-flash
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: genmol-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "genmol",
+      "status": "production",
+      "type": "generate",
+      "endpoints": {
+        "primary": "/v1/biology/nvidia/genmol/generate",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "genmol",
+        "no_stream": true,
+        "strip_v1_prefix": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "smiles": {
+          "type": "string",
+          "required": true,
+          "description": "Seed molecular SMILES or SAFE sequence with optional masking segments like [{min_tokens-max_tokens}]"
+        },
+        "num_molecules": {
+          "type": "integer",
+          "required": false,
+          "default": 30,
+          "description": "Number of molecules to generate (1-1000)"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Softmax sampling temperature (0.01-10)"
+        },
+        "noise": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "Noise factor for top-k sampling (0-2)"
+        },
+        "step_size": {
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "description": "Diffusion step size, tokens recovered per inference (1-10)"
+        },
+        "scoring": {
+          "type": "string",
+          "required": false,
+          "enum": ["QED", "LogP"],
+          "default": "QED",
+          "description": "Scoring method for ranking generated molecules"
+        },
+        "unique": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Return unique molecules only"
+        }
+      },
+      "output_map": {
+        "molecules": {
+          "type": "array",
+          "description": "Generated molecule sequences (SMILES/SAFE)"
+        },
+        "scores": {
+          "type": "array",
+          "description": "Scores for each generated molecule"
+        }
+      },
+      "catalog": {
+        "description_short": "GenMol generative molecular design (SAFE, NVIDIA NIM).",
+        "description": "GenMol generates novel molecules from a seed SMILES/SAFE sequence using a diffusion-style model. Served via the NVIDIA NIM container nvcr.io/nim/nvidia/genmol-generate on a HAMi GPU slice.",
+        "owned_by": "NVIDIA",
+        "source": "nvcr.io/nim/nvidia/genmol-generate",
+        "source_url": "https://build.nvidia.com/nvidia/genmol-generate",
+        "license": "NVIDIA AI Product Agreement",
+        "parameters": "",
+        "precision": "fp16",
+        "framework": "nim",
+        "domain": "chemistry",
+        "subdomain": "molecule-generation",
+        "tags": ["science", "chemistry", "generation", "smiles", "nim", "gpu"]
+      }
+    }

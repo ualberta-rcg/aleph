@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pull-evo2-40b
+  namespace: models
+spec:
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      nodeSelector:
+        gpu: "on"
+      imagePullSecrets:
+        - name: ngc-registry-secret
+      containers:
+        - name: c
+          image: nvcr.io/nim/arc/evo2-40b:latest
+          command: ["echo", "pulled"]
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+      restartPolicy: Never
+  backoffLimit: 0

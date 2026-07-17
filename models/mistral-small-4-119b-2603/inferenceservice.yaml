@@ -1,0 +1,79 @@
+# Mistral-Small-4-119B-2603: MoE chat model (119B total, NVIDIA NIM)
+# NVIDIA NIM container — pre-built
+# NIM: nvcr.io/nim/mistralai/mistral-small-4-119b-2603
+# API: POST /v1/chat/completions
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: mistral-small-4-119b-2603
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline-seconds: "1200"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nim/mistralai/mistral-small-4-119b-2603:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "8"
+            memory: 64Gi
+            nvidia.com/gpu: "2"
+          limits:
+            cpu: "16"
+            memory: 128Gi
+            nvidia.com/gpu: "2"
+        readinessProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        startupProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 120
+        volumeMounts:
+          - name: mistral-small-4-119b-2603
+            mountPath: /opt/nim/.cache
+          - name: shm
+            mountPath: /dev/shm
+    imagePullSecrets:
+      - name: ngc-registry-secret
+    volumes:
+      - name: mistral-small-4-119b-2603
+        persistentVolumeClaim:
+          claimName: mistral-small-4-119b-2603
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

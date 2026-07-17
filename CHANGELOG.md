@@ -3,6 +3,21 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-17 — model: new NVIDIA NIM attempts (key rotation + GPU headroom)
+
+**What:** rotated `NGC_API_KEY` to the new key across `.env` files and the cluster `models/ngc-api-key`
+secret, then attempted the remaining requested NIMs.
+
+- **deepseek-v4-flash:** `models/deepseek-v4-flash/` added (flat 6-file). Image pulls, but HAMi reports
+  `CardInsufficientMemory` / `AllocatedCardsInsufficientRequest`; cluster 43 has no node with 4 free
+  whole L40S devices. ISVC left at `minReplicas: 0`.
+- **mistral-small-4-119b-2603:** `models/mistral-small-4-119b-2603/` added (flat 6-file). Image pulls,
+  but HAMi cannot schedule 2 whole L40S devices; existing GPU allocations fragment the physical GPUs.
+  ISVC left at `minReplicas: 0`.
+- **cosmos3-nano-reasoner:** no accessible self-hosted NIM image found; both assumed paths return 403.
+- **fourcastnet:** NGC returns 402 Payment Required for `nvcr.io/nim/nvidia/fourcastnet`.
+- **molmim / genmol:** retried with the new key — still 403 entitlement denied.
+
 ## 2026-07-17 — model: rfdiffusion NIM deployed and verified
 
 **What:** added `models/rfdiffusion/` as a flat 6-file NVIDIA NIM deployment.

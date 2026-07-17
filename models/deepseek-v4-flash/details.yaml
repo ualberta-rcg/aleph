@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepseek-v4-flash-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "deepseek-v4-flash",
+      "status": "production",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "deepseek-v4-flash",
+        "no_stream": false,
+        "strip_v1_prefix": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 1048576,
+        "max_input_tokens": 1048576
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "5-10 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "always_on"}
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 0.7,
+          "top_p": 0.9
+        }
+      },
+      "custom_params": {
+        "passthrough": false
+      },
+      "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "OpenAI-format messages"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.7
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 0.9
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 1024
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false
+        }
+      },
+      "output_map": {
+        "choices": {
+          "type": "array",
+          "description": "OpenAI chat completion choices"
+        }
+      },
+      "catalog": {
+        "description_short": "DeepSeek-V4-Flash MoE chat model (284B total / 13B active, FP8, 1M context, NVIDIA NIM).",
+        "description": "DeepSeek-V4-Flash is a 284B-parameter MoE chat model with 13B active parameters, FP8 inference, and up to a 1-million-token context window. Served via the NVIDIA NIM container nvcr.io/nim/deepseek-ai/deepseek-v4-flash on 4x L40S.",
+        "owned_by": "DeepSeek",
+        "source": "nvcr.io/nim/deepseek-ai/deepseek-v4-flash",
+        "source_url": "https://build.nvidia.com/deepseek-ai/deepseek-v4-flash",
+        "license": "DeepSeek",
+        "parameters": "284B total / 13B active",
+        "precision": "fp8",
+        "framework": "nim",
+        "domain": "nlp",
+        "subdomain": "chat",
+        "tags": ["chat", "moe", "reasoning", "nim", "gpu"]
+      }
+    }
