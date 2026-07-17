@@ -8,6 +8,10 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
 **What:** rotated `NGC_API_KEY` to the new key across `.env` files and the cluster `models/ngc-api-key`
 secret, then attempted the remaining requested NIMs.
 
+- **evo2-40b:** `models/evo2-40b/` added (flat 6-file). Image pulls and schedules on a single L40S
+  HAMi slice, but model instantiation OOMs (needs ~42+ GiB; L40S 48 GB is insufficient once
+  fragmentation/overhead is included). Native profile defaults to 3 GPUs. Multi-GPU whole-device
+  placement is blocked by existing cluster GPU allocations. ISVC left at `minReplicas: 0`.
 - **deepseek-v4-flash:** `models/deepseek-v4-flash/` added (flat 6-file). Image pulls, but HAMi reports
   `CardInsufficientMemory` / `AllocatedCardsInsufficientRequest`; cluster 43 has no node with 4 free
   whole L40S devices. ISVC left at `minReplicas: 0`.

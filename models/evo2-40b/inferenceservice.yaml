@@ -43,6 +43,8 @@ spec:
             value: /opt/nim/.cache
           - name: EVO2_PIPELINE_PARALLEL
             value: "1"
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
         securityContext:
           runAsUser: 0
         resources:
@@ -50,12 +52,12 @@ spec:
             cpu: "4"
             memory: 32Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "43008"
+            nvidia.com/gpumem: "46068"
           limits:
             cpu: "8"
             memory: 64Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "43008"
+            nvidia.com/gpumem: "46068"
         readinessProbe:
           httpGet:
             path: /v1/health/ready
