@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rfdiffusion-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "rfdiffusion",
+      "status": "production",
+      "type": "design",
+      "endpoints": {
+        "primary": "/v1/biology/ipd/rfdiffusion/generate",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "rfdiffusion",
+        "no_stream": true,
+        "strip_v1_prefix": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "input_pdb": {
+          "type": "string",
+          "required": true,
+          "description": "PDB-format structure as a multi-line string (ATOM records)"
+        },
+        "contigs": {
+          "type": "string",
+          "required": false,
+          "description": "RFdiffusion contig DSL, e.g. A19-68/0 5-10"
+        },
+        "hotspot_res": {
+          "type": "array",
+          "required": false,
+          "description": "Hotspot residues for binder design, e.g. [\"A50\"]"
+        },
+        "diffusion_steps": {
+          "type": "integer",
+          "required": false,
+          "default": 15,
+          "description": "Number of diffusion steps, commonly 5-50"
+        },
+        "random_seed": {
+          "type": "integer",
+          "required": false,
+          "description": "Seed for reproducibility"
+        }
+      },
+      "output_map": {
+        "output_pdb": {
+          "type": "string",
+          "description": "Generated protein structure in PDB format"
+        }
+      },
+      "catalog": {
+        "description_short": "RFdiffusion protein backbone design (IPD, NVIDIA NIM).",
+        "description": "RFdiffusion generates protein backbones and binder designs conditioned on a structural context. Served via the NVIDIA NIM container nvcr.io/nim/ipd/rfdiffusion on a HAMi GPU slice.",
+        "owned_by": "Institute for Protein Design",
+        "source": "nvcr.io/nim/ipd/rfdiffusion",
+        "source_url": "https://build.nvidia.com/ipd/rfdiffusion",
+        "license": "BSD-3-Clause",
+        "parameters": "",
+        "precision": "fp16",
+        "framework": "nim",
+        "domain": "structural-biology",
+        "subdomain": "protein-design",
+        "tags": ["science", "design", "protein", "nim", "gpu"]
+      }
+    }

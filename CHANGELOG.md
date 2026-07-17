@@ -3,6 +3,19 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 
+## 2026-07-17 — model: rfdiffusion NIM deployed and verified
+
+**What:** added `models/rfdiffusion/` as a flat 6-file NVIDIA NIM deployment.
+
+- **Files:** `pvc.yaml`, `inferenceservice.yaml`, `details.yaml`, `test.py`, `README.md`, `CLAUDE.md`.
+- **Endpoint:** `POST /v1/biology/ipd/rfdiffusion/generate` (native NIM path
+  `/biology/ipd/rfdiffusion/generate`).
+- **Routing:** `routing.strip_v1_prefix: true` + `custom_params.passthrough: true`.
+- **GPU:** whole L40S (no HAMi `gpumem`). A HAMi slice exposed only 4 GiB of preallocated scratch,
+  which the NIM exceeded; whole-device allocation resolves this.
+- **Test fixture:** fetches the first 200 ATOM lines of PDB `1R42` from RCSB.
+- **Test:** science smoke test passes **4/0** after clean delete+redeploy.
+
 ## 2026-07-17 — model: openfold-3 NIM deployed and verified
 
 **What:** added `models/openfold-3/` as a flat 6-file NVIDIA NIM deployment.
