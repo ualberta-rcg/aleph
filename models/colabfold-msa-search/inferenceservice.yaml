@@ -1,0 +1,86 @@
+# ColabFold MSA Search NIM
+# NIM: nvcr.io/nim/colabfold/msa-search:2.5.0
+# API: POST /biology/colabfold/msa-search/predict (native); public /v1/biology/colabfold/msa-search/predict
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: colabfold-msa-search
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline-seconds: "1200"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nim/colabfold/msa-search:2.5.0
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+          - name: NIM_MODEL_PROFILE
+            value: "3087b7ea46d601200c1f90c9246a7aa344e487056286497515900b0924d7853a"
+          - name: HOME
+            value: /opt/nim/.cache
+          - name: XDG_CACHE_HOME
+            value: /opt/nim/.cache
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "24576"
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "24576"
+        readinessProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        startupProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 180
+        volumeMounts:
+          - name: colabfold-msa-search
+            mountPath: /opt/nim/.cache
+          - name: shm
+            mountPath: /dev/shm
+    imagePullSecrets:
+      - name: ngc-registry-secret
+    volumes:
+      - name: colabfold-msa-search
+        persistentVolumeClaim:
+          claimName: colabfold-msa-search
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

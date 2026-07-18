@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alphafold2-nim
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 1Ti

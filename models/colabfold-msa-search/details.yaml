@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: colabfold-msa-search-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "colabfold-msa-search",
+      "status": "production",
+      "type": "predict",
+      "endpoints": {
+        "primary": "/v1/biology/colabfold/msa-search/predict",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "colabfold-msa-search",
+        "no_stream": true,
+        "strip_v1_prefix": true,
+        "upstream_path": null,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "sequence": {
+          "type": "string",
+          "required": true,
+          "description": "Query amino-acid sequence for monomer MSA search"
+        },
+        "sequences": {
+          "type": "array",
+          "required": false,
+          "description": "Query amino-acid sequences for multimer MSA search"
+        },
+        "e_value": {
+          "type": "number",
+          "required": false,
+          "default": 0.0001,
+          "description": "E-value threshold for sequence search"
+        },
+        "iterations": {
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "description": "Number of search iterations"
+        },
+        "databases": {
+          "type": "array",
+          "required": false,
+          "default": ["all"],
+          "description": "Database selection, e.g. [\"pdb70_220313\"] or [\"all\"]"
+        },
+        "output_alignment_formats": {
+          "type": "array",
+          "required": false,
+          "default": ["a3m", "fasta"],
+          "description": "Output alignment formats"
+        },
+        "pairing_strategy": {
+          "type": "string",
+          "required": false,
+          "description": "Multimer pairing strategy (e.g. greedy)"
+        }
+      },
+      "output_map": {
+        "alignments": {
+          "type": "object",
+          "description": "MSA alignments per format/database"
+        },
+        "search_hits": {
+          "type": "object",
+          "description": "Search hit metadata"
+        },
+        "structures": {
+          "type": "object",
+          "description": "Template structures if available"
+        }
+      },
+      "catalog": {
+        "description_short": "ColabFold MSA Search NIM (GPU-accelerated MMseqs2).",
+        "description": "ColabFold MSA Search provides fast, GPU-accelerated multiple sequence alignment and template search for protein structure prediction workflows via the NVIDIA NIM container nvcr.io/nim/colabfold/msa-search:2.5.0.",
+        "owned_by": "ColabFold / NVIDIA",
+        "source": "nvcr.io/nim/colabfold/msa-search:2.5.0",
+        "source_url": "https://build.nvidia.com/colabfold/msa-search",
+        "license": "NVIDIA AI Product Agreement / CC-BY-4.0",
+        "parameters": "",
+        "precision": "fp16",
+        "framework": "nim",
+        "domain": "biology",
+        "subdomain": "multiple-sequence-alignment",
+        "tags": ["science", "biology", "protein", "msa", "mmseqs2", "nim", "gpu"]
+      }
+    }

@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alphafold2-nim-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "alphafold2-nim",
+      "status": "production",
+      "type": "predict",
+      "endpoints": {
+        "primary": "/v1/biology/deepmind/alphafold2/predict",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "alphafold2-nim",
+        "no_stream": true,
+        "strip_v1_prefix": false,
+        "upstream_path": "/predict",
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "sequence": {
+          "type": "string",
+          "required": true,
+          "description": "Protein amino-acid sequence as a single-letter string"
+        }
+      },
+      "output_map": {
+        "structure": {
+          "type": "string",
+          "description": "Predicted structure (PDB format)"
+        },
+        "plddt": {
+          "type": "array",
+          "description": "Per-residue pLDDT confidence scores"
+        }
+      },
+      "catalog": {
+        "description_short": "AlphaFold2 protein structure prediction (NVIDIA NIM).",
+        "description": "AlphaFold2 predicts 3D protein structures from amino-acid sequences via the NVIDIA NIM container nvcr.io/nim/deepmind/alphafold2:2.1.1.",
+        "owned_by": "DeepMind / NVIDIA",
+        "source": "nvcr.io/nim/deepmind/alphafold2:2.1.1",
+        "source_url": "https://build.nvidia.com/deepmind/alphafold2",
+        "license": "NVIDIA AI Product Agreement",
+        "parameters": "",
+        "precision": "fp16",
+        "framework": "nim",
+        "domain": "biology",
+        "subdomain": "protein-structure-prediction",
+        "tags": ["science", "biology", "protein", "structure", "nim", "gpu"]
+      }
+    }

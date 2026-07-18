@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alchemi-bmd-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "alchemi-bmd-nim",
+      "status": "production",
+      "type": "chemistry",
+      "endpoints": {
+        "primary": "/v1/infer",
+        "health": "/v1/health/ready"
+      },
+      "routing": {
+        "k8s_name": "alchemi-bmd",
+        "no_stream": true,
+        "strip_v1_prefix": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "1-3 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "atoms": {
+          "type": "object",
+          "required": true,
+          "description": "Atomic structure (BMDAtomicData)"
+        },
+        "config": {
+          "type": "object",
+          "required": false,
+          "description": "MD settings; defaults used if omitted"
+        },
+        "info": {
+          "type": "string",
+          "required": false,
+          "description": "Metadata echoed in response"
+        }
+      },
+      "output_map": {
+        "trajectory": {
+          "type": "array",
+          "description": "MD trajectory snapshots"
+        },
+        "config": {
+          "type": "object",
+          "description": "Final MD configuration"
+        },
+        "status": {
+          "type": "string",
+          "description": "Success or error status"
+        },
+        "info": {
+          "type": "string",
+          "description": "Echoed request metadata"
+        }
+      },
+      "catalog": {
+        "description_short": "Alchemi BMD molecular dynamics (NVIDIA NIM).",
+        "description": "Alchemi BMD predicts many-body atomic interactions and generates force fields for molecular dynamics via the NVIDIA NIM container nvcr.io/nim/nvidia/alchemi-bmd:1.0.0.",
+        "owned_by": "NVIDIA",
+        "source": "nvcr.io/nim/nvidia/alchemi-bmd:1.0.0",
+        "source_url": "https://build.nvidia.com/nvidia/alchemi-bmd",
+        "license": "NVIDIA AI Product Agreement",
+        "parameters": "",
+        "precision": "fp16",
+        "framework": "nim",
+        "domain": "chemistry",
+        "subdomain": "molecular-dynamics",
+        "tags": ["science", "chemistry", "molecular-dynamics", "mace", "nim", "gpu"]
+      }
+    }

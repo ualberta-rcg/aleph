@@ -2,6 +2,36 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-07-18 — model: AlphaFold2 NIM redeployed with downloader init container
+
+**What:** redeployed `nvcr.io/nim/deepmind/alphafold2:2.1.1` on cluster 43 using the same downloader pattern as the big HF models.
+
+- **PVC:** bumped to **1 Ti** so the AlphaFold2 reference databases (`uniref90`, `mgnify`, `small_bfd`, `pdb70`, params) have room to cache.
+- **Downloader:** added an `initContainers` step that runs `download-to-cache --all` with the same NIM image before the serving container starts. This populates `/opt/nim/.cache` on the PVC and avoids the previous startup-probe timeout while databases were downloading.
+- **Progress deadline:** raised to 12 hours so Knative does not kill the pod mid-download.
+- **Routing:** `routing.upstream_path: /predict` + `custom_params.passthrough: true`; public endpoint `/v1/biology/deepmind/alphafold2/predict`.
+- **Status:** databases are downloading; test pending cache completion.
+
+Also added `models/colabfold-msa-search/` — a smaller MSA-search NIM (`nvcr.io/nim/colabfold/msa-search:2.5.0`) using the pdb70-only profile so the cache stays small. Deployed; test pending.
+
+
+## 2026-07-17 — model: four more science NIMs deployed and verified
+
+**What:** deployed and verified ProteinMPNN, DiffDock, Alchemi BGR, and Alchemi BMD NIMs on cluster 43.
+
+- **ProteinMPNN NIM:** `nvcr.io/nim/ipd/proteinmpnn:1.1.0`, endpoint `/v1/biology/ipd/proteinmpnn/predict`,
+  native path `/biology/ipd/proteinmpnn/predict`. `routing.strip_v1_prefix: true` + `custom_params.passthrough: true`.
+  OpenAPI-driven test **9/0/4**.
+- **DiffDock NIM:** `nvcr.io/nim/mit/diffdock:2.3`, endpoint `/v1/molecular-docking/diffdock/generate`,
+  native path `/molecular-docking/diffdock/generate`. `routing.strip_v1_prefix: true` + `custom_params.passthrough: true`.
+  OpenAPI-driven test **9/0/4**.
+- **Alchemi BGR NIM:** `nvcr.io/nim/nvidia/alchemi-bgr:1.0.0`, endpoint `/v1/infer`, native path already `/v1/infer`.
+  `custom_params.passthrough: true`. OpenAPI-driven test **9/0/4**.
+- **Alchemi BMD NIM:** `nvcr.io/nim/nvidia/alchemi-bmd:1.0.0`, endpoint `/v1/infer`, native path already `/v1/infer`.
+  `custom_params.passthrough: true`. OpenAPI-driven test **9/0/4**.
+
+All use bare PVC naming, HAMi vGPU slices, and the shared `models/test.science-openapi-template.py` harness.
+
 
 ## 2026-07-17 — gateway: per-card `upstream_path` override for science NIMs
 

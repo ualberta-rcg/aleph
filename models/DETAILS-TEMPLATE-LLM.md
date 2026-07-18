@@ -87,7 +87,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "CHANGEME (e.g. 30-60 seconds)"
+        "cold_start_estimate": "2-5 minutes"
       },
       "behavior": {
         "supports_vision": false,
@@ -358,7 +358,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "CHANGEME (e.g. 1-2 minutes)"
+        "cold_start_estimate": "2-5 minutes"
       },
       "behavior": {
         "supports_vision": false,

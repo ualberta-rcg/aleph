@@ -1,0 +1,111 @@
+# AlphaFold2: DeepMind protein structure prediction NIM
+# NIM: nvcr.io/nim/deepmind/alphafold2:latest
+# API: POST /predict (native); public /v1/biology/deepmind/alphafold2/predict
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: alphafold2-nim
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline-seconds: "43200"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: download-databases
+        image: nvcr.io/nim/deepmind/alphafold2:2.1.1
+        imagePullPolicy: IfNotPresent
+        command: ["download-to-cache", "--all"]
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+          - name: NIM_CACHE_PATH
+            value: /opt/nim/.cache
+          - name: HOME
+            value: /opt/nim/.cache
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "2"
+            memory: 8Gi
+          limits:
+            cpu: "4"
+            memory: 16Gi
+        volumeMounts:
+          - name: alphafold2-nim
+            mountPath: /opt/nim/.cache
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nim/deepmind/alphafold2:2.1.1
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: NGC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ngc-api-key
+                key: NGC_API_KEY
+          - name: HOME
+            value: /opt/nim/.cache
+          - name: XDG_CACHE_HOME
+            value: /opt/nim/.cache
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "4"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "40960"
+          limits:
+            cpu: "8"
+            memory: 64Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "40960"
+        readinessProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 60
+        startupProbe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 600
+        volumeMounts:
+          - name: alphafold2-nim
+            mountPath: /opt/nim/.cache
+          - name: shm
+            mountPath: /dev/shm
+    imagePullSecrets:
+      - name: ngc-registry-secret
+    volumes:
+      - name: alphafold2-nim
+        persistentVolumeClaim:
+          claimName: alphafold2-nim
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
