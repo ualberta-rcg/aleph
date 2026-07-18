@@ -17,7 +17,27 @@ path does not match the public path can be routed without an nginx sidecar.
 - **Safety:** only cards that explicitly declare `upstream_path` are affected; all existing
   models keep their current upstream path.
 
-## 2026-07-17 — model: new NVIDIA NIM attempts (key rotation + GPU headroom)
+## 2026-07-17 — model: genmol NIM deployed and verified
+
+**What:** corrected `models/genmol/` to use the real NIM image and tag, then deployed and
+verified on cluster 43.
+
+- **Image:** `nvcr.io/nim/nvidia/genmol:2.0` (was `genmol-generate:latest`, which does not exist).
+- **Routing:** `routing.upstream_path: /generate` + `custom_params.passthrough: true`. The NIM's
+  native endpoint is `POST /generate`; the public path is `/v1/biology/nvidia/genmol/generate`.
+- **Response shape:** `{molecules: [{smiles, score}]}`.
+- **Test:** science smoke test passes **4/0** after clean delete+redeploy.
+
+## 2026-07-17 — model: molmim NIM deployed and verified
+
+**What:** corrected `models/molmim/` to use the real NIM image and tag, then deployed and
+verified on cluster 43.
+
+- **Image:** `nvcr.io/nim/nvidia/molmim:1.0.0` (was `molmim-generate:latest`, which does not exist).
+- **Routing:** `routing.upstream_path: /generate` + `custom_params.passthrough: true`. The NIM's
+  native endpoint is `POST /generate`; the public path is `/v1/biology/nvidia/molmim/generate`.
+- **Response shape:** `{generated: [{smiles, score}]}`.
+- **Test:** science smoke test passes **4/0** after clean delete+redeploy.
 
 **What:** rotated `NGC_API_KEY` to the new key across `.env` files and the cluster `models/ngc-api-key`
 secret, then attempted the remaining requested NIMs.

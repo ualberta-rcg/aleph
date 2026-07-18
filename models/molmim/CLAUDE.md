@@ -1,19 +1,18 @@
 # MolMIM — Deploy/Test Notes
 
 ## Overview
-NVIDIA NIM (`nvcr.io/nim/nvidia/molmim`) for generative molecular design.
+NVIDIA NIM (`nvcr.io/nim/nvidia/molmim:1.0.0`) for generative molecular design.
 
 ## Files
 - `pvc.yaml` — RWX cache PVC (`molmim`, 30 Gi)
 - `inferenceservice.yaml` — NIM container on port 8000, HAMi GPU slice
-- `details.yaml` — v2 card with `routing.strip_v1_prefix: true` and `custom_params.passthrough: true`
+- `details.yaml` — v2 card with `routing.upstream_path: /generate` and `custom_params.passthrough: true`
 - `test.py` — minimal smoke test of `/v1/biology/nvidia/molmim/generate`
 
 ## Gateway routing
-The NIM's native endpoint is `/biology/nvidia/molmim/generate` (no `/v1`). The card sets
-`routing.strip_v1_prefix: true`, so the gateway forwards a public request at
-`/v1/biology/nvidia/molmim/generate` upstream as `/biology/nvidia/molmim/generate`.
-`custom_params.passthrough: true` strips the OpenAI `model` and `stream` fields before forwarding.
+The NIM's native endpoint is `POST /generate`. The card sets `routing.upstream_path: /generate`,
+so the gateway forwards a public request at `/v1/biology/nvidia/molmim/generate` upstream as
+`/generate`. `custom_params.passthrough: true` strips the OpenAI `model` and `stream` fields before forwarding.
 
 ## Test fixture
 The smoke test uses aspirin (`CC(=O)Oc1ccccc1C(=O)O`) as the seed SMILES and asks for 3

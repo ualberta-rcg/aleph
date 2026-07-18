@@ -60,6 +60,17 @@ def _molecules(d):
     return []
 
 
+def _first_smiles(mols):
+    if not mols:
+        return ""
+    first = mols[0]
+    if isinstance(first, dict):
+        return first.get("smiles") or ""
+    if isinstance(first, str):
+        return first
+    return ""
+
+
 def shape():
     r = req("POST", ENDPOINT, PAYLOAD)
     if r.status_code != 200:
@@ -74,11 +85,10 @@ def sanity():
     r = req("POST", ENDPOINT, PAYLOAD)
     if r.status_code != 200:
         record("FAIL", r.status_code, "SANITY", f"body={r.text[:120]}"); return
-    mols = _molecules(r.json())
-    first = mols[0] if mols else ""
+    first = _first_smiles(_molecules(r.json()))
     ok = isinstance(first, str) and len(first) > 0
     record("PASS" if ok else "FAIL", r.status_code, "SANITY",
-           f"first_len={len(first) if ok else 0}")
+           f"first_smiles_len={len(first) if ok else 0}")
 
 
 def catalog():

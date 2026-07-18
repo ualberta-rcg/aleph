@@ -1,19 +1,18 @@
 # GenMol — Deploy/Test Notes
 
 ## Overview
-NVIDIA NIM (`nvcr.io/nim/nvidia/genmol-generate`) for generative molecular design.
+NVIDIA NIM (`nvcr.io/nim/nvidia/genmol:2.0`) for generative molecular design.
 
 ## Files
 - `pvc.yaml` — RWX cache PVC (`genmol`, 30 Gi)
 - `inferenceservice.yaml` — NIM container on port 8000, HAMi GPU slice
-- `details.yaml` — v2 card with `routing.strip_v1_prefix: true` and `custom_params.passthrough: true`
+- `details.yaml` — v2 card with `routing.upstream_path: /generate` and `custom_params.passthrough: true`
 - `test.py` — minimal smoke test of `/v1/biology/nvidia/genmol/generate`
 
 ## Gateway routing
-The NIM's native endpoint is `/biology/nvidia/genmol/generate` (no `/v1`). The card sets
-`routing.strip_v1_prefix: true`, so the gateway forwards a public request at
-`/v1/biology/nvidia/genmol/generate` upstream as `/biology/nvidia/genmol/generate`.
-`custom_params.passthrough: true` strips the OpenAI `model` and `stream` fields before forwarding.
+The NIM's native endpoint is `POST /generate`. The card sets `routing.upstream_path: /generate`,
+so the gateway forwards a public request at `/v1/biology/nvidia/genmol/generate` upstream as
+`/generate`. `custom_params.passthrough: true` strips the OpenAI `model` and `stream` fields before forwarding.
 
 ## Test fixture
 The smoke test uses aspirin (`CC(=O)Oc1ccccc1C(=O)O`) as the seed SMILES and asks for 3 molecules.

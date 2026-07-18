@@ -55,12 +55,22 @@ def wake():
 
 
 def _smiles_list(d):
-    # Response shape is not fully documented; try common keys.
-    for key in ("generated_smiles", "smiles", "molecules", "sequences", "output"):
+    for key in ("generated", "generated_smiles", "smiles", "molecules", "sequences", "output"):
         v = d.get(key)
         if isinstance(v, list):
             return v
     return []
+
+
+def _first_smiles(mols):
+    if not mols:
+        return ""
+    first = mols[0]
+    if isinstance(first, dict):
+        return first.get("smiles") or ""
+    if isinstance(first, str):
+        return first
+    return ""
 
 
 def shape():
@@ -77,8 +87,7 @@ def sanity():
     r = req("POST", ENDPOINT, PAYLOAD)
     if r.status_code != 200:
         record("FAIL", r.status_code, "SANITY", f"body={r.text[:120]}"); return
-    smiles = _smiles_list(r.json())
-    first = smiles[0] if smiles else ""
+    first = _first_smiles(_smiles_list(r.json()))
     ok = isinstance(first, str) and len(first) > 0
     record("PASS" if ok else "FAIL", r.status_code, "SANITY",
            f"first_smiles_len={len(first) if ok else 0}")
