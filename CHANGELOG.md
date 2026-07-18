@@ -12,7 +12,7 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
 - **Routing:** `routing.upstream_path: /predict` + `custom_params.passthrough: true`; public endpoint `/v1/biology/deepmind/alphafold2/predict`.
 - **Status:** databases are downloading; test pending cache completion.
 
-Also added `models/colabfold-msa-search/` — a smaller MSA-search NIM (`nvcr.io/nim/colabfold/msa-search:2.5.0`) using the pdb70-only profile so the cache stays small. Deployed; test pending.
+Also added `models/colabfold-msa-search/` — a smaller MSA-search NIM (`nvcr.io/nim/colabfold/msa-search:2.5.0`) using the pdb70-only profile. Deployed and verified; OpenAPI-driven test **9/0/4**.
 
 
 ## 2026-07-17 — model: four more science NIMs deployed and verified
