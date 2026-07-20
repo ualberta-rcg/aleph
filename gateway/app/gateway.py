@@ -1552,6 +1552,14 @@ curl {_MAIN_HOST}/v1/audio/transcriptions -H "Authorization: Bearer $KEY" -F mod
 # Text-to-speech -> audio/mp3
 curl {_MAIN_HOST}/v1/audio/speech -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
   -d '{{"model":"kokoro-82m","input":"Hello world.","voice":"af_heart"}}' -o out.mp3
+# Voice cloning (xtts-v2) — clone a voice from a ~6s reference clip; save_as recalls it later
+curl {_MAIN_HOST}/v1/audio/clone -H "Authorization: Bearer $KEY" \\
+  -F model=xtts-v2 -F "input=This is cloned speech." -F "save_as=demo" -F file=@voice.wav -o out.wav
+#   then reuse the saved voice without re-uploading:
+curl {_MAIN_HOST}/v1/audio/speech -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{{"model":"xtts-v2","input":"Recalled voice.","voice":"demo"}}' -o out.wav
+# List TTS voices (built-in presets + saved clones)
+curl {_MAIN_HOST}/v1/audio/voices -H "Authorization: Bearer $KEY"
 
 # List model ids (JSON)         # The key works in any of these forms:
 curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].id'
@@ -1681,6 +1689,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
        <code>x-api-key</code>, <code>api-key</code>, <code>x-goog-api-key</code>, or <code>?api_key=</code>.</p>
     <p>Endpoints: <code>/v1/chat/completions</code>, <code>/v1/messages</code>, <code>/v1/embeddings</code>,
        <code>/v1/rerank</code>, <code>/v1/audio/transcriptions</code> (STT), <code>/v1/audio/speech</code> (TTS),
+       <code>/v1/audio/clone</code> (voice cloning), <code>/v1/audio/voices</code> (voice listing),
        plus per-model science paths. Open any card for its full parameter map and example.</p>
   </div>
 </div>

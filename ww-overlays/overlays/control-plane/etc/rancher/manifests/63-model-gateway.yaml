@@ -6,9 +6,11 @@
 # The model-gateway is the card-driven FastAPI inference gateway:
 #   MetalLB VIP :80 → Tyk (auth) → model-gateway :8080 → KServe pods (HAMi vGPU)
 #
-# IMAGE: rkhoja/aleph:latest (CI auto-builds on main pushes touching gateway/**; ~4 min).
-#        imagePullPolicy: Always so a rollout restart picks up new builds automatically.
-#        To pin a specific build: kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>
+# IMAGE: pinned to an immutable CI build tag rkhoja/aleph:gateway-<sha> (NOT :latest — avoids
+#        silent drift / accidental rollbacks). CI auto-builds the gateway-<sha> tag on every
+#        gateway/** push (~4 min). Bump this tag here after each gateway commit that you want
+#        live, then let the addon reconcile the Deployment.
+#        imagePullPolicy: IfNotPresent (immutable tag — no re-pull needed).
 #
 # PREREQUISITE: the `models` namespace is created by 62-kserve.yaml. If this manifest
 # applies before that Job completes, k8s will retry — safe, converges automatically.
@@ -130,8 +132,8 @@ spec:
                     values: ["on"]
       containers:
         - name: gateway
-          image: rkhoja/aleph:latest
-          imagePullPolicy: Always
+          image: rkhoja/aleph:gateway-837c457
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
