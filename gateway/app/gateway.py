@@ -1250,6 +1250,7 @@ def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict
         # parameter map — drives the per-model curl example on the web page
         "input_map": card.get("input_map", {}) or {},
         "custom_params": card.get("custom_params", {}) or {},
+        "endpoints": endpoints,
         # allocated compute footprint (live from the ISVC predictor spec)
         "resources": res,
     }
@@ -1351,9 +1352,13 @@ def _example_body(entry: dict) -> tuple[dict | None, str]:
     if ep.startswith("/v1/audio/transcriptions"):
         return None, f"-F model={mid} -F file=@audio.wav"
     body: dict[str, object] = {"model": mid}
-    # custom_params.schema fields are model-specific knobs worth surfacing
+    # custom_params.schema fields are model-specific knobs worth surfacing; a field
+    # may opt out of the auto-generated example (example:false) while staying in the
+    # parameter table — e.g. large/binary or secondary-endpoint-only params.
     schema = ((entry.get("custom_params") or {}).get("schema") or {})
     for k, v in schema.items():
+        if isinstance(v, dict) and v.get("example") is False:
+            continue
         body[k] = _example_value(k, v)
     imap = entry.get("input_map") or {}
     if ep.startswith("/v1/audio/speech") and not imap:
@@ -1366,6 +1371,8 @@ def _example_body(entry: dict) -> tuple[dict | None, str]:
         else:
             # nested object map (weather/crystal patterns) — placeholder scalar
             body[k] = "<see input map>"
+    if ep.startswith("/v1/audio/speech") and body.get("input") == "text":
+        body["input"] = "Hello world."
     # trim noisy placeholders for the curl line
     return body, ""
 
@@ -1507,6 +1514,28 @@ def _catalog_html() -> str:
         else:
             params_html = ""
 
+        # voice-cloning example for cards that expose a clone endpoint (e.g. xtts-v2)
+        eps = e.get("endpoints") or {}
+        clone_html = ""
+        if eps.get("clone"):
+            clone_curl = (
+                f'# 1. clone a voice from a ~6s reference clip (WAV)\n'
+                f'curl {_MAIN_HOST}{eps["clone"]} -H "Authorization: Bearer $KEY" \\\n'
+                f'  -F model={e["id"]} -F file=@voice.wav '
+                f'-F "input=Text to speak in the cloned voice" \\\n'
+                f'  -F save_as=myvoice -o cloned.wav\n'
+                f'# 2. recall the saved voice by name (no clip needed)\n'
+                f'curl {ep_url} -H "Authorization: Bearer $KEY" '
+                f'-H "Content-Type: application/json" \\\n'
+                f'  -d \'{{"model":"{e["id"]}","input":"More text","voice":"myvoice"}}\''
+                f' --output recall.wav')
+            if eps.get("voices"):
+                clone_curl += (f'\n# list built-in preset voices + saved clones\n'
+                               f'curl "{_MAIN_HOST}{eps["voices"]}?model={e["id"]}" '
+                               f'-H "Authorization: Bearer $KEY"')
+            clone_html = ('<details><summary>voice cloning</summary>'
+                          f'<pre>{esc(clone_curl)}</pre></details>')
+
         search = " ".join(str(x) for x in (
             e["id"], e.get("type"), e.get("description"), e.get("domain"),
             e.get("subdomain"), "scaled up" if up else "scaled to zero",
@@ -1524,6 +1553,7 @@ def _catalog_html() -> str:
           <div class="ep"><span class="k">endpoint</span> <a href="{esc(ep_url)}">{esc(ep_url)}</a></div>
           <details><summary>curl example</summary><pre>{esc(curl)}</pre></details>
           {params_html}
+          {clone_html}
           {wake_html}
         </article>""")
 

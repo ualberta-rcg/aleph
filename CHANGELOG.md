@@ -2,6 +2,24 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-07-20 — gateway: xtts-v2 card shows voice cloning + specific parameters
+
+**What:** the xtts-v2 catalog card on the gateway page now leads with voice cloning and its
+parameter table is specific (was: generic `custom_params` entries with thin/no notes, and a
+hardcoded `af_heart` example voice from kokoro).
+
+- **Card (`models/xtts-v2/details.yaml`):** moved `input`/`language`/`voice` into `input_map` with
+  full descriptions (17-language list, preset-vs-saved-clone `voice` semantics); `speed`,
+  `voice_sample`, `save_as` stay in `custom_params.schema` with endpoint-prefixed notes;
+  `voice_sample`/`save_as` marked `"example": false` (kept in the table, excluded from the
+  auto-generated curl example); descriptions now lead with cloning.
+- **Gateway renderer (`gateway/app/gateway.py`):**
+  - `_model_entry` now exposes the card's `endpoints` map to the page renderer.
+  - `_example_body` skips schema fields with `"example": false`; speech examples use
+    `"Hello world."` instead of the generic `"text"`.
+  - `_catalog_html` renders a **voice cloning** example block (clone → recall-by-name → list
+    voices) on any card whose `endpoints` map has a `clone` path. Additive; other cards unaffected.
+
 ## 2026-07-19 — model: xtts-v2 voice cloning
 
 **What:** wired up Coqui XTTS-v2 voice cloning (from a reference clip) end-to-end through the

@@ -39,21 +39,23 @@ data:
         "thinking": { "mode": "none" },
         "max_tokens": { "field": null }
       },
+      "input_map": {
+        "input": { "type": "string", "required": true, "description": "Text to synthesize into speech (all endpoints)." },
+        "language": { "type": "string", "default": "en", "description": "Language code; 17 supported (en/es/fr/de/it/pt/pl/tr/ru/nl/cs/ar/zh/ja/hu/ko/hi)." },
+        "voice": { "type": "string", "default": "Claribel Dervla", "description": "/v1/audio/speech: built-in preset name OR a saved clone name (see /v1/audio/voices)." }
+      },
       "custom_params": {
         "schema": {
-          "input": { "type": "string", "required": true },
-          "language": { "type": "string", "default": "en" },
-          "voice": { "type": "string", "description": "built-in preset name OR a saved clone name (see /v1/audio/voices)" },
-          "speed": { "type": "number", "default": 1.0 },
-          "voice_sample": { "type": "string", "description": "base64-encoded reference WAV for /v1/audio/clone" },
-          "save_as": { "type": "string", "description": "persist a cloned clip on the PVC to recall by name" }
+          "speed": { "type": "number", "default": 1.0, "description": "Speech speed multiplier (0.5-2.0); applies to speech + clone." },
+          "voice_sample": { "type": "string", "example": false, "description": "/v1/audio/clone: base64 WAV (~6s clip of the voice to clone)." },
+          "save_as": { "type": "string", "example": false, "description": "/v1/audio/clone: name to persist the clip; recall later with voice=<name>." }
         },
         "passthrough": true
       },
       "schema_version": 2,
       "catalog": {
-        "description_short": "Coqui XTTS-v2 multilingual TTS + voice cloning from a reference clip (17 langs, GPU)",
-        "description": "XTTS-v2 (coqui/XTTS-v2) multilingual text-to-speech with voice cloning from a ~6s reference WAV. POST /v1/audio/clone to clone a voice (multipart 'file' upload or JSON base64 'voice_sample'); pass 'save_as=<name>' to persist the clip on the PVC and recall it by name via /v1/audio/speech {voice:\"<name>\"}. GET /v1/audio/voices lists built-in presets and saved clones. 17 languages, 24kHz WAV output. ~1.8B params, GPU (HAMi vGPU slice).",
+        "description_short": "Coqui XTTS-v2: multilingual TTS + voice cloning from a ~6s reference clip (17 langs, GPU).",
+        "description": "Coqui XTTS-v2: multilingual text-to-speech PLUS voice cloning from a ~6s reference clip. POST /v1/audio/clone to clone a voice (multipart 'file' upload or JSON base64 'voice_sample'); pass 'save_as=<name>' to persist the clip on the PVC and recall it by name via /v1/audio/speech {voice:\"<name>\"}. GET /v1/audio/voices lists built-in presets and saved clones. 17 languages, 24kHz WAV output. ~1.8B params, GPU (HAMi vGPU slice).",
         "owned_by": "coqui",
         "source": "coqui/XTTS-v2",
         "source_url": "https://huggingface.co/coqui/XTTS-v2",
