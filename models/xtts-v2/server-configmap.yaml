@@ -5,24 +5,98 @@ metadata:
   namespace: models
 data:
   server.py: |
-    """XTTS-v2 text-to-speech server."""
-    import os, io, base64, asyncio
-    from fastapi import FastAPI
+    """XTTS-v2 text-to-speech + voice-cloning server.
+
+    Endpoints (all additive over the original preset-voice server):
+      GET  /health
+      GET  /v1/models
+      GET  /v1/audio/voices              -> {voices:[built-ins], saved:[names], default}
+      POST /v1/audio/speech              -> preset OR recalled saved voice (audio/wav)
+      POST /v1/audio/clone               -> clone from a reference clip (audio/wav)
+
+    Voice cloning: XTTS clones a voice from a ~6s reference WAV via the Coqui
+    `speaker_wav` argument. Cloned clips can be persisted on the PVC
+    (`/data/voices/<name>.wav`) with `save_as=<name>` and then recalled by name
+    in `/v1/audio/speech {voice:"<name>"}` without re-uploading.
+    """
+    import os, io, re, base64, asyncio, tempfile
+    from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse, Response
     import uvicorn
 
     MODEL_NAME = "xtts-v2"
     CACHE_DIR = os.environ.get("HF_HOME", "/data/xtts-cache")
+    VOICES_DIR = "/data/voices"           # persisted cloned voices on the PVC
+    # Synth output goes to tmpfs when available (avoids any overlay/NFS round-trip
+    # on the tts_to_file write + re-read).
+    TMP_DIR = "/dev/shm" if os.path.isdir("/dev/shm") else None
 
     app = FastAPI()
     tts = None
     SPEAKERS = []          # built-in speaker names
     DEFAULT_SPEAKER = None
 
+    def _ensure_voices_dir():
+        try:
+            os.makedirs(VOICES_DIR, exist_ok=True)
+        except Exception as e:
+            print(f"voices dir unavailable: {e}", flush=True)
+
+    def _sanitize_name(name):
+        """Lowercase, alnum + dash only, non-empty; else None."""
+        if not isinstance(name, str):
+            return None
+        n = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+        return n or None
+
+    def _list_saved():
+        try:
+            return sorted(f[:-4] for f in os.listdir(VOICES_DIR)
+                          if f.lower().endswith(".wav"))
+        except Exception:
+            return []
+
+    def _saved_path(name):
+        n = _sanitize_name(name)
+        if not n:
+            return None
+        p = os.path.join(VOICES_DIR, n + ".wav")
+        return p if os.path.isfile(p) else None
+
+    def _patch_audio_load():
+        """torchaudio 2.11 defaults to the torchcodec backend, which isn't
+        installed here; Coqui's xtts.load_audio calls torchaudio.load directly.
+        Redirect it to soundfile (libsndfile: wav/flac/ogg/mp3) so cloning can
+        read reference clips. Returns (tensor[C,T], sample_rate) like torchaudio.
+        """
+        import torchaudio, torch
+        try:
+            import soundfile as sf
+        except Exception:
+            sf = None
+        try:
+            import librosa
+        except Exception:
+            librosa = None
+
+        def _load(filepath, *args, **kwargs):
+            if sf is not None:
+                data, sr = sf.read(filepath, always_2d=True, dtype="float32")
+                t = torch.from_numpy(data).T.contiguous().float()   # [C, frames]
+                return t, sr
+            if librosa is not None:
+                import numpy as np
+                data, sr = librosa.load(filepath, sr=None, mono=False)
+                arr = np.atleast_2d(data)
+                return torch.from_numpy(arr).float(), sr
+            raise RuntimeError("no audio backend available (soundfile/librosa missing)")
+        torchaudio.load = _load
+
     def load():
         global tts, SPEAKERS, DEFAULT_SPEAKER
         import os
         os.environ["COQUI_TOS_AGREED"] = "1"
+        _ensure_voices_dir()
         # PyTorch 2.6 changed torch.load default to weights_only=True which
         # breaks TTS checkpoint loading. Patch it before importing TTS.
         import torch
@@ -31,6 +105,8 @@ data:
             kwargs.setdefault("weights_only", False)
             return _orig_load(*args, **kwargs)
         torch.load = _patched_load
+        # torchaudio 2.11 needs torchcodec by default (absent) — patch before TTS.
+        _patch_audio_load()
         from TTS.api import TTS
         print(f"Loading {MODEL_NAME}...", flush=True)
         tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=True, progress_bar=False)
@@ -60,13 +136,18 @@ data:
 
     @app.get("/v1/audio/voices")
     async def voices():
-        return {"voices": SPEAKERS, "default": DEFAULT_SPEAKER}
+        # `voices` keeps the built-in list (back-compat); `saved` lists recalled clones.
+        return {"voices": SPEAKERS, "saved": _list_saved(), "default": DEFAULT_SPEAKER}
 
-    def _synthesize(text, language="en", speaker=None):
-        import tempfile
-        spk = speaker if (speaker and speaker in SPEAKERS) else DEFAULT_SPEAKER
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            tts.tts_to_file(text=text, speaker=spk, language=language, file_path=f.name)
+    def _synthesize(text, language="en", speaker=None, speaker_wav=None, speed=1.0):
+        kwargs = dict(text=text, language=language, speed=speed)
+        if speaker_wav:
+            kwargs["speaker_wav"] = speaker_wav          # clone path
+        else:
+            spk = speaker if (speaker and speaker in SPEAKERS) else DEFAULT_SPEAKER
+            kwargs["speaker"] = spk                       # preset path (unchanged)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=TMP_DIR) as f:
+            tts.tts_to_file(file_path=f.name, **kwargs)
             with open(f.name, "rb") as audio_file:
                 return audio_file.read()
 
@@ -78,10 +159,128 @@ data:
         if not text:
             return JSONResponse({"error": "input text required"}, 400)
         language = request.get("language", "en")
-        # OpenAI sends `voice`; map it to an XTTS built-in speaker name.
-        speaker = request.get("voice") or request.get("speaker")
-        audio = await asyncio.get_event_loop().run_in_executor(None, _synthesize, text, language, speaker)
+        # OpenAI sends `voice`; map it to an XTTS built-in speaker name OR a
+        # recalled saved clone (PVC `/data/voices/<name>.wav`).
+        name = request.get("voice") or request.get("speaker")
+        speaker_wav = _saved_path(name) if name else None
+        speaker = None if speaker_wav else name
+        speed = request.get("speed") or 1.0
+        try:
+            speed = float(speed)
+        except Exception:
+            speed = 1.0
+        audio = await asyncio.get_event_loop().run_in_executor(
+            None, _synthesize, text, language, speaker, speaker_wav, speed)
         return Response(content=audio, media_type="audio/wav")
+
+    def _decode_sample(raw):
+        """Accept raw base64 or a data URI; return bytes or None."""
+        if not raw:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "ignore")
+        if "," in raw and ";base64," in raw:        # data:audio/wav;base64,....
+            raw = raw.split(",", 1)[1]
+        try:
+            b = base64.b64decode(raw, validate=False)
+            return b or None
+        except Exception:
+            return None
+
+    def _persist_sample(wav_bytes, save_as):
+        n = _sanitize_name(save_as)
+        if not n:
+            return None
+        try:
+            _ensure_voices_dir()
+            path = os.path.join(VOICES_DIR, n + ".wav")
+            with open(path, "wb") as f:
+                f.write(wav_bytes)
+            return path
+        except Exception as e:
+            print(f"save_as failed: {e}", flush=True)
+            return None
+
+    @app.post("/v1/audio/clone")
+    async def clone(request: Request):
+        """Clone a voice from a reference WAV.
+
+        Multipart:  model?, input, language?, speed?, save_as?, file|voice=@ref.wav
+        JSON:       {model?, input, language?, speed?, save_as?, voice_sample: <b64 wav>}
+        """
+        if tts is None:
+            return JSONResponse({"error": "model loading"}, 503)
+        ctype = request.headers.get("content-type", "").lower()
+        text = language = save_as = sample = None
+        speed = 1.0
+
+        if ctype.startswith("multipart/"):
+            try:
+                form = await request.form()
+            except Exception:
+                form = None
+            if form is None:
+                return JSONResponse({"error": "invalid multipart body"}, 400)
+            for k, v in form.multi_items():
+                lk = k.lower()
+                if hasattr(v, "read"):              # UploadFile
+                    sample = await v.read()
+                elif lk in ("file", "voice", "voice_sample", "audio"):
+                    # accept a field that just carries base64 too
+                    sample = _decode_sample(v) or (v.encode() if isinstance(v, str) else v)
+                elif lk == "input":
+                    text = v
+                elif lk == "language":
+                    language = v
+                elif lk == "save_as":
+                    save_as = v
+                elif lk == "speed":
+                    try: speed = float(v)
+                    except Exception: pass
+        else:
+            try:
+                body = await request.json()
+            except Exception:
+                try:
+                    body = request.query_params
+                except Exception:
+                    body = {}
+            text = body.get("input")
+            language = body.get("language", "en")
+            save_as = body.get("save_as")
+            try: speed = float(body.get("speed") or 1.0)
+            except Exception: pass
+            sample = _decode_sample(body.get("voice_sample"))
+
+        if not text:
+            return JSONResponse({"error": "input text required"}, 400)
+        if not sample or not isinstance(sample, (bytes, bytearray)) or len(sample) < 44:
+            return JSONResponse({"error": "reference audio required (multipart 'file' or JSON base64 'voice_sample')"}, 400)
+        if language is None:
+            language = "en"
+
+        sample_bytes = bytes(sample)
+        # Persist first (so recall-by-name works even on the first clone), and use
+        # the PVC copy as the speaker_wav source when saved.
+        saved = _persist_sample(sample_bytes, save_as) if save_as else None
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            ref = saved
+            if not ref:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=TMP_DIR) as f:
+                    f.write(sample_bytes)
+                    ref = f.name
+            try:
+                return _synthesize(text, language, speaker=None, speaker_wav=ref, speed=speed)
+            finally:
+                if not saved and ref:
+                    try: os.unlink(ref)
+                    except Exception: pass
+
+        audio = await loop.run_in_executor(None, _run)
+        return Response(content=audio, media_type="audio/wav",
+                        headers={"X-Voice-Saved": save_as} if saved else {})
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)

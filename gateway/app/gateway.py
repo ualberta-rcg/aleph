@@ -2421,6 +2421,111 @@ async def audio_speech(request: Request):
                                                  "api": "openai"})
 
 
+@app.post("/v1/audio/clone")
+async def audio_clone(request: Request):
+    """Voice cloning (XTTS). Multipart upload of a reference clip, or JSON with
+    a base64 `voice_sample`. Resolves the model from the form/body (defaults to
+    `xtts-v2` — currently the cluster's only cloner — so callers may omit it),
+    rebuilds the upstream multipart so the boundary is valid, and returns the
+    raw audio/wav bytes. Registered before the catch-all so multipart uploads
+    don't hit forward_custom's JSON-only model parser. Mirrors audio_transcriptions.
+    """
+    _METRICS["requests_total"] += 1
+    ctype = request.headers.get("content-type", "").lower()
+    model_id = None
+    fwd: dict = {}
+
+    if ctype.startswith("multipart/"):
+        try:
+            form = await request.form()
+        except Exception:
+            form = None
+        if form is None:
+            _METRICS["requests_error"] += 1
+            return JSONResponse({"error": "invalid multipart body"}, 400)
+        data: dict[str, str] = {}
+        files = []
+        for k, v in form.multi_items():
+            lk = k.lower()
+            if hasattr(v, "read"):                       # reference clip upload
+                content = await v.read()
+                files.append((k, (getattr(v, "filename", "ref.wav"),
+                                  content, getattr(v, "content_type", "audio/wav"))))
+            else:
+                sv = v if isinstance(v, str) else str(v)
+                data[k] = sv
+                if lk == "model":
+                    model_id = sv
+        fwd = {"data": data, "files": files or None}
+    else:
+        try:
+            parsed = json.loads(await request.body())
+        except Exception:
+            _METRICS["requests_error"] += 1
+            return JSONResponse({"error": "invalid JSON body"}, 400)
+        model_id = parsed.get("model")
+        fwd = {"json": parsed}
+
+    if not model_id:
+        model_id = "xtts-v2"          # cluster's only cloner; let callers omit it
+        if isinstance(fwd.get("data"), dict):
+            fwd["data"]["model"] = model_id
+        elif isinstance(fwd.get("json"), dict):
+            fwd["json"]["model"] = model_id
+
+    info = resolve(model_id)
+    if not info:
+        _METRICS["requests_error"] += 1
+        return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    cold = await _guard_cold(request, info, "/v1/audio/clone", "openai")
+    if cold is not None:
+        return cold
+    if isinstance(fwd.get("data"), dict):
+        _apply_upstream_model_id(info, fwd["data"])
+    elif isinstance(fwd.get("json"), dict):
+        _apply_upstream_model_id(info, fwd["json"])
+
+    fwd_post = {k: v for k, v in fwd.items() if v is not None}
+    host_hdr = {"Host": info["host"]}
+    url = upstream_url("/v1/audio/clone")
+    t0 = time.monotonic()
+    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+        r = await c.post(url, headers=host_hdr, **fwd_post)
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    _log_usage(request, info, status=r.status_code, latency_ms=latency_ms,
+               endpoint="/v1/audio/clone", api="openai")
+    if r.status_code >= 400:
+        _METRICS["requests_error"] += 1
+    return Response(content=r.content, status_code=r.status_code,
+                    media_type=r.headers.get("content-type", "application/json"))
+
+
+@app.get("/v1/audio/voices")
+async def audio_voices(request: Request):
+    """List available TTS voices (built-in presets + saved clones). Resolves the
+    model from ?model= (defaults to `xtts-v2`). Registered before the catch-all,
+    which would otherwise 400 a bodyless GET."""
+    _METRICS["requests_total"] += 1
+    model_id = request.query_params.get("model", "xtts-v2")
+    info = resolve(model_id)
+    if not info:
+        _METRICS["requests_error"] += 1
+        return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    cold = await _guard_cold(request, info, "/v1/audio/voices", "openai")
+    if cold is not None:
+        return cold
+    t0 = time.monotonic()
+    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+        r = await c.get(upstream_url("/v1/audio/voices"), headers={"Host": info["host"]})
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    _log_usage(request, info, status=r.status_code, latency_ms=latency_ms,
+               endpoint="/v1/audio/voices", api="openai")
+    if r.status_code >= 400:
+        _METRICS["requests_error"] += 1
+    return Response(content=r.content, status_code=r.status_code,
+                    media_type=r.headers.get("content-type", "application/json"))
+
+
 @app.api_route("/v1/{path:path}", methods=["POST", "GET"])
 async def forward_custom(path: str, request: Request):
     """Catch-all forward for science / custom server.py models. Registered last."""

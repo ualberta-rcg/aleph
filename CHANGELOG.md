@@ -2,6 +2,35 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-07-19 — model: xtts-v2 voice cloning
+
+**What:** wired up Coqui XTTS-v2 voice cloning (from a reference clip) end-to-end through the
+gateway. The engine always supported it (`TTS.tts_to_file(speaker_wav=…)`); only the integration
+was missing.
+
+- **Server (`models/xtts-v2/server-configmap.yaml`):**
+  - new `POST /v1/audio/clone` — multipart `file=@ref.wav` (fields: `model?, input, language?,
+    speed?, save_as?`) **or** JSON `{voice_sample: <base64 wav>}`. `save_as=<name>` persists the
+    clip on the PVC.
+  - `_synthesize(..., speaker_wav=…)` now drives the clone path; `/v1/audio/speech` resolves
+    `voice` against saved clones first, then built-in presets, then the default (additive —
+    preset behaviour unchanged).
+  - `GET /v1/audio/voices` now also returns `saved` (cloned names).
+  - saved clones persist at `/data/voices/<sanitized>.wav` on the `xtts-v2` PVC (recall by name).
+  - **Bug fix:** torchaudio 2.11 defaults to the `torchcodec` backend (absent here) → Coqui's
+    `xtts.load_audio` 500'd on clone. Monkeypatch `torchaudio.load` to use `soundfile` (already in
+    the venv; `librosa` fallback). Preset TTS was unaffected.
+  - synth output → `/dev/shm` tmpfs (small speed-up; falls back to the default temp dir).
+- **Gateway (`gateway/app/gateway.py`):** two new backward-compatible handlers registered before the
+  catch-all — `POST /v1/audio/clone` (multipart + JSON; resolves `model`, defaults to `xtts-v2`) and
+  `GET /v1/audio/voices`. Existing `/v1/audio/speech`, `/v1/audio/transcriptions`, and the catch-all
+  are untouched.
+- **Card/docs:** `details.yaml` adds `clone`/`voices` endpoints + clone params; `test.py` adds
+  base64 clone, multipart clone + `save_as`, saved-voice recall, and the voices listing; README/CLAUDE
+  + MODEL-STATUS updated.
+- **Status:** cloning proven in-pod (base64 + multipart + save_as + recall + preset regression all
+  200/RIFF); gateway rollout + E2E test pending CI build of the new gateway image.
+
 ## 2026-07-18 — model: AlphaFold2 NIM redeployed with downloader init container
 
 **What:** redeployed `nvcr.io/nim/deepmind/alphafold2:2.1.1` on cluster 43 using the same downloader pattern as the big HF models.
