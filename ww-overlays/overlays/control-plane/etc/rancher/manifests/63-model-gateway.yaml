@@ -132,7 +132,7 @@ spec:
                     values: ["on"]
       containers:
         - name: gateway
-          image: rkhoja/aleph:gateway-837c457
+          image: rkhoja/aleph:gateway-7b15415
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
