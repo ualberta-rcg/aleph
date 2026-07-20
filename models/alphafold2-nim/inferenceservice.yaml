@@ -11,6 +11,11 @@ metadata:
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     serving.knative.dev/progress-deadline-seconds: "43200"
+    # PARKED 2026-07-20: inference path unverified (upstream_path fix in details.yaml
+    # untested); was holding a whole L40S slice at minReplicas=1. Remove this annotation
+    # to re-enable once the predict path is verified. Card ConfigMap also removed from
+    # the cluster while parked (repo copy retained here).
+    serving.kserve.io/stop: "true"
 spec:
   predictor:
     affinity:
