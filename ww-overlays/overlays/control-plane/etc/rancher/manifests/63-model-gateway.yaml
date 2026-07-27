@@ -17,6 +17,13 @@
 #
 # The gateway is pinned to control-plane (non-GPU) VMs so it never competes with model pods
 # for GPU-node resources. Stateless: all state is in K8s ConfigMaps/ISVCs via K8s Watches.
+#
+# SIZING (sized for ~200 concurrent streaming users): 3 replicas spread across the 3 CP
+# nodes (podAntiAffinity), 2 cores / 1Gi each. The original 1×(500m/512Mi) replica CFS-
+# throttled its single uvicorn event loop under load, which made the 1s /healthz liveness
+# probe time out → kubelet killed the healthy pod → CrashLoopBackOff → the whole inference
+# edge went dark (it is the only front door for all models). Probes are now lenient enough
+# (3s liveness + a 3-min startupProbe) that card-seeding and transient stalls never trip it.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -108,7 +115,13 @@ metadata:
   labels:
     app: model-gateway
 spec:
-  replicas: 1
+  replicas: 3
+  # Edge: never drop below desired during a rollout, so restarts/updates are zero-downtime.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: model-gateway
@@ -130,6 +143,17 @@ spec:
                   - key: gpu
                     operator: NotIn
                     values: ["on"]
+        # Spread the replicas across control-plane nodes so a node loss or a restart
+        # never drops the inference edge, and so we don't stack replicas on whichever
+        # CP node is already CPU-limit-overcommitted.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: model-gateway
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
           image: rkhoja/aleph:gateway-13ddff7
@@ -151,24 +175,40 @@ spec:
             - name: usage-log
               mountPath: /var/log/aleph
           resources:
+            # Sized for ~200 concurrent streaming users. Async (I/O-bound) proxy, so
+            # 2 cores/replica x 3 replicas is comfortable headroom. Request 500m
+            # guarantees each pod a half-core so the probe is never starved.
             requests:
-              cpu: 100m
+              cpu: 500m
               memory: 256Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: 2000m
+              memory: 1Gi
+          # startupProbe owns the boot window: /healthz stays 503 until the ~187 model
+          # cards + ISVCs seed from the K8s API. 18 x 10s = 3min budget so a slow seed
+          # never trips liveness.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 18
           readinessProbe:
             httpGet:
               path: /readyz
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 5
       volumes:
         # In-pod usage/accounting log. Survives container restarts within the pod
         # lifetime; intentionally NOT a hostPath. Tail with:

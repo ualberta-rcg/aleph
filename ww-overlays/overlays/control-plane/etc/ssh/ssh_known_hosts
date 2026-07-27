@@ -1,0 +1,15 @@
+# System-wide SSH known-hosts entries for hostbased authentication (companion to
+# sshd_config.d/00-hostauth.conf and shosts.equiv).
+#
+# *** MANUAL OVERLAY — the real file is NOT committed (host keys are infra-sensitive). ***
+# It holds the PUBLIC host keys of the trusted Vulcan login nodes so an Aleph control-plane
+# node can verify them during hostbased auth — the path the aleph-tyk-pam PAM hook uses to
+# reach tyk-admin.sh and auto-provision Tyk API keys.
+#
+# At bake time, drop the REAL file from the local manual-overlays/secrets dir over this dummy.
+# The live real version lives on each control-plane node at /etc/ssh/ssh_known_hosts — copy it
+# from a running node if you need the current entries. Regenerate with `ssh-keyscan` if a login
+# node is rebuilt and its host key changes.
+#
+# Format — one entry per line:  hostnames keytype base64 [comment]
+# <login-node-hostnames> ssh-ed25519 AAAA...replace-at-bake...

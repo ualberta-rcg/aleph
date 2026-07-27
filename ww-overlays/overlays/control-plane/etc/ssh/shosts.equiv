@@ -1,0 +1,16 @@
+# System-wide hostbased-auth trust list (companion to sshd_config.d/00-hostauth.conf).
+#
+# *** MANUAL OVERLAY — the real file is NOT committed. ***
+# It lists the Vulcan login nodes whose users may SSH to this Aleph control-plane node via
+# hostbased authentication (the login node vouches for the user; its host key must appear in
+# /etc/ssh/ssh_known_hosts). This is how the aleph-tyk-pam PAM hook on a login node reaches
+# tyk-admin.sh here to auto-provision every user's Tyk API key at login.
+#
+# At bake time, drop the REAL file (one trusted login-node IP per line) from the local
+# manual-overlays/secrets dir over this dummy. The live real version lives on each control-plane
+# node at /etc/ssh/shosts.equiv — copy it from a running node if you need the current set.
+#
+# Format — one IP (or hostname) per line:
+# <login-node-1-ip>
+# <login-node-2-ip>
+# <login-node-3-ip>

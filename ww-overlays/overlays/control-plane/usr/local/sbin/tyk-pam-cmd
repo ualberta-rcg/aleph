@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# tyk-pam-cmd — SSH forced-command wrapper for the Vulcan login-node PAM key.
+# Install as command="..." in /root/.ssh/authorized_keys on each Aleph
+# control-plane node (aleph1/2/3) for the dedicated aleph-tyk-login public key
+# (see etc/ssh/aleph-tyk.authorized_keys). Only used in HARDENING mode; in
+# default/hostbased mode the login node reaches tyk-admin.sh directly.
+#
+# Accepts EXACTLY the wire format the hook sends (leading "tyk-admin.sh"
+# optional), validates every token, and execs tyk-admin.sh. account is forced to
+# <identity> and type to "user" — the only caller-controlled inputs are the
+# username and (for validate-key) the key. $SSH_ORIGINAL_COMMAND is tokenized
+# with `read -a` and NEVER passed to a shell, so metachars cannot inject.
+#
+#   [tyk-admin.sh] add-user <identity>            -> create (acct=<id>, type=user)
+#   [tyk-admin.sh] update-user <identity>         -> rotate
+#   [tyk-admin.sh] validate-key <identity> <key>  -> check
+#
+# Runs as root on an Aleph control-plane node. tyk-admin.sh (on PATH) reads the
+# real Tyk admin secret from the in-cluster k8s Secret.
+
+set -u
+
+TYK_ADMIN="${TYK_ADMIN:-/usr/local/bin/tyk-admin.sh}"
+[ -x "$TYK_ADMIN" ] || { echo "denied: tyk-admin.sh not executable" >&2; exit 1; }
+
+read -r -a a <<<"${SSH_ORIGINAL_COMMAND:-}"
+# Drop an optional leading "tyk-admin.sh" so the wrapper accepts the same string
+# the hook sends in both modes.
+[ "${a[0]:-}" = "tyk-admin.sh" ] && a=("${a[@]:1}")
+
+verb="${a[0]:-}"
+id="${a[1]:-}"
+
+valid_id() {  # strict POSIX-ish username ^[a-z_][a-z0-9._-]{1,31}$
+  local s="$1"
+  [ -n "$s" ] || return 1
+  [ "${#s}" -le 32 ] || return 1
+  case "${s:0:1}" in [a-z_]) : ;; *) return 1 ;; esac
+  case "$s" in *[!a-z0-9._-]*) return 1 ;; esac
+  return 0
+}
+valid_key() {  # long URL-safe token; bans whitespace and shell metachars
+  local s="$1"
+  [ -n "$s" ] || return 1
+  [ "${#s}" -ge 16 ] || return 1
+  case "$s" in *[!A-Za-z0-9._-]*) return 1 ;; esac
+  return 0
+}
+
+valid_id "$id" || { echo "denied: bad identity" >&2; exit 1; }
+
+case "$verb" in
+  add-user)
+    exec "$TYK_ADMIN" add-user "$id" "$id" user ;;
+  update-user)
+    exec "$TYK_ADMIN" update-user "$id" "$id" user ;;
+  validate-key)
+    valid_key "${a[2]:-}" || { echo "denied: bad key" >&2; exit 1; }
+    exec "$TYK_ADMIN" validate-key "$id" "${a[2]}" ;;
+  '')
+    echo "denied: no command" >&2; exit 1 ;;
+  *)
+    echo "denied: disallowed verb '$verb'" >&2; exit 1 ;;
+esac

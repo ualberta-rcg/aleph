@@ -2,6 +2,58 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-07-27 — gateway: stop CrashLoop (size for ~200 users) + reconcile edge manifests to live
+
+**What / why:** the model-gateway was in CrashLoopBackOff (74 restarts over ~7d) — not an app bug.
+Its single replica was CFS-throttled at the `500m` CPU limit under streaming load, so the **1-second**
+`/healthz` liveness probe timed out and kubelet killed the *healthy* pod; being a 1-replica edge, each
+kill took the whole inference platform down. Sized it for ~200 concurrent users and reconciled the
+ww-overlays manifests to what's actually deployed (the repo had drifted behind post-deploy TLC — the
+real public IPs weren't known at first bake).
+
+- **`63-model-gateway.yaml`:** 1 → 3 replicas (podAntiAffinity across the 3 CP nodes; RollingUpdate
+  `maxUnavailable: 0` so restarts are zero-downtime); `500m→2000m` CPU and `512Mi→1Gi` (req 500m/256Mi);
+  liveness `timeoutSeconds 1→3`, `failureThreshold 3→5`; added a 3-min `startupProbe` so the ~187-card
+  seed never trips liveness. Applied live (3/3 ready, restarts 0) and mirrored into the repo manifest.
+- **`41-metallb-vip.yaml`:** added the control-plane `nodeSelector` to the L2Advertisement (matches
+  deployed; the VIP is HA across the 3 CP VMs). Kept `__VIP__`/`__PUBLIC_NIC__` tokens (enp6s19, .71).
+- **On-node (operational, not in this commit):** added `42-traefik-loadbalancer.yaml` to the manifests
+  dir so `rke2-traefik-public` — the real public edge LoadBalancer on VIP `.71` — **auto-deploys on
+  startup/reprovision** instead of relying on a one-off `kubectl apply` (an Addon object now owns it);
+  replaced stale on-node `52` (LoadBalancer→ClusterIP:8080, matching deployed Tyk) and `53`
+  (single-API→two-API keyless split, matching the deployed ConfigMap — prevents a reconciler revert).
+  Repo `42/52/53` were already correct; only the node had drifted.
+- **Hostbased-auth overlay (new files):** captured the sshd hostbased-auth setup that lets the
+  aleph-tyk-pam login-node PAM hook reach `tyk-admin.sh` to auto-provision Tyk keys. `00-hostauth.conf`
+  committed (static config). `shosts.equiv` + `ssh_known_hosts` committed as **DUMMY** — the real trust
+  data (login-node IPs + host keys) are MANUAL overlays kept by ops from a running node and swapped at
+  bake; never real key material in git (same convention as the deregister key).
+- **`usr/local/sbin/tyk-pam-cmd` (new):** the aleph-tyk-pam SSH forced-command wrapper — tokenizes
+  `$SSH_ORIGINAL_COMMAND` (never shell-evaluated), validates identity/key, forces `account=<id>`
+  and `type=user`, and execs `tyk-admin.sh add-user/update-user/validate-key`. No secrets (reads the
+  Tyk admin secret via tyk-admin.sh from the in-cluster k8s Secret), committed verbatim. Part of the
+  Tyk-provisioning CP set (not currently on .43; the live hook uses hostbased auth).
+
+**Validation:** `kubectl get pods -n models -l app=model-gateway` → 3× `2/2 Running` r=0; edge curl via
+the VIP returns fast; `rke2-traefik-public` holds `.71`; Tyk svc `ClusterIP/8080`; ConfigMap has
+`model-gateway` + `model-web` defs.
+
+## 2026-07-26 — model: qwen25-coder-32b moved to wake-on-demand (scale-to-zero)
+
+**What:** `qwen25-coder-32b` is no longer pinned always-on; it now follows the platform's
+standard wake-on-demand steady state (`minReplicas: 0`, scales 0→1 on first request, idles back
+after the retention window).
+
+**Why:** coder models see bursty, infrequent traffic — keeping a 2×GPU pod permanently warm is
+wasted GPU reservation. The rest of the always-on set is unaffected.
+
+- **Card (`models/qwen25-coder-32b/details.yaml`):** `scaling` block changed from
+  `scale_to_zero: false / min_replicas: 1 / cold_start_estimate: "Always on"` →
+  `scale_to_zero: true / min_replicas: 0 / cold_start_estimate: "2-4 min"`.
+- **Live cluster:** `kubectl patch isvc qwen25-coder-32b -n models --type merge -p '{"spec":{"predictor":{"minReplicas":0}}}'`
+  applied; ksvc `minScale` annotation left unset (wake-on-demand default).
+- **Validation:** details configmap re-applied; isvc Ready, no `serving.kserve.io/stop` annotation.
+
 ## 2026-07-20 — gateway: xtts-v2 card shows voice cloning + specific parameters
 
 **What:** the xtts-v2 catalog card on the gateway page now leads with voice cloning and its
