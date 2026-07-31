@@ -42,7 +42,7 @@ data:
       "param_translation": {
         "thinking": {
           "mode": "effort",
-          "default_effort": "medium",
+          "default_effort": "low",
           "effort_aliases": {
             "none": "low", "minimal": "low", "disabled": "low",
             "low": "low",
@@ -62,7 +62,7 @@ data:
           "temperature": 1.0,
           "top_p": 1.0,
           "max_tokens": 16384,
-          "thinking": { "enabled": true, "effort": "medium" }
+          "thinking": { "enabled": true, "effort": "low" }
         },
         "meta_tasks": {
           "title":     { "max_tokens": 384, "thinking": { "enabled": false } },

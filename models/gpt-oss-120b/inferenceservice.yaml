@@ -16,14 +16,18 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    # Always-on (warm agentic tier). vLLM max-num-seqs=8 is the real per-pod cap, so
-    # target≈8 packs a pod to its batch limit before adding a replica. Each pod is 2 whole
-    # GPUs (TP2); max 2 caps the flagship at 4 of 8 L40S.
+    # Always-on (warm agentic tier). max-num-seqs=16 (was 8; raised 2026-07-31: at 8 the
+    # engine queued ~7 reqs with KV-cache only ~20% full → batch-request timeouts under
+    # load). scaleTarget stays 8, so knative still scales out at >8 concurrent/pod — the
+    # higher max-num-seqs adds per-pod burst headroom rather than denser packing. To pack
+    # pods fuller (fewer replicas/GPUs) instead, raise scaleTarget toward 16.
+    # Each pod = 2 whole GPUs (TP2). maxReplicas 4 ⇒ up to 8 L40S (all GPUs) under heavy
+    # concurrency — can starve other models; cap with a lower maxReplicas if that bites.
     minReplicas: 1
-    maxReplicas: 2
+    maxReplicas: 4
     scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 300
+    timeout: 600
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -88,7 +92,7 @@ spec:
           # sinks; on L40S the backend is TRITON_ATTN, and TP>1 + prefix-caching
           # returns empty responses (vllm#31422); fp8 breaks sinks.
           - --max-num-seqs
-          - "8"
+          - "16"
           # L40S TP=2 are NODE topology (PCIe via CPU, no NVLink). vLLM's custom
           # all-reduce busy-waits on a P2P path that stalls here (100% util / ~95W,
           # ~0.25 tok/s). Disabling it falls back to NCCL for correct fast transport.
