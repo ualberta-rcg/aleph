@@ -3,7 +3,9 @@
 # Two gateway cards route here via routing.k8s_name: speaches:
 #   kokoro-82m        -> POST /v1/audio/speech        (TTS)
 #   whisper-large-v3  -> POST /v1/audio/transcriptions (STT)
-# GPU: 1x L40S HAMi slice (16 GiB). Always-on (minReplicas: 1).
+# GPU: 1x L40S HAMi slice (8 GiB — whisper-large-v3 fp16 ~3.2G + kokoro ~0.2G + ctx).
+# Always-on (minReplicas: 1); STT/TTS_MODEL_TTL=-1 keeps models resident (needs >=0.9.0-rc.1;
+# 0.8.1 silently ignored the vars and unloaded after 300s — see speaches issue #578).
 # Init prefetches both HF caches once (gated marker) + opens cache perms for the non-root server.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -72,7 +74,7 @@ spec:
           - { name: speaches, mountPath: /data }
     containers:
       - name: speaches
-        image: ghcr.io/speaches-ai/speaches@sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac
+        image: ghcr.io/speaches-ai/speaches@sha256:f4eb14d1c53b19c5bd1f76d10ea9fc10288ceaf82dca09506d3f0ef92ee943de
         imagePullPolicy: IfNotPresent
         ports:
           - { containerPort: 8000, protocol: TCP }
@@ -82,12 +84,13 @@ spec:
           - { name: LOG_LEVEL, value: "info" }
           - { name: STT_MODEL_TTL, value: "-1" }
           - { name: TTS_MODEL_TTL, value: "-1" }
-          - { name: CUDA_VISIBLE_DEVICES, value: "0" }
+          - { name: WHISPER__INFERENCE_DEVICE, value: cuda }
+          - { name: WHISPER__COMPUTE_TYPE, value: float16 }
           - { name: OMP_NUM_THREADS, value: "4" }
           - { name: MKL_NUM_THREADS, value: "4" }
         resources:
-          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
-          limits: { cpu: "8", memory: 16Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+          limits: { cpu: "8", memory: 24Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
         readinessProbe:
           httpGet: { path: /health, port: 8000 }
           initialDelaySeconds: 120
