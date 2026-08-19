@@ -2,6 +2,14 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — gateway live on d9a0960 + UPSTREAM_TIMEOUT 600s
+
+Pinned `63-model-gateway.yaml` to `rkhoja/aleph:gateway-d9a0960` (key fingerprints in usage
+records + capacity-aware scale-from-zero) and set `UPSTREAM_TIMEOUT=600` to match Tyk's 600s
+proxy/read/write timeouts — long reasoning-model generations no longer die at httpx's 300s
+default. Zero-downtime rollout (maxUnavailable 0), 3/3 across CP nodes. Verified: chat
+(stream + non-stream), audio speech, and `key_fp.sha256_8` landing in usage records.
+
 ## 2026-08-19 — Tyk: /v1 auth incident recovery + rate limiting disabled everywhere
 
 **What / why:** after Redis persistence was restored, `/v1/*` auth was re-enabled, but several

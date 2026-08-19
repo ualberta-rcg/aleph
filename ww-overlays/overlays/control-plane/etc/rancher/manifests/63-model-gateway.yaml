@@ -169,7 +169,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
-          image: rkhoja/aleph:gateway-13ddff7
+          image: rkhoja/aleph:gateway-d9a0960
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -184,6 +184,10 @@ spec:
             # subPathExpr isolates each replica into its own directory.
             - name: GATEWAY_USAGE_LOG
               value: /var/log/aleph/usage.log
+            # Long generations (large-context reasoning models) exceed the 300s
+            # httpx default; match Tyk's 600s proxy/read/write timeouts end-to-end.
+            - name: UPSTREAM_TIMEOUT
+              value: "600"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
