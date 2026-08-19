@@ -97,7 +97,15 @@ key_body() {
   "alias": "${identity}",
   "tags": ["aleph", "account:${account}", "type:${itype}"],
   "meta_data": {"identity": "${identity}", "account": "${account}", "identity_type": "${itype}", "source": "tyk-admin", "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"},
-  "access_rights": {"${API_ID}": {"api_id": "${API_ID}", "api_name": "${API_ID}", "versions": ["Default"]}}
+  "rate": 60,
+  "per": 60,
+  "allowance": 60,
+  "expires": 0,
+  "quota_max": -1,
+  "quota_renews": 0,
+  "quota_remaining": -1,
+  "quota_renewal_rate": 0,
+  "access_rights": {"${API_ID}": {"api_id": "${API_ID}", "api_name": "${API_ID}", "versions": ["Default"], "limit": {"rate": 60, "per": 60}}}
 }
 EOF
 }
