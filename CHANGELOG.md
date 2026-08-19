@@ -2,6 +2,20 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — Tyk Redis: persist API keys on nfs-models PVC
+
+**What / why:** Tyk API keys lived only in Redis on an emptyDir. One pod eviction would destroy
+every key forever (raw key strings cannot be re-derived from the stored hashes). `50-tyk-redis.yaml`
+had a comment claiming keys were "recreatable" — that was wrong.
+
+- Enabled Bitnami Redis `master.persistence` (2Gi, `nfs-models`, RWO) and set HelmChart
+  `failurePolicy: abort` so a failed upgrade cannot wipe the release.
+- Live: PVC `redis-data-tyk-redis-master-0` Bound; keys restored from a pre-cutover AOF snapshot;
+  OpenWebUI + RAGFlow original key IDs restored; pod delete left `DBSIZE` intact and
+  `tyk-admin.sh validate-key openwebui` still true.
+- Session export kept at `/root/backups/2026-08-19/tyk-keys-export.json` (aleph1) and
+  `~/hami-cluster-test/backups/2026-08-19/` (login node).
+
 ## 2026-07-27 — gateway: stop CrashLoop (size for ~200 users) + reconcile edge manifests to live
 
 **What / why:** the model-gateway was in CrashLoopBackOff (74 restarts over ~7d) — not an app bug.
