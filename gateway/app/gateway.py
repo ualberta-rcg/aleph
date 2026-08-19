@@ -298,14 +298,17 @@ CARDS: dict[str, dict] = {}
 # ConfigMap name -> card id (so a card whose id is edited/renamed evicts
 # its old id from CARDS instead of leaving a ghost entry until restart).
 CARD_NAME_TO_ID: dict[str, str] = {}
-# isvc_name -> {"ready": bool}
+# isvc_name -> {"ready": bool, "latest_ready_revision": str}
 ISVC_STATE: dict[str, dict] = {}
 # node name -> {aleph.* label: value} (hardware provenance from node-labeler DS)
 NODE_LABELS: dict[str, dict] = {}
 # k8s_name (ISVC) -> {predictor pod name -> node name}. Keyed by pod name (not
 # just node) so a revision rollout's old-pod DELETE can't clobber the new pod's
-# mapping when both land on the same node.
+# mapping when both land on the same node. Includes Pending (GPU occupancy).
 POD_NODE: dict[str, dict[str, str]] = {}
+# k8s_name -> {predictor pod name -> phase}. Running vs Pending; the hot path
+# treats Running>=1 as warm and never consults capacity / the apiserver.
+POD_PHASE: dict[str, dict[str, str]] = {}
 _STATE_LOCK = threading.Lock()
 
 _DISCOVERY = {"cards_seeded": False, "isvc_seeded": False, "last_event": 0.0}
@@ -343,12 +346,14 @@ def _apps() -> "client.AppsV1Api":
 
 
 # ── Scale-to-zero detection ────────────────────────────────────────────────────
-# The ISVC "Ready" condition stays True even when a revision is scaled to zero, so
-# readiness alone can't tell us whether a pod exists. We read the live replica
-# count of the active predictor revision's Deployment (short TTL cache to avoid
-# hammering the apiserver on the request hot path).
+# Warm models (watch-state shows >=1 Running predictor pod) skip this path
+# entirely. The apiserver lookup + GPU-fit math run ONLY when the model looks
+# scaled to zero. Short TTL + single-flight so a burst of cold requests shares
+# one refresh instead of stampeding the apiserver.
 _RR_CACHE: dict[str, tuple[float, int]] = {}
 _RR_TTL = 3.0
+_RR_LOCKS: dict[str, threading.Lock] = {}
+_RR_LOCKS_GUARD = threading.Lock()
 
 
 def _ready_replicas_sync(k8s_name: str) -> int:
@@ -399,9 +404,27 @@ def _ready_replicas(k8s_name: str) -> int:
     ent = _RR_CACHE.get(k8s_name)
     if ent and now - ent[0] < _RR_TTL:
         return ent[1]
-    val = _ready_replicas_sync(k8s_name)
-    _RR_CACHE[k8s_name] = (now, val)
-    return val
+    with _RR_LOCKS_GUARD:
+        lock = _RR_LOCKS.setdefault(k8s_name, threading.Lock())
+    with lock:
+        now = time.time()
+        ent = _RR_CACHE.get(k8s_name)
+        if ent and now - ent[0] < _RR_TTL:
+            return ent[1]
+        val = _ready_replicas_sync(k8s_name)
+        _RR_CACHE[k8s_name] = (now, val)
+        return val
+
+
+def _watch_is_warm(k8s_name: str) -> bool:
+    """True iff the pod watch currently shows >=1 Running predictor pod.
+
+    Pending-only (scale-from-zero in progress, or unschedulable) is not warm —
+    those still go through the capacity/wake path. Warm models never enter it.
+    """
+    with _STATE_LOCK:
+        phases = POD_PHASE.get(k8s_name) or {}
+        return any(p == "Running" for p in phases.values())
 
 
 def _gpu_ask(resources: dict | None) -> dict:
@@ -518,7 +541,15 @@ async def _wake_up(info: dict) -> None:
 async def cold_start_guard(info: dict):
     """If the model is scaled to zero, only wake it when a node can actually
     place the pod. Otherwise refuse without forwarding (no Pending landmine).
-    Returns None when the model is warm."""
+    Returns None when the model is warm.
+
+    Hot path: a model with >=1 Running pod (watch-state) never hits the
+    apiserver or the GPU-fit math. Capacity checks are scale-from-zero only.
+    """
+    if info.get("warm"):
+        return None
+    if _watch_is_warm(info["k8s_name"]):
+        return None
     rr = await asyncio.to_thread(_ready_replicas, info["k8s_name"])
     if rr != 0:
         return None
@@ -612,10 +643,19 @@ def _remove_card(cm: Any) -> None:
 
 
 def _isvc_ready(isvc: dict) -> bool:
+    """Routable if the ISVC is Ready, OR a previous revision is still serving.
+
+    A rolling update that can't schedule the new revision sets Ready=False even
+    while latestReadyRevision is up. Treating that as not-ready 503s a working
+    model (gpt-oss-120b during the minReplicas bump).
+    """
     for c in (isvc.get("status", {}) or {}).get("conditions", []) or []:
-        if c.get("type") == "Ready":
-            return c.get("status") == "True"
-    return False
+        if c.get("type") == "Ready" and c.get("status") == "True":
+            return True
+    pred = ((isvc.get("status", {}) or {}).get("components", {}) or {}).get(
+        "predictor", {}
+    ) or {}
+    return bool(pred.get("latestReadyRevision"))
 
 
 def _parse_cpu(v: Any) -> float | None:
@@ -697,10 +737,14 @@ def _ingest_isvc(isvc: dict) -> None:
     name = isvc.get("metadata", {}).get("name")
     if not name:
         return
+    pred = ((isvc.get("status", {}) or {}).get("components", {}) or {}).get(
+        "predictor", {}
+    ) or {}
     with _STATE_LOCK:
         ISVC_STATE[name] = {
             "ready": _isvc_ready(isvc),
             "resources": _extract_resources(isvc),
+            "latest_ready_revision": pred.get("latestReadyRevision") or "",
         }
 
 
@@ -748,13 +792,21 @@ def _ingest_pod(pod: Any) -> None:
         return
     with _STATE_LOCK:
         pods = POD_NODE.setdefault(isvc, {})
-        if node and phase in ("Running", "Pending"):
-            pods[name] = node
+        phases = POD_PHASE.setdefault(isvc, {})
+        if phase in ("Running", "Pending"):
+            phases[name] = phase
+            if node:
+                pods[name] = node
+            elif name not in pods:
+                pods[name] = ""
         else:
             # Unscheduled / terminating / succeeded-failed: drop this pod.
             pods.pop(name, None)
+            phases.pop(name, None)
             if not pods:
                 POD_NODE.pop(isvc, None)
+            if not phases:
+                POD_PHASE.pop(isvc, None)
 
 
 def _remove_pod(pod: Any) -> None:
@@ -770,6 +822,11 @@ def _remove_pod(pod: Any) -> None:
             pods.pop(name, None)
             if not pods:
                 POD_NODE.pop(isvc, None)
+        phases = POD_PHASE.get(isvc)
+        if phases is not None:
+            phases.pop(name, None)
+            if not phases:
+                POD_PHASE.pop(isvc, None)
 
 
 def _node_for(k8s_name: str) -> str | None:
@@ -929,6 +986,9 @@ def resolve(model_id: str) -> dict | None:
         routing = card.get("routing", {}) or {}
         k8s_name = routing.get("k8s_name") or model_id
         isvc = ISVC_STATE.get(k8s_name, {})
+        phases = POD_PHASE.get(k8s_name) or {}
+        # Cheap: Running>=1 from the in-memory watch. No apiserver, no capacity math.
+        warm = any(p == "Running" for p in phases.values())
         return {
             "id": model_id,
             "card": card,
@@ -936,6 +996,7 @@ def resolve(model_id: str) -> dict | None:
             "k8s_name": k8s_name,
             "host": f"{k8s_name}-predictor.{MODELS_NS}.svc.cluster.local",
             "ready": isvc.get("ready", False),
+            "warm": warm,
             "resources": isvc.get("resources", {}) or {},
             "upstream_model_id": routing.get("upstream_model_id"),
             "no_stream": routing.get("no_stream", False),
@@ -1037,7 +1098,13 @@ def _log_usage(request: Request, info: dict, *, endpoint: str, api: str,
 
 
 async def _guard_cold(request: Request, info: dict, endpoint: str, api: str):
-    """cold_start_guard + log the scale-from-zero event (it has real GPU cost)."""
+    """cold_start_guard + log the scale-from-zero event (it has real GPU cost).
+
+    Warm models (info['warm'] from the in-memory pod watch) skip this entirely —
+    no apiserver, no GPU-fit math, no extra lock.
+    """
+    if info.get("warm"):
+        return None
     cold = await cold_start_guard(info)
     if cold is not None:
         _log_usage(request, info, endpoint=endpoint, api=api, status=503,
@@ -2012,6 +2079,45 @@ def strip_reasoning_obj(data: dict) -> dict:
     return data
 
 
+class _ClientGone(Exception):
+    """Client disconnected; the upstream httpx call was cancelled so vLLM aborts."""
+
+
+async def _post_cancellable(request: Request | None, client: httpx.AsyncClient,
+                            **kwargs) -> httpx.Response:
+    """POST that cancels the upstream request if the caller hangs up.
+
+    Without this, a client cancel-and-retry (maaahmn /v1/responses) leaves the
+    original generation running in vLLM while a new one queues behind it.
+    """
+    if request is None:
+        return await client.post(**kwargs)
+    post_task = asyncio.create_task(client.post(**kwargs))
+    try:
+        while not post_task.done():
+            if await request.is_disconnected():
+                post_task.cancel()
+                try:
+                    await post_task
+                except (asyncio.CancelledError, httpx.RequestError):
+                    pass
+                print("[ABORT] client disconnected; cancelled upstream POST", flush=True)
+                raise _ClientGone()
+            done, _ = await asyncio.wait({post_task}, timeout=0.25)
+            if done:
+                break
+        return post_task.result()
+    except _ClientGone:
+        raise
+    except asyncio.CancelledError:
+        post_task.cancel()
+        raise
+
+
+def _gone_response() -> Response:
+    return Response(status_code=499)
+
+
 async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
                    strip_reasoning: bool | None = None,
                    log_ctx: dict | None = None):
@@ -2073,18 +2179,22 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        # Ensure no_stream models never get stream=true upstream, unless the
-        # card is a science/custom passthrough where `stream` is rejected.
-        custom_params = (info.get("card") or {}).get("custom_params", {}) or {}
-        if info.get("no_stream") and not custom_params.get("passthrough"):
-            try:
-                b = json.loads(body)
-                b["stream"] = False
-                body = json.dumps(b).encode()
-            except Exception:
-                pass
-        r = await c.post(url, content=body, headers=headers)
+    req = (log_ctx or {}).get("request")
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            # Ensure no_stream models never get stream=true upstream, unless the
+            # card is a science/custom passthrough where `stream` is rejected.
+            custom_params = (info.get("card") or {}).get("custom_params", {}) or {}
+            if info.get("no_stream") and not custom_params.get("passthrough"):
+                try:
+                    b = json.loads(body)
+                    b["stream"] = False
+                    body = json.dumps(b).encode()
+                except Exception:
+                    pass
+            r = await _post_cancellable(req, c, url=url, content=body, headers=headers)
+    except _ClientGone:
+        return _gone_response()
     if log_ctx:
         latency_ms = int((time.monotonic() - t0) * 1000)
         u = None
@@ -2123,9 +2233,13 @@ async def embeddings(request: Request):
         parsed["model"] = info["upstream_model_id"]
         body = json.dumps(parsed).encode()
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        r = await c.post(upstream_url("/v1/embeddings"), content=body,
-                         headers=upstream_headers(info))
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            r = await _post_cancellable(
+                request, c, url=upstream_url("/v1/embeddings"), content=body,
+                headers=upstream_headers(info))
+    except _ClientGone:
+        return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
     if r.status_code != 200:
         _METRICS["requests_error"] += 1
@@ -2172,9 +2286,14 @@ async def rerank(request: Request):
     return_documents = bool(parsed.get("return_documents"))
     tei_payload = {"query": query or "", "texts": texts}
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        r = await c.post(upstream_url("/rerank"), content=json.dumps(tei_payload).encode(),
-                         headers=upstream_headers(info))
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            r = await _post_cancellable(
+                request, c, url=upstream_url("/rerank"),
+                content=json.dumps(tei_payload).encode(),
+                headers=upstream_headers(info))
+    except _ClientGone:
+        return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
     if r.status_code != 200:
         _METRICS["requests_error"] += 1
@@ -2253,10 +2372,14 @@ async def chat(request: Request):
     # no_stream card or non-streaming request: force stream=false upstream
     parsed["stream"] = False
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        r = await c.post(upstream_url("/v1/chat/completions"),
-                         content=json.dumps(parsed).encode(),
-                         headers=upstream_headers(info))
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            r = await _post_cancellable(
+                request, c, url=upstream_url("/v1/chat/completions"),
+                content=json.dumps(parsed).encode(),
+                headers=upstream_headers(info))
+    except _ClientGone:
+        return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
     if r.status_code != 200:
         _METRICS["requests_error"] += 1
@@ -2464,8 +2587,12 @@ async def anthropic_messages(request: Request):
 
     oai["stream"] = False
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        r = await c.post(url, content=json.dumps(oai).encode(), headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            r = await _post_cancellable(
+                request, c, url=url, content=json.dumps(oai).encode(), headers=headers)
+    except _ClientGone:
+        return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
     if r.status_code != 200:
         _METRICS["requests_error"] += 1
@@ -2579,8 +2706,11 @@ async def audio_transcriptions(request: Request):
 
     fwd_post = {k: v for k, v in fwd.items() if v is not None}
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        r = await c.post(url, headers=host_hdr, **fwd_post)
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            r = await _post_cancellable(request, c, url=url, headers=host_hdr, **fwd_post)
+    except _ClientGone:
+        return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
     _log_usage(request, info, status=r.status_code, latency_ms=latency_ms, **log_kwargs)
     if r.status_code >= 400:
@@ -2686,8 +2816,11 @@ async def audio_clone(request: Request):
     host_hdr = {"Host": info["host"]}
     url = upstream_url("/v1/audio/clone")
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-        r = await c.post(url, headers=host_hdr, **fwd_post)
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            r = await _post_cancellable(request, c, url=url, headers=host_hdr, **fwd_post)
+    except _ClientGone:
+        return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
     _log_usage(request, info, status=r.status_code, latency_ms=latency_ms,
                endpoint="/v1/audio/clone", api="openai")

@@ -2,6 +2,15 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — gateway: skip capacity checks on warm models + abort on cancel
+
+Warm models (`info["warm"]` from the in-memory pod watch, Running>=1) skip
+`cold_start_guard` entirely — no apiserver lookup, no GPU-fit math. Capacity
+checks and wake-ups run only when the model is actually at zero. Single-flight
+on the rare cold refresh. Also: abort the upstream httpx POST when the client
+disconnects (so vLLM drops cancelled work), and treat an ISVC as routable while
+`latestReadyRevision` still serves even if overall Ready is False (rollout deadlock).
+
 ## 2026-08-19 — Tyk: 60 req/min per key (global)
 
 One client was flooding `/v1/responses` (~55+ req/min, cancel-and-retry) and saturating
