@@ -2,6 +2,12 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — always-up cards: scaling block matches live ISVC minReplicas
+
+Catalog cards for 11 always-up models claimed `min_replicas: 0` / scale-to-zero while the
+live InferenceService ran min 1. Patched live CMs + repo `details.yaml` so the web page
+stops advertising a cold start. ISVCs were not changed.
+
 ## 2026-08-19 — gateway usage logs: RWX PVC (survive pod replacement)
 
 **What / why:** `/var/log/aleph/usage.log` lived on emptyDir inside each of 3 gateway pods —

@@ -8,10 +8,10 @@ verbatim from vLLM), *on what* (gpu product, gpu count, vram, cpu, ram, node),
 and *how long* (latency, derived gpu_seconds), plus whether the call triggered a
 cold start (scale-from-zero) — which carries real GPU cost of its own.
 
-The file stays in-pod on purpose (emptyDir). Ship it to a central log/metrics
-system out of band (promtail/fluent-bit/Prometheus) later; nothing here writes to
-the host. If the file handler cannot be created the logger degrades to stdout so
-accounting events are never silently dropped.
+The file stays on the RWX usage-log PVC (per-pod subdirectory). Ship it to a
+central log/metrics system out of band later; if the file handler cannot be
+created the logger degrades to stdout so accounting events are never silently
+dropped.
 """
 from __future__ import annotations
 
@@ -107,6 +107,7 @@ def record(
     cold_start: bool = False,
     stream: bool = False,
     request_id: str | None = None,
+    key_fp: dict | None = None,
 ) -> None:
     """Emit one accounting record. Never raises."""
     try:
@@ -148,6 +149,8 @@ def record(
         }
         if request_id:
             rec["request_id"] = request_id
+        if key_fp:
+            rec["key_fp"] = key_fp
         _logger.info(json.dumps(rec, separators=(",", ":"), ensure_ascii=False))
         _bump(model, status, prompt, completion, total, cold_start, gpu_seconds)
     except Exception as e:  # pragma: no cover

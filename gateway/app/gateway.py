@@ -12,9 +12,11 @@ handlers, /v1/{custom} forward catch-all, /healthz /readyz /metrics.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -402,6 +404,108 @@ def _ready_replicas(k8s_name: str) -> int:
     return val
 
 
+def _gpu_ask(resources: dict | None) -> dict:
+    """Normalize an ISVC GPU ask into whole-cards vs HAMi slice VRAM.
+
+    Whole-card: nvidia.com/gpu = N and no gpumem (or gpucores 100) — needs N free
+    physical GPUs on a single node (tensor parallel).
+    Slice: nvidia.com/gpumem set — packs onto any card with that much free MiB.
+    """
+    resources = resources or {}
+    try:
+        gpus = int(resources.get("gpus") or 0)
+    except (TypeError, ValueError):
+        gpus = 0
+    try:
+        vram = int(resources.get("vram_mib") or 0)
+    except (TypeError, ValueError):
+        vram = 0
+    try:
+        cores = int(resources.get("gpucores") or 0)
+    except (TypeError, ValueError):
+        cores = 0
+    if vram > 0 and cores != 100:
+        return {"whole_cards": 0, "vram_mib": vram}
+    if gpus > 0:
+        return {"whole_cards": gpus, "vram_mib": 0}
+    return {"whole_cards": 0, "vram_mib": 0}
+
+
+def _place_ask(remaining: list[int], ask: dict) -> bool:
+    """First-fit an ask onto a node's remaining-MiB-per-card list. Mutates remaining."""
+    if ask["whole_cards"]:
+        need = ask["whole_cards"]
+        # A "free" card still has its full capacity (nothing packed on it).
+        full = max(remaining) if remaining else 0
+        idxs = [i for i, m in enumerate(remaining) if m >= full and m > 0]
+        if len(idxs) < need:
+            return False
+        for i in idxs[:need]:
+            remaining[i] = 0
+        return True
+    if ask["vram_mib"]:
+        need = ask["vram_mib"]
+        for i, m in enumerate(remaining):
+            if m >= need:
+                remaining[i] = m - need
+                return True
+        return False
+    return True
+
+
+def _can_schedule(k8s_name: str, resources: dict | None) -> tuple[bool, str]:
+    """Whether a scaled-to-zero model can actually land given current GPU occupancy.
+
+    Fail-open (True) on any math error so a bug never blackholes a model that
+    would have woken under the old behavior.
+    """
+    ask = _gpu_ask(resources)
+    if ask["whole_cards"] == 0 and ask["vram_mib"] == 0:
+        return True, "cpu-only"
+    try:
+        with _STATE_LOCK:
+            nodes = dict(NODE_LABELS)
+            pod_map = {k: dict(v) for k, v in POD_NODE.items()}
+            isvcs = dict(ISVC_STATE)
+        for node, labels in nodes.items():
+            if labels.get("aleph.gpu/product") is None and not str(labels.get("aleph.gpu/count", "")):
+                continue
+            try:
+                n_cards = int(labels.get("aleph.gpu/count") or 4)
+            except (TypeError, ValueError):
+                n_cards = 4
+            try:
+                card_mib = int(labels.get("aleph.gpu/memory-mib") or 46068)
+            except (TypeError, ValueError):
+                card_mib = 46068
+            remaining = [card_mib] * n_cards
+            for isvc_name, pods in pod_map.items():
+                if isvc_name == k8s_name:
+                    continue
+                on_this = sum(1 for n in pods.values() if n == node)
+                if not on_this:
+                    continue
+                other = _gpu_ask((isvcs.get(isvc_name) or {}).get("resources"))
+                for _ in range(on_this):
+                    if not _place_ask(remaining, other):
+                        break
+            trial = list(remaining)
+            if _place_ask(trial, ask):
+                return True, f"fits-on:{node}"
+        kind = f"{ask['whole_cards']}-card" if ask["whole_cards"] else f"{ask['vram_mib']}MiB-slice"
+        return False, f"no-node-has-{kind}"
+    except Exception as e:
+        print(f"[CAPACITY] {k8s_name}: {e}; fail-open", flush=True)
+        return True, "capacity-check-error"
+
+
+def _retry_after_seconds(est: str) -> str:
+    nums = [int(x) for x in re.findall(r"\d+", est or "")]
+    if not nums:
+        return "30"
+    return str(max(nums) * 60)
+
+
 async def _wake_up(info: dict) -> None:
     """Nudge Knative's activator to scale a sleeping revision up from zero."""
     try:
@@ -412,28 +516,45 @@ async def _wake_up(info: dict) -> None:
 
 
 async def cold_start_guard(info: dict):
-    """If the model is scaled to zero, fire an async wake-up and return a friendly
-    503 telling the caller to retry. Returns None when the model is warm."""
+    """If the model is scaled to zero, only wake it when a node can actually
+    place the pod. Otherwise refuse without forwarding (no Pending landmine).
+    Returns None when the model is warm."""
     rr = await asyncio.to_thread(_ready_replicas, info["k8s_name"])
-    if rr == 0:
-        print(f"[SCALE0] {info['id']} at 0 replicas -> wake + 503", flush=True)
-        asyncio.create_task(_wake_up(info))
-        est = (info.get("scaling", {}) or {}).get("cold_start_estimate", "2-5 minutes")
+    if rr != 0:
+        return None
+    ok, why = _can_schedule(info["k8s_name"], info.get("resources"))
+    est = (info.get("scaling", {}) or {}).get("cold_start_estimate", "2-5 minutes")
+    if not ok:
+        print(f"[SCALE0] {info['id']} at 0 replicas -> NO wake ({why})", flush=True)
         return JSONResponse(
             {
                 "error": {
                     "message": (
-                        f"Model '{info['id']}' is starting up (scaled to zero for "
-                        f"efficiency). Please retry in {est}."
+                        f"not enough free GPU capacity to start {info['id']}; "
+                        f"spin-up not scheduled, try again later"
                     ),
-                    "type": "model_starting",
-                    "code": "model_scaled_to_zero",
+                    "type": "model_unavailable",
+                    "code": "insufficient_capacity",
                 }
             },
             status_code=503,
-            headers={"Retry-After": "30"},
+            headers={"Retry-After": "120"},
         )
-    return None
+    print(f"[SCALE0] {info['id']} at 0 replicas -> wake + 503 ({why})", flush=True)
+    asyncio.create_task(_wake_up(info))
+    return JSONResponse(
+        {
+            "error": {
+                "message": (
+                    f"Model '{info['id']}' is spinning up, expected ready in ~{est}."
+                ),
+                "type": "model_starting",
+                "code": "model_scaled_to_zero",
+            }
+        },
+        status_code=503,
+        headers={"Retry-After": _retry_after_seconds(est)},
+    )
 
 
 # ── Card parsing ───────────────────────────────────────────────────────────────
@@ -551,6 +672,12 @@ def _extract_resources(isvc: dict) -> dict:
     if vram is not None:
         try:
             out["vram_mib"] = int(vram)
+        except Exception:
+            pass
+    cores = get("nvidia.com/gpucores")
+    if cores is not None:
+        try:
+            out["gpucores"] = int(cores)
         except Exception:
             pass
     cpu = get("cpu")
@@ -852,6 +979,34 @@ def _identity(request: Request) -> tuple[str, str, str | None]:
     return (ident or "anonymous", itype, acct)
 
 
+def _key_fingerprint(request: Request) -> dict | None:
+    """Hash + last-4 of whatever credential arrived. Never logs the raw key.
+
+    Same lookup order as Tyk normalizeAuth.js: Authorization Bearer, x-api-key,
+    api-key, x-goog-api-key, then query api_key / api-key / key.
+    """
+    key = ""
+    auth = request.headers.get("authorization") or ""
+    m = re.match(r"(?i)^bearer\s+(.+)$", auth.strip())
+    if m:
+        key = m.group(1).strip()
+    elif auth.strip():
+        key = auth.strip()
+    if not key:
+        key = (request.headers.get("x-api-key")
+               or request.headers.get("api-key")
+               or request.headers.get("x-goog-api-key")
+               or "")
+        key = key.strip()
+    if not key:
+        q = request.query_params
+        key = (q.get("api_key") or q.get("api-key") or q.get("key") or "").strip()
+    if not key:
+        return None
+    digest = hashlib.sha256(key.encode("utf-8", errors="replace")).hexdigest()
+    return {"sha256_8": digest[-8:], "last4": key[-4:]}
+
+
 def _limits(info: dict) -> tuple[int, int]:
     """(context_window, max_completion_tokens) declared in the model card."""
     lim = (info.get("card", {}) or {}).get("limits", {}) or {}
@@ -877,6 +1032,7 @@ def _log_usage(request: Request, info: dict, *, endpoint: str, api: str,
         resources=resource_block(info, latency_ms),
         context_window=cw, max_completion_tokens=mct,
         cold_start=cold_start, stream=stream, request_id=request_id,
+        key_fp=_key_fingerprint(request),
     )
 
 
@@ -1485,9 +1641,10 @@ def _catalog_html() -> str:
                       + (f' &mdash; wakes in ~{esc(cold_est)}' if cold_est else '') + '</span>')
             wake_html = (
                 '<details class="wake"><summary>how to scale it up</summary>'
-                '<p class="wake-note">Any request wakes it (0&rarr;1). The first call returns '
+                '<p class="wake-note">Any request wakes it (0&rarr;1) <em>if a GPU is free</em>. The first call returns '
                 '<code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; retry until 200 '
-                '(OpenWebUI does this automatically).</p>'
+                '(OpenWebUI does this automatically). If the cluster is full you get '
+                '<code>503 insufficient_capacity</code> and no pod is started.</p>'
                 f'<pre># retry on 503 until the model is up (~{esc(cold_est or "1-2 min")})\n'
                 f'while ! curl -s -o /dev/null -w "%{{http_code}}" {esc(ep_url)} '
                 f'-H "Authorization: Bearer $KEY" -H "Content-Type: application/json" '
@@ -1711,7 +1868,8 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
     <p>The dot on each card is <span class="doti g"></span> <b>green</b> when scaled up now,
        <span class="doti a"></span> <b>amber</b> when at zero. The first request to a cold model returns
        <code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; retry until 200 (OpenWebUI &amp; most
-       SDKs do this automatically). Each card lists its wake time and a wake-up command.</p>
+       SDKs do this automatically). If there is no free GPU the gateway returns
+       <code>503 insufficient_capacity</code> and does <b>not</b> start a pod. Each card lists its wake time and a wake-up command.</p>
   </div>
   <div class="box"><h3>Use it</h3>
     <p>Point your existing SDK at <code>{_MAIN_HOST}</code>: <b>OpenAI</b> <code>base_url="…/v1"</code>,

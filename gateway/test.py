@@ -75,7 +75,7 @@ def _cold(r):
         code = r.json().get("error", {}).get("code", "")
     except Exception:
         code = ""
-    return code in ("model_scaled_to_zero", "model_starting") or r.status_code == 503
+    return code in ("model_scaled_to_zero", "model_starting", "insufficient_capacity") or r.status_code == 503
 
 
 # ── health / metrics ──────────────────────────────────────────────────────────
