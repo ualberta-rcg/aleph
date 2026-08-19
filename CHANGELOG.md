@@ -2,6 +2,18 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — Tyk: 60 req/min per key (global)
+
+One client was flooding `/v1/responses` (~55+ req/min, cancel-and-retry) and saturating
+qwen35-122b / glm-4 / gpt-oss. Re-enabled rate limiting on `model-gateway` only
+(`disable_rate_limit: false`; `model-web` stays keyless with rate limiting off; quotas still
+off). All 32 sessions set to `rate: 60, per: 60` at both the session and
+`access_rights[model-gateway].limit` (Tyk treats nested `limit.rate: 0` as unlimited even when
+the session rate is set). `tyk-admin.sh add-user` now mints with the same 60/min default.
+
+Verified: 70 sequential `/v1/models` calls → 60×200 then 10×429 `Rate Limit Exceeded`; landing
+page still 200 without a key.
+
 ## 2026-08-19 — gateway live on d9a0960 + UPSTREAM_TIMEOUT 600s
 
 Pinned `63-model-gateway.yaml` to `rkhoja/aleph:gateway-d9a0960` (key fingerprints in usage
