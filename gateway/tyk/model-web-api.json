@@ -17,5 +17,7 @@
   },
   "active": true,
   "enable_context_vars": true,
-  "do_not_track": false
+  "do_not_track": false,
+  "disable_rate_limit": true,
+  "disable_quota": true
 }

@@ -2,6 +2,29 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — Tyk: /v1 auth incident recovery + rate limiting disabled everywhere
+
+**What / why:** after Redis persistence was restored, `/v1/*` auth was re-enabled, but several
+actively-used client keys were unknown to Tyk (minted before a Redis wipe, or raw non-Tyk-format
+strings), so those clients got 403s. Recovered without asking users to re-key where possible.
+
+- Temporarily patched `normalizeAuth.js` (live CM only) to log raw tokens of incoming requests,
+  reconciled every observed token against Tyk sessions, then **removed the logging** and
+  hot-reloaded — the committed middleware never contained the capture code.
+- Registered missing keys with their aliases. Gotcha for raw custom keys (e.g. `sk-…`):
+  the session must carry the API's `org_id` (`orgid`) — Tyk scopes the storage hash by org,
+  so a session POSTed with `org_id: ""` never matches auth lookups for the API. Registered
+  `avani` (raw sk- key) and minted `eureka-llm` this way; 32 sessions total, all active.
+- **Rate limiting + quotas disabled on both APIs** (`disable_rate_limit`, `disable_quota`) —
+  per-key `rate: 0` alone was not sufficient policy; the API-level flags make it explicit.
+- Verified end-to-end matrix on `https://inference.vulcan.alliancecan.ca`: keyless web page,
+  401 with no key, 200 with key, chat (stream + non-stream), `x-api-key` convention,
+  Anthropic `/v1/messages`, `/v1/audio/voices`, `/v1/audio/speech`. Identity aliases confirmed
+  landing in gateway usage logs (`identity: rahimk`, etc.).
+- Note: bare-IP / wrong-SNI HTTPS connections get Traefik's default self-signed cert; the
+  Let's Encrypt cert is served only for `inference.vulcan.alliancecan.ca` (clients still on the
+  retired `inference.kubeflow.vulcan.alliancecan.ca` host see the self-signed fallback).
+
 ## 2026-08-19 — always-up cards: scaling block matches live ISVC minReplicas
 
 Catalog cards for 11 always-up models claimed `min_replicas: 0` / scale-to-zero while the
