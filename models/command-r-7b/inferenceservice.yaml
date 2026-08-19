@@ -20,7 +20,7 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 1
+    minReplicas: 0  # 2026-08-19: 2 reqs/7d — scale-to-zero, wake on demand
     maxReplicas: 3
     scaleMetric: concurrency
     # vLLM continuous-batching handles many concurrent chats per pod (max-num-seqs 256,
