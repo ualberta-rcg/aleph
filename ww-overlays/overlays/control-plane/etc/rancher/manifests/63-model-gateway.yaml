@@ -107,6 +107,19 @@ spec:
       targetPort: 8080
       protocol: TCP
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-gateway-usage-logs
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 10Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -167,13 +180,18 @@ spec:
             # Set per cluster (e.g. "aleph-vulcan"); defaults to "aleph".
             - name: SITE_NAME
               value: aleph
-            # Usage/accounting log lives IN-POD (emptyDir below), separate from
-            # app stdout. Ship it out of band (promtail/fluent-bit) later.
+            # Usage/accounting log on RWX NFS so it survives pod replacement.
+            # subPathExpr isolates each replica into its own directory.
             - name: GATEWAY_USAGE_LOG
               value: /var/log/aleph/usage.log
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           volumeMounts:
             - name: usage-log
               mountPath: /var/log/aleph
+              subPathExpr: $(POD_NAME)
           resources:
             # Sized for ~200 concurrent streaming users. Async (I/O-bound) proxy, so
             # 2 cores/replica x 3 replicas is comfortable headroom. Request 500m
@@ -210,8 +228,9 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 5
       volumes:
-        # In-pod usage/accounting log. Survives container restarts within the pod
-        # lifetime; intentionally NOT a hostPath. Tail with:
+        # Usage/accounting log on shared NFS (RWX). Each replica writes under
+        # $(POD_NAME)/ via subPathExpr so files never interleave. Tail with:
         #   kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph/usage.log
         - name: usage-log
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: model-gateway-usage-logs

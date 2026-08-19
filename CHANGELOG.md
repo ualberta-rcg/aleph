@@ -2,6 +2,17 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — gateway usage logs: RWX PVC (survive pod replacement)
+
+**What / why:** `/var/log/aleph/usage.log` lived on emptyDir inside each of 3 gateway pods —
+22 days of billing/attribution, one restart from vanishing.
+
+- New PVC `model-gateway-usage-logs` (10Gi, `nfs-models`, RWX).
+- Each replica writes under `$(POD_NAME)/usage.log` via `subPathExpr` so files never interleave.
+- Salvaged the pre-rollout logs to `/root/backups/2026-08-19/usage-logs` and onto the PVC
+  under `salvaged-2026-08-19/`.
+- Verified live: 3/3 gateway pods Ready, usage lines land on the PVC, `/v1/models` 200.
+
 ## 2026-08-19 — Tyk Redis: persist API keys on nfs-models PVC
 
 **What / why:** Tyk API keys lived only in Redis on an emptyDir. One pod eviction would destroy
