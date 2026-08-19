@@ -6,7 +6,7 @@ Large OpenAI reasoning model (117B MoE, MXFP4). Served by vLLM across 2× L40S (
 - Image `vllm/vllm-openai:v0.20.2`, **TP2**, `--reasoning-parser openai_gptoss --tool-call-parser openai --enable-auto-tool-choice`, `--max-model-len 131072`, `--disable-custom-all-reduce`.
 - Whole-device GPUs (`nvidia.com/gpu: "2"`, **no `gpumem`**) — requesting `gpumem` would trigger HAMi vGPU mode and break multi-GPU P2P. `--disable-custom-all-reduce` because L40S TP≥2 is PCIe/CPU topology (no NVLink P2P); vLLM's custom all-reduce busy-waits there, NCCL fallback is correct + fast.
 - Attention backend left **auto** (per the proven POC config; TRITON is selected natively on SM89).
-- Weights ~60 GB on PVC at `/data`; shared memory 16 Gi. `minReplicas: 0` + `scale-to-zero-pod-retention-period: 15m`.
+- Weights ~60 GB on PVC at `/data`; shared memory 16 Gi. Always-on: `minReplicas: 2` (heaviest-traffic model — one warm replica saturated under load), `maxReplicas: 4`.
 
 ## Gateway integration
 - Card `details.yaml`: Template A, `schema_version: 2`, thinking `mode: effort`. Listed in `DETAILS-TEMPLATE-LLM.md` as the "Complex (tools+vision)" exemplar.
