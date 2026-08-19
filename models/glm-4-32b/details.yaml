@@ -25,12 +25,7 @@ data:
         "context_window": 32768,
         "max_completion_tokens": 8192
       },
-      "scaling": {
-        "scale_to_zero": true,
-        "min_replicas": 0,
-        "idle_retention": "15m",
-        "cold_start_estimate": "3-6 min"
-      },
+      "scaling": { "scale_to_zero": false, "min_replicas": 1, "idle_retention": "15m", "cold_start_estimate": "Always on" },
       "behavior": {
         "supports_vision": false,
         "supports_tools": true,

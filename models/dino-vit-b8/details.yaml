@@ -18,7 +18,7 @@ data:
       },
       "routing": { "k8s_name": "dino-vit-b8", "no_stream": true, "upstream_model_id": null },
       "limits": { "context_window": 0, "max_input_tokens": 0 },
-      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "<1 min" },
+      "scaling": { "scale_to_zero": false, "min_replicas": 1, "idle_retention": "15m", "cold_start_estimate": "Always on" },
       "behavior": { "supports_vision": true, "supports_tools": false, "supports_system_prompt": false, "reasoning_model": false, "strips_thinking": false },
       "param_translation": { "thinking": { "mode": "none" } },
       "defaults": {},

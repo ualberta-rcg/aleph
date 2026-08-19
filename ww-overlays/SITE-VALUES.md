@@ -16,10 +16,10 @@ the only overlay carrying tokens; `common` and `gpu-worker` have none).
 | Token | Files (under overlays/control-plane/) | Example value | Notes |
 |---|---|---|---|
 | `__K8S_VERSION__` | `etc/rancher/manifests/10-hami.yaml` | `v1.36.1` | Must match cluster Kubernetes version exactly. HAMi ships a patched kube-scheduler pinned to this version. |
-| `__NFS_SERVER__` | `etc/rancher/manifests/30-nfs.yaml` | *(your NFS host)* | The NFS server hostname or IP for model-weight storage. |
-| `__NFS_PATH__` | `etc/rancher/manifests/30-nfs.yaml` | *(your export path)* | NFS export path. The provisioner creates subdirs here per PVC. |
-| `__VIP__` | `etc/rancher/manifests/41-metallb-vip.yaml` | *(the floating VIP, e.g. a.b.c.56)* | The public IP MetalLB owns and advertises (L2) from the elected head. It **floats** — NOT bound to any node, NOT on `lo`. A separate address from each head's own `__PUBLIC_NIC_IP__`; lives in the same `/28`. |
-| `__PUBLIC_NIC__` | `etc/rancher/manifests/41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | *(your public NIC, e.g. enp6s19)* | The control-plane NIC on the public VLAN (same name on every head). Run `ip link` on the node to confirm. |
+| `__NFS_SERVER__` | `etc/rancher/manifests/30-nfs.yaml` | `manage.storage.data.vulcan.local` | The NFS server hostname or IP for model-weight storage. |
+| `__NFS_PATH__` | `etc/rancher/manifests/30-nfs.yaml` | `/aleph` | NFS export path. The provisioner creates subdirs here per PVC. |
+| `__VIP__` | `etc/rancher/manifests/41-metallb-vip.yaml` | `129.128.190.71` | The public IP MetalLB owns and advertises (L2) from the elected head. It **floats** — NOT bound to any node, NOT on `lo`. A separate address from each head's own `__PUBLIC_NIC_IP__`; lives in the same `/28`. |
+| `__PUBLIC_NIC__` | `etc/rancher/manifests/41-metallb-vip.yaml`, `etc/netplan/60-public-vip.yaml` | `enp6s20` (live Vulcan) | The control-plane NIC on the public VLAN (same name on every head). Run `ip link` on the node to confirm. Repo token stays `__PUBLIC_NIC__`; live on-node copy is filled. |
 | `__PUBLIC_NIC_IP__` | `etc/netplan/60-public-vip.yaml` | *(PER-NODE, e.g. a.b.c.55 / .57 / .58)* | **Per control-plane node**: that head's OWN real IP on the public NIC (in the `__VIP__` /28, distinct from the VIP and from every other head). Fill with this node's value at bake — see `HEADn_PUBLIC_IP` in `site.env`. |
 | `__PUBLIC_PREFIX__` | `etc/netplan/60-public-vip.yaml` | *(e.g. 28)* | Prefix length of the public subnet (the `/NN` for `__PUBLIC_NIC_IP__`). |
 | `__PUBLIC_GW__` | `etc/netplan/60-public-vip.yaml` | *(your public gw, e.g. a.b.c.49)* | Public gateway IP. **Required**: it is the head's PREFERRED default route (metric 50) so off-subnet/Internet replies leave the public NIC symmetrically. The cluster NIC's default must be a higher metric (100). |

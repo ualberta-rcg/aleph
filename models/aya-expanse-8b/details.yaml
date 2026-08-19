@@ -14,7 +14,7 @@ data:
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": { "k8s_name": "aya-expanse-8b", "serialize": false, "no_stream": false, "upstream_model_id": null },
       "limits": { "max_completion_tokens": 4096, "context_window": 8192 },
-      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "2-4 min" },
+      "scaling": { "scale_to_zero": false, "min_replicas": 1, "idle_retention": "15m", "cold_start_estimate": "Always on" },
       "behavior": { "supports_vision": false, "supports_tools": false, "supports_system_prompt": true, "reasoning_model": false, "strips_thinking": false },
       "param_translation": { "thinking": { "mode": "none" }, "max_tokens": { "field": "max_tokens" }, "stop": { "field": "stop" } },
       "defaults": { "chat": { "temperature": 0.3, "max_tokens": 4096 }, "meta_tasks": { "title": { "max_tokens": 80 }, "tags": { "max_tokens": 60 }, "followups": { "max_tokens": 220 } } },
