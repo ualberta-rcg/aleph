@@ -21,7 +21,7 @@
 --max-model-len=131072
 --dtype=auto
 --gpu-memory-utilization=0.95
---max-num-seqs=4
+--max-num-seqs=16
 --reasoning-parser=qwen3
 --enable-auto-tool-choice
 --tool-call-parser=qwen3_coder
@@ -51,7 +51,7 @@ Best sampling:
 - **TRITON_ATTN_VLLM_V1 required** on L40S (SM89) — FlashAttention-3 unavailable
 - **disable-custom-all-reduce required** — TP=4 on HAMi triggers P2P stall with custom all-reduce
 - **gpu-memory-utilization=0.95** — max to fit 122GB FP8 + KV cache across 4×48GB GPUs
-- **max-num-seqs=4** — bounds concurrent requests given memory constraints
+- **max-num-seqs=16** — KV cache was ~2% at 4 concurrent; 16 uses headroom. Single replica (`minReplicas=maxReplicas=1`, 4× L40S).
 
 ## Test Results (2026-06-11)
 **23/23 passed, 3 expected failures, 0 failed**

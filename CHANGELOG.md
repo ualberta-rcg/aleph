@@ -2,6 +2,19 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — qwen35-122b: 1 replica, max-num-seqs 16; oss-120b recovered
+
+qwen35-122b bounced via scale-to-zero then delete of the drained revision (deletes
+without scale-0 just get recreated). New revision: `--max-num-seqs 4→16`,
+`maxReplicas 1`. Scaled back to `minReplicas=1` (user: min/max 1). Public
+`/v1/chat/completions` 200 in ~0.2s.
+
+gpt-oss-120b: same scale-0 + delete of GPU-stealing pending revisions; serving
+again on one TP2 pod (min 0 / max 1 until a quiet-window min=2). Public 200 in ~0.5s.
+
+Gateway image pinned to `gateway-b37897c` (warm models skip capacity checks;
+abort upstream on client cancel; routable when `latestReadyRevision` still serves).
+
 ## 2026-08-19 — gateway: skip capacity checks on warm models + abort on cancel
 
 Warm models (`info["warm"]` from the in-memory pod watch, Running>=1) skip

@@ -22,7 +22,7 @@ spec:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
     minReplicas: 1
-    maxReplicas: 2
+    maxReplicas: 1
     scaleTarget: 4
     scaleMetric: concurrency
     timeout: 600
@@ -92,7 +92,7 @@ spec:
           - --max-model-len=131072
           - --dtype=auto
           - --gpu-memory-utilization=0.95
-          - --max-num-seqs=4
+          - --max-num-seqs=16
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
