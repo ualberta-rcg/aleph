@@ -19,7 +19,7 @@ data:
         "k8s_name": "alphafold2-nim",
         "no_stream": true,
         "strip_v1_prefix": false,
-        "upstream_path": "/predict",
+        "upstream_path": "/protein-structure/alphafold2/predict-structure-from-sequence",
         "upstream_model_id": null
       },
       "limits": {

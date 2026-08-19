@@ -13,17 +13,17 @@ data:
       "type": "chat",
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
-        "k8s_name": "qwen25-vl-72b",
+        "k8s_name": "qwen25-vl-72b-awq",
         "serialize": false,
         "no_stream": false,
-        "upstream_model_id": null
+        "upstream_model_id": "qwen25-vl-72b-awq"
       },
       "limits": { "max_completion_tokens": 32768, "context_window": 32768 },
       "scaling": {
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "3-6 min"
+        "cold_start_estimate": "Always on (served by qwen25-vl-72b-awq)"
       },
       "behavior": {
         "supports_vision": true,
