@@ -14,8 +14,8 @@ Those ISVCs are `minReplicas: 1`. Extra replicas only when the running pod is bu
   (bge-reranker stays max 3; kandinsky/speaches stay max 1).
 - qwen35-122b: min 1 / max 2 / scaleTarget 16 (second 4-GPU pod only when the first is full).
 - aya-expanse-8b + tiny-aya-global: live min 1 (were still min 0 in repo YAML).
-- qwen25-coder-32b: `stop=true`, min 0; **card still present** so it is still in `/v1/models`.
-  Catalog park = delete the `<name>-details` ConfigMap, not `stop=true`.
+- qwen25-coder-32b: **parked** = live `qwen25-coder-32b-details` ConfigMap deleted; ISVC/PVC
+  kept (min 0, no `stop`). Repo still has `details.yaml` to re-apply later.
 - 4-card wake-on-demand (deepseek-v4-flash, openbiollm-70b, qwen25-vl-72b, qwen3-235b,
   r1-distill-llama-70b): maxReplicas 2, still min 0, original scaleTarget.
 

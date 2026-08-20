@@ -12,7 +12,6 @@ metadata:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     autoscaling.knative.dev/initial-scale: "0"
     serving.knative.dev/progress-deadline: "1800s"
-    serving.kserve.io/stop: "true"
 spec:
   predictor:
     affinity:

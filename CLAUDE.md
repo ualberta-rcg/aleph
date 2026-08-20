@@ -256,16 +256,21 @@ kubectl apply -f models/<model>/details.yaml
 ```
 
 ### Park a model (hide from catalog)
-Parked ≠ `serving.kserve.io/stop=true`. Parked means **no details ConfigMap**
-(`<name>-details`, label `model-details=true`). Delete the live card; do not re-apply
-`details.yaml`. The ISVC/PVC can stay (min 0) so it can be un-parked later by applying the card.
+
+**Parked means only this: delete the details ConfigMap from the prod cluster.**
+The InferenceService and PVC stay. The card YAML stays in the repo. Un-park later by
+re-applying that ConfigMap — nothing else.
 
 ```bash
+# park (catalog hides it; ISVC/PVC untouched)
 kubectl delete cm <model>-details -n models
+
+# un-park (lists it again in /v1/models)
+kubectl apply -f models/<model>/details.yaml
 ```
 
-`serving.kserve.io/stop=true` is a different mechanism: it stops pods even with min≥1, but the
-card still lists the model in `/v1/models`. Do not use it as “park”.
+Do **not** use `serving.kserve.io/stop=true` as park. Do **not** delete the ISVC or PVC
+just to park.
 
 ### Check readiness
 ```bash
