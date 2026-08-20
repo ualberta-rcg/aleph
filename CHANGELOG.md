@@ -2,6 +2,20 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — phi-4-reasoning always-up + KV/thinking defaults
+
+Unparked and bounced `phi-4-reasoning` (delete ISVC, PVC kept). Gateway was not
+changed or restarted.
+
+- Always-up: `minReplicas: 1`, `maxReplicas: 2`, `scaleTarget: 8`, timeout 600s
+- vLLM: `--max-num-seqs=8`, util 0.92, `VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1`
+- Card: default effort **low** (`thinking_token_budget` 1024), default `max_tokens` 2048,
+  HF sampling (temp 0.8 / top_p 0.95 / top_k 50)
+- Effort is vLLM `thinking_token_budget`, not `max_tokens`. Gateway still only maps
+  effort → budget and forwards it.
+
+Public smoke (catalog + `12*8` + think OFF/ON low): 200s. One pod Ready on rack05-06.
+
 ## 2026-08-19 — drain patched/woken scale-to-zero; qwen35-122b Ready
 
 Scale-to-zero pods were still up because earlier `kubectl patch` / client traffic created

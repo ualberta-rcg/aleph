@@ -20,10 +20,10 @@ data:
       },
       "limits": { "max_completion_tokens": 16000, "context_window": 32768 },
       "scaling": {
-        "scale_to_zero": true,
-        "min_replicas": 0,
+        "scale_to_zero": false,
+        "min_replicas": 1,
         "idle_retention": "15m",
-        "cold_start_estimate": "3-6 min"
+        "cold_start_estimate": "Always on"
       },
       "behavior": {
         "supports_vision": false,
@@ -35,7 +35,7 @@ data:
       "param_translation": {
         "thinking": {
           "mode": "budget",
-          "default_effort": "medium",
+          "default_effort": "low",
           "disabled_effort": "none",
           "answer_reserve": 512,
           "off_max_tokens": 4096,
@@ -52,7 +52,7 @@ data:
             "xhigh": { "thinking_token_budget": 24576 },
             "max":   { "thinking_token_budget": null }
           },
-          "note": "Managed thinking (budget mode). phi-4 always reasons. ON (medium/high) exposes `reasoning` (budget controls depth). OFF (reasoning_effort none) -> budget 512 (REDUCE — not 0; budget 0 is mishandled per vLLM#18141, burns tokens/empty content) + strip the reasoning + cap max_tokens. Requests still need adequate max_tokens or reasoning eats the budget."
+          "note": "Managed thinking (budget mode). Phi always emits Thought then Solution. Client reasoning_effort is translated to thinking_token_budget and forwarded to vLLM (that is the CoT cap). max_tokens is the OpenAI total-generation ceiling (Thought+Solution), not effort. If the client max_tokens is smaller than budget+answer_reserve, the gateway raises it so the answer can still fit. OFF (none) -> budget 512 (never 0; vLLM#18141) + strip. Never send thinking_token_budget 0."
         },
         "max_tokens": { "field": "max_tokens" },
         "stop": { "field": "stop" }
@@ -61,8 +61,9 @@ data:
         "chat": {
           "temperature": 0.8,
           "top_p": 0.95,
-          "max_tokens": 8192,
-          "thinking": { "enabled": true, "effort": "medium" }
+          "top_k": 50,
+          "max_tokens": 2048,
+          "thinking": { "enabled": true, "effort": "low" }
         },
         "meta_tasks": {
           "title":     { "max_tokens": 1500,  "thinking": { "effort": "none" } },
@@ -73,13 +74,14 @@ data:
       "schema_version": 2,
       "input_map": {
         "messages": { "type": "array", "required": true, "description": "Chat messages (system/user/assistant)" },
-        "max_tokens": { "type": "integer", "required": false, "default": 8192, "max": 16000, "description": "Shared budget for Thought+Solution; give adequate room or CoT exhausts it" },
+        "max_tokens": { "type": "integer", "required": false, "default": 2048, "max": 16000, "description": "OpenAI total-generation ceiling (Thought + Solution). Not the thinking effort. vLLM thinking_token_budget caps CoT separately." },
         "temperature": { "type": "float", "required": false, "default": 0.8, "min": 0.0, "max": 2.0, "description": "Sampling temperature (HF recommends 0.8)" },
         "top_p": { "type": "float", "required": false, "default": 0.95, "description": "Nucleus sampling threshold (HF recommends 0.95)" },
+        "top_k": { "type": "integer", "required": false, "default": 50, "description": "Top-k sampling (HF recommends 50)" },
         "stream": { "type": "boolean", "required": false, "default": false, "description": "Enable streaming responses" },
         "frequency_penalty": { "type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "Frequency penalty (0-2)" },
-        "reasoning_effort": { "type": "string", "required": false, "enum": ["none","low","medium","high","xhigh","max"], "default": "medium", "description": "Thinking effort; mapped to thinking_token_budget via effort_map. none=reduce(budget 512)+strip+cap (vLLM#18141: budget 0 mishandled)." },
-        "thinking_token_budget": { "type": "integer", "required": false, "description": "Direct cap on reasoning tokens (fakes a budget). Consumed by the gateway, not forwarded upstream." }
+        "reasoning_effort": { "type": "string", "required": false, "enum": ["none","low","medium","high","xhigh","max"], "default": "low", "description": "Translated to vLLM thinking_token_budget via effort_map; not sent upstream as reasoning_effort. none=budget 512 + strip (never 0; vLLM#18141)." },
+        "thinking_token_budget": { "type": "integer", "required": false, "description": "Direct CoT cap. Forwarded to vLLM as thinking_token_budget. Independent of max_tokens." }
       },
       "output_map": {
         "id": { "type": "string", "description": "Chat completion ID" },
@@ -91,7 +93,7 @@ data:
       "custom_params": { "passthrough": true },
       "catalog": {
         "description_short": "Microsoft Phi-4 Reasoning 14B, chain-of-thought math/science/code",
-        "description": "Microsoft Phi-4-reasoning 14B dense decoder-only Transformer (SFT + RL on chain-of-thought). Native output: Thought inside redacted_thinking tags, then Solution. Verified PASS on cluster 230 (OpenAI + Anthropic) with adequate max_tokens. vLLM v0.20.2 --reasoning-parser=deepseek_r1; whole single L40S (no HAMi gpumem).",
+        "description": "Microsoft Phi-4-reasoning 14B dense decoder-only Transformer (SFT + RL on chain-of-thought). Native output: Thought then Solution. Always-up on 1 whole L40S (min 1 / max 2). vLLM v0.20.2 --reasoning-parser=deepseek_r1 + thinking_token_budget; default effort low.",
         "owned_by": "microsoft",
         "source": "microsoft/Phi-4-reasoning",
         "source_url": "https://huggingface.co/microsoft/Phi-4-reasoning",
@@ -105,12 +107,12 @@ data:
         "subdomain": "reasoning",
         "tags": ["chat", "llm", "reasoning", "math", "science", "code"],
         "languages": ["english"],
-        "verified": "PASS 2026-06-06",
+        "verified": "PASS 2026-08-19",
         "known_quirks": [
-          "max_tokens is one shared budget for Thought+Solution; small budgets exhaust on CoT before Solution appears",
-          "vLLM deepseek_r1 parser splits on redacted_thinking tags; V1 engine may omit them (vllm#18141) leaving content empty",
-          "Gateway maps effort/budget_tokens to thinking_token_budget (0=skip CoT); requires vLLM reasoning-config on ISVC",
-          "HF recommends sampling (temp 0.8, top_k 50, top_p 0.95) and max_new_tokens up to 32768 for hard problems"
+          "Phi always thinks by training; there is no enable_thinking=false. OFF is reduce (budget 512) + strip, not skip CoT",
+          "vLLM v0.20.2 honors thinking_token_budget when --reasoning-parser + --reasoning-config are set; never send budget 0 (vllm#18141)",
+          "vLLM deepseek_r1 parser splits on <think> tags; missing close tags can leave content empty",
+          "HF sampling: temp 0.8, top_k 50, top_p 0.95; hard problems want a large max_tokens / effort max"
         ]
       }
     }

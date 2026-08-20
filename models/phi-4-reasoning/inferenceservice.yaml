@@ -20,10 +20,13 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    scaleTarget: 3
+    # Always-on. vLLM --max-num-seqs=8 is the real per-pod cap, so scaleTarget 8
+    # packs a pod before adding a second whole-card replica; max 2 bounds GPU.
+    minReplicas: 1
+    maxReplicas: 2
+    scaleTarget: 8
     scaleMetric: concurrency
-    timeout: 300
+    timeout: 600
     nodeSelector:
       gpu: "on"
     initContainers:
@@ -87,7 +90,8 @@ spec:
           - --port=8080
           - --max-model-len=32768
           - --dtype=bfloat16
-          - --gpu-memory-utilization=0.90
+          - --gpu-memory-utilization=0.92
+          - --max-num-seqs=8
           - --trust-remote-code
           # --enable-reasoning removed in vLLM v0.20.2 (reasoning is implied by
           # --reasoning-parser); keeping it causes "unrecognized arguments".
@@ -97,6 +101,8 @@ spec:
         env:
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache
+          - name: VLLM_ATTENTION_BACKEND
+            value: TRITON_ATTN_VLLM_V1
         ports:
           - containerPort: 8080
             protocol: TCP
