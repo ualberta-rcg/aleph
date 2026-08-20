@@ -238,9 +238,10 @@ Remaining LLMs still on v1 schema — see `models.md` for full list.
 `minReplicas ≥ 1`). Those models run `minReplicas: 1` and stay in `/v1/models`. Scale-to-zero
 models have `scale_to_zero: true` and `minReplicas: 0`.
 
-**Never patch an InferenceService** to change min/max/`scaleTarget`. A patch creates a new
-Knative revision that fights the old one for GPUs. Bounce is: delete the ISVC, **keep the PVC**,
-re-apply `inferenceservice.yaml` (and `details.yaml` only if the card should stay listed).
+**Never `kubectl patch` an InferenceService** (min/max/`scaleTarget`/args/image or anything else).
+A patch creates a new Knative revision that fights the old one for GPUs. Always **delete the
+ISVC and re-apply YAML**; **never delete the PVC**. Re-apply `details.yaml` only if the card
+should stay listed.
 
 Scale the gateway to 0 before bouncing if users would otherwise wake cold models; bring it back
 to 3 only after always-up pods are Ready.
