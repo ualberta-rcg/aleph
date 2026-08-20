@@ -2,6 +2,19 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — drain patched/woken scale-to-zero; qwen35-122b Ready
+
+Scale-to-zero pods were still up because earlier `kubectl patch` / client traffic created
+Knative revisions (`qwen3-235b` 00002, `qwen36-*` 00002) and Knative keeps the last pod
+~15m (and longer under load). Gateway was already 0 so they were not new wakes.
+
+Deleted those ISVCs (PVCs + cards kept) and re-applied YAML: `qwen3-235b`, `qwen36-27b`,
+`qwen36-35b-a3b`, `mistral-small-4-119b-2603`, plus extra `gpt-oss-120b` replicas (max 6
+scale-out). After GPUs freed, `qwen35-122b` scheduled (4× GPU) and is Ready.
+
+Park = delete the live details ConfigMap only. `serving.kserve.io/stop` is documented
+separately (stops pods / blocks wake; does not hide the catalog).
+
 ## 2026-08-19 — always-up min/max + high scaleTarget
 
 Deleted and re-applied InferenceServices (PVCs kept). Gateway was down during the swap.

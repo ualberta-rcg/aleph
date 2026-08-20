@@ -269,8 +269,25 @@ kubectl delete cm <model>-details -n models
 kubectl apply -f models/<model>/details.yaml
 ```
 
-Do **not** use `serving.kserve.io/stop=true` as park. Do **not** delete the ISVC or PVC
-just to park.
+Do **not** delete the ISVC or PVC just to park. Park is not `stop`.
+
+### `serving.kserve.io/stop` (different from park)
+
+`stop=true` fully stops the InferenceService: no pods, and it will **not** wake on demand.
+Knative honors this even when `minReplicas: 1`. The card still lists the model in `/v1/models`
+if the ConfigMap is present. Use this when a model must not run, not to hide it from the catalog.
+
+```bash
+# stop — no pods, blocks wake-on-demand
+kubectl annotate isvc <model> -n models serving.kserve.io/stop=true --overwrite
+
+# clear stop — wake-on-demand again (min 0) or stay always-up (min 1)
+kubectl annotate isvc <model> -n models serving.kserve.io/stop- --overwrite
+```
+
+Just setting `minReplicas: 0` is not enough to stop a model; without `stop`, the first
+request wakes it. Do not `kubectl patch` the ISVC spec to toggle this — if the YAML must
+change, delete the ISVC, keep the PVC, re-apply.
 
 ### Check readiness
 ```bash
