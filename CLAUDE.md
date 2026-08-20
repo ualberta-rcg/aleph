@@ -234,35 +234,39 @@ Remaining LLMs still on v1 schema — see `models.md` for full list.
 
 ## Scaling Models Up/Down
 
-**Steady state for every chat model is wake-on-demand: `minReplicas: 0` and NO `stop` annotation.**
-The first request scales 0→1; the pod idles back to 0 after the retention window. Do **not** leave
-models with `serving.kserve.io/stop: "true"` — that fully stops them (no pods, blocks wake-on-demand)
-and should be used only to deliberately park a model. Note: just setting `minReplicas` is not enough
-to stop a model — Knative honors the stop annotation and keeps the ISVC `Stopped` even with
-`minReplicas: 1`.
+**Always-up** is the catalog flag `details.scaling.scale_to_zero: false` (not merely
+`minReplicas ≥ 1`). Those models run `minReplicas: 1` and stay in `/v1/models`. Scale-to-zero
+models have `scale_to_zero: true` and `minReplicas: 0`.
 
-### Wake a stopped model / pre-warm
+**Never patch an InferenceService** to change min/max/`scaleTarget`. A patch creates a new
+Knative revision that fights the old one for GPUs. Bounce is: delete the ISVC, **keep the PVC**,
+re-apply `inferenceservice.yaml` (and `details.yaml` only if the card should stay listed).
+
+Scale the gateway to 0 before bouncing if users would otherwise wake cold models; bring it back
+to 3 only after always-up pods are Ready.
+
+### Restart / bounce an ISVC (keep weights)
 ```bash
-# Remove the stop annotation (the key step) so it's wake-on-demand again
-kubectl annotate isvc <model> -n models serving.kserve.io/stop- --overwrite
-# (optional) spin up a pod immediately instead of waiting for wake-on-demand:
-kubectl patch isvc <model> -n models --type merge -p '{"spec":{"predictor":{"minReplicas":1}}}'
+kubectl delete isvc <model> -n models
+# do not delete the PVC
+kubectl apply -f models/<model>/inferenceservice.yaml
+# re-apply the card only if it should stay in the catalog:
+kubectl apply -f models/<model>/details.yaml
 ```
 
-### Park a model completely (not the default)
+### Park a model (hide from catalog)
+Parked ≠ `serving.kserve.io/stop=true`. Parked means **no details ConfigMap**
+(`<name>-details`, label `model-details=true`). Delete the live card; do not re-apply
+`details.yaml`. The ISVC/PVC can stay (min 0) so it can be un-parked later by applying the card.
+
 ```bash
-kubectl patch isvc <model> -n models --type merge -p '{"spec":{"predictor":{"minReplicas":0}}}'
-kubectl annotate isvc <model> -n models serving.kserve.io/stop=true --overwrite
+kubectl delete cm <model>-details -n models
 ```
+
+`serving.kserve.io/stop=true` is a different mechanism: it stops pods even with min≥1, but the
+card still lists the model in `/v1/models`. Do not use it as “park”.
 
 ### Check readiness
 ```bash
 kubectl get isvc <model> -n models -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
 ```
-
-### Test pattern (per model)
-1. Ensure no stop annotation (clear it: `kubectl annotate isvc <model> -n models serving.kserve.io/stop- --overwrite`).
-2. Run the test barrage — its first check wakes the model through the gateway's 503-retry:
-   `cat models/<model>/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -`
-3. Leave at `minReplicas: 0` with **no** stop annotation (wake-on-demand).
-5. Move to next model

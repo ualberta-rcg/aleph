@@ -23,9 +23,9 @@ spec:
     # pods fuller (fewer replicas/GPUs) instead, raise scaleTarget toward 16.
     # Each pod = 2 whole GPUs (TP2). maxReplicas 4 ⇒ up to 8 L40S (all GPUs) under heavy
     # concurrency — can starve other models; cap with a lower maxReplicas if that bites.
-    minReplicas: 2
-    maxReplicas: 4
-    scaleTarget: 8
+    minReplicas: 1
+    maxReplicas: 6
+    scaleTarget: 16
     scaleMetric: concurrency
     timeout: 600
     nodeSelector:

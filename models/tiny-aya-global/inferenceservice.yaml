@@ -1,6 +1,6 @@
 # tiny-aya-global (CohereLabs/tiny-aya-global) — 3.35B multilingual chat LLM.
 # cohere2 arch, bf16, 8K context. vLLM TP1 on a HAMi GPU slice (16GB).
-# Scale-to-zero. HF token from secret (gated repo).
+# Always-up (details.scaling.scale_to_zero: false). HF token from secret (gated repo).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -20,7 +20,7 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
+    minReplicas: 1
     maxReplicas: 2
     scaleMetric: concurrency
     scaleTarget: 4

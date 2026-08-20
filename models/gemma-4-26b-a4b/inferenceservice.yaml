@@ -20,7 +20,7 @@ spec:
     # target≈8 packs a pod to its batch limit before adding a replica; max 2 (1 whole GPU
     # each) bounds GPU.
     minReplicas: 1
-    maxReplicas: 2
+    maxReplicas: 4
     scaleTarget: 8
     scaleMetric: concurrency
     timeout: 300

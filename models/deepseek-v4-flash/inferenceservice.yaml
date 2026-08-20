@@ -22,6 +22,7 @@ spec:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
     minReplicas: 0
+    maxReplicas: 2
     nodeSelector:
       gpu: "on"
     containers:

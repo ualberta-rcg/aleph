@@ -12,6 +12,7 @@ metadata:
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     autoscaling.knative.dev/initial-scale: "0"
     serving.knative.dev/progress-deadline: "1800s"
+    serving.kserve.io/stop: "true"
 spec:
   predictor:
     affinity:
@@ -21,7 +22,7 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 1
+    minReplicas: 0
     maxReplicas: 2
     scaleTarget: 8
     scaleMetric: concurrency

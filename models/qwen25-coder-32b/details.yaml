@@ -9,7 +9,7 @@ data:
   details.json: |
     {
       "id": "qwen25-coder-32b",
-      "status": "production",
+      "status": "parked",
       "type": "chat",
       "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
       "routing": {
@@ -23,7 +23,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "2-4 min"
+        "cold_start_estimate": "Parked (stop=true; will not wake on demand)"
       },
       "behavior": {
         "supports_vision": false,

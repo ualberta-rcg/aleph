@@ -33,7 +33,7 @@ spec:
     # Always-on (warm agentic tier). vLLM max-num-seqs=8 is the real per-pod cap, so
     # target≈8 packs a pod to its batch limit before adding a replica; max 3 bounds GPU.
     minReplicas: 1
-    maxReplicas: 3
+    maxReplicas: 4
     scaleTarget: 8
     scaleMetric: concurrency
     timeout: 600

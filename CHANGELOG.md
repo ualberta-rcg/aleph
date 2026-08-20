@@ -2,6 +2,23 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-19 — always-up min/max + high scaleTarget
+
+Deleted and re-applied InferenceServices (PVCs kept). Gateway was down during the swap.
+
+Always-up is the card flag `scaling.scale_to_zero: false` (not merely `minReplicas ≥ 1`).
+Those ISVCs are `minReplicas: 1`. Extra replicas only when the running pod is busy
+(`scaleTarget` at or above the previous value; vLLM targets match `--max-num-seqs`).
+
+- maxReplicas: oss-120b **6**, 4-card + glm-4 **2**, other always-up that scale **4**
+  (bge-reranker stays max 3; kandinsky/speaches stay max 1).
+- qwen35-122b: min 1 / max 2 / scaleTarget 16 (second 4-GPU pod only when the first is full).
+- aya-expanse-8b + tiny-aya-global: live min 1 (were still min 0 in repo YAML).
+- qwen25-coder-32b: `stop=true`, min 0; **card still present** so it is still in `/v1/models`.
+  Catalog park = delete the `<name>-details` ConfigMap, not `stop=true`.
+- 4-card wake-on-demand (deepseek-v4-flash, openbiollm-70b, qwen25-vl-72b, qwen3-235b,
+  r1-distill-llama-70b): maxReplicas 2, still min 0, original scaleTarget.
+
 ## 2026-08-19 — qwen35-122b: 1 replica, max-num-seqs 16; oss-120b recovered
 
 qwen35-122b bounced via scale-to-zero then delete of the drained revision (deletes
