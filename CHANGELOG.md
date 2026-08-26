@@ -2,6 +2,21 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-26 — qwen38-27b engine-death postmortem: util 0.88 + expandable_segments + fast liveness
+
+Four hours after deploy the engine died of CUDA OOM and wedged the pod (requests hung,
+another user got 500/502) while it held 2 whole L40S. Cause: `--gpu-memory-utilization
+0.92` left ~1.3 GiB free per 44.4 GiB card; the first large chunked-prefill batch OOM'd in
+`w8a8_triton_block_scaled_mm` (532 MiB alloc + 1.0-1.5 GiB fragmentation) → EngineDead;
+liveness took 5+ min to react. Hung requests never reach usage.log (looked "idle").
+Fix in the ISVC: util **0.88** (KV 1,361,977 → 1,268,249 tok/TP-group, still ~9-10
+concurrent 128k sessions/replica), `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`,
+liveness 15s/×2 (dead engine recycles in ~1-2 min; restart ≈ 8 min, no re-download).
+New `models/qwen38-27b/stress.py` (worst-case battery: 24.5k-token prefill, prefix-cache
+repeat, 8×8k concurrent burst, 12k+image, 12k+video, 20-mix sustained, engine-alive +
+pod-log OOM/EngineDead grep): **9/9 PASS at 0.88 — no dial-downs needed** (batched-tokens
+stayed 16384, mm 16/2, seqs 64). Clean delete+redeploy re-verified after the change.
+
 ## 2026-08-26 — qwen38-27b: Qwen3.8-27B-FP8 deployed (VLM + MTP + fp8 KV)
 
 New chat model `qwen38-27b` — Qwen/Qwen3.8-27B-FP8 (dense 27B hybrid GDN VLM, image +

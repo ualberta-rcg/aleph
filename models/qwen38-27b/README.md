@@ -18,7 +18,8 @@ max 2).
 | `inferenceservice.yaml` | KServe ISVC: initContainer staging + vLLM v0.28.0 + TP2 |
 | `details.yaml` | v2 card ConfigMap (`qwen38-27b-details`) — catalog entry |
 | `test.py` | 36-check gateway battery (image+video+tools+effort levels) |
-| `CLAUDE.md` | Model context + research findings |
+| `stress.py` | Worst-case-traffic battery (24k prefills, 8-way burst, mm+long, log grep) |
+| `CLAUDE.md` | Model context + research findings + OOM postmortem |
 
 ## Deploy
 ```bash

@@ -42,7 +42,8 @@ top_k=20 presence_penalty=1.5`.
 | TP | 2 (whole GPUs, no gpumem) | recipe FP8 reference is TP4 on GB300; TP2 fits L40S pair (2 replicas per 4-GPU node) |
 | `--max-model-len` | 262144 | full native |
 | `--kv-cache-dtype fp8` | ✓ | recipe |
-| `--max-num-seqs` | 64 | recipe; ~11 concurrent 128k sessions per replica expected |
+| `--gpu-memory-utilization` | **0.88** | 0.92 (recipe) OOM-killed the engine — see postmortem below |
+| `--max-num-seqs` | 64 | recipe; ~9-10 concurrent 128k sessions per replica at 0.88 KV |
 | `--enable-prefix-caching` | ✓ | recipe; pairs with preserve_thinking |
 | MTP | `{"method":"mtp","num_speculative_tokens":3}` | drop first if the build rejects it or it conflicts |
 | `--limit-mm-per-prompt` | image 16, video 2 | video eats KV; kept modest |
@@ -63,11 +64,29 @@ top_k=20 presence_penalty=1.5`.
 
 ## Measured on first deploy (2026-08-26, cluster 43)
 
-- **GPU KV cache: 1,361,977 tokens per TP group** (fp8 KV) → ~11 concurrent 128k sessions/replica.
+- **GPU KV cache: 1,268,249 tokens per TP group at util 0.88** (fp8 KV; was 1,361,977 at 0.92) → ~9-10 concurrent 128k sessions/replica.
 - Weights 14.66 GiB/GPU; engine cold init ~8 min (weights+venv cached on PVC; compile cache is NOT persisted).
 - MTP drafter loads (66 shards); cudagraph mode auto-drops FULL_AND_PIECEWISE→PIECEWISE under spec-decode; min_p/logit_bias are inert with spec decode.
 - Prefix caching forces mamba cache 'align' mode — upstream experimental; first suspect if outputs repeat/blank.
 - L40S has no tuned W8A8 block-FP8 kernel config for N=7168,K=5120 (default kernel used; perf note).
+
+## Postmortem — 2026-08-26 engine death (why util is 0.88 + liveness is tight)
+
+At `gpu-memory-utilization 0.92` the card sat at ~1.3 GiB free (weights 14.7 + KV pool fill
+92%). The first large chunked-prefill batch OOM'd inside `w8a8_triton_block_scaled_mm`
+(532 MiB GEMM output alloc, 1.0-1.5 GiB more lost to allocator fragmentation) →
+`EngineDeadError` → every later request hung or 500'd while the pod kept 2 whole L40S for
+hours (liveness took ~5+ min to kill, and the restart path was muddy). Requests that hang
+never reach usage.log, so the log showed a healthy battery then a 4-hour gap.
+
+Fix (all in the ISVC): util **0.88** (~3.4 GiB headroom), `PYTORCH_CUDA_ALLOC_CONF=
+expandable_segments:True` (fragmentation), liveness `periodSeconds 15 / failureThreshold 2`
+(dead engine recycles in ~1-2 min; restart ≈ 8 min engine init, no re-download).
+
+Proof: `stress.py` — 24.5k-token prefill (bigger than the crash batch), prefix-cache
+repeat, 8×8k concurrent burst, 12k+image, 12k+video, 20-mix sustained — **9/9 PASS, zero
+OutOfMemoryError/EngineDead in logs**. No dial-downs (batched-tokens stayed 16384, mm
+limits 16/2, seqs 64) were needed at 0.88.
 
 ## Gotchas
 

@@ -106,7 +106,7 @@ spec:
           - --tensor-parallel-size=2
           - --max-model-len=262144
           - --dtype=auto
-          - --gpu-memory-utilization=0.92
+          - --gpu-memory-utilization=0.88
           - --max-num-seqs=64
           - --max-num-batched-tokens=16384
           - --kv-cache-dtype=fp8
@@ -132,6 +132,11 @@ spec:
             value: TRITON_ATTN_VLLM_V1
           - name: OMP_NUM_THREADS
             value: "1"
+          # 2026-08-26: engine OOM-died at 0.92 under a 16k-token prefill batch
+          # (532MB GEMM output alloc, ~1.3GB free + 1.5GB fragmentation). 0.88 leaves
+          # ~3.4GB activation headroom; expandable_segments stops fragmentation drift.
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
         ports:
           - containerPort: 8080
             protocol: TCP
@@ -154,12 +159,14 @@ spec:
           periodSeconds: 30
           timeoutSeconds: 15
           failureThreshold: 60
+        # Fast self-heal: a dead engine (e.g. an OOM) must recycle in ~1-2 min, not wedge
+        # for hours holding whole GPUs on the shared cluster (2026-08-26 postmortem).
         livenessProbe:
           httpGet: { path: /v1/models, port: 8080 }
           initialDelaySeconds: 180
-          periodSeconds: 30
-          timeoutSeconds: 15
-          failureThreshold: 3
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 2
         volumeMounts:
           - name: qwen38-27b
             mountPath: /data
