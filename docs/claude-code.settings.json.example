@@ -6,11 +6,11 @@
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-oss-120b",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen35-122b",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-oss-120b",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-oss-20b",
     "ANTHROPIC_DEFAULT_FABLE_MODEL": "gemma-4-26b-a4b"
   },
-  "model": "sonnet",
-  "fallbackModel": ["gpt-oss-20b", "gemma-4-26b-a4b"]
+  "model": "opus",
+  "fallbackModel": ["gpt-oss-120b", "gpt-oss-20b", "gemma-4-26b-a4b"]
 }

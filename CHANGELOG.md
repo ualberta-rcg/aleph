@@ -6,7 +6,7 @@ Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local 
 
 Key-free overlay at `docs/claude-code.settings.json.example` (current Claude Code
 gateway vars: disable experimental betas, enable `/v1/models` discovery, 600s
-timeout). Default aliases: opus/sonnet → `gpt-oss-120b`, haiku → `gpt-oss-20b`,
+timeout). Default aliases: opus → `qwen35-122b`, sonnet → `gpt-oss-120b`, haiku → `gpt-oss-20b`,
 fable → `gemma-4-26b-a4b`. Paste a Tyk key locally; never commit one.
 
 ## 2026-08-25 — restore /anthropic Tyk route + gateway polish

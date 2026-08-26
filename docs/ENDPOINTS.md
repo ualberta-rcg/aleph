@@ -41,17 +41,17 @@ Current Claude Code (v2.1+) options that matter on a **non-Anthropic** gateway:
 | `CLAUDE_CODE_ATTRIBUTION_HEADER=0` | Drops the client fingerprint block some gateways mishandle |
 | `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL` | What the `/model` aliases resolve to |
 | `fallbackModel` | Retry chain if the primary 5xx/overloads |
-| `model` | Session starts on `sonnet` → `gpt-oss-120b` |
+| `model` | Session starts on `opus` → `qwen35-122b` |
 
 Do **not** set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` if you want gateway model discovery — that flag also skips discovery refreshes.
 
 ```bash
 export ANTHROPIC_BASE_URL=https://inference.vulcan.alliancecan.ca/anthropic
 export ANTHROPIC_AUTH_TOKEN=<tyk-key>
-export ANTHROPIC_MODEL=gpt-oss-120b
+export ANTHROPIC_MODEL=qwen35-122b
 ```
 
-Alias map in the example (always-on chat models): opus/sonnet → `gpt-oss-120b`, haiku → `gpt-oss-20b`, fable → `gemma-4-26b-a4b`. Swap sonnet to `qwen35-122b` if you want the 4-GPU Qwen instead. Any chat model is still callable by id; `/anthropic/v1/models` only *lists* the always-on set.
+Alias map in the example (always-on chat models): opus (default) → `qwen35-122b`, sonnet → `gpt-oss-120b`, haiku → `gpt-oss-20b`, fable → `gemma-4-26b-a4b`. Any chat model is still callable by id; `/anthropic/v1/models` only *lists* the always-on set.
 
 ## Embeddings / rerank
 - `/v1/embeddings`, `/v1/rerank`, `/v1/embed` (science-embed alias)
