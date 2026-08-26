@@ -124,6 +124,15 @@ SSE chunk carries `usage`; that is captured into the record (`stream: true`). If
 upstream/streamed call ends without a usage chunk, token counts may be 0 for that
 record (best-effort) while identity/resources/latency are still logged.
 
+Audio endpoints have no LLM tokens. STT/TTS/clone still go through `_log_usage`
+(same identity / `key_fp` / `resource_block`) with counts only in `tokens.detail`:
+`audio_input_bytes`, `audio_output_bytes`, `audio_seconds` (STT duration when the
+upstream sends it), `text_chars` (transcript length, never the text), `tts_chars`
+(TTS/clone input length, never the input string). Filenames are not logged.
+
+`POST /v1/messages/count_tokens` is a metadata call: `input_tokens` is stored in
+`tokens.detail` only and is **not** added to prompt/completion totals.
+
 ## Cold starts in the ledger
 
 A scale-from-zero wake-up is logged as its own record with `cold_start: true`,
@@ -134,14 +143,24 @@ any token is produced. A client retrying a cold model therefore produces several
 
 ## Prometheus metrics
 
-`GET /metrics` exposes per-model rollups derived from the same events:
+`GET /metrics` exposes per-model rollups derived from the same events. Default
+scrape **fans in** across gateway replicas (sum counters, max gauges); pass
+`?local=true` for this process only.
 
 ```
 gateway_model_requests_total{model="..."}
+gateway_model_errors_total{model="..."}
 gateway_model_prompt_tokens_total{model="..."}
 gateway_model_completion_tokens_total{model="..."}
+gateway_model_total_tokens_total{model="..."}
 gateway_model_cold_starts_total{model="..."}
 gateway_model_gpu_seconds_total{model="..."}
+gateway_model_scaled_up{model="..."}
+gateway_model_replicas{model="..."}
+gateway_model_audio_seconds_total{model="..."}
+gateway_model_audio_bytes_in_total{model="..."}
+gateway_model_audio_bytes_out_total{model="..."}
+gateway_model_tts_chars_total{model="..."}
 ```
 
 plus the global gauges (`gateway_requests_total`, `gateway_models_ready`, …). These

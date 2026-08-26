@@ -1,0 +1,41 @@
+{
+  "name": "model-anthropic",
+  "slug": "model-anthropic",
+  "api_id": "model-anthropic",
+  "org_id": "orgid",
+  "use_keyless": false,
+  "use_standard_auth": true,
+  "auth": { "auth_header_name": "Authorization" },
+  "version_data": {
+    "not_versioned": true,
+    "versions": {
+      "Default": {
+        "name": "Default",
+        "use_extended_paths": true,
+        "global_headers": { "X-Aleph-Api": "anthropic" }
+      }
+    }
+  },
+  "proxy": {
+    "listen_path": "/anthropic/",
+    "target_url": "http://model-gateway.models.svc.cluster.local:80",
+    "strip_listen_path": true
+  },
+  "custom_middleware": {
+    "driver": "otto",
+    "pre": [
+      { "name": "normalizeAuth", "path": "/opt/tyk-gateway/middleware/normalizeAuth.js", "require_session": false }
+    ],
+    "post": [
+      { "name": "injectIdentity", "path": "/opt/tyk-gateway/middleware/injectIdentity.js", "require_session": true }
+    ],
+    "auth_check": { "name": "" },
+    "post_key_auth": [],
+    "response": []
+  },
+  "active": true,
+  "enable_context_vars": true,
+  "do_not_track": false,
+  "disable_rate_limit": false,
+  "disable_quota": true
+}

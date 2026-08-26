@@ -94,6 +94,14 @@ def metrics():
         record("PASS" if ok else "FAIL", r.status_code, "metrics", f"{len(r.text)} bytes")
     except Exception as e:
         record("ERR", 0, "metrics", str(e)[:60])
+    try:
+        r = req("GET", "/metrics?local=true", timeout=15)
+        ok = r.status_code == 200 and "gateway_requests_total" in r.text \
+            and "gateway_model_scaled_up" in r.text
+        record("PASS" if ok else "FAIL", r.status_code, "metrics local",
+               f"bytes={len(r.text)} scaled_up={'gateway_model_scaled_up' in r.text}")
+    except Exception as e:
+        record("ERR", 0, "metrics local", str(e)[:60])
 
 
 # ── catalog shape ─────────────────────────────────────────────────────────────
@@ -117,6 +125,43 @@ def catalog_default_subset():
     ok = r.status_code == 200 and ids_chat <= ids_all and not non_chat
     record("PASS" if ok else "FAIL", r.status_code, "catalog default=chat-only",
            f"default={len(ids_chat)} all={len(ids_all)} non_chat_leaked={sorted(non_chat)}")
+
+
+def catalog_anthropic_surface():
+    """anthropic-version header → always-on chat models, Anthropic list shape."""
+    r_oa, chat = catalog(False)
+    if r_oa.status_code != 200:
+        record("FAIL", r_oa.status_code, "catalog anthropic-surface", "openai catalog failed")
+        return
+    expected = []
+    for e in chat:
+        sc = e.get("scaling") or {}
+        if sc.get("scale_to_zero"):
+            continue
+        mr = sc.get("min_replicas")
+        if mr is not None:
+            try:
+                if int(mr) < 1:
+                    continue
+            except (TypeError, ValueError):
+                pass
+        expected.append(e["id"])
+    expected.sort()
+    h = {**_HEADERS, "anthropic-version": "2023-06-01"}
+    r = req("GET", "/v1/models", headers=h)
+    if r.status_code != 200:
+        record("FAIL", r.status_code, "catalog anthropic-surface", r.text[:80])
+        return
+    body = r.json()
+    ids = [x.get("id") for x in (body.get("data") or [])]
+    items_ok = all(
+        x.get("type") == "model" and "display_name" in x and "created_at" in x
+        for x in (body.get("data") or [])
+    )
+    shape_ok = body.get("has_more") is False and "object" not in body and items_ok
+    ok = shape_ok and ids == expected
+    record("PASS" if ok else "FAIL", r.status_code, "catalog anthropic-surface",
+           f"n={len(ids)} expected={len(expected)} shape={shape_ok}")
 
 
 # ── routing guardrails ────────────────────────────────────────────────────────
@@ -199,6 +244,40 @@ def resources_block():
            "resources block", f"model={rm['id']} keys={sorted(res.keys())}")
 
 
+def count_tokens_handler():
+    """Dedicated /v1/messages/count_tokens — must not fall into the catch-all."""
+    _, allm = catalog(True)
+    cm = first(allm, lambda e: e.get("type", "chat") == "chat" and e.get("scaled_up"))
+    if not cm:
+        cm = first(allm, lambda e: e.get("type", "chat") == "chat" and e.get("ready"))
+    if not cm:
+        record("SKIP", 0, "count_tokens", "no ready chat model")
+        return
+    r = req("POST", "/v1/messages/count_tokens",
+            {"model": cm["id"], "messages": [{"role": "user", "content": "hello"}]})
+    if _cold(r):
+        record("SKIP", r.status_code, "count_tokens", f"{cm['id']} cold")
+        return
+    if r.status_code == 200:
+        try:
+            n = r.json().get("input_tokens")
+        except Exception:
+            n = None
+        record("PASS" if isinstance(n, int) else "FAIL", r.status_code, "count_tokens",
+               f"model={cm['id']} input_tokens={n}")
+        return
+    if r.status_code in (404, 405):
+        record("SKIP", r.status_code, "count_tokens",
+               f"{cm['id']} upstream has no count_tokens")
+        return
+    detail = ""
+    try:
+        detail = str(r.json())[:120]
+    except Exception:
+        detail = (r.text or "")[:120]
+    record("FAIL", r.status_code, "count_tokens", f"model={cm['id']} {detail}")
+
+
 # ── optional: warm-sweep the whole fleet (replaces the old full_test.py) ───────
 def _warm(path, payload):
     t0 = time.time()
@@ -246,10 +325,10 @@ def fleet_sweep():
 
 
 GATEWAY_CHECKS = [
-    health, metrics, catalog_schema, catalog_default_subset,
+    health, metrics, catalog_schema, catalog_default_subset, catalog_anthropic_surface,
     guard_bad_model, guard_embed_via_chat, guard_chat_via_embed,
     guard_tools_unsupported, guard_vision_unsupported,
-    auth_required, resources_block,
+    auth_required, resources_block, count_tokens_handler,
 ]
 
 if __name__ == "__main__":

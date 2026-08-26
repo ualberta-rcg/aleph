@@ -50,7 +50,10 @@ case "$cmd" in
   "alias": "${user}",
   "meta_data": {"username": "${user}", "uid": "${uid}", "account": "${account}", "source": "pam"},
   "tags": ["pam"],
-  "access_rights": {"${API_ID}": {"api_id": "${API_ID}", "api_name": "${API_ID}", "versions": ["Default"]}}
+  "access_rights": {
+    "model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"]},
+    "model-anthropic": {"api_id": "model-anthropic", "api_name": "model-anthropic", "versions": ["Default"]}
+  }
 }
 EOF
 )

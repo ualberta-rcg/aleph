@@ -139,10 +139,12 @@ Re-running a bootstrap Job: `kubectl delete job <name>-bootstrap -n kube-system`
 ## Gateway updates (CI → cluster)
 
 The model-gateway image is published to Docker Hub on every push to `main` touching
-`gateway/**`. The Deployment in `63-model-gateway.yaml` uses `imagePullPolicy: Always`, so:
+`gateway/**`. The Deployment in `63-model-gateway.yaml` is pinned to an immutable
+`rkhoja/aleph:gateway-<sha>` tag (`imagePullPolicy: IfNotPresent`):
 
 ```bash
-kubectl rollout restart deploy/model-gateway -n models
+# After CI publishes gateway-<newsha>, bump the pin in 63-model-gateway.yaml then:
+kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<newsha>
 ```
 
 No file-copy, no SSH push, no deploy script.

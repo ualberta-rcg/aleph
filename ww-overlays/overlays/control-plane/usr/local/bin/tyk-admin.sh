@@ -29,6 +29,8 @@
 #   invalidate-key <key|hash>              revoke a single key
 #   list-user <identity>                   show all keys for an identity
 #   invalidate-user <identity>             revoke ALL keys for an identity
+#   grant-api <api_id> [api_name]          add <api_id> to every key's access_rights
+#                                          (mirrors the key's model-gateway limit)
 #
 # Env overrides:
 #   TYK_URL      default: auto (LB IP of svc tyk/tyk-gateway-nodeport, else ClusterIP)
@@ -105,7 +107,10 @@ key_body() {
   "quota_renews": 0,
   "quota_remaining": -1,
   "quota_renewal_rate": 0,
-  "access_rights": {"${API_ID}": {"api_id": "${API_ID}", "api_name": "${API_ID}", "versions": ["Default"], "limit": {"rate": 60, "per": 60}}}
+  "access_rights": {
+    "model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"], "limit": {"rate": 60, "per": 60}},
+    "model-anthropic": {"api_id": "model-anthropic", "api_name": "model-anthropic", "versions": ["Default"], "limit": {"rate": 60, "per": 60}}
+  }
 }
 EOF
 }
@@ -222,7 +227,65 @@ print("true" if d.get("access_rights") and ident == want else "false")
     echo "revoked $n key(s) for '$identity'"
     ;;
 
+  grant-api)
+    api="${1:?api_id required}"; name="${2:-$api}"
+    # Backfill access_rights[api] on every existing key, copying the nested
+    # rate/per from that key's model-gateway block (Tyk enforces the nested
+    # limit). PUT ?suppress_reset=1 so quotas/allowance are not zeroed.
+    out="$(TYK_URL="$TYK_URL" TYK_SECRET="$TYK_SECRET" GRANT_API="$api" GRANT_NAME="$name" python3 <<'PY'
+import json, os, urllib.error, urllib.request
+base = os.environ["TYK_URL"].rstrip("/")
+secret = os.environ["TYK_SECRET"]
+api = os.environ["GRANT_API"]
+name = os.environ["GRANT_NAME"]
+hdr = {"x-tyk-authorization": secret, "Content-Type": "application/json"}
+
+def req(path, method="GET", data=None):
+    body = None if data is None else json.dumps(data).encode()
+    r = urllib.request.Request(base + path, headers=hdr, method=method, data=body)
+    with urllib.request.urlopen(r, timeout=20) as resp:
+        raw = resp.read()
+        return json.loads(raw) if raw else {}
+
+hashes = req("/tyk/keys").get("keys", [])
+updated = skipped = failed = 0
+for h in hashes:
+    try:
+        d = req(f"/tyk/keys/{h}?hashed=true")
+    except Exception:
+        failed += 1
+        continue
+    ar = d.get("access_rights") or {}
+    if api in ar:
+        skipped += 1
+        continue
+    src = ar.get("model-gateway") or (next(iter(ar.values())) if ar else {})
+    block = {
+        "api_id": api,
+        "api_name": name,
+        "versions": list(src.get("versions") or ["Default"]),
+    }
+    if isinstance(src.get("limit"), dict):
+        block["limit"] = dict(src["limit"])
+    ar[api] = block
+    d["access_rights"] = ar
+    try:
+        req(f"/tyk/keys/{h}?hashed=true&suppress_reset=1", method="PUT", data=d)
+        updated += 1
+    except urllib.error.HTTPError as e:
+        failed += 1
+        print(f"fail {h}: HTTP {e.code}", flush=True)
+    except Exception as e:
+        failed += 1
+        print(f"fail {h}: {e}", flush=True)
+print(f"grant-api {api}: updated={updated} skipped={skipped} failed={failed} scanned={len(hashes)}")
+PY
+)"
+    echo "$out"
+    audit "grant-api" "-" "api=$api $out"
+    ;;
+
   *)
-    echo "usage: $0 {add-user <identity> [account] [type] | validate-key <identity> <key> | update-user <identity> [account] [type] | invalidate-key <key|hash> | list-user <identity> | invalidate-user <identity>}" >&2
+    echo "usage: $0 {add-user <identity> [account] [type] | validate-key <identity> <key> | update-user <identity> [account] [type] | invalidate-key <key|hash> | list-user <identity> | invalidate-user <identity> | grant-api <api_id> [api_name]}" >&2
     exit 1 ;;
 esac

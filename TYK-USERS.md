@@ -76,7 +76,14 @@ tyk-admin.sh invalidate-key <key|hash>
 # List / revoke all keys for an identity:
 tyk-admin.sh list-user <identity>
 tyk-admin.sh invalidate-user <identity>
+
+# Backfill a new api_id onto every existing key (used for model-anthropic):
+tyk-admin.sh grant-api model-anthropic
 ```
+
+New keys get `access_rights` on **both** `model-gateway` (`/v1/`) and
+`model-anthropic` (`/anthropic/`). Existing keys need `grant-api` after the
+Anthropic API definition is applied, or keyed `/anthropic/` calls 403.
 
 ### Examples
 
@@ -97,7 +104,7 @@ tyk-admin.sh update-user openwebui
 |---|---|
 | `TYK_URL` | auto: LB IP of `tyk/tyk-gateway-nodeport`, else ClusterIP |
 | `TYK_SECRET` | auto: Secret `tyk/secrets-tyk-oss-tyk-gateway` key `APISecret` |
-| `API_ID` | `model-gateway` |
+| `API_ID` | unused for minting — new keys always get `model-gateway` **and** `model-anthropic` |
 | `AUDIT_LOG` | `/var/log/aleph/tyk-admin.log` |
 | `KUBECTL` | `kubectl` (falls back to the RKE2 bundle + KUBECONFIG) |
 
@@ -173,7 +180,10 @@ SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk -o jsonpath='{.da
 curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Content-Type: application/json" -d '{
   "alias": "openwebui",
   "tags": ["aleph", "account:shared-pool", "type:service"],
-  "access_rights": {"model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"]}}
+  "access_rights": {
+    "model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"], "limit": {"rate": 60, "per": 60}},
+    "model-anthropic": {"api_id": "model-anthropic", "api_name": "model-anthropic", "versions": ["Default"], "limit": {"rate": 60, "per": 60}}
+  }
 }'
 # list (hashes only) / inspect / delete
 curl -s $TYK/tyk/keys -H "x-tyk-authorization: $SECRET"
@@ -191,7 +201,7 @@ and filter on `alias`. Fine for modest key counts.
 |---|---|
 | `51-tyk.yaml` | Tyk OSS (JSVM enabled, api-defs + middleware volume mounts) |
 | `52-tyk-loadbalancer.yaml` | MetalLB LoadBalancer for the public VIP |
-| `53-tyk-api-definitions.yaml` | API def (token auth, custom_middleware pre/post) |
+| `53-tyk-api-definitions.yaml` | API defs: `model-gateway` (`/v1/`), `model-anthropic` (`/anthropic/`, strip), `model-web` (`/`, keyless) |
 | `54-tyk-middleware.yaml` | JSVM: `normalizeAuth` + `injectIdentity` |
 
 Source of truth for the JS + API def: `gateway/tyk/`.

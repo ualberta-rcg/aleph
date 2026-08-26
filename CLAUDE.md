@@ -114,10 +114,10 @@ Internet → MetalLB VIP (129.128.190.55:80) → Tyk OSS (auth, rate-limit)
     → KServe pods via knative-local-gateway
 ```
 
-- **Gateway image**: `rkhoja/aleph:latest` (CI auto-builds on `main` push touching `gateway/**`, ~4 min)
-- **Gateway deploy**: `kubectl rollout restart deploy/model-gateway -n models` — the manifest pins `:latest` + `imagePullPolicy: Always`, so a restart always pulls the newest CI build. (Pin a specific immutable build only if you need to: `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>`.)
-- **Tyk keys**: `gateway/tyk/tyk-keys.sh` (create/list/inspect/revoke)
-- **Gateway update**: `kubectl rollout restart deploy/model-gateway -n models` (CI auto-builds `rkhoja/aleph:latest` on every `gateway/**` push)
+- **Gateway image**: pinned immutable `rkhoja/aleph:gateway-<sha>` in `ww-overlays/.../63-model-gateway.yaml` (CI also pushes `:latest`, but the live deploy does **not** follow it)
+- **Gateway deploy**: after CI publishes `gateway-<newsha>`, bump the pin in `63-model-gateway.yaml` and `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<newsha>`. `imagePullPolicy: IfNotPresent`. A restart of `:latest` is not how this cluster rolls.
+- **Tyk keys**: `tyk-admin.sh` on a control-plane node (or `gateway/tyk/tyk-keys.sh` from a login node)
+- **Gateway update**: CI auto-builds `rkhoja/aleph:gateway-<sha>` on every `gateway/**` push; promote by pinning that tag
 
 ## POC Reference Cluster (172.26.92.232)
 

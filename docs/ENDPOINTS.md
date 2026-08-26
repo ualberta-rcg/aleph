@@ -15,6 +15,12 @@ truth for which path each model listens on.
 - `/v1/chat/completions` — OpenAI chat
 - `/v1/completions` — completion-only (non-chat) LLM
 - `/v1/messages` (also `/anthropic/v1/messages`) — Anthropic-native
+- `/v1/messages/count_tokens` (also `/anthropic/v1/messages/count_tokens`) — Anthropic token count
+
+The `/anthropic/` prefix is a Tyk listen path (`model-anthropic`, strip prefix, keyed).
+Tyk injects `X-Aleph-Api: anthropic` so `GET /anthropic/v1/models` returns the
+always-on chat list in Anthropic shape. Same keys as `/v1/` (keys need
+`access_rights` on both `model-gateway` and `model-anthropic`).
 
 ## Embeddings / rerank
 - `/v1/embeddings`, `/v1/rerank`, `/v1/embed` (science-embed alias)

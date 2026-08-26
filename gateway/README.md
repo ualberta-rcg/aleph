@@ -68,9 +68,10 @@ Only **chat-type LLMs** support the Anthropic Messages API. Everything else is O
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `GET /v1/models` | GET | Model catalog (`?all=true` for non-chat) |
+| `GET /v1/models` | GET | Model catalog (`?all=true` for non-chat). Anthropic surface (`X-Aleph-Api: anthropic` or `anthropic-version`) returns always-on chat models in Anthropic list shape. |
 | `POST /v1/chat/completions` | POST | OpenAI chat (streaming supported) |
 | `POST /v1/messages` | POST | Anthropic Messages (streaming supported) |
+| `POST /v1/messages/count_tokens` | POST | Anthropic token count (forwards to vLLM; does not strip `model`) |
 | `POST /v1/embeddings` | POST | Embeddings (OpenAI format) |
 | `POST /v1/rerank` | POST | Reranking (Cohere v2 → TEI translation) |
 | `POST /v1/science/*` | POST | Science model catch-all (predict, forecast, embed, etc.) |
@@ -86,7 +87,9 @@ Only **chat-type LLMs** support the Anthropic Messages API. Everything else is O
 | `POST /v1/detect` | POST | Detection |
 | `GET /healthz` | GET | Health check |
 | `GET /readyz` | GET | Readiness (cards loaded) |
-| `GET /metrics` | GET | Prometheus metrics |
+| `GET /metrics` | GET | Prometheus metrics (cluster-wide fan-in; `?local=true` for this replica) |
+
+Public Anthropic/Claude Code URL: `https://inference.vulcan.alliancecan.ca/anthropic` (Tyk strips `/anthropic` and injects `X-Aleph-Api: anthropic`). Direct `/v1/messages` still works.
 
 ## Card-driven discovery
 
@@ -215,15 +218,16 @@ main push (gateway/**) → GitHub Actions → Docker build → Docker Hub push
 
 The gateway, Tyk, and all supporting resources deploy as RKE2 auto-deploy
 manifests via the Warewulf overlay (`ww-overlays/`) — there is no deploy script.
-To pick up a new image build on a running cluster:
+The live Deployment is **pinned** to an immutable `rkhoja/aleph:gateway-<sha>`
+tag in `63-model-gateway.yaml` (`imagePullPolicy: IfNotPresent`). After CI:
 
 ```bash
-# Use latest (imagePullPolicy: Always)
-sudo ssh root@<control-plane> "kubectl rollout restart deploy/model-gateway -n models"
-
-# Or pin a specific immutable build
-sudo ssh root@<control-plane> "kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-abc1234"
+# Pin the new immutable build (also bump the tag in 63-model-gateway.yaml)
+sudo ssh root@<control-plane> "kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>"
 ```
+
+A rebuild resurrects whatever tag is pinned in the overlay — never leave live
+on `:latest`.
 
 ## Key files
 

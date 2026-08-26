@@ -2,6 +2,34 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-25 — restore /anthropic Tyk route + gateway polish
+
+The `/anthropic/` prefix 404'd after the Aug 24 rebuild: the Tyk API definition lived
+only on the old cluster and was never in `53-tyk-api-definitions.yaml`. `/v1/messages`
+itself was fine.
+
+- Tyk: third API `model-anthropic` listen `/anthropic/` with `strip_listen_path: true`,
+  same keyed auth + JSVM middleware as `model-gateway`, injects `X-Aleph-Api: anthropic`.
+  New keys get both api_ids; `tyk-admin.sh grant-api` backfills existing keys.
+- Gateway `GET /v1/models` on the Anthropic surface (header `X-Aleph-Api: anthropic` or
+  `anthropic-version`) returns always-on chat models only, in Anthropic list shape.
+  OpenAI `/v1/models` (incl. `?all=true`) is unchanged. Always-on is evaluated live
+  from the card (`not scale_to_zero` and `min_replicas >= 1`), never hardcoded.
+- Dedicated `POST /v1/messages/count_tokens` above the catch-all (Claude Code calls it
+  every session). Forwards with `model` intact so passthrough cards don't 400 at vLLM.
+  Logged via `_log_usage` with `input_tokens` in `tokens.detail` only — not billed as
+  prompt/completion.
+- `/metrics` fans in across the 3 replicas (`?local=true` skips fan-in). Emits the
+  previously dropped `gateway_model_errors_total` / `gateway_model_total_tokens_total`
+  plus live `gateway_model_scaled_up` / `gateway_model_replicas` gauges, and audio
+  counters (`audio_seconds`, `audio_bytes_in/out`, `tts_chars`).
+- Audio STT/TTS/clone now attach byte/duration/char counts to the per-key usage log
+  (identity + `key_fp` + `resource_block` unchanged). Transcript text, TTS input text,
+  and filenames are never logged.
+
+Ship via CI (`rkhoja/aleph:gateway-<sha>`), canary, then pin in `63-model-gateway.yaml`.
+Rollback: re-pin `gateway-b37897c`; Tyk: drop `model-anthropic.json` and restart.
+
 ## 2026-08-19 — phi-4-reasoning always-up + KV/thinking defaults
 
 Unparked and bounced `phi-4-reasoning` (delete ISVC, PVC kept). Gateway was not

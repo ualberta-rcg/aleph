@@ -274,6 +274,8 @@ def anth_parse_openai_sse_line(line: str) -> dict | None:
 
 # ── Config ───────────────────────────────────────────────────────────────────
 MODELS_NS = os.environ.get("MODELS_NAMESPACE", "models")
+POD_NAME = os.environ.get("POD_NAME", "")
+GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", "8080"))
 KNATIVE_GW = os.environ.get(
     "KNATIVE_GATEWAY",
     "http://knative-local-gateway.istio-system.svc.cluster.local",
@@ -1079,6 +1081,69 @@ def _limits(info: dict) -> tuple[int, int]:
     return _i(lim.get("context_window")), _i(lim.get("max_completion_tokens"))
 
 
+def _always_on_chat(card: dict) -> bool:
+    """Live always-on chat predicate from the card. Never hardcode model ids."""
+    if (card.get("type") or "chat") != "chat":
+        return False
+    scaling = card.get("scaling") or {}
+    if scaling.get("scale_to_zero"):
+        return False
+    mr = scaling.get("min_replicas")
+    if mr is None:
+        return True
+    try:
+        return int(mr) >= 1
+    except (TypeError, ValueError):
+        return True
+
+
+def _is_anthropic_surface(request: Request) -> bool:
+    """True when Tyk stamped X-Aleph-Api: anthropic, or the client sent anthropic-version."""
+    h = request.headers
+    if (h.get("x-aleph-api") or "").strip().lower() == "anthropic":
+        return True
+    return bool((h.get("anthropic-version") or "").strip())
+
+
+def _anth_unsupported(model_id, info: dict) -> JSONResponse:
+    return JSONResponse(
+        {"error": {
+            "message": (f"model '{model_id}' does not support the Anthropic Messages API "
+                        f"(type={info.get('type')}). Use /v1/chat/completions or a model-specific "
+                        f"endpoint instead."),
+            "type": "invalid_request_error",
+            "code": "anthropic_unsupported",
+        }}, 400)
+
+
+def _audio_usage_from_stt(audio_in: int, content: bytes, content_type: str | None) -> dict:
+    """Counts only — never transcript text, filenames, or raw audio."""
+    u: dict = {}
+    if audio_in:
+        u["audio_input_bytes"] = audio_in
+    u["audio_output_bytes"] = len(content)
+    if "json" not in (content_type or "").lower():
+        return u
+    try:
+        j = json.loads(content)
+    except Exception:
+        return u
+    if not isinstance(j, dict):
+        return u
+    up = j.get("usage")
+    if isinstance(up, dict):
+        for k, v in up.items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                u[k] = v
+    dur = j.get("duration")
+    if isinstance(dur, (int, float)) and not isinstance(dur, bool):
+        u["audio_seconds"] = float(dur)
+    text = j.get("text")
+    if isinstance(text, str):
+        u["text_chars"] = len(text)
+    return u
+
+
 def _log_usage(request: Request, info: dict, *, endpoint: str, api: str,
                status: int, latency_ms: int, usage_obj: dict | None = None,
                cold_start: bool = False, stream: bool = False,
@@ -1481,12 +1546,37 @@ def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict
 
 @app.get("/v1/models")
 async def list_models(request: Request):
+    # Anthropic surface (Tyk /anthropic/ or a client sending anthropic-version):
+    # always-on chat models only, Anthropic list shape. OpenAI path is unchanged.
+    anthropic = _is_anthropic_surface(request)
     # ?all=true → every model (full catalogue); default → chat-UI-suitable only.
     show_all = request.query_params.get("all", "").lower() in ("1", "true", "yes")
     with _STATE_LOCK:
         cards = list(CARDS.values())
         isvc_state = dict(ISVC_STATE)
         pods = {k: len(v) for k, v in POD_NODE.items()}
+    if anthropic:
+        data = []
+        for c in cards:
+            if not _always_on_chat(c):
+                continue
+            catalog = c.get("catalog") or {}
+            display = (catalog.get("display_name")
+                       or catalog.get("description_short")
+                       or c.get("id"))
+            data.append({
+                "type": "model",
+                "id": c["id"],
+                "display_name": display,
+                "created_at": "2023-11-14T22:13:20Z",
+            })
+        data.sort(key=lambda x: x["id"])
+        return {
+            "data": data,
+            "has_more": False,
+            "first_id": data[0]["id"] if data else None,
+            "last_id": data[-1]["id"] if data else None,
+        }
     data = [
         _model_entry(c, isvc_state, pods)
         for c in cards
@@ -1796,6 +1886,10 @@ import anthropic
 a = anthropic.Anthropic(base_url="{_MAIN_HOST}", api_key="$KEY")
 a.messages.create(model="command-r-7b", max_tokens=256,
     messages=[{{"role":"user","content":"hi"}}])
+
+# Claude Code / Anthropic SDK via the /anthropic prefix (Tyk strips it)
+#   ANTHROPIC_BASE_URL={_MAIN_HOST}/anthropic
+#   ANTHROPIC_AUTH_TOKEN=$KEY
 
 # curl — chat
 curl {_MAIN_HOST}/v1/chat/completions -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
@@ -2197,11 +2291,14 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
         return _gone_response()
     if log_ctx:
         latency_ms = int((time.monotonic() - t0) * 1000)
-        u = None
-        try:
-            u = r.json().get("usage")
-        except Exception:
-            u = None
+        u = log_ctx.get("usage_obj")
+        if u is None:
+            try:
+                u = r.json().get("usage")
+            except Exception:
+                u = None
+        if log_ctx.get("count_output_bytes"):
+            u = {**(u or {}), "audio_output_bytes": len(r.content)}
         _log_usage(log_ctx["request"], info, endpoint=log_ctx["endpoint"],
                    api=log_ctx["api"], status=r.status_code, latency_ms=latency_ms,
                    usage_obj=u, stream=False)
@@ -2419,14 +2516,7 @@ async def anthropic_messages(request: Request):
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
     if info["type"] not in ("chat",):
         _METRICS["requests_error"] += 1
-        return JSONResponse(
-            {"error": {
-                "message": (f"model '{model_id}' does not support the Anthropic Messages API "
-                            f"(type={info['type']}). Use /v1/chat/completions or a model-specific "
-                            f"endpoint instead."),
-                "type": "invalid_request_error",
-                "code": "anthropic_unsupported",
-            }}, 400)
+        return _anth_unsupported(model_id, info)
     if not info["ready"]:
         return JSONResponse(
             {"error": {"message": f"model '{model_id}' not ready",
@@ -2624,6 +2714,7 @@ async def audio_transcriptions(request: Request):
     ctype = request.headers.get("content-type", "").lower()
     model_id = None
     stream = False
+    audio_in = 0
     fwd: dict = {}              # httpx kwargs for the upstream POST
     host_hdr = None
 
@@ -2640,6 +2731,7 @@ async def audio_transcriptions(request: Request):
                 # UploadFile instances have .read(); str fields don't.
                 if hasattr(v, "read"):
                     content = await v.read()
+                    audio_in += len(content)
                     files.append((k, (getattr(v, "filename", k),
                                       content, getattr(v, "content_type", None))))
                 else:
@@ -2691,15 +2783,20 @@ async def audio_transcriptions(request: Request):
         async def gen():
             t0 = time.monotonic()
             status_code = 200
+            out_bytes = 0
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
                 async with c.stream("POST", url, headers=host_hdr,
                                     **fwd_stream) as r:
                     status_code = r.status_code
                     async for chunk in r.aiter_raw():
+                        out_bytes += len(chunk)
                         yield chunk
             latency_ms = int((time.monotonic() - t0) * 1000)
             _log_usage(request, info, status=status_code, latency_ms=latency_ms,
-                       stream=True, **log_kwargs)
+                       stream=True, usage_obj={
+                           "audio_input_bytes": audio_in,
+                           "audio_output_bytes": out_bytes,
+                       }, **log_kwargs)
         return StreamingResponse(
             gen(), media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -2712,7 +2809,10 @@ async def audio_transcriptions(request: Request):
     except _ClientGone:
         return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
-    _log_usage(request, info, status=r.status_code, latency_ms=latency_ms, **log_kwargs)
+    _log_usage(request, info, status=r.status_code, latency_ms=latency_ms,
+               usage_obj=_audio_usage_from_stt(
+                   audio_in, r.content, r.headers.get("content-type")),
+               **log_kwargs)
     if r.status_code >= 400:
         _METRICS["requests_error"] += 1
     return Response(content=r.content, status_code=r.status_code,
@@ -2741,11 +2841,15 @@ async def audio_speech(request: Request):
     cold = await _guard_cold(request, info, "/v1/audio/speech", "openai")
     if cold is not None:
         return cold
+    inp = parsed.get("input")
+    chars = len(inp) if isinstance(inp, str) else 0
     _apply_upstream_model_id(info, parsed)
     return await _forward(info, "/v1/audio/speech", json.dumps(parsed).encode(),
                           stream=False, log_ctx={"request": request,
                                                  "endpoint": "/v1/audio/speech",
-                                                 "api": "openai"})
+                                                 "api": "openai",
+                                                 "usage_obj": {"tts_chars": chars},
+                                                 "count_output_bytes": True})
 
 
 @app.post("/v1/audio/clone")
@@ -2760,6 +2864,7 @@ async def audio_clone(request: Request):
     _METRICS["requests_total"] += 1
     ctype = request.headers.get("content-type", "").lower()
     model_id = None
+    audio_in = 0
     fwd: dict = {}
 
     if ctype.startswith("multipart/"):
@@ -2776,6 +2881,7 @@ async def audio_clone(request: Request):
             lk = k.lower()
             if hasattr(v, "read"):                       # reference clip upload
                 content = await v.read()
+                audio_in += len(content)
                 files.append((k, (getattr(v, "filename", "ref.wav"),
                                   content, getattr(v, "content_type", "audio/wav"))))
             else:
@@ -2822,8 +2928,17 @@ async def audio_clone(request: Request):
     except _ClientGone:
         return _gone_response()
     latency_ms = int((time.monotonic() - t0) * 1000)
+    inp = ""
+    if isinstance(fwd.get("data"), dict):
+        inp = fwd["data"].get("input") or ""
+    elif isinstance(fwd.get("json"), dict):
+        inp = fwd["json"].get("input") or ""
+    chars = len(inp) if isinstance(inp, str) else 0
     _log_usage(request, info, status=r.status_code, latency_ms=latency_ms,
-               endpoint="/v1/audio/clone", api="openai")
+               endpoint="/v1/audio/clone", api="openai",
+               usage_obj={"tts_chars": chars,
+                          "audio_input_bytes": audio_in,
+                          "audio_output_bytes": len(r.content)})
     if r.status_code >= 400:
         _METRICS["requests_error"] += 1
     return Response(content=r.content, status_code=r.status_code,
@@ -2850,6 +2965,55 @@ async def audio_voices(request: Request):
     latency_ms = int((time.monotonic() - t0) * 1000)
     _log_usage(request, info, status=r.status_code, latency_ms=latency_ms,
                endpoint="/v1/audio/voices", api="openai")
+    if r.status_code >= 400:
+        _METRICS["requests_error"] += 1
+    return Response(content=r.content, status_code=r.status_code,
+                    media_type=r.headers.get("content-type", "application/json"))
+
+
+@app.post("/v1/messages/count_tokens")
+async def anthropic_count_tokens(request: Request):
+    """Token-count for Anthropic / Claude Code. Registered above the
+    `/v1/{path:path}` catch-all so `custom_params.passthrough` never strips
+    `model` (that 400s vLLM with "body.model Field required")."""
+    _METRICS["requests_total"] += 1
+    try:
+        body = json.loads(await request.body())
+    except Exception:
+        _METRICS["requests_error"] += 1
+        return JSONResponse({"error": "invalid JSON body"}, 400)
+    model_id = body.get("model")
+    info = resolve(model_id) if model_id else None
+    if not info:
+        _METRICS["requests_error"] += 1
+        return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    if info["type"] not in ("chat",):
+        _METRICS["requests_error"] += 1
+        return _anth_unsupported(model_id, info)
+    _apply_upstream_model_id(info, body)
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
+            r = await _post_cancellable(
+                request, c, url=upstream_url("/v1/messages/count_tokens"),
+                content=json.dumps(body).encode(),
+                headers=upstream_headers(info))
+    except _ClientGone:
+        return _gone_response()
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    usage_obj = None
+    try:
+        parsed = r.json()
+        if isinstance(parsed, dict) and "input_tokens" in parsed:
+            # Detail only — do not map onto prompt/completion totals (metadata call).
+            usage_obj = {"input_tokens": parsed.get("input_tokens")}
+        elif isinstance(parsed, dict):
+            usage_obj = {k: v for k, v in parsed.items()
+                         if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    except Exception:
+        pass
+    _log_usage(request, info, endpoint="/v1/messages/count_tokens", api="anthropic",
+               status=r.status_code, latency_ms=latency_ms, usage_obj=usage_obj)
     if r.status_code >= 400:
         _METRICS["requests_error"] += 1
     return Response(content=r.content, status_code=r.status_code,
@@ -2922,11 +3086,31 @@ async def readyz():
 
 
 @app.get("/metrics")
-async def metrics():
+async def metrics(request: Request):
+    """Prometheus scrape. Default is a cluster-wide sum across gateway replicas
+    (counters summed, gauges max'd). `?local=true` returns this process only —
+    used by peer fan-in and by the canary."""
+    local = _local_metrics_text()
+    if request.query_params.get("local", "").lower() in ("1", "true", "yes"):
+        return Response(local, media_type="text/plain")
+    try:
+        aggregated = await _fanin_metrics(local)
+    except Exception:
+        aggregated = local
+    return Response(aggregated, media_type="text/plain")
+
+
+def _local_metrics_text() -> str:
     with _STATE_LOCK:
         cards_total = len(CARDS)
         ready = sum(1 for c in CARDS.values()
                     if ISVC_STATE.get((c.get("routing", {}) or {}).get("k8s_name") or c["id"], {}).get("ready"))
+        replica_rows = []
+        for c in CARDS.values():
+            mid = c.get("id") or "unknown"
+            k8s = (c.get("routing") or {}).get("k8s_name") or mid
+            n = len(POD_NODE.get(k8s) or {})
+            replica_rows.append((mid, n))
     lines = [
         "# HELP gateway_requests_total Total requests handled.",
         "# TYPE gateway_requests_total counter",
@@ -2941,36 +3125,163 @@ async def metrics():
         "# TYPE gateway_models_ready gauge",
         f"gateway_models_ready {ready}",
     ]
+    if replica_rows:
+        lines += [
+            "# HELP gateway_model_scaled_up 1 if the model has >=1 predictor pod.",
+            "# TYPE gateway_model_scaled_up gauge",
+        ]
+        lines += [f'gateway_model_scaled_up{{model="{m}"}} {1 if n else 0}'
+                  for m, n in replica_rows]
+        lines += [
+            "# HELP gateway_model_replicas Running predictor pods per model.",
+            "# TYPE gateway_model_replicas gauge",
+        ]
+        lines += [f'gateway_model_replicas{{model="{m}"}} {n}'
+                  for m, n in replica_rows]
     counters = usage.snapshot()
     if counters:
-        lines += [
-            "# HELP gateway_model_requests_total Served requests per model.",
-            "# TYPE gateway_model_requests_total counter",
-        ]
-        lines += [f'gateway_model_requests_total{{model="{m}"}} {c["requests"]}'
-                  for m, c in counters.items()]
-        lines += [
-            "# HELP gateway_model_prompt_tokens_total Prompt tokens per model.",
-            "# TYPE gateway_model_prompt_tokens_total counter",
-        ]
-        lines += [f'gateway_model_prompt_tokens_total{{model="{m}"}} {c["prompt_tokens"]}'
-                  for m, c in counters.items()]
-        lines += [
-            "# HELP gateway_model_completion_tokens_total Completion tokens per model.",
-            "# TYPE gateway_model_completion_tokens_total counter",
-        ]
-        lines += [f'gateway_model_completion_tokens_total{{model="{m}"}} {c["completion_tokens"]}'
-                  for m, c in counters.items()]
-        lines += [
-            "# HELP gateway_model_cold_starts_total Cold-start (scale-from-zero) events per model.",
-            "# TYPE gateway_model_cold_starts_total counter",
-        ]
-        lines += [f'gateway_model_cold_starts_total{{model="{m}"}} {c["cold_starts"]}'
-                  for m, c in counters.items()]
-        lines += [
-            "# HELP gateway_model_gpu_seconds_total Approx GPU-seconds (gpus*latency) per model.",
-            "# TYPE gateway_model_gpu_seconds_total counter",
-        ]
-        lines += [f'gateway_model_gpu_seconds_total{{model="{m}"}} {round(c["gpu_seconds"], 3)}'
-                  for m, c in counters.items()]
-    return Response("\n".join(lines) + "\n", media_type="text/plain")
+        def series(name, help_txt, key, kind="counter", fmt=None):
+            out = [
+                f"# HELP {name} {help_txt}",
+                f"# TYPE {name} {kind}",
+            ]
+            for m, c in counters.items():
+                v = c.get(key, 0)
+                if fmt:
+                    v = fmt(v)
+                out.append(f'{name}{{model="{m}"}} {v}')
+            return out
+        lines += series("gateway_model_requests_total",
+                        "Served requests per model.", "requests")
+        lines += series("gateway_model_errors_total",
+                        "Errored requests per model.", "errors")
+        lines += series("gateway_model_prompt_tokens_total",
+                        "Prompt tokens per model.", "prompt_tokens")
+        lines += series("gateway_model_completion_tokens_total",
+                        "Completion tokens per model.", "completion_tokens")
+        lines += series("gateway_model_total_tokens_total",
+                        "Total tokens per model.", "total_tokens")
+        lines += series("gateway_model_cold_starts_total",
+                        "Cold-start (scale-from-zero) events per model.", "cold_starts")
+        lines += series("gateway_model_gpu_seconds_total",
+                        "Approx GPU-seconds (gpus*latency) per model.",
+                        "gpu_seconds", fmt=lambda v: round(v, 3))
+        lines += series("gateway_model_audio_seconds_total",
+                        "Audio duration seconds per model (STT).", "audio_seconds",
+                        fmt=lambda v: round(v, 3))
+        lines += series("gateway_model_audio_bytes_in_total",
+                        "Uploaded audio bytes per model.", "audio_bytes_in")
+        lines += series("gateway_model_audio_bytes_out_total",
+                        "Returned audio/SSE bytes per model.", "audio_bytes_out")
+        lines += series("gateway_model_tts_chars_total",
+                        "TTS/clone input characters per model.", "tts_chars")
+    return "\n".join(lines) + "\n"
+
+
+def _parse_prom(text: str) -> tuple[dict, dict, dict]:
+    """Return (samples, types, help) from Prometheus text format."""
+    types: dict[str, str] = {}
+    help_map: dict[str, str] = {}
+    samples: dict[tuple[str, str], float] = {}
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("# HELP "):
+            rest = s[7:]
+            name, _, desc = rest.partition(" ")
+            if name:
+                help_map[name] = desc
+            continue
+        if s.startswith("# TYPE "):
+            parts = s.split()
+            if len(parts) >= 4:
+                types[parts[2]] = parts[3]
+            continue
+        if s.startswith("#"):
+            continue
+        if " " not in s:
+            continue
+        left, right = s.rsplit(" ", 1)
+        try:
+            val = float(right)
+        except ValueError:
+            continue
+        name, labels = left, ""
+        if "{" in left:
+            name, rest = left.split("{", 1)
+            labels = rest.rstrip("}")
+        samples[(name, labels)] = val
+    return samples, types, help_map
+
+
+def _merge_prom(local_text: str, peer_texts: list[str]) -> str:
+    """Sum counters by (name, labels); take max for gauges (identical cluster view)."""
+    all_samples: list[dict] = []
+    types: dict[str, str] = {}
+    help_map: dict[str, str] = {}
+    for t in [local_text, *peer_texts]:
+        s, ty, hp = _parse_prom(t)
+        all_samples.append(s)
+        types.update(ty)
+        help_map.update(hp)
+    keys = set()
+    for s in all_samples:
+        keys |= s.keys()
+    merged: dict[tuple[str, str], float] = {}
+    for k in keys:
+        name = k[0]
+        vals = [s[k] for s in all_samples if k in s]
+        if not vals:
+            continue
+        if types.get(name) == "counter":
+            merged[k] = sum(vals)
+        else:
+            merged[k] = max(vals)
+    names = sorted({n for n, _ in merged})
+    lines: list[str] = []
+    for name in names:
+        if name in help_map:
+            lines.append(f"# HELP {name} {help_map[name]}")
+        if name in types:
+            lines.append(f"# TYPE {name} {types[name]}")
+        for (n, labels), v in sorted(merged.items()):
+            if n != name:
+                continue
+            if v == int(v):
+                rendered = str(int(v))
+            else:
+                rendered = f"{v:.6f}".rstrip("0").rstrip(".")
+            if labels:
+                lines.append(f"{name}{{{labels}}} {rendered}")
+            else:
+                lines.append(f"{name} {rendered}")
+    return "\n".join(lines) + "\n"
+
+
+async def _fanin_metrics(local: str) -> str:
+    """Fetch ?local=true from peer gateway pods; degrade to local on any error."""
+    v1 = _core()
+    pods = v1.list_namespaced_pod(MODELS_NS, label_selector="app=model-gateway")
+    peers: list[str] = []
+    for p in pods.items:
+        if p.metadata.name == POD_NAME:
+            continue
+        if (p.status.phase or "") != "Running":
+            continue
+        ip = p.status.pod_ip
+        if ip:
+            peers.append(ip)
+    if not peers:
+        return local
+    async with httpx.AsyncClient(timeout=2.0) as c:
+        results = await asyncio.gather(
+            *[c.get(f"http://{ip}:{GATEWAY_PORT}/metrics?local=true") for ip in peers],
+            return_exceptions=True,
+        )
+    peer_texts: list[str] = []
+    for r in results:
+        if isinstance(r, Exception) or getattr(r, "status_code", 0) != 200:
+            return local
+        peer_texts.append(r.text)
+    return _merge_prom(local, peer_texts)

@@ -48,7 +48,11 @@ The gateway reads these fields from model cards. When creating/updating `details
 
 ## Anthropic endpoint gating
 
-`/v1/messages` only works for `type: "chat"` models. Non-chat models (embed, predict, forecast, etc.) are rejected with 400 `anthropic_unsupported`. This prevents confusing errors from upstream vLLM when Anthropic-formatted requests hit non-LLM backends.
+`/v1/messages` (and `/anthropic/v1/messages` after Tyk strips the prefix) only works
+for `type: "chat"` models. Non-chat models are rejected with 400 `anthropic_unsupported`.
+`GET /v1/models` on the Anthropic surface (`X-Aleph-Api: anthropic` or `anthropic-version`)
+returns always-on chat models only, in Anthropic list shape — any chat model remains
+callable. `POST /v1/messages/count_tokens` is a dedicated handler (not the catch-all).
 
 ## Versioning and rollout
 
@@ -58,9 +62,9 @@ The gateway reads these fields from model cards. When creating/updating `details
 Docker Hub on `main` pushes that touch `gateway/**`.
 
 - Image: `rkhoja/aleph` (`latest` + immutable `gateway-<shortsha>`)
-- Deployment: `k8s/deployment.yaml` uses `imagePullPolicy: IfNotPresent`
-- Rollout: `./deploy-aleph/deploy.sh` or `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:<tag>`
-- Pin CI tags for reproducibility; use `latest` for the newest build.
+- Live Deployment (`63-model-gateway.yaml`): pinned `gateway-<sha>`, `imagePullPolicy: IfNotPresent`
+- Rollout: bump the pin, then `kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>`
+- A Warewulf rebuild resurrects whatever tag is in the overlay — never leave live on `:latest`.
 
 ### Local build (dev / air-gapped fallback only)
 

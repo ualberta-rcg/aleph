@@ -55,18 +55,25 @@ _init_handler()
 # Per-model rollup counters exposed on /metrics (Prometheus scrape).
 _COUNTERS_LOCK = threading.Lock()
 # model -> {requests, errors, prompt_tokens, completion_tokens, total_tokens,
-#           cold_starts, gpu_seconds}
+#           cold_starts, gpu_seconds, audio_seconds, audio_bytes_in,
+#           audio_bytes_out, tts_chars}
 COUNTERS: dict[str, dict] = {}
+
+_COUNTER_ZERO = {
+    "requests": 0, "errors": 0, "prompt_tokens": 0,
+    "completion_tokens": 0, "total_tokens": 0,
+    "cold_starts": 0, "gpu_seconds": 0.0,
+    "audio_seconds": 0.0, "audio_bytes_in": 0,
+    "audio_bytes_out": 0, "tts_chars": 0,
+}
 
 
 def _bump(model: str, status: int, prompt: int, completion: int,
-          total: int, cold_start: bool, gpu_seconds: float) -> None:
+          total: int, cold_start: bool, gpu_seconds: float,
+          audio_seconds: float = 0.0, audio_bytes_in: int = 0,
+          audio_bytes_out: int = 0, tts_chars: int = 0) -> None:
     with _COUNTERS_LOCK:
-        c = COUNTERS.setdefault(model or "unknown", {
-            "requests": 0, "errors": 0, "prompt_tokens": 0,
-            "completion_tokens": 0, "total_tokens": 0,
-            "cold_starts": 0, "gpu_seconds": 0.0,
-        })
+        c = COUNTERS.setdefault(model or "unknown", dict(_COUNTER_ZERO))
         c["requests"] += 1
         if status >= 400:
             c["errors"] += 1
@@ -76,6 +83,10 @@ def _bump(model: str, status: int, prompt: int, completion: int,
         if cold_start:
             c["cold_starts"] += 1
         c["gpu_seconds"] += gpu_seconds
+        c["audio_seconds"] += audio_seconds
+        c["audio_bytes_in"] += audio_bytes_in
+        c["audio_bytes_out"] += audio_bytes_out
+        c["tts_chars"] += tts_chars
 
 
 def snapshot() -> dict[str, dict]:
@@ -86,6 +97,13 @@ def snapshot() -> dict[str, dict]:
 def _i(v, default: int = 0) -> int:
     try:
         return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _f(v, default: float = 0.0) -> float:
+    try:
+        return float(v)
     except (TypeError, ValueError):
         return default
 
@@ -116,6 +134,14 @@ def record(
         prompt = _i(usage.get("prompt_tokens"))
         completion = _i(usage.get("completion_tokens"))
         total = _i(usage.get("total_tokens")) or (prompt + completion)
+        # Audio counts live in tokens.detail (never the prompt/completion
+        # totals — STT/TTS have no LLM tokens). Prefer our names; fall back
+        # to common upstream keys (duration, etc.).
+        audio_seconds = _f(usage.get("audio_seconds") if usage.get("audio_seconds") is not None
+                           else usage.get("duration"))
+        audio_bytes_in = _i(usage.get("audio_input_bytes", usage.get("audio_bytes_in")))
+        audio_bytes_out = _i(usage.get("audio_output_bytes", usage.get("audio_bytes_out")))
+        tts_chars = _i(usage.get("tts_chars"))
         gpus = _i(resources.get("gpus"))
         gpu_seconds = round(gpus * (latency_ms / 1000.0), 4) if gpus else 0.0
 
@@ -152,6 +178,8 @@ def record(
         if key_fp:
             rec["key_fp"] = key_fp
         _logger.info(json.dumps(rec, separators=(",", ":"), ensure_ascii=False))
-        _bump(model, status, prompt, completion, total, cold_start, gpu_seconds)
+        _bump(model, status, prompt, completion, total, cold_start, gpu_seconds,
+              audio_seconds=audio_seconds, audio_bytes_in=audio_bytes_in,
+              audio_bytes_out=audio_bytes_out, tts_chars=tts_chars)
     except Exception as e:  # pragma: no cover
         print(f"[USAGE] record failed: {e}", flush=True)
