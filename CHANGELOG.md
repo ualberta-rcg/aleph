@@ -2,6 +2,35 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-26 — qwen38-27b: Qwen3.8-27B-FP8 deployed (VLM + MTP + fp8 KV)
+
+New chat model `qwen38-27b` — Qwen/Qwen3.8-27B-FP8 (dense 27B hybrid GDN VLM, image +
+video). TP2 whole-device on the **fleet vLLM 0.20.2 digest** (the model declares arch
+`Qwen3_5ForConditionalGeneration`, already in 0.20.2 — no image bump needed; v0.28.0 /
+nightly verified pullable as fallbacks). Always-on (min 1 / max 2, 2 whole L40S warm).
+Recipe flags per recipes.vllm.ai/Qwen/Qwen3.8-27B: `--kv-cache-dtype fp8
+--max-num-seqs 64 --max-model-len 262144 --gpu-memory-utilization 0.92
+--enable-prefix-caching --limit-mm-per-prompt {image:16, video:2}` +
+`--speculative-config {method:mtp, num_speculative_tokens:3}` — MTP drafter loads and
+runs (cudagraph drops to PIECEWISE under spec-decode; min_p/logit_bias inert). Prefix
+caching on with mamba cache in 'align' mode (experimental upstream — watch for weirdness).
+Startup verified: **GPU KV cache 1,361,977 tokens/TP-group** (~11 concurrent 128k
+sessions/replica), mamba page alignment lines, 14.7 GiB weights/GPU, ~8 min cold engine
+init (weights + venv cached on the `qwen38-27b` RWX PVC).
+
+Thinking: body-level `reasoning_effort` reaches the chat template (verified low≠medium at
+temp 0), but on 0.20.2 only **low/medium** are reachable — the OpenAI protocol enum
+rejects `xhigh` and the model side rejects `high` ("Supported types are xhigh, medium,
+low"). Card therefore defaults `medium` (model default xhigh is too slow on L40S, as
+intended) and aliases high/xhigh/max → medium; `chat_template_kwargs.reasoning_effort`
+is ignored by this vLLM (enable_thinking via chat_template_kwargs DOES work — that's the
+OFF path). preserve_thinking on (default). True xhigh needs a newer vLLM someday.
+
+Tests: 36-check battery **34/2/0** — video (Big Buck Bunny clip described correctly),
+image, tools (+tools with thinking), ANT think ON/OFF, prefix-cache determinism, effort
+levels distinct, non-thinking sampling (temp 0.7/top_p 0.8/presence 1.5). Clean
+delete-all + redeploy from repo files re-tested **34/2/0**. MODEL-STATUS rows added.
+
 ## 2026-08-25 — Claude Code settings template
 
 Key-free overlay at `docs/claude-code.settings.json.example` (current Claude Code

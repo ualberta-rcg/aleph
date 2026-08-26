@@ -1,0 +1,176 @@
+# Qwen/Qwen3.8-27B-FP8 — dense 27B hybrid-attention VLM (16x Gated DeltaNet + 1x Gated
+# Attention), FP8 weights (~28 GB), image + video input, thinking with real effort levels
+# (xhigh default / medium / low) + preserve_thinking. TP2 on L40S per the official vLLM
+# recipe (recipes.vllm.ai/Qwen/Qwen3.8-27B): kv-cache fp8, prefix caching, MTP spec decode.
+#
+# HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=2, DO NOT set gpumem,
+# and --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL fast).
+# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 on L40S (SM89; FlashAttention-3 unavailable).
+#
+# Image: the fleet-pinned vLLM 0.20.2 digest (same as every other vLLM model here).
+# Verified: Qwen3.8-27B-FP8 declares architectures ["Qwen3_5ForConditionalGeneration"]
+# (model_type qwen3_5) — present in 0.20.2 (registry also has Qwen3_5MTP for MTP), and
+# its transformers 5.8.0 meets the card's >=5.4 floor. qwen35-122b runs this family on
+# this exact image. Fallback ladder if engine init rejects the config: v0.28.0, then
+# nightly (both verified pullable on the nodes).
+#
+# Always-on (popular model): minReplicas 1 = one warm TP2 replica (2 whole L40S);
+# maxReplicas 2 (4 L40S at peak). scaleTarget 16 < max-num-seqs 64 leaves per-pod burst
+# headroom (oss-120b lesson: max-num-seqs is the real per-pod cap).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen38-27b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "2400s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 1
+    maxReplicas: 2
+    scaleTarget: 16
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "Qwen3.8-27B-FP8 weights already on PVC, skipping download."
+            else
+                echo "Downloading Qwen/Qwen3.8-27B-FP8 (~28 GB) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="Qwen/Qwen3.8-27B-FP8",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+                ignore_patterns=["*.pt", "*.pth", "original/*", "*.gguf"],
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: qwen38-27b
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: index.docker.io/vllm/vllm-openai@sha256:70a098d90dbab428a001d9e852fc0fc8d67da5beb03e7851a22247653bf35923
+        command:
+          - vllm
+        args:
+          - serve
+          - /data/model
+          - --served-model-name=qwen38-27b
+          - --tensor-parallel-size=2
+          - --max-model-len=262144
+          - --dtype=auto
+          - --gpu-memory-utilization=0.92
+          - --max-num-seqs=64
+          - --max-num-batched-tokens=16384
+          - --kv-cache-dtype=fp8
+          - --enable-prefix-caching
+          - '--limit-mm-per-prompt={"image": 16, "video": 2}'
+          - --reasoning-parser=qwen3
+          - --enable-auto-tool-choice
+          - --tool-call-parser=qwen3_coder
+          # MTP speculative decoding (recipe: method "mtp", 3 tokens). If the build
+          # rejects it or it conflicts with prefix caching, drop this line first.
+          - '--speculative-config={"method":"mtp","num_speculative_tokens":3}'
+          # TP>=2 on HAMi/L40S: custom all-reduce busy-waits on a stalled P2P path; NCCL native.
+          - --disable-custom-all-reduce
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: VLLM_ATTENTION_BACKEND
+            value: TRITON_ATTN_VLLM_V1
+          - name: OMP_NUM_THREADS
+            value: "1"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "8"
+            memory: 48Gi
+          limits:
+            cpu: "16"
+            memory: 64Gi
+            nvidia.com/gpu: "2"
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 60
+        livenessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 3
+        volumeMounts:
+          - name: qwen38-27b
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: qwen38-27b
+        persistentVolumeClaim:
+          claimName: qwen38-27b
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

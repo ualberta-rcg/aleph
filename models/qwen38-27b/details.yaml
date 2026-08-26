@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen38-27b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "qwen38-27b",
+      "status": "production",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "qwen38-27b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 262144,
+        "max_completion_tokens": 32768
+      },
+      "scaling": {
+        "scale_to_zero": false,
+        "min_replicas": 1,
+        "cold_start_estimate": "Always on",
+        "idle_retention": "15m"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "effort",
+          "default_effort": "medium",
+          "effort_aliases": {
+            "none": "none", "minimal": "none", "disabled": "none",
+            "low": "low",
+            "medium": "medium", "med": "medium",
+            "high": "medium",
+            "xhigh": "medium", "max": "medium"
+          },
+          "on":  {"reasoning_effort": "medium"},
+          "off": {"chat_template_kwargs": {"enable_thinking": false}},
+          "off_max_tokens": 2048,
+          "note": "Managed thinking. Body-level reasoning_effort reaches the chat template (verified); chat_template_kwargs.reasoning_effort is IGNORED by vLLM 0.20.2. The protocol enum allows none/low/medium/high but the model only accepts low/medium (model default xhigh is too slow on L40S) -> high/xhigh/max alias down to medium on this build; true xhigh needs a newer vLLM. ON exposes `reasoning` (preserve_thinking on by default: reasoning retained across turns); OFF (none/minimal/disabled) -> enable_thinking false: no reasoning + max_tokens capped to off_max_tokens. Thinking sampling: temp=1.0 top_p=0.95 top_k=20. Non-thinking sampling: temp=0.7 top_p=0.8 top_k=20 presence_penalty=1.5."
+        }
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 1.0,
+          "top_p": 0.95,
+          "top_k": 20,
+          "max_tokens": 32768,
+          "thinking": {"enabled": true, "effort": "medium"}
+        },
+        "meta_tasks": {
+          "title": {"max_tokens": 80, "thinking": {"enabled": false}},
+          "tags": {"max_tokens": 60, "thinking": {"enabled": false}},
+          "followups": {"max_tokens": 220, "thinking": {"enabled": false}}
+        }
+      },
+      "schema_version": 2,
+      "custom_params": {
+        "schema": {
+          "reasoning_effort": {"type": "string", "enum": ["none","low","medium","high","xhigh"], "default": "medium", "description": "none = off; low/medium = real levels; high/xhigh alias to medium on this vLLM build"},
+          "top_k": {"type": "integer", "default": 20},
+          "presence_penalty": {"type": "float", "default": 0.0, "description": "Use 1.5 for non-thinking mode per model card"}
+        },
+        "passthrough": true
+      },
+      "input_map": {
+        "messages": {"type": "array", "required": true, "description": "Chat messages [{role, content|content[]}] (content may include image_url and video_url blocks)"},
+        "max_tokens": {"type": "integer", "required": false, "default": 32768, "max": 32768},
+        "temperature": {"type": "float", "required": false, "default": 1.0, "min": 0.0, "max": 2.0, "description": "1.0 thinking / 0.7 non-thinking (model card)"},
+        "top_p": {"type": "float", "required": false, "default": 0.95, "description": "0.95 thinking / 0.8 non-thinking (model card)"},
+        "top_k": {"type": "integer", "required": false, "default": 20},
+        "stream": {"type": "boolean", "required": false, "default": false},
+        "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high","xhigh"], "default": "medium", "description": "none/minimal/disabled = thinking off; low/medium = real effort levels (high/xhigh alias to medium on this build)"},
+        "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder parser)"},
+        "tool_choice": {"type": "string", "required": false},
+        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision); up to 16 per prompt"},
+        "video": {"type": "string", "required": false, "description": "Base64 video or URL (vision); up to 2 per prompt"},
+        "frequency_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0},
+        "presence_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "1.5 recommended in non-thinking mode"}
+      },
+      "output_map": {
+        "id": {"type": "string"}, "object": {"type": "string"}, "model": {"type": "string"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the `reasoning` field when thinking is ON)"},
+        "usage": {"type": "object", "description": "prompt_tokens, completion_tokens, total_tokens"}
+      },
+      "catalog": {
+        "description_short": "Qwen3.8-27B FP8: hybrid GDN VLM, effort-level thinking + tools + video (TP2)",
+        "description": "Qwen3.8-27B-FP8 dense model with hybrid attention (16x Gated DeltaNet + 1x Gated Attention, 64 layers). Native vision-language: images and video. Thinking mode with real effort levels (low/medium/xhigh) toggled via enable_thinking, with preserved thinking across conversation history. MTP-trained; served with MTP speculative decoding. 262K native context. Fine-grained FP8 quantization. Served on 2x L40S (TP2) per the official vLLM recipe.",
+        "owned_by": "Qwen",
+        "source": "Qwen/Qwen3.8-27B-FP8",
+        "source_url": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8",
+        "license": "Apache-2.0",
+        "precision": "fp8",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "reasoning",
+        "parameters": "27B dense, TP2",
+        "tags": ["chat", "llm", "reasoning", "tool-calling", "vision", "video", "multimodal", "novel-arch", "agentic", "fp8"]
+      }
+    }

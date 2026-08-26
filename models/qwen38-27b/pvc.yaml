@@ -1,0 +1,15 @@
+# Qwen3.8-27B-FP8 weights (~28 GB) persist on NFS (nfs-models default SC) so restarts and
+# redeploys skip the re-download. Staged by the ISVC initContainer (gemma-4 venv-on-PVC
+# pattern). Pad 28 GB -> 60 Gi (same sizing as gemma-4-26b-a4b).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen38-27b
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 60Gi
