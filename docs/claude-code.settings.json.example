@@ -1,0 +1,11 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "YOUR_TYK_KEY",
+    "ANTHROPIC_BASE_URL": "https://inference.vulcan.alliancecan.ca/anthropic",
+    "API_TIMEOUT_MS": "300000",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-oss-120b",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen35-122b",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gemma-4-26b-a4b"
+  },
+  "model": "sonnet"
+}

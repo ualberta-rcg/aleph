@@ -2,6 +2,12 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-25 — Claude Code settings template
+
+Key-free overlay at `docs/claude-code.settings.json.example` so clients can point
+Claude Code at `https://inference.vulcan.alliancecan.ca/anthropic`. Paste a Tyk
+key locally; never commit one. Documented in `docs/ENDPOINTS.md`.
+
 ## 2026-08-25 — restore /anthropic Tyk route + gateway polish
 
 The `/anthropic/` prefix 404'd after the Aug 24 rebuild: the Tyk API definition lived
@@ -30,7 +36,7 @@ itself was fine.
   (identity + `key_fp` + `resource_block` unchanged). Transcript text, TTS input text,
   and filenames are never logged.
 
-Ship via CI (`rkhoja/aleph:gateway-<sha>`), canary, then pin in `63-model-gateway.yaml`.
+Ship via CI (`rkhoja/aleph:gateway-9afec53`), canary, then pin in `63-model-gateway.yaml`.
 Rollback: re-pin `gateway-b37897c`; Tyk: drop `model-anthropic.json` and restart.
 
 `tyk-admin.sh grant-api` must PUT a *minimal* session (rate/per + access_rights only).

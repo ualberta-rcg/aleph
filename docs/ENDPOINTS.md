@@ -22,6 +22,23 @@ Tyk injects `X-Aleph-Api: anthropic` so `GET /anthropic/v1/models` returns the
 always-on chat list in Anthropic shape. Same keys as `/v1/` (keys need
 `access_rights` on both `model-gateway` and `model-anthropic`).
 
+### Claude Code
+
+Copy [claude-code.settings.json.example](./claude-code.settings.json.example) to
+`~/.claude/settings.json` (or keep it as a named overlay like
+`~/.claude/settings.json.aleph` and swap it in). Paste your Tyk key into
+`ANTHROPIC_AUTH_TOKEN` — do not commit a real key.
+
+```bash
+export ANTHROPIC_BASE_URL=https://inference.vulcan.alliancecan.ca/anthropic
+export ANTHROPIC_AUTH_TOKEN=<tyk-key>
+export ANTHROPIC_MODEL=gpt-oss-120b
+```
+
+Sonnet/haiku/opus defaults in the example map onto always-on Aleph chat models
+(`qwen35-122b`, `gemma-4-26b-a4b`, `gpt-oss-120b`). Any chat model is still
+callable; `/anthropic/v1/models` only *lists* the always-on set.
+
 ## Embeddings / rerank
 - `/v1/embeddings`, `/v1/rerank`, `/v1/embed` (science-embed alias)
 
