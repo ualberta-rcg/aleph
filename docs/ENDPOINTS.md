@@ -29,15 +29,29 @@ Copy [claude-code.settings.json.example](./claude-code.settings.json.example) to
 `~/.claude/settings.json.aleph` and swap it in). Paste your Tyk key into
 `ANTHROPIC_AUTH_TOKEN` — do not commit a real key.
 
+Current Claude Code (v2.1+) options that matter on a **non-Anthropic** gateway:
+
+| Key | Why it is in the example |
+|---|---|
+| `ANTHROPIC_BASE_URL` | Must be the host root plus `/anthropic` (Tyk strips the prefix) |
+| `ANTHROPIC_AUTH_TOKEN` | Tyk key (`x-api-key` / Bearer) |
+| `API_TIMEOUT_MS` | 600000 matches Aleph's 600s proxy timeout (Claude default is 10 min anyway; keep it explicit) |
+| `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | Strips `anthropic-beta` headers and beta tool fields that vLLM rejects |
+| `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` | Fills `/model` from `GET /anthropic/v1/models` (always-on chat list) |
+| `CLAUDE_CODE_ATTRIBUTION_HEADER=0` | Drops the client fingerprint block some gateways mishandle |
+| `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL` | What the `/model` aliases resolve to |
+| `fallbackModel` | Retry chain if the primary 5xx/overloads |
+| `model` | Session starts on `sonnet` → `gpt-oss-120b` |
+
+Do **not** set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` if you want gateway model discovery — that flag also skips discovery refreshes.
+
 ```bash
 export ANTHROPIC_BASE_URL=https://inference.vulcan.alliancecan.ca/anthropic
 export ANTHROPIC_AUTH_TOKEN=<tyk-key>
 export ANTHROPIC_MODEL=gpt-oss-120b
 ```
 
-Sonnet/haiku/opus defaults in the example map onto always-on Aleph chat models
-(`qwen35-122b`, `gemma-4-26b-a4b`, `gpt-oss-120b`). Any chat model is still
-callable; `/anthropic/v1/models` only *lists* the always-on set.
+Alias map in the example (always-on chat models): opus/sonnet → `gpt-oss-120b`, haiku → `gpt-oss-20b`, fable → `gemma-4-26b-a4b`. Swap sonnet to `qwen35-122b` if you want the 4-GPU Qwen instead. Any chat model is still callable by id; `/anthropic/v1/models` only *lists* the always-on set.
 
 ## Embeddings / rerank
 - `/v1/embeddings`, `/v1/rerank`, `/v1/embed` (science-embed alias)
