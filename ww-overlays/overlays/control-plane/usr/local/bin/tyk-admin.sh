@@ -94,22 +94,27 @@ audit() {
 # wipes meta_data on first request).
 key_body() {
   local identity="$1" account="$2" itype="$3"
+  # User keys: 300 req/min. Service keys (type:service — they front many humans on
+  # one shared key, e.g. openwebui's background title/tag pollers): effectively
+  # unrestricted (2026-08-26: 60/min throttled OWUI into a 37k-rejection retry storm).
+  local rate=300
+  [ "$itype" = "service" ] && rate=100000
   cat <<EOF
 {
   "alias": "${identity}",
   "tags": ["aleph", "account:${account}", "type:${itype}"],
   "meta_data": {"identity": "${identity}", "account": "${account}", "identity_type": "${itype}", "source": "tyk-admin", "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"},
-  "rate": 60,
+  "rate": ${rate},
   "per": 60,
-  "allowance": 60,
+  "allowance": ${rate},
   "expires": 0,
   "quota_max": -1,
   "quota_renews": 0,
   "quota_remaining": -1,
   "quota_renewal_rate": 0,
   "access_rights": {
-    "model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"], "limit": {"rate": 60, "per": 60}},
-    "model-anthropic": {"api_id": "model-anthropic", "api_name": "model-anthropic", "versions": ["Default"], "limit": {"rate": 60, "per": 60}}
+    "model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"], "limit": {"rate": ${rate}, "per": 60}},
+    "model-anthropic": {"api_id": "model-anthropic", "api_name": "model-anthropic", "versions": ["Default"], "limit": {"rate": ${rate}, "per": 60}}
   }
 }
 EOF
@@ -271,7 +276,7 @@ for h in hashes:
         continue
     src = ar.get("model-gateway") or (next(iter(ar.values())) if ar else {})
     src_lim = src.get("limit") if isinstance(src, dict) else {}
-    rate = (src_lim or {}).get("rate") or d.get("rate") or 60
+    rate = (src_lim or {}).get("rate") or d.get("rate") or 300
     per = (src_lim or {}).get("per") or d.get("per") or 60
     ar[api] = {
         "api_id": api,

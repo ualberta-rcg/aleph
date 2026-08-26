@@ -2,6 +2,26 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-26 — Tyk rate limits: users 60→300/min, service keys unrestricted
+
+The 60/min per-key limit (set 2026-08-19) throttled the shared `openwebui` service key
+into a **37k-rejection retry storm over ~3h** (OWUI's background title/tag/follow-up
+pollers attempt ~490/min through one key; every excess call 429s and OWUI retries,
+self-sustaining). User-facing symptom: rate-limit noise and failures for OWUI users;
+Claude Code `/v1/messages` traffic was never rate-limited (all rejections were
+`/v1/chat/completions`).
+
+Changes:
+- **All 203 existing keys backfilled in place** (same key hashes, `suppress_reset=1` —
+  no key strings changed): users → **300/min**.
+- **9 service keys unrestricted** (rate 100000/min): openwebui, ragflow,
+  ragflow-vulcan-general-key, eureka-llm, eureka-openwebui, euerka-ood-general-key,
+  kimi-key, sybok-bot, annorax-key. Per-key limits are structurally wrong for shared
+  service identities fronting many humans.
+- `tyk-admin.sh` (repo overlay + control-plane copies in sync): `add-user` now bakes
+  300/min for `type:user` and unrestricted for `type:service`; grant-api backfill
+  fallbacks updated to 300.
+
 ## 2026-08-26 — qwen38-27b engine-death postmortem: util 0.88 + expandable_segments + fast liveness
 
 Four hours after deploy the engine died of CUDA OOM and wedged the pod (requests hung,
