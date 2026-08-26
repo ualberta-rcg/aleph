@@ -50,6 +50,37 @@ def _anth_flatten_text(content: Any) -> str:
     return ""
 
 
+def _coalesce_system_messages(messages: list | None) -> list:
+    """Fold every system/developer message into one leading system message.
+
+    Qwen (and several other vLLM chat templates) 400 with
+    "System message must be at the beginning" if a system block appears after
+    user/assistant. Claude Code's first turn does exactly that: top-level
+    `system` plus extra system messages in `messages[]` (skills, CLAUDE.md,
+    `mid-conversation-system` beta). Later turns are mostly user/assistant, so
+    they work — first call dies as an empty stream.
+
+    Idempotent: already-leading systems just get concatenated.
+    """
+    if not messages:
+        return []
+    systems: list[str] = []
+    rest: list[dict] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role", "user")
+        if role in ("system", "developer"):
+            text = _anth_flatten_text(m.get("content"))
+            if text:
+                systems.append(text)
+        else:
+            rest.append(m)
+    if not systems:
+        return rest
+    return [{"role": "system", "content": "\n\n".join(systems)}] + rest
+
+
 def _anth_convert_user_content(content: Any) -> Any:
     """Anthropic message content -> OpenAI content (string, or multimodal array)."""
     if isinstance(content, str):
@@ -95,7 +126,7 @@ def anth_to_openai(body: dict) -> dict:
     for m in body.get("messages", []) or []:
         role = m.get("role", "user")
         messages.append({"role": role, "content": _anth_convert_user_content(m.get("content"))})
-    out["messages"] = messages
+    out["messages"] = _coalesce_system_messages(messages)
 
     for a_key, o_key in (("temperature", "temperature"), ("top_p", "top_p"),
                          ("top_k", "top_k"), ("stream", "stream")):
@@ -1337,6 +1368,8 @@ def prepare_chat(
     pt = (card.get("param_translation", {}) or {}).get("thinking", {}) or {}
     pt_mode = pt.get("mode", "none")
     body = apply_defaults(card, body)
+    if "messages" in body:
+        body["messages"] = _coalesce_system_messages(body.get("messages"))
 
     # Detect an explicit client "off" (OpenAI reasoning_effort none/disabled/off). gpt-oss
     # always reasons internally, but the client asked for no reasoning -- treat as off so we
@@ -2564,7 +2597,6 @@ async def anthropic_messages(request: Request):
         oai.setdefault("stream_options", {"include_usage": True})
 
         async def gen():
-            yield b"".join(anth_stream_start_events(model_id))
             finish = None
             out_tokens = 0
             captured_usage = None
@@ -2594,6 +2626,30 @@ async def anthropic_messages(request: Request):
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
                 async with c.stream("POST", url, content=json.dumps(oai).encode(),
                                     headers=headers) as r:
+                    if r.status_code != 200:
+                        # Do not emit message_start — Claude Code treats that as a
+                        # successful empty turn ("Worked for 0s"). Surface the
+                        # upstream error as an Anthropic SSE error event.
+                        err_body = await r.aread()
+                        try:
+                            parsed_err = json.loads(err_body)
+                            msg = ((parsed_err.get("error") or {}).get("message")
+                                   if isinstance(parsed_err, dict) else None)
+                            if not msg:
+                                msg = (err_body.decode("utf-8", "replace") or "")[:800]
+                        except Exception:
+                            msg = (err_body.decode("utf-8", "replace") or "")[:800]
+                        yield _anth_sse("error", {
+                            "type": "error",
+                            "error": {"type": "api_error", "message": msg},
+                        })
+                        _METRICS["requests_error"] += 1
+                        _log_usage(request, info, endpoint="/v1/messages",
+                                   api="anthropic", status=r.status_code,
+                                   latency_ms=int((time.monotonic() - t0) * 1000),
+                                   stream=True)
+                        return
+                    yield b"".join(anth_stream_start_events(model_id))
                     async for chunk in r.aiter_text():
                         buf += chunk
                         while "\n" in buf:

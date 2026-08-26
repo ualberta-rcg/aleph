@@ -12,7 +12,20 @@
       "Default": {
         "name": "Default",
         "use_extended_paths": true,
-        "global_headers": { "X-Aleph-Api": "anthropic" }
+        "global_headers": { "X-Aleph-Api": "anthropic" },
+        "extended_paths": {
+          "ignored": [
+            {
+              "path": "/api/hello",
+              "method": "",
+              "ignore_case": true,
+              "method_actions": {
+                "GET": { "action": "reply", "code": 200, "data": "{\"message\": \"hello\"}", "headers": { "Content-Type": "application/json" } },
+                "HEAD": { "action": "reply", "code": 200, "data": "", "headers": { "Content-Type": "application/json" } }
+              }
+            }
+          ]
+        }
       }
     }
   },

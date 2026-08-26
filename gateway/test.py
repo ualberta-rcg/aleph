@@ -278,6 +278,40 @@ def count_tokens_handler():
     record("FAIL", r.status_code, "count_tokens", f"model={cm['id']} {detail}")
 
 
+def anthropic_mid_conversation_system():
+    """Claude Code first-turn shape: extra system after user must not 400."""
+    _, allm = catalog(True)
+    cm = first(allm, lambda e: e.get("id") == "qwen35-122b" and e.get("scaled_up"))
+    if not cm:
+        cm = first(allm, lambda e: e.get("type", "chat") == "chat" and e.get("scaled_up"))
+    if not cm:
+        cm = first(allm, lambda e: e.get("type", "chat") == "chat" and e.get("ready"))
+    if not cm:
+        record("SKIP", 0, "anth mid-system", "no ready chat model")
+        return
+    payload = {
+        "model": cm["id"], "max_tokens": 16,
+        "system": "You are helpful.",
+        "messages": [
+            {"role": "user", "content": "Hi"},
+            {"role": "system", "content": "Also be brief."},
+            {"role": "user", "content": "Say OK"},
+        ],
+    }
+    r = req("POST", "/v1/messages", payload)
+    if _cold(r):
+        record("SKIP", r.status_code, "anth mid-system", f"{cm['id']} cold")
+        return
+    ok = r.status_code == 200
+    detail = cm["id"]
+    if not ok:
+        try:
+            detail += " " + str(r.json())[:160]
+        except Exception:
+            detail += " " + (r.text or "")[:160]
+    record("PASS" if ok else "FAIL", r.status_code, "anth mid-system", detail)
+
+
 # ── optional: warm-sweep the whole fleet (replaces the old full_test.py) ───────
 def _warm(path, payload):
     t0 = time.time()
@@ -329,6 +363,7 @@ GATEWAY_CHECKS = [
     guard_bad_model, guard_embed_via_chat, guard_chat_via_embed,
     guard_tools_unsupported, guard_vision_unsupported,
     auth_required, resources_block, count_tokens_handler,
+    anthropic_mid_conversation_system,
 ]
 
 if __name__ == "__main__":

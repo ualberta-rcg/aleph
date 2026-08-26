@@ -21,6 +21,9 @@ The `/anthropic/` prefix is a Tyk listen path (`model-anthropic`, strip prefix, 
 Tyk injects `X-Aleph-Api: anthropic` so `GET /anthropic/v1/models` returns the
 always-on chat list in Anthropic shape. Same keys as `/v1/` (keys need
 `access_rights` on both `model-gateway` and `model-anthropic`).
+`GET`/`HEAD /anthropic/api/hello` is a keyless Tyk mock (`{"message": "hello"}`)
+matching `api.anthropic.com` — Claude Code's startup probe; a 401 here latches
+the session and the first message is never sent.
 
 ### Claude Code
 

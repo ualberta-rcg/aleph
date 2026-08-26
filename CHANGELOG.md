@@ -2,6 +2,30 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-08-26 — Claude Code first call: /api/hello mock + fold mid-conversation system
+
+Two failure shapes, both looking like "Worked for 0s" empty first turn:
+
+1. **Keyless `GET /anthropic/api/hello`** — Claude Code's connection-warming probe.
+   Real `api.anthropic.com` answers 200 `{"message": "hello"}` with no auth; Tyk
+   401'd it and some sessions latched and never sent the message. Tyk Classic
+   mock (`extended_paths.ignored` + `action: reply`, fires pre-auth) on
+   GET/HEAD `/api/hello`. JS middleware / `auth.exclude_paths` were tried
+   yesterday and rolled back (JSVM has no `TykJsResponse` in pre-middleware).
+2. **Empty-instant-200 streams** — first Claude Code turn puts extra `system`
+   messages *after* the user message (skills, CLAUDE.md,
+   `mid-conversation-system` beta). Qwen's chat template 400s
+   `"System message must be at the beginning."` The Anthropic stream handler
+   had already sent `message_start`, so the client saw HTTP 200 + empty
+   content. Later turns are mostly user/assistant, which is why a retry in
+   the same session could work. Gateway now folds every system/developer
+   message into one leading system message (Anthropic translate + OpenAI
+   `prepare_chat`), and emits an Anthropic SSE `error` event instead of a
+   fake empty turn when upstream is non-200.
+
+Tyk: apply `53-tyk-api-definitions.yaml` + restart (already live). Gateway:
+ship via CI, canary, pin `63-model-gateway.yaml`.
+
 ## 2026-08-26 — Tyk rate limits: users 60→300/min, service keys unrestricted
 
 The 60/min per-key limit (set 2026-08-19) throttled the shared `openwebui` service key

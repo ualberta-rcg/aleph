@@ -37,7 +37,7 @@ The gateway translates between OpenAI and Anthropic formats inline in `gateway.p
 
 | Concept | OpenAI (`/v1/chat/completions`) | Anthropic (`/v1/messages`) | Translation |
 |---|---|---|---|
-| System prompt | `messages[0].role == "system"` | Top-level `system` field | Prepended as system message |
+| System prompt | `messages[0].role == "system"` | Top-level `system` field | Prepended; extra system/developer messages folded to the front (Qwen chat-template) |
 | Message roles | system, user, assistant, tool | user, assistant only | Tool results → text blocks |
 | Tools | `{type:"function", function:{name,desc,parameters}}` | `{name, description, input_schema}` | Wrap/unwrap nesting |
 | Tool choice | "auto", "none", "required" | `{type:"auto"|"any"|"tool"|"none"}` | `"any"` → `"required"` |
