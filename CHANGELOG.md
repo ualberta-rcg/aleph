@@ -24,7 +24,7 @@ Two failure shapes, both looking like "Worked for 0s" empty first turn:
    fake empty turn when upstream is non-200.
 
 Tyk: apply `53-tyk-api-definitions.yaml` + restart (already live). Gateway:
-ship via CI, canary, pin `63-model-gateway.yaml`.
+`rkhoja/aleph:gateway-1a9d131` canary-tested then pinned in `63-model-gateway.yaml`.
 
 ## 2026-08-26 — Tyk rate limits: users 60→300/min, service keys unrestricted
 
