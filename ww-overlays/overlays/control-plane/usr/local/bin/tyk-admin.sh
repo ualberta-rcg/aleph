@@ -229,9 +229,9 @@ print("true" if d.get("access_rights") and ident == want else "false")
 
   grant-api)
     api="${1:?api_id required}"; name="${2:-$api}"
-    # Backfill access_rights[api] on every existing key, copying the nested
-    # rate/per from that key's model-gateway block (Tyk enforces the nested
-    # limit). PUT ?suppress_reset=1 so quotas/allowance are not zeroed.
+    # Backfill access_rights[api] on every existing key. Copy only rate/per from
+    # that key's model-gateway block — NEVER PUT the raw GET session (Tyk hydrates
+    # allowance/quota_remaining to 0; writing that back zeros the live limit).
     out="$(TYK_URL="$TYK_URL" TYK_SECRET="$TYK_SECRET" GRANT_API="$api" GRANT_NAME="$name" python3 <<'PY'
 import json, os, urllib.error, urllib.request
 base = os.environ["TYK_URL"].rstrip("/")
@@ -247,6 +247,16 @@ def req(path, method="GET", data=None):
         raw = resp.read()
         return json.loads(raw) if raw else {}
 
+def clean_block(block):
+    if not isinstance(block, dict):
+        return block
+    out = {k: v for k, v in block.items() if v is not None}
+    if isinstance(out.get("limit"), dict):
+        lim = {k: v for k, v in out["limit"].items()
+               if v is not None and k not in ("quota_remaining", "quota_renews")}
+        out["limit"] = lim
+    return out
+
 hashes = req("/tyk/keys").get("keys", [])
 updated = skipped = failed = 0
 for h in hashes:
@@ -255,22 +265,36 @@ for h in hashes:
     except Exception:
         failed += 1
         continue
-    ar = d.get("access_rights") or {}
+    ar = {k: clean_block(v) for k, v in (d.get("access_rights") or {}).items()}
     if api in ar:
         skipped += 1
         continue
     src = ar.get("model-gateway") or (next(iter(ar.values())) if ar else {})
-    block = {
+    src_lim = src.get("limit") if isinstance(src, dict) else {}
+    rate = (src_lim or {}).get("rate") or d.get("rate") or 60
+    per = (src_lim or {}).get("per") or d.get("per") or 60
+    ar[api] = {
         "api_id": api,
         "api_name": name,
-        "versions": list(src.get("versions") or ["Default"]),
+        "versions": list((src or {}).get("versions") or ["Default"]),
+        "limit": {"rate": rate, "per": per},
     }
-    if isinstance(src.get("limit"), dict):
-        block["limit"] = dict(src["limit"])
-    ar[api] = block
-    d["access_rights"] = ar
+    # Re-PUT a *minimal* session: identity + rate + cleaned access_rights.
+    # Drop GET-hydrated zeros (allowance remaining, quota remaining).
+    body = {
+        "alias": d.get("alias") or "",
+        "tags": d.get("tags") or [],
+        "rate": d.get("rate") or rate,
+        "per": d.get("per") or per,
+        "allowance": d.get("rate") or rate,
+        "expires": d.get("expires") or 0,
+        "quota_max": d.get("quota_max") if d.get("quota_max") not in (None, 0) else -1,
+        "access_rights": ar,
+    }
+    if d.get("meta_data"):
+        body["meta_data"] = d["meta_data"]
     try:
-        req(f"/tyk/keys/{h}?hashed=true&suppress_reset=1", method="PUT", data=d)
+        req(f"/tyk/keys/{h}?hashed=true&suppress_reset=1", method="PUT", data=body)
         updated += 1
     except urllib.error.HTTPError as e:
         failed += 1

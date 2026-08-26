@@ -11,6 +11,9 @@ itself was fine.
 - Tyk: third API `model-anthropic` listen `/anthropic/` with `strip_listen_path: true`,
   same keyed auth + JSVM middleware as `model-gateway`, injects `X-Aleph-Api: anthropic`.
   New keys get both api_ids; `tyk-admin.sh grant-api` backfills existing keys.
+  **Do not PUT a raw Tyk GET session** — GET hydrates `allowance`/`quota_remaining` to 0;
+  writing that back zeros the live rate. `grant-api` now PUTs a minimal session. After the
+  first grant, 139 keys that showed `rate: 0` were restored to 60/min (RagFlow 600 kept).
 - Gateway `GET /v1/models` on the Anthropic surface (header `X-Aleph-Api: anthropic` or
   `anthropic-version`) returns always-on chat models only, in Anthropic list shape.
   OpenAI `/v1/models` (incl. `?all=true`) is unchanged. Always-on is evaluated live
@@ -29,6 +32,10 @@ itself was fine.
 
 Ship via CI (`rkhoja/aleph:gateway-<sha>`), canary, then pin in `63-model-gateway.yaml`.
 Rollback: re-pin `gateway-b37897c`; Tyk: drop `model-anthropic.json` and restart.
+
+`tyk-admin.sh grant-api` must PUT a *minimal* session (rate/per + access_rights only).
+Writing Tyk's hydrated GET body back zeros `rate`/`quota_remaining`. After the first
+grant, 139 keys were restored to 60/min (RagFlow 600/min left untouched).
 
 ## 2026-08-19 — phi-4-reasoning always-up + KV/thinking defaults
 
