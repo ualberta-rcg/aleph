@@ -62,6 +62,10 @@ top_k=20 presence_penalty=1.5`.
 - Sampling defaults on the card follow thinking-mode recs (1.0/0.95/20); non-thinking recs
   (0.7/0.8/1.5 presence) documented in input_map + note.
 
+## Verified 256K boundary (2026-09-09)
+
+The live gateway accepted 261888 rendered input tokens with 256 output tokens reserved; it generated 33 tokens, recalled all three markers and completed in 120.15 seconds. Short controls passed and the serving pod retained zero restarts. This is a single synthetic text request with thinking disabled, not a concurrency or arbitrary-document recall guarantee. See [CONTEXT-256K-RESULT.md](CONTEXT-256K-RESULT.md). No model configuration changed.
+
 ## Measured on first deploy (2026-08-26, cluster 43)
 
 - **GPU KV cache: 1,268,249 tokens per TP group at util 0.88** (fp8 KV; was 1,361,977 at 0.92) → ~9-10 concurrent 128k sessions/replica.

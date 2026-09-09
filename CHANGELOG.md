@@ -2,6 +2,13 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Keep AMII beside the title and expose Alliance docs in the header
+
+Add an explicit “Aleph documentation” header link to `https://docs.alliancecan.ca/wiki/aleph`, alongside the existing API-key links in the Use it box and footer. Keep the title/AMII row unwrapped at all widths; previously the narrowest breakpoint prevented wrapping below 480px but intermediate widths could still wrap. Preserve shrinking/wrapping title text and the existing logo sizes. Review the HTML/CSS directly, as requested; no browser or cluster software installation.
+
+Publish the validated standard-library researcher notebook and resumable CLI, and update Qwen's model notes with the measured 256K boundary result and actual 0.88 memory setting. Documentation page publication remains operator-owned; the configured Alliance URL currently returns 404 after redirect.
+
+
 ## 2026-09-09 — Verify live Qwen 256K and bundle official favicon
 
 One synthetic request through production `gateway-b5e38cb` and the existing Qwen engine accepted 261888 rendered input tokens with a 256-token output allowance. It returned 33 tokens, recalled beginning/middle/end markers and completed SSE in 120.15 seconds. Short controls passed before/after; the serving pod retained zero restarts and inspected OOM/engine-death counts were zero. No model settings changed. Document the exact single-request scope and limitations in the model's 256K result; do not infer concurrency or arbitrary-document recall guarantees.

@@ -8,14 +8,16 @@ MTP speculative decoding. 262K native context.
 Served by vLLM **0.20.2** (the fleet-pinned digest, same as every other vLLM model — the
 model declares arch `Qwen3_5ForConditionalGeneration`, already in 0.20.2) across 2× L40S (TP2) per the
 official recipe: `--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 262144
---gpu-memory-utilization 0.92 --enable-prefix-caching`. Always-on (`minReplicas: 1`,
+--gpu-memory-utilization 0.88 --enable-prefix-caching`. Always-on (`minReplicas: 1`,
 max 2).
+
+Single-request 256K boundary validation passed on 2026-09-09: 261888 input tokens plus a 256-token output allowance, 33 generated tokens, all three markers recalled, 120.15 seconds, and no observed engine errors. See [measured scope and limitations](CONTEXT-256K-RESULT.md). Memory utilization stays at the OOM-hardened 0.88.
 
 ## Files
 | File | Purpose |
 |------|---------|
 | `pvc.yaml` | PVC `qwen38-27b`, 60Gi RWX NFS (weights + helper venv) |
-| `inferenceservice.yaml` | KServe ISVC: initContainer staging + vLLM v0.28.0 + TP2 |
+| `inferenceservice.yaml` | KServe ISVC: initContainer staging + pinned vLLM 0.20.2 + TP2 |
 | `details.yaml` | v2 card ConfigMap (`qwen38-27b-details`) — catalog entry |
 | `test.py` | 36-check gateway battery (image+video+tools+effort levels) |
 | `stress.py` | Worst-case-traffic battery (24k prefills, 8-way burst, mm+long, log grep) |
