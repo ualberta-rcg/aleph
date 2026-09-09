@@ -2,6 +2,17 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Validate published gateway candidate; reconcile working boot pin
+
+Actions run https://github.com/ualberta-rcg/aleph/actions/runs/34394239147 succeeded for `095182aae72b2abe00b1e93ed5e0ba73d7d8bcc4`, including all 18 regression tests before publication. Published candidate: `rkhoja/aleph:gateway-095182a`, digest `sha256:51ce04bb530cdef92e16d05f6ababf03cec315dff913ee5c6c1e25ce5e96034f`. Isolated canary code hashes matched the tested source; readiness, live discovery, 28-device reservation reporting, OpenAI/Anthropic synthetic history, upstream HTTP 400 propagation and a complete 45-second SSE stream passed. Physical-memory samples cover the responding monitor endpoint (4 devices), not all 28 GPUs.
+
+Production remains on `gateway-1a9d131`; no candidate rollout. Existing pods have a 30-second termination grace, so the successful long-stream test does not establish safe retirement during an automatic rollout. The official favicon is also pending because upstream fetches return 403.
+
+The old .43 boot/staging gateway files pinned `b37897c`. Corrected both to the already-running `1a9d131`, exactly matching the repository manifest (SHA256 `97862c54080c6fe7e313b9554ac4f97b53ee7f32bb6bc00869f7b2cceb67ca52`). Server dry-run and fresh comparison proved the resulting Deployment spec unchanged before writing either file. No new-image rollout was performed.
+
+Qwen38-27b's existing tokenizer reports 262144 total tokens and preserved a synthetic assistant-reasoning marker in the rendered prompt. The original two-number behavioral test passed through the existing production OpenAI gateway (251 and 69 completion tokens); a separate bounded marker-recall test also passed. The earlier OpenAI failure is therefore not reproduced by these checks. This is not a claim of validated 256K inference/compaction under concurrency; that work remains gated on client details and isolated capacity. No Qwen tuning, strict startup controller, key/authentication/rate-limit or Redis change.
+
+
 ## 2026-09-09 — Repair node labels and park Phi after drain
 
 Tested on the live Warewulf client before repository synchronization.
