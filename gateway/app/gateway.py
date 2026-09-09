@@ -23,12 +23,15 @@ import uuid
 from typing import Any
 
 import httpx
+import anyio
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from kubernetes import client, config, watch
 
 import usage
+from capacity import parse_metrics, fits as gpu_fits
+from conversation import anthropic_history, normalize_reasoning
 
 # ── Anthropic Messages API <-> OpenAI Chat Completions translation ──────────────
 # Converts an Anthropic /v1/messages request into an OpenAI chat-completions body,
@@ -123,9 +126,7 @@ def anth_to_openai(body: dict) -> dict:
     system = body.get("system")
     if system:
         messages.append({"role": "system", "content": _anth_flatten_text(system)})
-    for m in body.get("messages", []) or []:
-        role = m.get("role", "user")
-        messages.append({"role": role, "content": _anth_convert_user_content(m.get("content"))})
+    messages.extend(anthropic_history(body.get("messages"), _anth_convert_user_content))
     out["messages"] = _coalesce_system_messages(messages)
 
     for a_key, o_key in (("temperature", "temperature"), ("top_p", "top_p"),
@@ -335,6 +336,10 @@ CARD_NAME_TO_ID: dict[str, str] = {}
 ISVC_STATE: dict[str, dict] = {}
 # node name -> {aleph.* label: value} (hardware provenance from node-labeler DS)
 NODE_LABELS: dict[str, dict] = {}
+NODE_ELIGIBLE: dict[str, bool] = {}
+GPU_SNAPSHOT = {"devices": {}, "updated_at": 0.0}
+HAMI_METRICS = os.environ.get("HAMI_METRICS_URL", "http://hami-scheduler.kube-system.svc.cluster.local:31993/metrics")
+HAMI_USAGE_METRICS = os.environ.get("HAMI_USAGE_METRICS_URL", "http://hami-device-plugin-monitor.kube-system.svc.cluster.local:31992/metrics")
 # k8s_name (ISVC) -> {predictor pod name -> node name}. Keyed by pod name (not
 # just node) so a revision rollout's old-pod DELETE can't clobber the new pod's
 # mapping when both land on the same node. Includes Pending (GPU occupancy).
@@ -342,7 +347,8 @@ POD_NODE: dict[str, dict[str, str]] = {}
 # k8s_name -> {predictor pod name -> phase}. Running vs Pending; the hot path
 # treats Running>=1 as warm and never consults capacity / the apiserver.
 POD_PHASE: dict[str, dict[str, str]] = {}
-_STATE_LOCK = threading.Lock()
+POD_READY: dict[str, dict[str, bool]] = {}
+_STATE_LOCK = threading.RLock()
 
 _DISCOVERY = {"cards_seeded": False, "isvc_seeded": False, "last_event": 0.0}
 
@@ -460,99 +466,58 @@ def _watch_is_warm(k8s_name: str) -> bool:
         return any(p == "Running" for p in phases.values())
 
 
-def _gpu_ask(resources: dict | None) -> dict:
-    """Normalize an ISVC GPU ask into whole-cards vs HAMi slice VRAM.
-
-    Whole-card: nvidia.com/gpu = N and no gpumem (or gpucores 100) — needs N free
-    physical GPUs on a single node (tensor parallel).
-    Slice: nvidia.com/gpumem set — packs onto any card with that much free MiB.
-    """
-    resources = resources or {}
-    try:
-        gpus = int(resources.get("gpus") or 0)
-    except (TypeError, ValueError):
-        gpus = 0
-    try:
-        vram = int(resources.get("vram_mib") or 0)
-    except (TypeError, ValueError):
-        vram = 0
-    try:
-        cores = int(resources.get("gpucores") or 0)
-    except (TypeError, ValueError):
-        cores = 0
-    if vram > 0 and cores != 100:
-        return {"whole_cards": 0, "vram_mib": vram}
-    if gpus > 0:
-        return {"whole_cards": gpus, "vram_mib": 0}
-    return {"whole_cards": 0, "vram_mib": 0}
-
-
-def _place_ask(remaining: list[int], ask: dict) -> bool:
-    """First-fit an ask onto a node's remaining-MiB-per-card list. Mutates remaining."""
-    if ask["whole_cards"]:
-        need = ask["whole_cards"]
-        # A "free" card still has its full capacity (nothing packed on it).
-        full = max(remaining) if remaining else 0
-        idxs = [i for i, m in enumerate(remaining) if m >= full and m > 0]
-        if len(idxs) < need:
-            return False
-        for i in idxs[:need]:
-            remaining[i] = 0
-        return True
-    if ask["vram_mib"]:
-        need = ask["vram_mib"]
-        for i, m in enumerate(remaining):
-            if m >= need:
-                remaining[i] = m - need
-                return True
-        return False
-    return True
-
-
 def _can_schedule(k8s_name: str, resources: dict | None) -> tuple[bool, str]:
-    """Whether a scaled-to-zero model can actually land given current GPU occupancy.
-
-    Fail-open (True) on any math error so a bug never blackholes a model that
-    would have woken under the old behavior.
-    """
-    ask = _gpu_ask(resources)
-    if ask["whole_cards"] == 0 and ask["vram_mib"] == 0:
+    resources = resources or {}
+    if not resources.get("gpus") and not resources.get("vram_mib"):
         return True, "cpu-only"
     try:
         with _STATE_LOCK:
-            nodes = dict(NODE_LABELS)
-            pod_map = {k: dict(v) for k, v in POD_NODE.items()}
-            isvcs = dict(ISVC_STATE)
-        for node, labels in nodes.items():
-            if labels.get("aleph.gpu/product") is None and not str(labels.get("aleph.gpu/count", "")):
+            devices = dict(GPU_SNAPSHOT["devices"])
+            fresh = (time.time() - GPU_SNAPSHOT["updated_at"] < 90
+                     and time.time() - _DISCOVERY.get("nodes_listed_at", 0) < 660)
+            labels = dict(NODE_LABELS)
+            eligible = dict(NODE_ELIGIBLE)
+        if not fresh or not devices or not labels:
+            return True, "capacity-unknown"
+        incomplete = False
+        for node, hardware in labels.items():
+            if not eligible.get(node) or not hardware.get("aleph.gpu/count"):
                 continue
-            try:
-                n_cards = int(labels.get("aleph.gpu/count") or 4)
-            except (TypeError, ValueError):
-                n_cards = 4
-            try:
-                card_mib = int(labels.get("aleph.gpu/memory-mib") or 46068)
-            except (TypeError, ValueError):
-                card_mib = 46068
-            remaining = [card_mib] * n_cards
-            for isvc_name, pods in pod_map.items():
-                if isvc_name == k8s_name:
-                    continue
-                on_this = sum(1 for n in pods.values() if n == node)
-                if not on_this:
-                    continue
-                other = _gpu_ask((isvcs.get(isvc_name) or {}).get("resources"))
-                for _ in range(on_this):
-                    if not _place_ask(remaining, other):
-                        break
-            trial = list(remaining)
-            if _place_ask(trial, ask):
-                return True, f"fits-on:{node}"
-        kind = f"{ask['whole_cards']}-card" if ask["whole_cards"] else f"{ask['vram_mib']}MiB-slice"
-        return False, f"no-node-has-{kind}"
-    except Exception as e:
-        print(f"[CAPACITY] {k8s_name}: {e}; fail-open", flush=True)
-        return True, "capacity-check-error"
+            cards = [d for (n, _), d in devices.items() if n == node]
+            if len(cards) != int(hardware["aleph.gpu/count"]):
+                incomplete = True
+                continue
+            if gpu_fits(cards, resources, int(os.environ.get("HAMI_DEVICE_SPLIT_COUNT", "10"))):
+                return True, f"reservation-fit:{node}"
+        if incomplete:
+            return True, "capacity-incomplete"
+        return False, "no-eligible-node-has-reserved-capacity"
+    except (ValueError, TypeError, KeyError):
+        return True, "capacity-unknown"
+
+
+def _poll_gpu_capacity():
+    while True:
+        try:
+            with httpx.Client(timeout=8) as client:
+                response = client.get(HAMI_METRICS)
+                response.raise_for_status()
+                devices = parse_metrics(response.text)
+                try:
+                    used = client.get(HAMI_USAGE_METRICS)
+                    used.raise_for_status()
+                    for key, value in parse_metrics(used.text).items():
+                        if key in devices and "used_bytes" in value:
+                            devices[key]["used_bytes"] = value["used_bytes"]
+                except Exception:
+                    pass  # Measured usage is optional, never a reservation substitute.
+            if not devices:
+                raise ValueError("empty reservation snapshot")
+            with _STATE_LOCK:
+                GPU_SNAPSHOT.update(devices=devices, updated_at=time.time())
+        except Exception as exc:
+            print(f"[CAPACITY] refresh failed: {type(exc).__name__}", flush=True)
+        time.sleep(30)
 
 
 def _retry_after_seconds(est: str) -> str:
@@ -802,6 +767,11 @@ def _ingest_node(node: Any) -> None:
         return
     with _STATE_LOCK:
         NODE_LABELS[name] = _aleph_labels(getattr(meta, "labels", None))
+        spec = getattr(node, "spec", None)
+        ready = any(getattr(c, "type", None) == "Ready" and getattr(c, "status", None) == "True"
+                    for c in (getattr(getattr(node, "status", None), "conditions", None) or []))
+        # Taints/affinity beyond hardware are left to the authoritative scheduler.
+        NODE_ELIGIBLE[name] = ready and not getattr(spec, "unschedulable", False)
 
 
 def _remove_node(node: Any) -> None:
@@ -809,6 +779,7 @@ def _remove_node(node: Any) -> None:
     if name:
         with _STATE_LOCK:
             NODE_LABELS.pop(name, None)
+            NODE_ELIGIBLE.pop(name, None)
 
 
 def _ingest_pod(pod: Any) -> None:
@@ -821,13 +792,18 @@ def _ingest_pod(pod: Any) -> None:
     isvc = labels.get("serving.kserve.io/inferenceservice")
     node = getattr(spec, "node_name", None)
     phase = getattr(status, "phase", None)
+    ready = (phase == "Running" and not getattr(meta, "deletion_timestamp", None)
+             and any(getattr(c, "type", None) == "Ready" and getattr(c, "status", None) == "True"
+                     for c in (getattr(status, "conditions", None) or [])))
     if not isvc or not name:
         return
     with _STATE_LOCK:
         pods = POD_NODE.setdefault(isvc, {})
         phases = POD_PHASE.setdefault(isvc, {})
+        readiness = POD_READY.setdefault(isvc, {})
         if phase in ("Running", "Pending"):
             phases[name] = phase
+            readiness[name] = ready
             if node:
                 pods[name] = node
             elif name not in pods:
@@ -836,6 +812,9 @@ def _ingest_pod(pod: Any) -> None:
             # Unscheduled / terminating / succeeded-failed: drop this pod.
             pods.pop(name, None)
             phases.pop(name, None)
+            readiness.pop(name, None)
+            if not readiness:
+                POD_READY.pop(isvc, None)
             if not pods:
                 POD_NODE.pop(isvc, None)
             if not phases:
@@ -860,6 +839,11 @@ def _remove_pod(pod: Any) -> None:
             phases.pop(name, None)
             if not phases:
                 POD_PHASE.pop(isvc, None)
+        readiness = POD_READY.get(isvc)
+        if readiness is not None:
+            readiness.pop(name, None)
+            if not readiness:
+                POD_READY.pop(isvc, None)
 
 
 def _node_for(k8s_name: str) -> str | None:
@@ -869,143 +853,136 @@ def _node_for(k8s_name: str) -> str | None:
 
 
 # ── Discovery: initial seed + background watches ───────────────────────────────
-def seed_cards() -> None:
+def _list_inventory(kind):
+    if kind == "cards":
+        return _core().list_namespaced_config_map(MODELS_NS, label_selector=CARD_LABEL)
+    if kind == "isvcs":
+        return _custom().list_namespaced_custom_object(
+            KSERVE_GROUP, KSERVE_VERSION, MODELS_NS, KSERVE_PLURAL)
+    if kind == "nodes":
+        return _core().list_node()
+    return _core().list_namespaced_pod(
+        MODELS_NS, label_selector="serving.kserve.io/inferenceservice")
+
+
+def _replace_inventory(kind, snapshot):
+    """Publish a complete LIST under one lock; a failed LIST keeps old state."""
+    ingest = {"cards": _ingest_card, "isvcs": _ingest_isvc,
+              "nodes": _ingest_node, "pods": _ingest_pod}[kind]
+    tables = {"cards": (CARDS, CARD_NAME_TO_ID), "isvcs": (ISVC_STATE,),
+              "nodes": (NODE_LABELS, NODE_ELIGIBLE), "pods": (POD_NODE, POD_PHASE, POD_READY)}[kind]
+    items = snapshot.get("items", []) if isinstance(snapshot, dict) else snapshot.items
+    for item in items:
+        metadata = item.get("metadata") if isinstance(item, dict) else getattr(item, "metadata", None)
+        name = metadata.get("name") if isinstance(metadata, dict) else getattr(metadata, "name", None)
+        if not name:
+            raise ValueError("inventory item has no name")
+    # Roll back a malformed snapshot, rather than leave a partially rebuilt cache.
+    with _STATE_LOCK:
+        previous = [dict(table) for table in tables]
+        try:
+            for table in tables:
+                table.clear()
+            for item in items:
+                ingest(item)
+        except Exception:
+            for table, old in zip(tables, previous):
+                table.clear()
+                table.update(old)
+            raise
+        if kind == "cards":
+            _DISCOVERY["cards_seeded"] = True
+        elif kind == "isvcs":
+            _DISCOVERY["isvc_seeded"] = True
+        _DISCOVERY[kind + "_listed_at"] = time.time()
+    if isinstance(snapshot, dict):
+        return snapshot.get("metadata", {}).get("resourceVersion")
+    return snapshot.metadata.resource_version
+
+
+def _seed(kind):
     try:
-        cms = _core().list_namespaced_config_map(
-            MODELS_NS, label_selector=CARD_LABEL
-        )
-        for cm in cms.items:
-            _ingest_card(cm)
-        _DISCOVERY["cards_seeded"] = True
-        print(f"[DISCOVERY] seeded {len(CARDS)} card(s)", flush=True)
-    except Exception as e:
-        print(f"[DISCOVERY] card seed error: {e}", flush=True)
+        return _replace_inventory(kind, _list_inventory(kind))
+    except Exception as exc:
+        print(f"[DISCOVERY] {kind} seed error: {type(exc).__name__}", flush=True)
+        return None
 
 
-def seed_isvcs() -> None:
-    try:
-        resp = _custom().list_namespaced_custom_object(
-            KSERVE_GROUP, KSERVE_VERSION, MODELS_NS, KSERVE_PLURAL
-        )
-        for isvc in resp.get("items", []):
-            _ingest_isvc(isvc)
-        _DISCOVERY["isvc_seeded"] = True
-        print(f"[DISCOVERY] seeded {len(ISVC_STATE)} ISVC(s)", flush=True)
-    except Exception as e:
-        print(f"[DISCOVERY] isvc seed error: {e}", flush=True)
+def seed_cards():
+    return _seed("cards")
 
 
-def watch_cards() -> None:
+def seed_isvcs():
+    return _seed("isvcs")
+
+
+def seed_nodes():
+    return _seed("nodes")
+
+
+def seed_pods():
+    return _seed("pods")
+
+
+def _watch_inventory(kind):
+    ingest = {"cards": _ingest_card, "isvcs": _ingest_isvc,
+              "nodes": _ingest_node, "pods": _ingest_pod}[kind]
+    remove = {"cards": _remove_card, "isvcs": _remove_isvc,
+              "nodes": _remove_node, "pods": _remove_pod}[kind]
     while True:
         try:
-            w = watch.Watch()
-            for event in w.stream(
-                _core().list_namespaced_config_map,
-                MODELS_NS,
-                label_selector=CARD_LABEL,
-                timeout_seconds=300,
-            ):
+            # LIST then WATCH that exact resourceVersion closes the gap between
+            # snapshots and events; every reconnect removes missed deletions.
+            rv = _replace_inventory(kind, _list_inventory(kind))
+            if not rv:
+                raise ValueError("inventory has no resourceVersion")
+            kwargs = {"resource_version": rv, "timeout_seconds": 300}
+            if kind == "cards":
+                fn, args = _core().list_namespaced_config_map, (MODELS_NS,)
+                kwargs["label_selector"] = CARD_LABEL
+            elif kind == "isvcs":
+                fn = _custom().list_namespaced_custom_object
+                args = (KSERVE_GROUP, KSERVE_VERSION, MODELS_NS, KSERVE_PLURAL)
+            elif kind == "nodes":
+                fn, args = _core().list_node, ()
+            else:
+                fn, args = _core().list_namespaced_pod, (MODELS_NS,)
+                kwargs["label_selector"] = "serving.kserve.io/inferenceservice"
+            for event in watch.Watch().stream(fn, *args, **kwargs):
+                if event["type"] in ("ADDED", "MODIFIED"):
+                    ingest(event["object"])
+                elif event["type"] == "DELETED":
+                    remove(event["object"])
                 _DISCOVERY["last_event"] = time.time()
-                etype = event["type"]
-                if etype in ("ADDED", "MODIFIED"):
-                    _ingest_card(event["object"])
-                elif etype == "DELETED":
-                    _remove_card(event["object"])
-        except Exception as e:
-            print(f"[WATCH cards] reconnect after error: {e}", flush=True)
+        except Exception as exc:
+            print(f"[WATCH {kind}] reconnect after {type(exc).__name__}", flush=True)
             time.sleep(2)
 
 
-def watch_isvcs() -> None:
-    while True:
-        try:
-            w = watch.Watch()
-            for event in w.stream(
-                _custom().list_namespaced_custom_object,
-                KSERVE_GROUP,
-                KSERVE_VERSION,
-                MODELS_NS,
-                KSERVE_PLURAL,
-                timeout_seconds=300,
-            ):
-                _DISCOVERY["last_event"] = time.time()
-                etype = event["type"]
-                if etype in ("ADDED", "MODIFIED"):
-                    _ingest_isvc(event["object"])
-                elif etype == "DELETED":
-                    _remove_isvc(event["object"])
-        except Exception as e:
-            print(f"[WATCH isvc] reconnect after error: {e}", flush=True)
-            time.sleep(2)
+def watch_cards():
+    _watch_inventory("cards")
 
 
-def seed_nodes() -> None:
-    try:
-        for n in _core().list_node().items:
-            _ingest_node(n)
-        print(f"[DISCOVERY] seeded {len(NODE_LABELS)} node(s)", flush=True)
-    except Exception as e:
-        print(f"[DISCOVERY] node seed error: {e}", flush=True)
+def watch_isvcs():
+    _watch_inventory("isvcs")
 
 
-def seed_pods() -> None:
-    try:
-        pods = _core().list_namespaced_pod(
-            MODELS_NS, label_selector="serving.kserve.io/inferenceservice"
-        )
-        for p in pods.items:
-            _ingest_pod(p)
-        print(f"[DISCOVERY] seeded {len(POD_NODE)} predictor pod->node map(s)", flush=True)
-    except Exception as e:
-        print(f"[DISCOVERY] pod seed error: {e}", flush=True)
+def watch_nodes():
+    _watch_inventory("nodes")
 
 
-def watch_nodes() -> None:
-    while True:
-        try:
-            w = watch.Watch()
-            for event in w.stream(_core().list_node, timeout_seconds=300):
-                etype = event["type"]
-                if etype in ("ADDED", "MODIFIED"):
-                    _ingest_node(event["object"])
-                elif etype == "DELETED":
-                    _remove_node(event["object"])
-        except Exception as e:
-            print(f"[WATCH nodes] reconnect after error: {e}", flush=True)
-            time.sleep(2)
-
-
-def watch_pods() -> None:
-    while True:
-        try:
-            w = watch.Watch()
-            for event in w.stream(
-                _core().list_namespaced_pod,
-                MODELS_NS,
-                label_selector="serving.kserve.io/inferenceservice",
-                timeout_seconds=300,
-            ):
-                etype = event["type"]
-                if etype in ("ADDED", "MODIFIED"):
-                    _ingest_pod(event["object"])
-                elif etype == "DELETED":
-                    _remove_pod(event["object"])
-        except Exception as e:
-            print(f"[WATCH pods] reconnect after error: {e}", flush=True)
-            time.sleep(2)
+def watch_pods():
+    _watch_inventory("pods")
 
 
 @app.on_event("startup")
 async def _startup() -> None:
     _load_kube()
-    seed_cards()
-    seed_isvcs()
-    seed_nodes()
-    seed_pods()
-    threading.Thread(target=watch_cards, daemon=True).start()
-    threading.Thread(target=watch_isvcs, daemon=True).start()
-    threading.Thread(target=watch_nodes, daemon=True).start()
-    threading.Thread(target=watch_pods, daemon=True).start()
+    for kind in ("cards", "isvcs", "nodes", "pods"):
+        # Initial LISTs must not block the event loop that serves readiness.
+        await asyncio.to_thread(_seed, kind)
+        threading.Thread(target=_watch_inventory, args=(kind,), daemon=True).start()
+    threading.Thread(target=_poll_gpu_capacity, daemon=True).start()
     print("[STARTUP] discovery running", flush=True)
 
 
@@ -1369,7 +1346,7 @@ def prepare_chat(
     pt_mode = pt.get("mode", "none")
     body = apply_defaults(card, body)
     if "messages" in body:
-        body["messages"] = _coalesce_system_messages(body.get("messages"))
+        body["messages"] = _coalesce_system_messages(normalize_reasoning(body.get("messages")))
 
     # Detect an explicit client "off" (OpenAI reasoning_effort none/disabled/off). gpt-oss
     # always reasons internally, but the client asked for no reasoning -- treat as off so we
@@ -1504,6 +1481,29 @@ def _derive_input_format(card: dict) -> dict:
     return base
 
 
+def _replica_status(k8s_name, state, scaling):
+    with _STATE_LOCK:
+        phases = dict(POD_PHASE.get(k8s_name) or {})
+        readiness = dict(POD_READY.get(k8s_name) or {})
+        fresh = time.time() - _DISCOVERY.get("pods_listed_at", 0) < 660
+    ready = sum(readiness.values())
+    pending = sum(p == "Pending" for p in phases.values())
+    starting = sum(p in ("Running", "Pending") and not readiness.get(name, False)
+                   for name, p in phases.items())
+    if not fresh:
+        status = "unknown"
+    elif ready:
+        status = "ready"
+    elif starting:
+        status = "starting"
+    elif state.get("ready") and scaling.get("scale_to_zero"):
+        status = "sleeping"
+    else:
+        status = "unavailable"
+    return {"ready_replicas": ready, "starting_replicas": starting,
+            "pending_replicas": pending, "availability": status}
+
+
 def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict:
     """Build the public catalog entry for a model entirely from its card +
     live ISVC state. Schema is a superset of the POC (232) /v1/models shape.
@@ -1548,6 +1548,7 @@ def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict
         "ready": st.get("ready", False),           # ISVC Ready = installed/deployed
         "scaled_up": pod_count > 0,                # >=1 running predictor pod right now
         "replicas": pod_count,                     # running predictor pod count
+        **_replica_status(k8s_name, st, scaling),
         "k8s_name": k8s_name,
         "license": catalog.get("license", ""),
         "precision": catalog.get("precision", ""),
@@ -1577,6 +1578,17 @@ def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict
     }
 
 
+@app.get("/v1/capacity")
+async def gpu_capacity():
+    with _STATE_LOCK:
+        updated = GPU_SNAPSHOT["updated_at"]
+        devices = [dict(d) for d in GPU_SNAPSHOT["devices"].values()]
+    age = time.time() - updated if updated else None
+    return {"object": "gpu_capacity", "known": age is not None and age < 90,
+            "age_seconds": round(age, 1) if age is not None else None,
+            "advisory": True, "devices": devices}
+
+
 @app.get("/v1/models")
 async def list_models(request: Request):
     # Anthropic surface (Tyk /anthropic/ or a client sending anthropic-version):
@@ -1587,7 +1599,7 @@ async def list_models(request: Request):
     with _STATE_LOCK:
         cards = list(CARDS.values())
         isvc_state = dict(ISVC_STATE)
-        pods = {k: len(v) for k, v in POD_NODE.items()}
+        pods = {k: sum(p == "Running" for p in phases.values()) for k, phases in POD_PHASE.items()}
     if anthropic:
         data = []
         for c in cards:
@@ -1623,7 +1635,8 @@ async def list_models(request: Request):
 # Same gateway route is reached as `/` on the main host and `/serving/api/` on the
 # backup host (Traefik strips /serving/api → /). The /v1 API paths are untouched.
 _MAIN_HOST = "https://inference.vulcan.alliancecan.ca"
-_KEY_MAILTO = "research.support+aleph@ualberta.ca"
+_SUPPORT_MAILTO = "support@tech.alliancecan.ca"
+_KEY_DOCS = "https://docs.alliancecan.ca/wiki/aleph"
 _REPO_URL = "https://github.com/ualberta-rcg/aleph"
 
 
@@ -1767,12 +1780,13 @@ def _catalog_html() -> str:
     with _STATE_LOCK:
         cards = list(CARDS.values())
         isvc_state = dict(ISVC_STATE)
-        pods = {k: len(v) for k, v in POD_NODE.items()}
+        pods = {k: sum(p == "Running" for p in phases.values()) for k, phases in POD_PHASE.items()}
     entries = sorted((_model_entry(c, isvc_state, pods) for c in cards),
                      # scaled-up first, then by id
-                     key=lambda x: (not x.get("scaled_up"), x["id"].lower()))
-    n_up = sum(1 for e in entries if e.get("scaled_up"))
-    n_zero = len(entries) - n_up
+                     key=lambda x: (x.get("availability") != "ready", x["id"].lower()))
+    n_up = sum(1 for e in entries if e.get("availability") == "ready")
+    n_zero = sum(1 for e in entries if e.get("availability") == "sleeping")
+    n_other = len(entries) - n_up - n_zero
 
     def esc(s):
         return html.escape(str(s) if s is not None else "")
@@ -1786,8 +1800,8 @@ def _catalog_html() -> str:
         scaling = e.get("scaling", {}) or {}
         res = e.get("resources", {}) or {}
         cold_est = scaling.get("cold_start_estimate") or ""
-        up = bool(e.get("scaled_up"))
-        reps = e.get("replicas", 0) or 0
+        up = e.get("availability") == "ready"
+        reps = e.get("ready_replicas", 0) or 0
         source_url = e.get("source_url") or ""
         ep_url = _main_url(e)
 
@@ -1824,10 +1838,10 @@ def _catalog_html() -> str:
                     if source_url else "")
 
         if up:
-            status = f'<span class="status up" title="{reps} running predictor pod(s)">&#9679; scaled up</span>'
+            status = f'<span class="status up" title="{reps} ready predictor pod(s)">&#9679; ready</span>'
             wake_html = ""
-        else:
-            status = (f'<span class="status zero">&#9675; scaled to zero'
+        elif e.get("availability") == "sleeping":
+            status = (f'<span class="status zero">&#9675; sleeping'
                       + (f' &mdash; wakes in ~{esc(cold_est)}' if cold_est else '') + '</span>')
             wake_html = (
                 '<details class="wake"><summary>how to scale it up</summary>'
@@ -1840,6 +1854,11 @@ def _catalog_html() -> str:
                 f'-H "Authorization: Bearer $KEY" -H "Content-Type: application/json" '
                 f"-d '{esc(_wake_body(e))}' | grep -q 200; do sleep 5; done</pre>"
                 '</details>')
+        else:
+            state_label = {"starting": "starting", "unavailable": "unavailable",
+                           "unknown": "status unknown"}.get(e.get("availability"), "status unknown")
+            status = f'<span class="status zero">{esc(state_label)}</span>'
+            wake_html = ""
 
         # per-model curl example, built from the card's parameter map
         body, mp = _example_body(e)
@@ -1950,7 +1969,17 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
 
     return f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Aleph Inference Gateway &mdash; Vulcan</title>
+<title>Aleph — Research Model Inference on Vulcan</title>
+<meta name="description" content="Access scientific, language, image and audio models on Vulcan through Aleph's OpenAI- and Anthropic-compatible inference APIs. Explore models and getting-started documentation.">
+<link rel="canonical" href="{_MAIN_HOST}/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Aleph — Vulcan">
+<meta property="og:title" content="Aleph — Research Model Inference on Vulcan">
+<meta property="og:description" content="Scientific, language, image and audio models for research on Vulcan. Explore supported models, API examples and documentation.">
+<meta property="og:url" content="{_MAIN_HOST}/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Aleph — Research Model Inference on Vulcan">
+<meta name="twitter:description" content="Explore research models, API examples and documentation for Aleph on Vulcan.">
 <style>
  :root {{
    --bg:#ffffff;--ink:#22302a;--mut:#5d6b62;--card:#ffffff;--alt:#f6f5ef;--bd:#e2dfd5;
@@ -2034,6 +2063,10 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
    grid{{grid-template-columns:1fr;padding:0 16px;gap:12px}}
    .top-inner,.about,.stats,.toolbar,details.cheat,.footer-inner{{padding-left:16px;padding-right:16px}}
  }}
+ @media(max-width:480px){{
+   .titleblock{{flex-wrap:nowrap;gap:12px}}
+   .titletext{{flex:1 1 0;min-width:0;overflow-wrap:anywhere}}
+ }}
 </style></head><body>
 <header class="top"><div class="top-inner">
   <div class="toprow">
@@ -2042,14 +2075,14 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
       <a class="gh" href="{_REPO_URL}" target="_blank" rel="noopener" title="Aleph on GitHub">
         <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub &#8599;</a>
-      <a class="keylink" href="mailto:{_KEY_MAILTO}">Request an API key &#9993;</a>
+      <a class="keylink" href="mailto:{_SUPPORT_MAILTO}">Request a model / Get support &#9993;</a>
     </div>
   </div>
   <div class="titleblock">
     <div class="titletext">
       <h1>Aleph Inference Gateway</h1>
       <p class="lede">OpenAI- &amp; Anthropic-compatible model serving on the Vulcan cluster &mdash;
-         <b>{len(entries)} models</b>, <b>{n_up}</b> scaled up now, <b>{n_zero}</b> scaled to zero. This page lists
+         <b>{len(entries)} models</b>, <b>{n_up}</b> ready now, <b>{n_zero}</b> sleeping, <b>{n_other}</b> starting or unavailable. This page lists
          everything and shows you how to call it. Browse, copy a curl, and use your existing SDK.</p>
     </div>
     <a class="amiilogo" href="https://amii.ca" target="_blank" rel="noopener" title="Amii"><img src="{amii_logo}" alt="Amii"></a>
@@ -2066,6 +2099,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
        <code>503 insufficient_capacity</code> and does <b>not</b> start a pod. Each card lists its wake time and a wake-up command.</p>
   </div>
   <div class="box"><h3>Use it</h3>
+    <p><a href="{_KEY_DOCS}"><b>How to get an API key</b></a> &mdash; see the Alliance documentation for getting started.</p>
     <p>Point your existing SDK at <code>{_MAIN_HOST}</code>: <b>OpenAI</b> <code>base_url="…/v1"</code>,
        <b>Anthropic</b> <code>base_url="…"</code>. Your key is accepted as <code>Authorization: Bearer</code>,
        <code>x-api-key</code>, <code>api-key</code>, <code>x-goog-api-key</code>, or <code>?api_key=</code>.</p>
@@ -2075,7 +2109,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
        plus per-model science paths. Open any card for its full parameter map and example.</p>
   </div>
 </div>
-<div class="stats">{len(entries)} models &mdash; <b class="up">{n_up} scaled up</b>, <b class="zero">{n_zero} scaled to zero</b>. Host: <a href="{_MAIN_HOST}/">{_MAIN_HOST}</a></div>
+<div class="stats">{len(entries)} models &mdash; <b class="up">{n_up} ready</b>, <b class="zero">{n_zero} sleeping</b>, {n_other} starting or unavailable. Host: <a href="{_MAIN_HOST}/">{_MAIN_HOST}</a></div>
 <div class="toolbar">
  <input class="srch" id="q" placeholder="Search by name, type, domain, tag, 'scaled up'…" autocomplete="off">
  <span class="count" id="cnt"></span>
@@ -2087,7 +2121,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
     <img class="flogo" src="{drac_logo}" alt="Digital Research Alliance of Canada"></a>
   <div class="credit">Vulcan cluster operated by <a href="https://www.ualberta.ca">University of Alberta</a> /
     <a href="https://amii.ca">Amii</a> / <a href="https://www.alliancecan.ca/en">Digital Research Alliance</a>.
-    <span class="l2">Questions or need a key? <a href="mailto:{_KEY_MAILTO}">research.support+aleph@ualberta.ca</a>.</span></div>
+    <span class="l2"><a href="{_KEY_DOCS}">How to get an API key</a> · <a href="mailto:{_SUPPORT_MAILTO}">Request a model / Get support</a>.</span></div>
 </div></footer>
 <script>
  const cards=[...document.querySelectorAll('.card')];
@@ -2252,59 +2286,108 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
     headers = upstream_headers(info)
     strip = _strips_thinking(info) if strip_reasoning is None else strip_reasoning
     if stream and not info.get("no_stream"):
+        t0 = time.monotonic()
+        c = httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT)
+        status_code = 502
+        captured_usage = None
+        completed = False
+        logged = False
+
+        def finalize():
+            nonlocal logged
+            if logged:
+                return
+            logged = True
+            if log_ctx:
+                _log_usage(log_ctx["request"], info, endpoint=log_ctx["endpoint"],
+                           api=log_ctx["api"], status=status_code,
+                           latency_ms=int((time.monotonic() - t0) * 1000),
+                           usage_obj=captured_usage, stream=True)
+
+        try:
+            r = await c.send(c.build_request("POST", url, content=body, headers=headers), stream=True)
+            status_code = r.status_code
+            if r.is_error:
+                content = await r.aread()
+                await r.aclose()
+                await c.aclose()
+                finalize()
+                return Response(content, status_code=r.status_code,
+                                media_type=r.headers.get("content-type", "application/json"))
+        except BaseException as exc:
+            if isinstance(exc, asyncio.CancelledError):
+                status_code = 499
+            await c.aclose()
+            finalize()
+            raise
+
         async def gen():
-            t0 = time.monotonic()
-            status_code = 200
-            captured_usage = None
-            async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-                async with c.stream("POST", url, content=body, headers=headers) as r:
-                    status_code = r.status_code
-                    # Fast raw passthrough only when we neither strip nor account.
-                    if not strip and not log_ctx:
-                        async for chunk in r.aiter_raw():
-                            yield chunk
-                        return
-                    # Parse SSE lines: optionally drop reasoning deltas (strip) and
-                    # capture the final usage object (log_ctx, needs include_usage).
+            nonlocal captured_usage, completed, status_code
+            try:
+                if not strip and not log_ctx:
+                    async for chunk in r.aiter_raw():
+                        yield chunk
+                else:
                     buf = ""
                     async for piece in r.aiter_text():
                         buf += piece
                         while "\n" in buf:
                             line, buf = buf.split("\n", 1)
-                            s = line.strip()
-                            if not s.startswith("data:") or s[5:].strip() == "[DONE]":
+                            value = line.strip()
+                            if not value.startswith("data:") or value[5:].strip() == "[DONE]":
                                 yield (line + "\n").encode()
                                 continue
                             try:
-                                obj = json.loads(s[5:].strip())
-                            except Exception:
+                                obj = json.loads(value[5:].strip())
+                            except (ValueError, TypeError):
                                 yield (line + "\n").encode()
                                 continue
+                            if not isinstance(obj, dict):
+                                yield (line + "\n").encode()
+                                continue
+                            if obj.get("error"):
+                                status_code = 502
                             if log_ctx and obj.get("usage"):
                                 captured_usage = obj["usage"]
-                            if not strip:
-                                yield (line + "\n").encode()
-                                continue
-                            for ch in obj.get("choices", []) or []:
-                                d = ch.get("delta")
-                                if isinstance(d, dict):
-                                    d.pop("reasoning", None)
-                                    d.pop("reasoning_content", None)
-                            yield ("data: " + json.dumps(obj) + "\n").encode()
+                            if strip:
+                                for choice in obj.get("choices", []) or []:
+                                    delta = choice.get("delta")
+                                    if isinstance(delta, dict):
+                                        delta.pop("reasoning", None)
+                                        delta.pop("reasoning_content", None)
+                                line = "data: " + json.dumps(obj)
+                            yield (line + "\n").encode()
                     if buf:
                         yield buf.encode()
-            if log_ctx:
-                latency_ms = int((time.monotonic() - t0) * 1000)
-                _log_usage(log_ctx["request"], info, endpoint=log_ctx["endpoint"],
-                           api=log_ctx["api"], status=status_code,
-                           latency_ms=latency_ms, usage_obj=captured_usage,
-                           stream=True)
+                completed = True
+            except httpx.HTTPError:
+                status_code = 502
+                yield b'data: {"error":{"type":"upstream_stream_error","message":"Upstream stream interrupted"}}\n\n'
+                completed = True
 
-        return StreamingResponse(
-            gen(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
+        class UpstreamResponse(StreamingResponse):
+            async def __call__(self, scope, receive, send):
+                nonlocal status_code
+                try:
+                    await super().__call__(scope, receive, send)
+                except Exception:
+                    status_code = 502
+                    raise
+                finally:
+                    if not completed and status_code < 400:
+                        status_code = 499
+                    # Starlette cancels its streaming task on client disconnect.
+                    # Shield cleanup so connections close and accounting runs once.
+                    with anyio.CancelScope(shield=True):
+                        try:
+                            await r.aclose()
+                            await c.aclose()
+                        finally:
+                            finalize()
+
+        return UpstreamResponse(gen(), status_code=r.status_code,
+            media_type=r.headers.get("content-type", "text/event-stream"),
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
     t0 = time.monotonic()
     req = (log_ctx or {}).get("request")
     try:
@@ -2596,10 +2679,15 @@ async def anthropic_messages(request: Request):
         oai["stream"] = True
         oai.setdefault("stream_options", {"include_usage": True})
 
+        t0 = time.monotonic()
+        status_code = 200
+        completed = False
+        captured_usage = None
+
         async def gen():
+            nonlocal status_code, completed, captured_usage
             finish = None
             out_tokens = 0
-            captured_usage = None
             buf = ""
             # Content blocks are opened lazily: index/track the currently-open
             # block so a tool-call response becomes a tool_use block instead of
@@ -2607,7 +2695,6 @@ async def anthropic_messages(request: Request):
             cur_idx = -1            # index of the open content block (-1 = none)
             cur_kind = None         # "text" | "tool_use"
             tool_state: dict[int, dict] = {}   # per tool-call index -> {id,name,args_sent}
-            t0 = time.monotonic()
 
             def _open_block(kind: str, **block_fields) -> bytes:
                 nonlocal cur_idx, cur_kind
@@ -2644,10 +2731,8 @@ async def anthropic_messages(request: Request):
                             "error": {"type": "api_error", "message": msg},
                         })
                         _METRICS["requests_error"] += 1
-                        _log_usage(request, info, endpoint="/v1/messages",
-                                   api="anthropic", status=r.status_code,
-                                   latency_ms=int((time.monotonic() - t0) * 1000),
-                                   stream=True)
+                        status_code = r.status_code
+                        completed = True
                         return
                     yield b"".join(anth_stream_start_events(model_id))
                     async for chunk in r.aiter_text():
@@ -2657,6 +2742,12 @@ async def anthropic_messages(request: Request):
                             obj = anth_parse_openai_sse_line(line)
                             if not obj:
                                 continue
+                            if obj.get("error"):
+                                status_code = 502
+                                completed = True
+                                yield _anth_sse("error", {"type": "error", "error": {
+                                    "type": "api_error", "message": "Upstream stream reported an error"}})
+                                return
                             for ch in obj.get("choices", []) or []:
                                 delta = ch.get("delta") or {}
                                 # ---- reasoning -> thinking block (only when exposing) ----
@@ -2723,12 +2814,36 @@ async def anthropic_messages(request: Request):
                 finish, out_tokens, resource_block(info, latency_ms)
             ):
                 yield ev
-            _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
-                       status=200, latency_ms=latency_ms, usage_obj=captured_usage,
-                       stream=True)
+            completed = True
 
-        return StreamingResponse(
-            gen(), media_type="text/event-stream",
+        async def guarded_gen():
+            nonlocal status_code, completed
+            try:
+                async for event in gen():
+                    yield event
+            except httpx.HTTPError:
+                status_code = 502
+                completed = True
+                yield _anth_sse("error", {"type": "error", "error": {
+                    "type": "api_error", "message": "Upstream stream interrupted"}})
+
+        class AnthropicStreamResponse(StreamingResponse):
+            async def __call__(self, scope, receive, send):
+                nonlocal status_code
+                try:
+                    await super().__call__(scope, receive, send)
+                except Exception:
+                    status_code = 502
+                    raise
+                finally:
+                    if not completed and status_code < 400:
+                        status_code = 499
+                    _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
+                               status=status_code, latency_ms=int((time.monotonic() - t0) * 1000),
+                               usage_obj=captured_usage, stream=True)
+
+        return AnthropicStreamResponse(
+            guarded_gen(), media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     oai["stream"] = False
@@ -3136,9 +3251,10 @@ async def healthz():
 async def readyz():
     with _STATE_LOCK:
         n = len(CARDS)
-    if n >= 1:
+        seeded = all(_DISCOVERY.get(kind + "_listed_at") for kind in ("cards", "isvcs", "nodes", "pods"))
+    if n >= 1 and seeded:
         return JSONResponse({"status": "ready", "cards": n}, 200)
-    return JSONResponse({"status": "no cards", "cards": 0}, 503)
+    return JSONResponse({"status": "discovery incomplete", "cards": n}, 503)
 
 
 @app.get("/metrics")
@@ -3165,7 +3281,7 @@ def _local_metrics_text() -> str:
         for c in CARDS.values():
             mid = c.get("id") or "unknown"
             k8s = (c.get("routing") or {}).get("k8s_name") or mid
-            n = len(POD_NODE.get(k8s) or {})
+            n = sum(p == "Running" for p in (POD_PHASE.get(k8s) or {}).values())
             replica_rows.append((mid, n))
     lines = [
         "# HELP gateway_requests_total Total requests handled.",

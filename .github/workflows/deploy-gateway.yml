@@ -115,6 +115,16 @@ jobs:
           echo "=== Image grep anthropic_unsupported ==="
           docker run --rm "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" grep -c anthropic_unsupported /app/gateway.py || echo "NOT FOUND"
 
+      - name: Test gateway candidate
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/gateway/tests:/tests:ro" \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            -e GATEWAY_USAGE_LOG=/tmp/aleph-test-usage.log \
+            "${{ steps.repo.outputs.IMAGE_REPO }}:${{ steps.tags.outputs.IMAGE_TAG }}" \
+            python -B -m unittest discover -v -s /tests
+
       - name: Push image to DockerHub
         run: |
           set -euo pipefail

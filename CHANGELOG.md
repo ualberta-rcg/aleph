@@ -2,6 +2,19 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Reliability candidate (production pin unchanged)
+
+Candidate image for isolated validation; this entry does not announce a production rollout.
+
+- Preserve Anthropic thinking and tool exchanges in conversation history; normalize OpenAI `reasoning`/`reasoning_content` without duplicating their contents. Output exposure settings remain separate.
+- Reconcile discovery caches with a LIST/resourceVersion WATCH on every reconnect, remove missed deletions, and retain the last good snapshot on malformed data. Report Ready, starting and Pending replicas separately, and require initial discovery for readiness.
+- Replace simulated GPU placement with advisory HAMi reservation snapshots, retaining distinct-card counts for multi-GPU asks. Stale/incomplete information fails open to the scheduler. Physical usage is separate and may cover only the sampled monitor endpoint.
+- Preserve upstream HTTP errors for OpenAI streaming, surface interrupted upstream streams, and finalize OpenAI/Anthropic streaming accounting on disconnects. Regression helpers no longer classify every HTTP 503 as a cold start.
+- Link key instructions to the planned Alliance Aleph page; use the support address for model requests/support. Add search/social metadata and keep the AMII logo beside text at the narrowest breakpoint. Official favicon acquisition remains pending (upstream HTTP 403).
+
+Validation: 18 regression tests passed in an isolated CPU-only Kubernetes job through the live Warewulf client, without GPU work or production traffic/storage. Tests cover reasoning aliases, Anthropic thinking/tools, inventory recovery, capacity constraints, HTTP/SSE failures, disconnect accounting and page markup. Image canary, visual checks and existing-pod stream draining remain release gates. No Qwen context tuning, strict startup controller, Phi parking, authentication, keys, rate limits or Redis changes are included in this gateway commit.
+
+
 ## 2026-08-26 — Claude Code first call: /api/hello mock + fold mid-conversation system
 
 Two failure shapes, both looking like "Worked for 0s" empty first turn:
