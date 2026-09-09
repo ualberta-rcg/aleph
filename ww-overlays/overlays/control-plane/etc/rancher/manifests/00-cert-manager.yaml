@@ -4,6 +4,10 @@
 #
 # cert-manager is required by the ClusterIssuer (01-cluster-issuer.yaml) that issues the
 # endpoint TLS certs via Let's Encrypt HTTP-01. It must be Ready before that issuer validates.
+#
+# Pinned to control-plane nodes: the HTTP-01 self-check GETs the public hostname, and only
+# the heads can route to the VIP's public /28. On a worker the self-check times out and the
+# Certificate never issues.
 apiVersion: helm.cattle.io/v1
 kind: HelmChart
 metadata:
@@ -17,3 +21,14 @@ spec:
   valuesContent: |-
     crds:
       enabled: true
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: "true"
+    webhook:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+    cainjector:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+    startupapicheck:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"

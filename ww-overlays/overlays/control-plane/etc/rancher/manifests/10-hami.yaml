@@ -2,7 +2,7 @@
 #
 # APPLIES TO: GPU nodes (the device-plugin DaemonSet only schedules on nodes labeled gpu=on).
 #             The chart objects are cluster-wide but only do work where GPUs + the label exist.
-# SITE VALUES: __K8S_VERSION__  (see ww-overlays/SITE-VALUES.md)
+# SITE VALUES: v1.36.1  (see ww-overlays/SITE-VALUES.md)
 #
 # Replaces both nvidia-device-plugin and the NVIDIA GPU Operator: HAMi provides the device
 # plugin + the fractional-GPU scheduler (binpack GPU policy; each L40S split into 10 vGPU slices).
@@ -15,7 +15,7 @@
 #     and nvidia.com/gpu stays absent).
 #
 # SITE-CONFIG: scheduler.kubeScheduler.imageTag MUST match the cluster's Kubernetes version
-# (HAMi ships a patched kube-scheduler). Set __K8S_VERSION__ to e.g. v1.36.1.
+# (HAMi ships a patched kube-scheduler). Set v1.36.1 to e.g. v1.36.1.
 apiVersion: helm.cattle.io/v1
 kind: HelmChart
 metadata:
@@ -28,7 +28,7 @@ spec:
   valuesContent: |-
     scheduler:
       kubeScheduler:
-        imageTag: "__K8S_VERSION__"
+        imageTag: "v1.36.1"
     # Host provides the NVIDIA driver + toolkit; the WW GPU overlay sets the
     # containerd default runtime to "nvidia".
     devicePlugin:

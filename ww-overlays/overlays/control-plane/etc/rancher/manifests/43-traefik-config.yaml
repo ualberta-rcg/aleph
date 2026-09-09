@@ -1,0 +1,12 @@
+# Pin the bundled RKE2 Traefik to the control-plane heads — they are the only nodes
+# on the public /28, and the MetalLB VIP (rke2-traefik-public) is L2-advertised there.
+# Without this the chart schedules cluster-wide and worker-hosted pods blackhole the VIP.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: "true"

@@ -1,0 +1,13 @@
+# Pin flannel (canal) to the cluster NIC. Flannel autodetects its VXLAN endpoint from
+# the default-route interface — on the heads that is the PUBLIC NIC (metric 50), so the
+# VXLAN endpoints land on 129.128.190.x, which the 172.26.93.x workers cannot reach and
+# head<->worker pod networking dies. eth0 is the cluster NIC on all nodes (heads + racks).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-canal
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    flannel:
+      iface: "eth0"

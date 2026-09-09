@@ -1,7 +1,7 @@
 # Let's Encrypt ClusterIssuer — RKE2 auto-deploy manifest.
 #
 # APPLIES TO: all nodes (cluster-wide component).
-# SITE VALUES: __ACME_EMAIL__  (see ww-overlays/SITE-VALUES.md)
+# SITE VALUES: admin@alliancecan.ca  (see ww-overlays/SITE-VALUES.md)
 #
 # cert-manager ACME, HTTP-01 challenge served on port 80 through the Traefik ingress class.
 # This issues the endpoint TLS certs from within the cluster (no external certbot machine)

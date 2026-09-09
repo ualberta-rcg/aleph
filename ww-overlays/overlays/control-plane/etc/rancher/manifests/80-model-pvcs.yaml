@@ -1,0 +1,3083 @@
+# Model-weight PVCs — static rebind to existing NFS dirs (auto-restore on rebuild).
+# 105 PV/PVC pairs; weights stay in place, no re-downloads. ISVCs/cards deploy separately.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: models
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-alchemi-bgr
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-alchemi-bgr-pvc-46335024-99c8-4b99-9f9e-557ae8903d5d
+  claimRef:
+    namespace: models
+    name: alchemi-bgr
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alchemi-bgr
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: pv-alchemi-bgr
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-alchemi-bmd
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-alchemi-bmd-pvc-4c04a1ab-876e-4469-92c7-d1c8e7467cda
+  claimRef:
+    namespace: models
+    name: alchemi-bmd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alchemi-bmd
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: pv-alchemi-bmd
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ancient-greek-bert-data
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-ancient-greek-bert-data-pvc-2dbe549f-d6a6-494f-ac1c-d10f17df3c0e
+  claimRef:
+    namespace: models
+    name: ancient-greek-bert-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ancient-greek-bert-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-ancient-greek-bert-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ankh
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-ankh-pvc-5ff20626-7ae5-4b46-a27c-2955648da655
+  claimRef:
+    namespace: models
+    name: ankh
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ankh
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-ankh
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-astrosage
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-astrosage-pvc-6a13bfc6-8c01-4a5d-907a-b7a8ad04893e
+  claimRef:
+    namespace: models
+    name: astrosage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: astrosage
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 25Gi
+  volumeName: pv-astrosage
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-aurora
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-aurora-pvc-47492db3-920d-47eb-ba3c-ccc573cbaaec
+  claimRef:
+    namespace: models
+    name: aurora
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aurora
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 15Gi
+  volumeName: pv-aurora
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-aya-expanse-8b
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-aya-expanse-8b-pvc-cbf56cc9-ea37-4540-ada4-3d52cb5d4a4d
+  claimRef:
+    namespace: models
+    name: aya-expanse-8b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aya-expanse-8b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 25Gi
+  volumeName: pv-aya-expanse-8b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-bge-m3-data
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-bge-m3-data-pvc-b5246311-6b55-493b-ae86-8ffda531d231
+  claimRef:
+    namespace: models
+    name: bge-m3-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bge-m3-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-bge-m3-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-bge-reranker-v2-m3-data
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-bge-reranker-v2-m3-data-pvc-a10c82d4-eb59-48ad-9375-374b80e411f3
+  claimRef:
+    namespace: models
+    name: bge-reranker-v2-m3-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bge-reranker-v2-m3-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-bge-reranker-v2-m3-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biobert
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biobert-pvc-9be5a3a7-c81e-4ccd-9cad-1aaa479e1417
+  claimRef:
+    namespace: models
+    name: biobert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biobert
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 15Gi
+  volumeName: pv-biobert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biogpt
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biogpt-pvc-e532be68-4992-4741-bd58-db2170d3c990
+  claimRef:
+    namespace: models
+    name: biogpt
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biogpt
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-biogpt
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biolinkbert
+spec:
+  capacity:
+    storage: 3Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biolinkbert-pvc-8f441e29-6e33-46ce-80ad-a69363395d8b
+  claimRef:
+    namespace: models
+    name: biolinkbert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biolinkbert
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 3Gi
+  volumeName: pv-biolinkbert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biomed-roberta
+spec:
+  capacity:
+    storage: 3Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biomed-roberta-pvc-944690b3-dc60-4d72-a6ab-3d0c370e0667
+  claimRef:
+    namespace: models
+    name: biomed-roberta
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biomed-roberta
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 3Gi
+  volumeName: pv-biomed-roberta
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biomedbert
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biomedbert-pvc-e376d84d-7afe-442d-884a-bd3d6112c983
+  claimRef:
+    namespace: models
+    name: biomedbert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biomedbert
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-biomedbert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biomedbert-large
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biomedbert-large-pvc-55c3be7e-4e9d-4117-9950-d4f2033c0199
+  claimRef:
+    namespace: models
+    name: biomedbert-large
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biomedbert-large
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-biomedbert-large
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biomedclip-data
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biomedclip-data-pvc-ae6931b5-c55a-4511-a46a-96a9f1ec5b23
+  claimRef:
+    namespace: models
+    name: biomedclip-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biomedclip-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-biomedclip-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-biot5
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-biot5-pvc-c414e08d-89f1-4aa3-9ea5-7466971e03c0
+  claimRef:
+    namespace: models
+    name: biot5
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: biot5
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-biot5
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-boltz-2
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-boltz-2-pvc-b57f77d0-c8c4-4132-978c-db5671149ddf
+  claimRef:
+    namespace: models
+    name: boltz-2
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: boltz-2
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-boltz-2
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-borzoi
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-borzoi-pvc-5a5755c7-b858-43c1-a7c2-414ae8c5115e
+  claimRef:
+    namespace: models
+    name: borzoi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: borzoi
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-borzoi
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-chem-t5
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-chem-t5-pvc-8147451d-c9a0-4d4d-813c-d6f045dacda8
+  claimRef:
+    namespace: models
+    name: chem-t5
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chem-t5
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-chem-t5
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-chemberta
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-chemberta-pvc-085bb2a9-02c2-4206-8221-9dd36e399e9a
+  claimRef:
+    namespace: models
+    name: chemberta
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chemberta
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-chemberta
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-chemgpt
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-chemgpt-pvc-fd3061fe-6074-480e-9b44-b84aeab31920
+  claimRef:
+    namespace: models
+    name: chemgpt
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chemgpt
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-chemgpt
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-chgnet
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-chgnet-pvc-29f7d8ff-050c-4532-9d60-eae0f4ed689b
+  claimRef:
+    namespace: models
+    name: chgnet
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chgnet
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-chgnet
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-chronos-bolt
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-chronos-bolt-pvc-f33f51fe-e1bb-417c-9734-bf9ff82e0896
+  claimRef:
+    namespace: models
+    name: chronos-bolt
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chronos-bolt
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-chronos-bolt
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-clay-data-rwx
+spec:
+  capacity:
+    storage: 8Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-clay-data-rwx-pvc-c0dd623f-9fc4-457e-9f2a-01a456677eb3
+  claimRef:
+    namespace: models
+    name: clay-data-rwx
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clay-data-rwx
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 8Gi
+  volumeName: pv-clay-data-rwx
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-clinical-longformer-data
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-clinical-longformer-data-pvc-2fd138ab-e122-4585-ba71-ff4eb2415bf7
+  claimRef:
+    namespace: models
+    name: clinical-longformer-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clinical-longformer-data
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-clinical-longformer-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-clinicalbert
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-clinicalbert-pvc-e6ee4d9b-8dc0-4461-8a82-b00fedce7ed9
+  claimRef:
+    namespace: models
+    name: clinicalbert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clinicalbert
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-clinicalbert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-colabfold-msa-search
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-colabfold-msa-search-pvc-bf0c348f-8ec0-48d4-813b-3c0c5ac496f8
+  claimRef:
+    namespace: models
+    name: colabfold-msa-search
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: colabfold-msa-search
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: pv-colabfold-msa-search
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-command-r-7b
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-command-r-7b-pvc-273f0bdc-07df-4b6b-b9c5-047e0b54598d
+  claimRef:
+    namespace: models
+    name: command-r-7b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: command-r-7b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-command-r-7b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-crysta-llm
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-crysta-llm-pvc-6c46a602-7289-42ca-99c3-f145bc1a3a35
+  claimRef:
+    namespace: models
+    name: crysta-llm
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: crysta-llm
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-crysta-llm
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-deepseek-v4-flash
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-deepseek-v4-flash-pvc-0b36b678-554f-4927-8173-79ea6c16435f
+  claimRef:
+    namespace: models
+    name: deepseek-v4-flash
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepseek-v4-flash
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 200Gi
+  volumeName: pv-deepseek-v4-flash
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-depth-anything-data
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-depth-anything-data-pvc-5eb7556a-3e2d-4824-83c6-e5cf176b04d5
+  claimRef:
+    namespace: models
+    name: depth-anything-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: depth-anything-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-depth-anything-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-diffdock
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-diffdock-pvc-bc7792ce-9777-4d2b-9373-51b4a182765a
+  claimRef:
+    namespace: models
+    name: diffdock
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: diffdock
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 20Gi
+  volumeName: pv-diffdock
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-diffdock-nim
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-diffdock-nim-pvc-63f8320e-dbc4-4384-9e14-512920d6fdee
+  claimRef:
+    namespace: models
+    name: diffdock-nim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: diffdock-nim
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: pv-diffdock-nim
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-dino-vit-b8-data
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-dino-vit-b8-data-pvc-efe608e6-6e2c-475d-8183-3f1b85b76306
+  claimRef:
+    namespace: models
+    name: dino-vit-b8-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dino-vit-b8-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-dino-vit-b8-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-dinov3-vitl16
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-dinov3-vitl16-pvc-032e49d8-f082-49f1-a34d-9dd00d2fff39
+  claimRef:
+    namespace: models
+    name: dinov3-vitl16
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dinov3-vitl16
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-dinov3-vitl16
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-dnabert-2
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-dnabert-2-pvc-1cd5e3e2-0f1c-44b1-b0e8-7c4f32363804
+  claimRef:
+    namespace: models
+    name: dnabert-2
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dnabert-2
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-dnabert-2
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-enformer
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-enformer-pvc-8b4e36fd-a663-4fd2-a174-449b4b09ca8c
+  claimRef:
+    namespace: models
+    name: enformer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: enformer
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-enformer
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-esm2-650m
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-esm2-650m-pvc-a509dce1-86b4-47ab-86da-3cf9bb86e7a7
+  claimRef:
+    namespace: models
+    name: esm2-650m
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: esm2-650m
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 15Gi
+  volumeName: pv-esm2-650m
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-esmc-300m
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-esmc-300m-pvc-b8e65a23-efde-47cc-ba7b-74b41110865b
+  claimRef:
+    namespace: models
+    name: esmc-300m
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: esmc-300m
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-esmc-300m
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-esmfold
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-esmfold-pvc-4e0c6794-0d65-40d3-8115-d5962be98f77
+  claimRef:
+    namespace: models
+    name: esmfold
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: esmfold
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 25Gi
+  volumeName: pv-esmfold
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-evo2-40b
+spec:
+  capacity:
+    storage: 150Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-evo2-40b-pvc-68f09ee0-d40b-479d-a2ab-623826b6f19e
+  claimRef:
+    namespace: models
+    name: evo2-40b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: evo2-40b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 150Gi
+  volumeName: pv-evo2-40b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-gemma-4-26b-a4b-data
+spec:
+  capacity:
+    storage: 60Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-gemma-4-26b-a4b-data-pvc-daab7d24-59dd-49a1-bfff-51d6f51fc8a8
+  claimRef:
+    namespace: models
+    name: gemma-4-26b-a4b-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gemma-4-26b-a4b-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 60Gi
+  volumeName: pv-gemma-4-26b-a4b-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-geneformer
+spec:
+  capacity:
+    storage: 8Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-geneformer-pvc-6926836a-87d1-4df7-b5e6-4b5085c913c0
+  claimRef:
+    namespace: models
+    name: geneformer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: geneformer
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 8Gi
+  volumeName: pv-geneformer
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-genmol
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-genmol-pvc-dffeb318-5af0-4aa1-a8af-c2326d468675
+  claimRef:
+    namespace: models
+    name: genmol
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: genmol
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-genmol
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-geogalactica
+spec:
+  capacity:
+    storage: 80Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-geogalactica-pvc-ad86fb04-3b36-4c7f-8ddb-4e55c38b313c
+  claimRef:
+    namespace: models
+    name: geogalactica
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: geogalactica
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 80Gi
+  volumeName: pv-geogalactica
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-glm-4-32b
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-glm-4-32b-pvc-9f7a640b-eff4-4fa5-9890-c3eb65019285
+  claimRef:
+    namespace: models
+    name: glm-4-32b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: glm-4-32b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: pv-glm-4-32b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-gpt-oss-120b
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-gpt-oss-120b-pvc-64b61340-b0ce-455b-8499-1bcb7dc94e1a
+  claimRef:
+    namespace: models
+    name: gpt-oss-120b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gpt-oss-120b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: pv-gpt-oss-120b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-gpt-oss-20b
+spec:
+  capacity:
+    storage: 40Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-gpt-oss-20b-pvc-3ef7bb2e-2593-46aa-bdee-a3e39229d431
+  claimRef:
+    namespace: models
+    name: gpt-oss-20b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gpt-oss-20b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 40Gi
+  volumeName: pv-gpt-oss-20b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ithaca
+spec:
+  capacity:
+    storage: 4Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-ithaca-pvc-201467b0-9bc3-4dd3-b463-99a3ff37bd3a
+  claimRef:
+    namespace: models
+    name: ithaca
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ithaca
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 4Gi
+  volumeName: pv-ithaca
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-kandinsky-3-data
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-kandinsky-3-data-pvc-72a06686-c930-4e5e-bf0c-cc996b8b30a0
+  claimRef:
+    namespace: models
+    name: kandinsky-3-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kandinsky-3-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: pv-kandinsky-3-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-kandinsky-3-1-flash
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-kandinsky-3-1-flash-pvc-f8bf2c83-1381-464f-b1fe-32184f22bdc2
+  claimRef:
+    namespace: models
+    name: kandinsky-3-1-flash
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kandinsky-3-1-flash
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: pv-kandinsky-3-1-flash
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-lag-llama
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-lag-llama-pvc-8e442651-fe61-4111-bad6-85bf394337ba
+  claimRef:
+    namespace: models
+    name: lag-llama
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lag-llama
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-lag-llama
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-leandojo
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-leandojo-pvc-0b2bc054-4f99-43b8-9e8c-ac3803182085
+  claimRef:
+    namespace: models
+    name: leandojo
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: leandojo
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-leandojo
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ligandmpnn
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-ligandmpnn-pvc-826ccd05-f3d4-4742-81db-84f0068f1159
+  claimRef:
+    namespace: models
+    name: ligandmpnn
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ligandmpnn
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-ligandmpnn
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mace-mh-1
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-mace-mh-1-pvc-6a47267b-53c2-4444-9a08-79375cb1baa0
+  claimRef:
+    namespace: models
+    name: mace-mh-1
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mace-mh-1
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-mace-mh-1
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mace-mp
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-mace-mp-pvc-664298a3-ef19-4061-8067-cbc22622f219
+  claimRef:
+    namespace: models
+    name: mace-mp
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mace-mp
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-mace-mp
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mace-mp-0
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-mace-mp-0-pvc-507d58e2-21e2-40d4-b1b3-233d9fe6e96e
+  claimRef:
+    namespace: models
+    name: mace-mp-0
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mace-mp-0
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-mace-mp-0
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-matscibert
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-matscibert-pvc-ac82cca8-86dc-4a64-92e0-a4e616e083e4
+  claimRef:
+    namespace: models
+    name: matscibert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matscibert
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 15Gi
+  volumeName: pv-matscibert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mattersim
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-mattersim-pvc-ccad128d-d71e-4bc9-b77b-99ce1860f095
+  claimRef:
+    namespace: models
+    name: mattersim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mattersim
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-mattersim
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-medgemma-27b-it
+spec:
+  capacity:
+    storage: 60Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-medgemma-27b-it-pvc-37a2a2c7-05ea-47c6-bdd8-6188aef961e9
+  claimRef:
+    namespace: models
+    name: medgemma-27b-it
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: medgemma-27b-it
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 60Gi
+  volumeName: pv-medgemma-27b-it
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mistral-small-4-119b-2603
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-mistral-small-4-119b-2603-pvc-765519f5-21fa-493c-9d4e-1a4818956ba9
+  claimRef:
+    namespace: models
+    name: mistral-small-4-119b-2603
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mistral-small-4-119b-2603
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 200Gi
+  volumeName: pv-mistral-small-4-119b-2603
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-moirai
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-moirai-pvc-501b7333-1134-4a89-b409-bfcce44abf9c
+  claimRef:
+    namespace: models
+    name: moirai
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moirai
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-moirai
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-moirai-large
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-moirai-large-pvc-a9080011-a9f7-4f81-966f-160219f5e57f
+  claimRef:
+    namespace: models
+    name: moirai-large
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moirai-large
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-moirai-large
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-moirai-moe-1-0-r-base
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-moirai-moe-1-0-r-base-pvc-4a4c21a8-9a2e-4a8b-9c01-b1f59dfea9d0
+  claimRef:
+    namespace: models
+    name: moirai-moe-1-0-r-base
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moirai-moe-1-0-r-base
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-moirai-moe-1-0-r-base
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-molmim
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-molmim-pvc-6b0de7ad-2eb5-4f24-801c-3911a9fd79a3
+  claimRef:
+    namespace: models
+    name: molmim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: molmim
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-molmim
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-moment
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-moment-pvc-1d7a2bb1-a942-492a-9621-e5e92ea7f44c
+  claimRef:
+    namespace: models
+    name: moment
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moment
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-moment
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-multilingual-e5-small
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-multilingual-e5-small-pvc-1166cf29-29e4-4ab5-ac25-fd279ab533e4
+  claimRef:
+    namespace: models
+    name: multilingual-e5-small
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: multilingual-e5-small
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-multilingual-e5-small
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-oceangpt-30b
+spec:
+  capacity:
+    storage: 80Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-oceangpt-30b-pvc-8d2498be-eae3-40b0-8ff4-d88979f4209e
+  claimRef:
+    namespace: models
+    name: oceangpt-30b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oceangpt-30b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 80Gi
+  volumeName: pv-oceangpt-30b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-openbiollm-70b
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-openbiollm-70b-pvc-0cc2c96f-9359-47b5-908b-a7b9947d23f4
+  claimRef:
+    namespace: models
+    name: openbiollm-70b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openbiollm-70b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 200Gi
+  volumeName: pv-openbiollm-70b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-openfold-3
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-openfold-3-pvc-7b238c60-f314-4271-8dc4-64c644557bf7
+  claimRef:
+    namespace: models
+    name: openfold-3
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openfold-3
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-openfold-3
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-pangu-weather
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-pangu-weather-pvc-9501af7a-8f8a-46da-a9a6-de88093e54f1
+  claimRef:
+    namespace: models
+    name: pangu-weather
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pangu-weather
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-pangu-weather
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-phi-4-reasoning
+spec:
+  capacity:
+    storage: 40Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-phi-4-reasoning-pvc-bd72d46b-bf12-426f-845b-a542ab0fc4ca
+  claimRef:
+    namespace: models
+    name: phi-4-reasoning
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: phi-4-reasoning
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 40Gi
+  volumeName: pv-phi-4-reasoning
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-progen2
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-progen2-pvc-b9492d8f-aef2-4bea-8561-b4b9d62ca1dc
+  claimRef:
+    namespace: models
+    name: progen2
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: progen2
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-progen2
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-prostt5
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-prostt5-pvc-e1369fb5-2aaa-4553-a0bb-e32117657952
+  claimRef:
+    namespace: models
+    name: prostt5
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prostt5
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 20Gi
+  volumeName: pv-prostt5
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-proteinmpnn
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-proteinmpnn-pvc-6b676a36-965b-4294-8dc0-0387075d83d5
+  claimRef:
+    namespace: models
+    name: proteinmpnn
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: proteinmpnn
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 15Gi
+  volumeName: pv-proteinmpnn
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-proteinmpnn-nim
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-proteinmpnn-nim-pvc-8a423fd9-1878-49c2-825c-b81051eae42d
+  claimRef:
+    namespace: models
+    name: proteinmpnn-nim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: proteinmpnn-nim
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: pv-proteinmpnn-nim
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-protgpt2
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-protgpt2-pvc-5f8fd0a9-0bae-43d7-b227-8a6bae78d3a4
+  claimRef:
+    namespace: models
+    name: protgpt2
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: protgpt2
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-protgpt2
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-pubmedbert
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-pubmedbert-pvc-34b02d4d-216f-4676-9ea3-558484029c17
+  claimRef:
+    namespace: models
+    name: pubmedbert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pubmedbert
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-pubmedbert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen25-vl-3b
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen25-vl-3b-pvc-dfa6da57-ed62-4868-b8ef-d299e84b3bde
+  claimRef:
+    namespace: models
+    name: qwen25-vl-3b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen25-vl-3b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 20Gi
+  volumeName: pv-qwen25-vl-3b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen25-vl-72b
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen25-vl-72b-pvc-a61a3c0f-0b64-48f4-9d82-943cab0ab5e0
+  claimRef:
+    namespace: models
+    name: qwen25-vl-72b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen25-vl-72b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 200Gi
+  volumeName: pv-qwen25-vl-72b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen25-vl-72b-awq
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen25-vl-72b-awq-pvc-a4ee3392-421b-439c-b3c5-e32dedd0cd18
+  claimRef:
+    namespace: models
+    name: qwen25-vl-72b-awq
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen25-vl-72b-awq
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: pv-qwen25-vl-72b-awq
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen25-vl-7b-data
+spec:
+  capacity:
+    storage: 40Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen25-vl-7b-data-pvc-d00476f5-e524-43d1-a7f2-c647fc4fd2fc
+  claimRef:
+    namespace: models
+    name: qwen25-vl-7b-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen25-vl-7b-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 40Gi
+  volumeName: pv-qwen25-vl-7b-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen3-235b
+spec:
+  capacity:
+    storage: 160Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen3-235b-pvc-23c0b347-c133-47f1-adfc-453b6596edea
+  claimRef:
+    namespace: models
+    name: qwen3-235b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen3-235b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 160Gi
+  volumeName: pv-qwen3-235b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen35-122b
+spec:
+  capacity:
+    storage: 150Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen35-122b-pvc-4234cef3-b8d0-46b3-920f-f5ecd7c3b5b3
+  claimRef:
+    namespace: models
+    name: qwen35-122b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen35-122b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 150Gi
+  volumeName: pv-qwen35-122b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen36-27b
+spec:
+  capacity:
+    storage: 110Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen36-27b-pvc-848c6335-1e92-4e52-812d-2c91db1d3cdd
+  claimRef:
+    namespace: models
+    name: qwen36-27b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen36-27b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 110Gi
+  volumeName: pv-qwen36-27b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-qwen36-35b-a3b
+spec:
+  capacity:
+    storage: 120Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-qwen36-35b-a3b-pvc-4ea10b56-1f59-4142-bcca-a8a2cd268596
+  claimRef:
+    namespace: models
+    name: qwen36-35b-a3b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen36-35b-a3b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 120Gi
+  volumeName: pv-qwen36-35b-a3b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-rfdiffusion
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-rfdiffusion-pvc-d0e37c3f-6818-456c-9f9d-25c5267b4cfb
+  claimRef:
+    namespace: models
+    name: rfdiffusion
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rfdiffusion
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: pv-rfdiffusion
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-sam-3d-body-dinov3
+spec:
+  capacity:
+    storage: 60Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-sam-3d-body-dinov3-pvc-3303f89d-2723-4ebf-ad61-f8313f9967ed
+  claimRef:
+    namespace: models
+    name: sam-3d-body-dinov3
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sam-3d-body-dinov3
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 60Gi
+  volumeName: pv-sam-3d-body-dinov3
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-sapbert
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-sapbert-pvc-ae93fb67-8181-452f-9929-2e72e3435346
+  claimRef:
+    namespace: models
+    name: sapbert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sapbert
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-sapbert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-saprot-650m
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-saprot-650m-pvc-d2a04acc-0f6f-4717-a2fc-a01d960f172e
+  claimRef:
+    namespace: models
+    name: saprot-650m
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: saprot-650m
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-saprot-650m
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-scibert
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-scibert-pvc-7085018d-ea44-4ed5-833b-306b55829e13
+  claimRef:
+    namespace: models
+    name: scibert
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scibert
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-scibert
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-scincl
+spec:
+  capacity:
+    storage: 3Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-scincl-pvc-9c522813-0754-4ffd-a566-846edce8f446
+  claimRef:
+    namespace: models
+    name: scincl
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scincl
+  namespace: models
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 3Gi
+  volumeName: pv-scincl
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-sd3-medium-data
+spec:
+  capacity:
+    storage: 80Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-sd3-medium-data-pvc-0cad355d-efb6-40bf-8cc9-605b308b4b57
+  claimRef:
+    namespace: models
+    name: sd3-medium-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sd3-medium-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 80Gi
+  volumeName: pv-sd3-medium-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-specter2
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-specter2-pvc-e66cd7ae-7c00-4655-b69e-2bcca530a1b9
+  claimRef:
+    namespace: models
+    name: specter2
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: specter2
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-specter2
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-time-moe
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-time-moe-pvc-4799aa40-4bb4-4d7a-ad2b-3dbb7ff48383
+  claimRef:
+    namespace: models
+    name: time-moe
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: time-moe
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-time-moe
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-timer
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-timer-pvc-67a8f2aa-6b24-4fb4-8b52-49f28bb35e2c
+  claimRef:
+    namespace: models
+    name: timer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timer
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-timer
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-timer-s1
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-timer-s1-pvc-2c609b15-a34d-4f1e-bf60-a6ba722c60dd
+  claimRef:
+    namespace: models
+    name: timer-s1
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timer-s1
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 25Gi
+  volumeName: pv-timer-s1
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-timesfm
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-timesfm-pvc-d83a766f-d9cf-4fb7-85ef-80457b92436d
+  claimRef:
+    namespace: models
+    name: timesfm
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timesfm
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 15Gi
+  volumeName: pv-timesfm
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-tiny-aya-global
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-tiny-aya-global-pvc-142cfa2d-8be7-435a-bf25-def9ca1e22e3
+  claimRef:
+    namespace: models
+    name: tiny-aya-global
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tiny-aya-global
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 25Gi
+  volumeName: pv-tiny-aya-global
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-tinyllama-1-1b
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-tinyllama-1-1b-pvc-86fa38ec-88ff-4c69-bb2c-45d1f895c662
+  claimRef:
+    namespace: models
+    name: tinyllama-1-1b
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tinyllama-1-1b
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-tinyllama-1-1b
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ttm
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-ttm-pvc-8ee83de6-0032-4257-a8ca-bd0a29e488c5
+  claimRef:
+    namespace: models
+    name: ttm
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ttm
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pv-ttm
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-xtts-v2
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-xtts-v2-pvc-70a64736-0c59-4b82-96a5-43eff23bb747
+  claimRef:
+    namespace: models
+    name: xtts-v2
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: xtts-v2
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 25Gi
+  volumeName: pv-xtts-v2
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-yolov8s-data
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-yolov8s-data-pvc-8963034f-82ba-4994-aef9-ec431e0399bb
+  claimRef:
+    namespace: models
+    name: yolov8s-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: yolov8s-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 2Gi
+  volumeName: pv-yolov8s-data
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-zoobot-data
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-zoobot-data-pvc-92c2d17c-30ec-4569-b48a-9e5d1953c603
+  claimRef:
+    namespace: models
+    name: zoobot-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zoobot-data
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: pv-zoobot-data
+  storageClassName: ""
+---
+# speaches HF cache — static rebind to the surviving NFS dir (whisper-large-v3 + kokoro
+# weights already downloaded; init container sees the marker and skips the prefetch).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-speaches
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/models-speaches-pvc-5e91e567-cd78-40be-beaa-1574ba06965d
+  claimRef:
+    namespace: models
+    name: speaches
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: speaches
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: pv-speaches
+  storageClassName: ""
+---

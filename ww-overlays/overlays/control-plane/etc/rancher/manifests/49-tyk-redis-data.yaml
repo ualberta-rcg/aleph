@@ -1,0 +1,38 @@
+# Tyk Redis key store — static rebind to the surviving NFS data dir.
+# Apply BEFORE (or as soon as) the tyk-redis HelmChart deploys, so the StatefulSet
+# adopts this pre-existing claim (exact name redis-data-tyk-redis-master-0) instead
+# of dynamically provisioning an empty volume. Data = all Tyk API keys.
+# Backup of this dir: backups/tyk-redis-backup-20260824.tgz (+ /root/ on aleph1).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tyk
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-tyk-redis-data
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: manage.storage.data.vulcan.local
+    path: /aleph/tyk-redis-data-tyk-redis-master-0-pvc-f232f647-d15a-46f9-96ee-32980a7ac45d
+  claimRef:
+    namespace: tyk
+    name: redis-data-tyk-redis-master-0
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data-tyk-redis-master-0
+  namespace: tyk
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+  volumeName: pv-tyk-redis-data
+  storageClassName: ""

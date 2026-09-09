@@ -2,6 +2,12 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Mirror verified Warewulf manifests with secrets redacted
+
+Synchronize all 24 numbered manifests from the reconciled Warewulf Aleph overlay, retaining deployed infrastructure values while redacting the Tyk admin secret and private ACME contact. Add the previously untracked Traefik, Canal, Redis storage, edge-route and model-storage manifests. Preserve the live three-route Tyk ConfigMap and repair the missing document separator before the existing Speaches binding. Canal is confirmed applied: eth0 interface, 10/10 Ready.
+
+Validation: sanitized export and repository manifests match byte-for-byte; corrected storage and routes passed client dry-run; role renders for aleph3/rack09-01 contain the six expected Ansible playbooks. Only those two distributed overlay builds were refreshed. Their wwclient runtime tests passed with nodes Ready and gateway 3/3 healthy. Runtime assignments do not deliver the boot manifests, so older files remain on running nodes; full boot-image/startup audit and remaining-node rebuilds are still required before claiming reboot readiness. See ww-overlays/README.md. No keys, researcher records or credential files exported.
+
 ## 2026-09-09 — Pin the final page release and publish measured guidance
 
 Final image: `rkhoja/aleph:gateway-5583535@sha256:e1f5e81585c431232d78043a4a550dab615993c87a6a69abbfebcbd1a0ebbb2f`. Exact-commit Actions run 34406704011 passed the 21 regression cases and image publication. Isolated canary verified the image digest, readiness, official favicon checksum, top “How to get an API key” link, no-wrap AMII/title row and “Get support” label with “Request a model or get support” hover text. No browser/package installation; page review used source and HTTP checks as requested.

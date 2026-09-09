@@ -19,7 +19,7 @@
 # ww-overlays/NCCL-ROCE.md for the per-pod provider-injection recipe.
 #
 # `rdmaHcaMax` is how many pods on a node may share the single RoCE HCA.
-# `ifNames` selects the active RoCE interface; set to __ROCE_IFNAME__ for
+# `ifNames` selects the active RoCE interface; set to eth0 for
 # this site (the NIC that carries the RoCE GID / is PORT_ACTIVE).
 ---
 apiVersion: v1
@@ -34,7 +34,7 @@ data:
         {
           "resourceName": "roce",
           "rdmaHcaMax": 63,
-          "selectors": { "ifNames": ["__ROCE_IFNAME__"] }
+          "selectors": { "ifNames": ["eth0"] }
         }
       ]
     }

@@ -1,7 +1,7 @@
 # NFS provisioner + nfs-models StorageClass — RKE2 auto-deploy manifest.
 #
 # APPLIES TO: all nodes (cluster-wide default StorageClass).
-# SITE VALUES: __NFS_SERVER__, __NFS_PATH__  (see ww-overlays/SITE-VALUES.md)
+# SITE VALUES: manage.storage.data.vulcan.local, /aleph  (see ww-overlays/SITE-VALUES.md)
 #
 # One NFS component and ONE StorageClass (nfs-models, the default). There is intentionally no
 # separate nfs-client SC — nfs-models is the default AND the OneFS-safe one.
@@ -34,8 +34,8 @@ spec:
   repo: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
   valuesContent: |-
     nfs:
-      server: __NFS_SERVER__
-      path: __NFS_PATH__
+      server: manage.storage.data.vulcan.local
+      path: /aleph
       # The chart applies these to BOTH the provisioner root mount and the StorageClass
       # (and thus every dynamically-provisioned PV). Do not move under storageClass:.
       mountOptions:
