@@ -8,6 +8,7 @@ metadata:
   name: phi-4-reasoning
   namespace: models
   annotations:
+    serving.kserve.io/stop: "true"
     autoscaling.knative.dev/scale-down-delay: "5m"
     autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
     serving.knative.dev/progress-deadline: "2400s"
@@ -20,7 +21,8 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    # Always-on. vLLM --max-num-seqs=8 is the real per-pod cap, so scaleTarget 8
+    # Parked: stop annotation keeps runtime absent; min/max below are restoration settings.
+    # When resumed, vLLM --max-num-seqs=8 is the real per-pod cap, so scaleTarget 8
     # packs a pod before adding a second whole-card replica; max 2 bounds GPU.
     minReplicas: 1
     maxReplicas: 2

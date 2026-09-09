@@ -2,6 +2,16 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Repair node labels and park Phi after drain
+
+Tested on the live Warewulf client before repository synchronization.
+
+- Node labeler: bounded dependency installation retries, explicit failures, hardware validation before replacing labels, bounded PATCH requests with required 2xx success, freshness readiness probe, and one-at-a-time rollout. Single-worker canary succeeded; all seven workers then became Ready with CPU/memory labels populated. Boot and RKE2-staged copies match SHA256 `61cee009c3d7d53998b0c2c7e37b198631ffe4e5f181c2618d3c96334b16c13c`.
+- Phi-4-reasoning: hide its card from discovery, confirm removal on all three gateway replicas, verify drained vLLM and Knative aggregate request counters, then use KServe's stop annotation. Verified Stopped=True, zero predictor pods and preserved Bound PVC/weights. Original scaling values remain as restoration settings. See `models/phi-4-reasoning/PARKED.md`.
+
+All three production gateways remained healthy on the existing pinned image with zero restarts. No reboot, authentication/key/rate-limit or Redis operations. Warewulf client remains stopped pending operator overlay update and verification. Gateway candidate build/rollout is tracked separately.
+
+
 ## 2026-09-09 — Reliability candidate (production pin unchanged)
 
 Candidate image for isolated validation; this entry does not announce a production rollout.

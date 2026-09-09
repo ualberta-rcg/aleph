@@ -64,6 +64,8 @@ spec:
       app: node-labeler
   updateStrategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
   template:
     metadata:
       labels:
@@ -94,15 +96,29 @@ spec:
             limits:
               cpu: 100m
               memory: 128Mi
+          readinessProbe:
+            exec:
+              command: ["/bin/bash", "-c", "test -f /tmp/labeler-last-success && test $(( $(date +%s) - $(cat /tmp/labeler-last-success) )) -lt 3900"]
+            periodSeconds: 30
+            failureThreshold: 2
           command:
             - /bin/bash
             - -c
             - |
-              set -u
+              set -u -o pipefail
               export DEBIAN_FRONTEND=noninteractive
-              if ! command -v curl >/dev/null 2>&1; then
-                apt-get update -qq && apt-get install -y -qq curl util-linux ca-certificates >/dev/null 2>&1 || true
+              tools_ready() { command -v curl >/dev/null && command -v nsenter >/dev/null && test -s /etc/ssl/certs/ca-certificates.crt; }
+              if ! tools_ready; then
+                for attempt in 1 2 3 4 5; do
+                  if timeout 120 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update -qq &&
+                     timeout 120 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 install -y -qq curl util-linux ca-certificates && tools_ready; then
+                    break
+                  fi
+                  echo "dependency installation failed (attempt $attempt/5)" >&2
+                  sleep 15
+                done
               fi
+              tools_ready || { echo "required tools unavailable; exiting" >&2; exit 1; }
               API=https://kubernetes.default.svc
               SA=/var/run/secrets/kubernetes.io/serviceaccount
               CACERT=$SA/ca.crt
@@ -125,6 +141,12 @@ spec:
                 MEM_KB=$(num "$($NSE cat /proc/meminfo 2>/dev/null | sed -n 's/^MemTotal:[[:space:]]*\([0-9]*\).*/\1/p')")
                 MEM_GIB=$(( ${MEM_KB:-0} / 1024 / 1024 ))
 
+                if [ -z "$GPU_NAME" ] || [ -z "$CPU_MODEL" ] ||
+                   ! [ "${GPU_COUNT:-0}" -gt 0 ] || ! [ "${GPU_MEM:-0}" -gt 0 ] ||
+                   ! [ "${CPU_CORES:-0}" -gt 0 ] || ! [ "$MEM_GIB" -gt 0 ]; then
+                  echo "hardware detection incomplete; preserving existing labels" >&2
+                  return 1
+                fi
                 local GPU_PRODUCT CPU_MODEL_S LABELS TOKEN CODE
                 GPU_PRODUCT=$(sanitize "$(echo "$GPU_NAME" | sed -e 's/^NVIDIA //' -e 's/^Tesla //')")
                 CPU_MODEL_S=$(sanitize "$CPU_MODEL")
@@ -140,15 +162,22 @@ spec:
                 [ -z "$LABELS" ] && { echo "no hardware detected on $NODE_NAME; skip"; return; }
 
                 TOKEN=$(cat $SA/token)
-                CODE=$(curl -sS --cacert $CACERT -H "Authorization: Bearer $TOKEN" \
+                CODE=$(curl -sS --connect-timeout 5 --max-time 20 --cacert $CACERT -H "Authorization: Bearer $TOKEN" \
                   -H "Content-Type: application/merge-patch+json" \
                   -X PATCH "$API/api/v1/nodes/$NODE_NAME" \
                   -d "{\"metadata\":{\"labels\":{${LABELS%,}}}}" \
-                  -o /dev/null -w '%{http_code}')
+                  -o /dev/null -w '%{http_code}') || { echo "node PATCH transport failure" >&2; return 1; }
+                case "$CODE" in 2??) date +%s > /tmp/labeler-last-success ;; *) echo "node PATCH failed: HTTP $CODE" >&2; return 1 ;; esac
                 echo "labeled $NODE_NAME (gpu=$GPU_PRODUCT x$GPU_COUNT cpu_cores=$CPU_CORES mem=${MEM_GIB}Gi) -> HTTP $CODE"
               }
 
               while true; do
-                label_node || echo "label pass failed; will retry"
-                sleep 3600
+                if label_node; then
+                  [ "${LABELER_RUN_ONCE:-0}" = "1" ] && exit 0
+                  sleep 3600
+                else
+                  echo "label pass failed; retrying in 30 seconds" >&2
+                  [ "${LABELER_RUN_ONCE:-0}" = "1" ] && exit 1
+                  sleep 30
+                fi
               done
