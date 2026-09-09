@@ -129,7 +129,9 @@ metadata:
     app: model-gateway
 spec:
   replicas: 3
-  # Edge: never drop below desired during a rollout, so restarts/updates are zero-downtime.
+  # Preserve desired availability while each new replica becomes Ready.
+  # Availability does not by itself guarantee completion of existing streams.
+  minReadySeconds: 15
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -145,6 +147,8 @@ spec:
         sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: model-gateway
+      # Give uvicorn time to finish active requests during normal termination.
+      terminationGracePeriodSeconds: 660
       # Pinned to control-plane (non-GPU) nodes — covers all CP VMs (HA or single).
       nodeSelector:
         node-role.kubernetes.io/control-plane: "true"
@@ -169,7 +173,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
-          image: rkhoja/aleph:gateway-1a9d131
+          image: rkhoja/aleph:gateway-b5e38cb@sha256:32986ae5c81ba03c85b8630e9390c209c3b8dacb2598a90fb7a3f652a32e8536
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

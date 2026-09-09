@@ -2,6 +2,15 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Roll out verified gateway b5e38cb
+
+Pinned production to `rkhoja/aleph:gateway-b5e38cb@sha256:32986ae5c81ba03c85b8630e9390c209c3b8dacb2598a90fb7a3f652a32e8536` after successful Actions tests/publication and isolated canary readiness, discovery, a complete 45-second synthetic stream and upstream HTTP 400 propagation. Preserved three replicas, zero maxUnavailable and one maxSurge; added 15 seconds minimum readiness and 660 seconds termination grace for new pods.
+
+User directed proceeding with the rolling update while preserving service availability. Rollout completed; all three new replicas were Ready with zero startup error lines and zero gateway request-error counters at inspection. Each exposed 21 models, including Qwen and excluding parked Phi; public landing returned HTTP 200. This is sampled availability evidence, not proof that every old stream survived the old pods' 30-second grace.
+
+Synchronized the tested manifest to both .43 boot/staging paths (SHA256 `dbd3a97928bf69e24358abdeb7b910f11f766a00bc56386b0641a5ce1163c865`). Rollback image is `gateway-1a9d131`, digest `sha256:0b2bdf8ab5a6b7e1b3913b8eb04a5a1d190c8d0d84f6fba6092cdd326df348ee`; retain the new availability and shutdown settings when reverting the image. wwclient remains inactive pending operator overlay handoff. No model restart, key/authentication/rate-limit or Redis changes. Qwen 256K reliability, strict startup admission, favicon and visual checks remain open; compaction investigation is out of scope per user clarification.
+
+
 ## 2026-09-09 — Complete candidate stream cleanup and transcription coverage
 
 Follow-up candidate; production remains on its working image. Explicitly close the nested Anthropic generator and upstream connection before returning from a disconnected request, fixing a cleanup warning uncovered by the expanded suite. Apply the same immediate cleanup to OpenAI and transcription streams. Transcription streaming now preserves upstream HTTP errors, records interruption once and keeps raw bytes unchanged. Narrow-screen support-button text can wrap within the viewport; availability guidance now distinguishes Ready from other states and avoids recommending retries for unrelated errors.
