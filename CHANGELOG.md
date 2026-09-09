@@ -2,6 +2,13 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Complete candidate stream cleanup and transcription coverage
+
+Follow-up candidate; production remains on its working image. Explicitly close the nested Anthropic generator and upstream connection before returning from a disconnected request, fixing a cleanup warning uncovered by the expanded suite. Apply the same immediate cleanup to OpenAI and transcription streams. Transcription streaming now preserves upstream HTTP errors, records interruption once and keeps raw bytes unchanged. Narrow-screen support-button text can wrap within the viewport; availability guidance now distinguishes Ready from other states and avoids recommending retries for unrelated errors.
+
+Validation: expanded isolated regression suite covers 21 cases, including raw-byte preservation, transcription errors/disconnects and immediate upstream closure. Publish/promote only after this commit's Actions tests and built-image canary pass; the earlier 095182a image is superseded as the intended candidate. Existing-pod retirement, official favicon, visual verification, strict startup admission, long-context/compaction and Warewulf handoff gates remain open. No production gateway rollout or key/Redis/authentication/rate-limit changes.
+
+
 ## 2026-09-09 — Validate published gateway candidate; reconcile working boot pin
 
 Actions run https://github.com/ualberta-rcg/aleph/actions/runs/34394239147 succeeded for `095182aae72b2abe00b1e93ed5e0ba73d7d8bcc4`, including all 18 regression tests before publication. Published candidate: `rkhoja/aleph:gateway-095182a`, digest `sha256:51ce04bb530cdef92e16d05f6ababf03cec315dff913ee5c6c1e25ce5e96034f`. Isolated canary code hashes matched the tested source; readiness, live discovery, 28-device reservation reporting, OpenAI/Anthropic synthetic history, upstream HTTP 400 propagation and a complete 45-second SSE stream passed. Physical-memory samples cover the responding monitor endpoint (4 devices), not all 28 GPUs.

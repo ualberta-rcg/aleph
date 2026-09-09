@@ -2066,6 +2066,8 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  @media(max-width:480px){{
    .titleblock{{flex-wrap:nowrap;gap:12px}}
    .titletext{{flex:1 1 0;min-width:0;overflow-wrap:anywhere}}
+   .actions{{min-width:0;max-width:100%}}
+   .keylink{{white-space:normal;max-width:100%;box-sizing:border-box}}
  }}
 </style></head><body>
 <header class="top"><div class="top-inner">
@@ -2092,10 +2094,9 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
   <div class="box"><h3>How it works</h3>
     <p>Models <b>scale to zero</b> when idle so we can host many without wasting GPUs &mdash; and they
        <b>scale back up under load</b>. A model stays up until <b>~15 minutes after its last call</b>, then releases its GPU.</p>
-    <p>The dot on each card is <span class="doti g"></span> <b>green</b> when scaled up now,
-       <span class="doti a"></span> <b>amber</b> when at zero. The first request to a cold model returns
-       <code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; retry until 200 (OpenWebUI &amp; most
-       SDKs do this automatically). If there is no free GPU the gateway returns
+    <p>The dot on each card is <span class="doti g"></span> <b>green</b> when ready to serve.
+       Other cards distinguish sleeping, starting, unavailable and unknown status. The first request to a cold model returns
+       <code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; follow the retry guidance for that error. Do not retry unrelated failures indefinitely. If there is no free GPU the gateway returns
        <code>503 insufficient_capacity</code> and does <b>not</b> start a pod. Each card lists its wake time and a wake-up command.</p>
   </div>
   <div class="box"><h3>Use it</h3>
@@ -2380,6 +2381,7 @@ async def _forward(info: dict, path: str, body: bytes, stream: bool, *,
                     # Shield cleanup so connections close and accounting runs once.
                     with anyio.CancelScope(shield=True):
                         try:
+                            await self.body_iterator.aclose()
                             await r.aclose()
                             await c.aclose()
                         finally:
@@ -2816,16 +2818,21 @@ async def anthropic_messages(request: Request):
                 yield ev
             completed = True
 
+        inner_stream = gen()
+
         async def guarded_gen():
             nonlocal status_code, completed
             try:
-                async for event in gen():
+                async for event in inner_stream:
                     yield event
             except httpx.HTTPError:
                 status_code = 502
                 completed = True
                 yield _anth_sse("error", {"type": "error", "error": {
                     "type": "api_error", "message": "Upstream stream interrupted"}})
+            finally:
+                with anyio.CancelScope(shield=True):
+                    await inner_stream.aclose()
 
         class AnthropicStreamResponse(StreamingResponse):
             async def __call__(self, scope, receive, send):
@@ -2838,9 +2845,13 @@ async def anthropic_messages(request: Request):
                 finally:
                     if not completed and status_code < 400:
                         status_code = 499
-                    _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
-                               status=status_code, latency_ms=int((time.monotonic() - t0) * 1000),
-                               usage_obj=captured_usage, stream=True)
+                    with anyio.CancelScope(shield=True):
+                        try:
+                            await self.body_iterator.aclose()
+                        finally:
+                            _log_usage(request, info, endpoint="/v1/messages", api="anthropic",
+                                       status=status_code, latency_ms=int((time.monotonic() - t0) * 1000),
+                                       usage_obj=captured_usage, stream=True)
 
         return AnthropicStreamResponse(
             guarded_gen(), media_type="text/event-stream",
@@ -2951,25 +2962,68 @@ async def audio_transcriptions(request: Request):
         # (NOT the chat-aware _forward stream branch that parses OpenAI choices).
         fwd_stream = {k: v for k, v in fwd.items() if v is not None}
 
+        t0 = time.monotonic()
+        status_code = 502
+        out_bytes = 0
+        completed = False
+        logged = False
+        c = httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT)
+
+        def finalize():
+            nonlocal logged
+            if logged:
+                return
+            logged = True
+            _log_usage(request, info, status=status_code,
+                       latency_ms=int((time.monotonic() - t0) * 1000),
+                       stream=True, usage_obj={"audio_input_bytes": audio_in,
+                                               "audio_output_bytes": out_bytes}, **log_kwargs)
+
+        try:
+            r = await c.send(c.build_request("POST", url, headers=host_hdr, **fwd_stream), stream=True)
+            status_code = r.status_code
+            if r.is_error:
+                content = await r.aread()
+                await r.aclose()
+                await c.aclose()
+                finalize()
+                return Response(content, status_code=r.status_code,
+                                media_type=r.headers.get("content-type", "application/json"))
+        except BaseException as exc:
+            if isinstance(exc, asyncio.CancelledError):
+                status_code = 499
+            await c.aclose()
+            finalize()
+            raise
+
         async def gen():
-            t0 = time.monotonic()
-            status_code = 200
-            out_bytes = 0
-            async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as c:
-                async with c.stream("POST", url, headers=host_hdr,
-                                    **fwd_stream) as r:
-                    status_code = r.status_code
-                    async for chunk in r.aiter_raw():
-                        out_bytes += len(chunk)
-                        yield chunk
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            _log_usage(request, info, status=status_code, latency_ms=latency_ms,
-                       stream=True, usage_obj={
-                           "audio_input_bytes": audio_in,
-                           "audio_output_bytes": out_bytes,
-                       }, **log_kwargs)
-        return StreamingResponse(
-            gen(), media_type="text/event-stream",
+            nonlocal out_bytes, completed
+            async for chunk in r.aiter_raw():
+                out_bytes += len(chunk)
+                yield chunk
+            completed = True
+
+        class TranscriptionStreamResponse(StreamingResponse):
+            async def __call__(self, scope, receive, send):
+                nonlocal status_code
+                try:
+                    await super().__call__(scope, receive, send)
+                except Exception:
+                    status_code = 502
+                    raise  # Never append an invented SSE event to a raw byte stream.
+                finally:
+                    if not completed and status_code < 400:
+                        status_code = 499
+                    with anyio.CancelScope(shield=True):
+                        try:
+                            await self.body_iterator.aclose()
+                            await r.aclose()
+                            await c.aclose()
+                        finally:
+                            finalize()
+
+        return TranscriptionStreamResponse(gen(), status_code=r.status_code,
+            media_type=r.headers.get("content-type", "text/event-stream"),
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     fwd_post = {k: v for k, v in fwd.items() if v is not None}

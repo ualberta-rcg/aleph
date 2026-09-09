@@ -186,6 +186,8 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
                 return await self.consume(response, disconnect=disconnect)
             except asyncio.CancelledError:
                 return []
+            finally:
+                self.assertTrue(client.is_closed, 'disconnect must close upstream before returning')
 
     async def test_anthropic_upstream_error_is_not_empty_success(self):
         with patch.object(g, "_log_usage") as record:
@@ -201,6 +203,51 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
             await self.anthropic(httpx.Response(200, content=b'data: {"choices":[]}\n\n'), disconnect=True)
             self.assertEqual(record.call_count, 1)
             self.assertEqual(record.call_args.kwargs["status"], 499)
+
+    async def transcription(self, upstream):
+        request = NS(headers={"content-type": "application/json"},
+                     body=AsyncMock(return_value=b'{"model":"synthetic","stream":true}'))
+        client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: upstream))
+        self.addAsyncCleanup(client.aclose)
+        with patch.object(g.httpx, "AsyncClient", return_value=client), \
+             patch.object(g, "resolve", return_value={"host": "synthetic", "card": {}}), \
+             patch.object(g, "_guard_cold", new=AsyncMock(return_value=None)), \
+             patch.object(g, "upstream_url", return_value="http://synthetic/transcriptions"):
+            return await g.audio_transcriptions(request)
+
+    async def test_transcription_preserves_raw_bytes(self):
+        raw = b'\x00\xffsynthetic\n\x80'
+        class Bytes(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield raw
+        with patch.object(g, "_log_usage") as record:
+            response = await self.transcription(httpx.Response(200, stream=Bytes(),
+                                                              headers={"content-type": "application/octet-stream"}))
+            events = await self.consume(response)
+            self.assertEqual(b''.join(e.get('body', b'') for e in events), raw)
+            self.assertEqual(record.call_count, 1)
+            self.assertEqual(record.call_args.kwargs['usage_obj']['audio_output_bytes'], len(raw))
+
+    async def test_transcription_error_keeps_http_status(self):
+        with patch.object(g, "_log_usage") as record:
+            response = await self.transcription(httpx.Response(422, json={"error": "synthetic format error"}))
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(record.call_count, 1)
+            self.assertEqual(record.call_args.kwargs['status'], 422)
+
+    async def test_transcription_disconnect_finalizes_once(self):
+        class Bytes(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield b'partial'
+                yield b'final'
+        with patch.object(g, "_log_usage") as record:
+            response = await self.transcription(httpx.Response(200, stream=Bytes()))
+            try:
+                await self.consume(response, disconnect=True)
+            except asyncio.CancelledError:
+                pass
+            self.assertEqual(record.call_count, 1)
+            self.assertEqual(record.call_args.kwargs['status'], 499)
 
 
 class PageTests(unittest.TestCase):
