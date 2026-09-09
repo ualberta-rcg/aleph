@@ -173,7 +173,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
-          image: rkhoja/aleph:gateway-b5e38cb@sha256:32986ae5c81ba03c85b8630e9390c209c3b8dacb2598a90fb7a3f652a32e8536
+          image: rkhoja/aleph:gateway-5583535@sha256:e1f5e81585c431232d78043a4a550dab615993c87a6a69abbfebcbd1a0ebbb2f
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

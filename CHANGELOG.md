@@ -2,6 +2,18 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Pin the final page release and publish measured guidance
+
+Final image: `rkhoja/aleph:gateway-5583535@sha256:e1f5e81585c431232d78043a4a550dab615993c87a6a69abbfebcbd1a0ebbb2f`. Exact-commit Actions run 34406704011 passed the 21 regression cases and image publication. Isolated canary verified the image digest, readiness, official favicon checksum, top “How to get an API key” link, no-wrap AMII/title row and “Get support” label with “Request a model or get support” hover text. No browser/package installation; page review used source and HTTP checks as requested.
+
+All three new production replicas are Ready with zero error lines in inspected startup logs. The public endpoint serves the final header and support text. Both .43 boot/staging manifests match the checksum below. Old replicas are allowed to drain under their existing grace; these checks do not prove survival of every old stream.
+
+Preserve three desired gateways, maxUnavailable=0/maxSurge=1, 15 seconds minimum readiness and 660 seconds termination grace. Allow old pods to drain naturally. Final manifest SHA256: `0a8c0df585737aa383cbc7bcd04fc3ad7e9c8a0acefc4719d7648223374662e4`. Previous working rollback image is `gateway-3a53058`, digest `sha256:80d575fe6ea9feca5121c8a8777138b2cac8192c272df8f324f11bd73d1dc530`; retain the same availability/shutdown settings on rollback.
+
+Qwen's requested live single-request 256K check and its exact limitations are committed in the model directory. Researcher guide, notebook and sequential resumable client are under docs/; offline checks passed for notebook syntax, validation, save/resume, changed-input rejection and stopping without retry on HTTP errors. The operator will create the linked Alliance documentation page; its availability does not gate the release.
+
+Labeler remains 7/7 Ready and Phi remains stopped with its Bound PVC retained. Native startup control cannot enforce the selected gate; the separate platform admission design is staged for review, with no production controller or scaling change. wwclient remains inactive pending operator overlay handoff. No keys/authentication/rate-limit or Redis operations.
+
 ## 2026-09-09 — Shorten the support action
 
 Use “Get support” for the header button and footer link, with “Request a model or get support” as hover text. Preserve the existing support mailto, top API-key documentation link, favicon and no-wrap AMII layout. Source-only page review as requested; no browser or software installation.
