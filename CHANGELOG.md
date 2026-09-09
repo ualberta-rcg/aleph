@@ -4,7 +4,7 @@ Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 ## 2026-09-09 — Keep AMII beside the title and expose Alliance docs in the header
 
-Add an explicit “Aleph documentation” header link to `https://docs.alliancecan.ca/wiki/aleph`, alongside the existing API-key links in the Use it box and footer. Keep the title/AMII row unwrapped at all widths; previously the narrowest breakpoint prevented wrapping below 480px but intermediate widths could still wrap. Preserve shrinking/wrapping title text and the existing logo sizes. Review the HTML/CSS directly, as requested; no browser or cluster software installation.
+Add an explicit “How to get an API key” header link to `https://docs.alliancecan.ca/wiki/aleph`, alongside the existing API-key links in the Use it box and footer. Keep the title/AMII row unwrapped at all widths; previously the narrowest breakpoint prevented wrapping below 480px but intermediate widths could still wrap. Preserve shrinking/wrapping title text and the existing logo sizes. Review the HTML/CSS directly, as requested; no browser or cluster software installation.
 
 Publish the validated standard-library researcher notebook and resumable CLI, and update Qwen's model notes with the measured 256K boundary result and actual 0.88 memory setting. Documentation page publication remains operator-owned; the configured Alliance URL currently returns 404 after redirect.
 
