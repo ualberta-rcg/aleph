@@ -2,6 +2,15 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-09 — Verify live Qwen 256K and bundle official favicon
+
+One synthetic request through production `gateway-b5e38cb` and the existing Qwen engine accepted 261888 rendered input tokens with a 256-token output allowance. It returned 33 tokens, recalled beginning/middle/end markers and completed SSE in 120.15 seconds. Short controls passed before/after; the serving pod retained zero restarts and inspected OOM/engine-death counts were zero. No model settings changed. Document the exact single-request scope and limitations in the model's 256K result; do not infer concurrency or arbitrary-document recall guarantees.
+
+Bundle the operator-supplied University of Alberta favicon unchanged from `ualberta-rcg/vulcan-ood` (Git blob `9eeeaaf56dcf48dadbb6df7646977e5e7486a4fa`). Add the explicit icon link and accessible search name. Correct the landing page's blanket scale-to-zero/15-minute claim: always-on models remain available and idle retention varies by card. Source review confirms the narrowest-only AMII layout and support/docs links. Browser testing is omitted at the operator's direction; no browser or software package was installed on the cluster.
+
+Gateway changes are a new candidate until the exact Actions build, regression suite, asset checks and isolated readiness check pass. Preserve the current production digest until promotion. Native startup admission requires a separate platform design; no autoscaler/controller changes accompany these edits.
+
+
 ## 2026-09-09 — Roll out verified gateway b5e38cb
 
 Pinned production to `rkhoja/aleph:gateway-b5e38cb@sha256:32986ae5c81ba03c85b8630e9390c209c3b8dacb2598a90fb7a3f652a32e8536` after successful Actions tests/publication and isolated canary readiness, discovery, a complete 45-second synthetic stream and upstream HTTP 400 propagation. Preserved three replicas, zero maxUnavailable and one maxSurge; added 15 seconds minimum readiness and 660 seconds termination grace for new pods.

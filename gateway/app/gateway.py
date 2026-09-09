@@ -1972,6 +1972,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
 <title>Aleph — Research Model Inference on Vulcan</title>
 <meta name="description" content="Access scientific, language, image and audio models on Vulcan through Aleph's OpenAI- and Anthropic-compatible inference APIs. Explore models and getting-started documentation.">
 <link rel="canonical" href="{_MAIN_HOST}/">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Aleph — Vulcan">
 <meta property="og:title" content="Aleph — Research Model Inference on Vulcan">
@@ -2092,8 +2093,8 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
 </div></header>
 <div class="about">
   <div class="box"><h3>How it works</h3>
-    <p>Models <b>scale to zero</b> when idle so we can host many without wasting GPUs &mdash; and they
-       <b>scale back up under load</b>. A model stays up until <b>~15 minutes after its last call</b>, then releases its GPU.</p>
+    <p>Eligible models <b>scale to zero</b> when idle and <b>scale back up under load</b>.
+       Always-on models remain available. Idle retention and cold-start time vary by model; check its card.</p>
     <p>The dot on each card is <span class="doti g"></span> <b>green</b> when ready to serve.
        Other cards distinguish sleeping, starting, unavailable and unknown status. The first request to a cold model returns
        <code>503 model_scaled_to_zero</code> with <code>Retry-After</code>; follow the retry guidance for that error. Do not retry unrelated failures indefinitely. If there is no free GPU the gateway returns
@@ -2112,7 +2113,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
 </div>
 <div class="stats">{len(entries)} models &mdash; <b class="up">{n_up} ready</b>, <b class="zero">{n_zero} sleeping</b>, {n_other} starting or unavailable. Host: <a href="{_MAIN_HOST}/">{_MAIN_HOST}</a></div>
 <div class="toolbar">
- <input class="srch" id="q" placeholder="Search by name, type, domain, tag, 'scaled up'…" autocomplete="off">
+ <input class="srch" id="q" aria-label="Search models" placeholder="Search by name, type, domain, tag, 'scaled up'…" autocomplete="off">
  <span class="count" id="cnt"></span>
 </div>
 <details class="cheat"><summary>Quickstart &mdash; SDK + curl examples</summary>{cheatsheet}</details>
