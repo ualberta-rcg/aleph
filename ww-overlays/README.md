@@ -40,20 +40,26 @@ All 24 repository manifests match the sanitized Warewulf export byte-for-byte. N
 
 ## Ansible source
 
-The shared `rke2-ansible` generator is maintained in [warewulf-rke2-hami](https://github.com/ualberta-rcg/warewulf-rke2-hami/tree/main/overlays/rke2-ansible). At the operator's direction, its `04-install-cvmfs` and `23-mount-nfs` entries were removed. The remaining six rendered playbooks match live `.43`. This shared overlay serves 12 nodes; changes are not exclusive to Aleph.
+The shared `rke2-ansible` generator is maintained in [warewulf-rke2-hami](https://github.com/ualberta-rcg/warewulf-rke2-hami/tree/main/overlays/rke2-ansible). At the operator's direction, its `04-install-cvmfs` and `23-mount-nfs` entries were removed. This shared overlay serves 12 nodes; those two removals are not exclusive to Aleph.
+
+Aleph's common overlay additionally overrides `03-install-packages.yaml` to remove the unused CVMFS APT repository instead of re-adding it. That file exactly matches the successfully booted rack09-01 copy; the other five playbooks retain their verified shared sources. No shared package playbook or base image was changed. See [RACK-BOOT.md](RACK-BOOT.md), including the required 0755 directory permissions that Git cannot record.
 
 ## Validation and rollout state
 
 - Private rendering passed for the corrected manifests and for the combined role overlays of `aleph3` and `rack09-01`. Both produced exactly the expected six Ansible files, without the two removed entries.
 - The corrected storage manifest and exported Tyk ConfigMap passed Kubernetes client dry-run. No storage objects or live API policies were applied by this reconciliation.
-- Full system and runtime overlay images were rebuilt for `aleph2`, `aleph3`, and `rack09-01`.
+- Full system and runtime overlay images were rebuilt and validated for all ten Aleph nodes: `aleph1–3` and `rack09-01–07`.
 - At 23:16 UTC, `wwclient` was started on `aleph3` and refreshed on the already-running `rack09-01`. Both applied runtime overlays without inspected errors. Both nodes stayed Ready; gateway remained 3/3 Ready and public health returned 200.
 - That initial runtime refresh did not change boot manifest/Ansible/GPU checksums; runtime refresh does not replace or remove boot files.
 - On 2026-09-10, `aleph3` and then `aleph2` passed reboot tests with their published overlays. All 24 delivered manifests and six playbooks matched the operational sources. Firstboot completed successfully, both nodes rejoined Ready, all three etcd endpoints passed health checks, and public IPs/routes were correct.
 - Filebeat passed config/output checks on both rebooted nodes and reported acknowledged deliveries. Zabbix Agent 2 and SSSD were active. Gateway replicas were moved gracefully before each reboot, with 3/3 available before reboot and at recovery checks.
 - Joining control-plane nodes use a node-specific Ignition Rancher filesystem wipe to avoid retaining a removed etcd member's database. Aleph1 and the shutdown scripts were not changed. No image changes were made.
 
-The rack reboot canary remains pending. Other nodes' distributed overlays must be rebuilt and validated before their rollout; the completed control-plane tests do not certify untested nodes.
+- Rack09-01 passed its corrected reboot test: firstboot completed all six playbooks, the unused CVMFS repository was absent, and `/usr`, `/usr/local`, and `/usr/local/bin` were 0755. Its six playbooks and six checked non-secret common/GPU files matched their operational sources.
+- The rack automatically regained `gpu=on`, four L40S hardware labels, HAMi sharing resources, and RDMA. Filebeat config/output tests and acknowledged deliveries passed; Zabbix Agent 2, SSSD, and wwclient were active. Gateway remained 3/3 at recovery checks.
+- Every published system archive contains six playbooks and the corrected package-playbook hash; all system/runtime gzip checks passed. Aleph1's Rancher filesystem wipe remains false; only aleph2/3 use true. No additional nodes were rebooted.
+
+The operational canary and repository handoff are complete. Other nodes have the corrected published boot overlays, but their running files are not claimed to have changed through runtime refresh; additional node reboot tests were not performed.
 
 ## Secrets and site-specific files
 

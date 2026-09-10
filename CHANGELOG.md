@@ -2,6 +2,12 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-10 — Validate Aleph reboot overlays and repair rack firstboot
+
+Add the exact Aleph-specific package playbook tested on rack09-01. It removes the unused CVMFS APT repository while preserving the remaining package setup; the shared non-Aleph playbook and base image are unchanged. Corrected the operational common overlay's /usr, /usr/local and /usr/local/bin permissions from 0750 to 0755 so APT's unprivileged signature verifier can execute. Document those directory modes explicitly because Git does not track them.
+
+Validation: aleph2/3 passed their fresh-rejoin reboot tests, and rack09-01 passed a second reboot with the corrected overlay. All six rack playbooks completed; gpu=on, four L40S labels, HAMi and RDMA appeared automatically. Filebeat config/output checks and acknowledged deliveries passed; Zabbix Agent 2, SSSD and wwclient were active. Twelve rack file hashes matched their sources. All 24 repository manifests were rechecked against Warewulf with only the existing secret/contact placeholders substituted: zero differences. All ten Aleph system/runtime archives were rebuilt and validated; no other nodes were rebooted. See ww-overlays/RACK-BOOT.md and CONTROL-PLANE-REBOOT.md.
+
 ## 2026-09-09 — Mirror verified Warewulf manifests with secrets redacted
 
 Synchronize all 24 numbered manifests from the reconciled Warewulf Aleph overlay, retaining deployed infrastructure values while redacting the Tyk admin secret and private ACME contact. Add the previously untracked Traefik, Canal, Redis storage, edge-route and model-storage manifests. Preserve the live three-route Tyk ConfigMap and repair the missing document separator before the existing Speaches binding. Canal is confirmed applied: eth0 interface, 10/10 Ready.
