@@ -12,7 +12,7 @@ The manifests in this directory mirror the verified Aleph Warewulf sources as of
 
 These are **system/boot overlays**. The current runtime assignments contain `hosts` and `ssh_hostauth`, so starting `wwclient` does not install the manifests or Ansible playbooks. Do not change that assignment or reboot based only on a successful runtime refresh.
 
-The manifest source directory on control-plane nodes is `/etc/rancher/manifests/`; RKE2 auto-deployment uses the staged copies in `/var/lib/rancher/rke2/server/manifests/`. Verify the boot staging process as well as the sources before a reboot.
+The manifest source directory on control-plane nodes is `/etc/rancher/manifests/`. Aleph1's existing `rke2-head2` manifest service stages these into `/var/lib/rancher/rke2/server/manifests/` for cluster-wide application. Aleph2/3 join that cluster and need no additional staging service. See [CONTROL-PLANE-REBOOT.md](CONTROL-PLANE-REBOOT.md) for their verified fresh-rejoin setup.
 
 ## Complete manifest set
 
@@ -46,11 +46,14 @@ The shared `rke2-ansible` generator is maintained in [warewulf-rke2-hami](https:
 
 - Private rendering passed for the corrected manifests and for the combined role overlays of `aleph3` and `rack09-01`. Both produced exactly the expected six Ansible files, without the two removed entries.
 - The corrected storage manifest and exported Tyk ConfigMap passed Kubernetes client dry-run. No storage objects or live API policies were applied by this reconciliation.
-- Full system and runtime overlay images were rebuilt only for `aleph3` and `rack09-01`.
+- Full system and runtime overlay images were rebuilt for `aleph2`, `aleph3`, and `rack09-01`.
 - At 23:16 UTC, `wwclient` was started on `aleph3` and refreshed on the already-running `rack09-01`. Both applied runtime overlays without inspected errors. Both nodes stayed Ready; gateway remained 3/3 Ready and public health returned 200.
-- Manifest/Ansible/GPU checksums on those nodes did not change. `aleph3` still has older boot manifest files; the rack still has the old CVMFS/NFS playbooks on disk. Runtime refresh does not remove them.
+- That initial runtime refresh did not change boot manifest/Ansible/GPU checksums; runtime refresh does not replace or remove boot files.
+- On 2026-09-10, `aleph3` and then `aleph2` passed reboot tests with their published overlays. All 24 delivered manifests and six playbooks matched the operational sources. Firstboot completed successfully, both nodes rejoined Ready, all three etcd endpoints passed health checks, and public IPs/routes were correct.
+- Filebeat passed config/output checks on both rebooted nodes and reported acknowledged deliveries. Zabbix Agent 2 and SSSD were active. Gateway replicas were moved gracefully before each reboot, with 3/3 available before reboot and at recovery checks.
+- Joining control-plane nodes use a node-specific Ignition Rancher filesystem wipe to avoid retaining a removed etcd member's database. Aleph1 and the shutdown scripts were not changed. No image changes were made.
 
-This verifies source rendering and runtime delivery, not reboot readiness. Before rebooting, audit the complete base image/startup process and rebuild the other nodes' distributed overlays. No reboots were performed.
+The rack reboot canary remains pending. Other nodes' distributed overlays must be rebuilt and validated before their rollout; the completed control-plane tests do not certify untested nodes.
 
 ## Secrets and site-specific files
 
