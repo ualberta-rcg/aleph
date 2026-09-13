@@ -1,11 +1,11 @@
 # Aleph Model Gateway
 
-Card-driven FastAPI inference gateway for the HAMI Kubernetes cluster. Routes requests to KServe InferenceServices through a single `/v1/` endpoint, supporting both OpenAI and Anthropic API formats.
+Card-driven FastAPI inference gateway for the HAMi GPU-scheduled Kubernetes cluster. Routes requests to KServe InferenceServices through a single `/v1/` endpoint, supporting both OpenAI and Anthropic API formats.
 
 ## Architecture
 
 ```
-Client → Tyk (auth, rate-limit) → model-gateway (FastAPI :8080)
+Client → Traefik (public TLS edge) → Tyk (auth, rate-limit) → model-gateway (FastAPI :8080)
                                           │
             ┌─────────────────────────────┼──────────────────────────────┐
             ↓                             ↓                              ↓
@@ -25,11 +25,11 @@ The gateway speaks four API formats depending on the endpoint:
 
 | Endpoint | Standard | Who defined it | Models |
 |---|---|---|---|
-| `/v1/chat/completions` | OpenAI Chat | OpenAI | ~30 LLMs |
-| `/v1/messages` | Anthropic Messages | Anthropic | Same ~30 LLMs (translated internally) |
-| `/v1/embeddings` | OpenAI Embeddings | OpenAI | ~50 embedding models |
-| `/v1/rerank` | Cohere Rerank v2 | Cohere | 1 model (bge-reranker-v2-m3) |
-| `/v1/science/*`, `/v1/vision/*`, etc. | Custom | Us | ~60 science + vision models |
+| `/v1/chat/completions` | OpenAI Chat | OpenAI | the chat/reasoning LLM fleet |
+| `/v1/messages` | Anthropic Messages | Anthropic | Same chat fleet (translated internally) |
+| `/v1/embeddings` | OpenAI Embeddings | OpenAI | dozens of embedding models |
+| `/v1/rerank` | Cohere Rerank v2 | Cohere | the rerankers |
+| `/v1/science/*`, `/v1/vision/*`, etc. | Custom | Us | most of the catalog — science + vision + audio + image gen |
 
 ### OpenAI vs Anthropic field mapping
 

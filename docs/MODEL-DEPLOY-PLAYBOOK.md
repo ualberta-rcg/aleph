@@ -1,7 +1,7 @@
 # Model Deploy Playbook — vLLM LLMs on the Aleph cluster
 
-The operational standards + per-model loop used to bring the **chat-LLM fleet onto cluster 43
-(aleph1)**. Proven across 20+ models (reasoning, vision, tool, code). Reuse it as the template for
+The operational standards + per-model loop used to bring the **chat-LLM fleet onto the Aleph
+cluster**. Proven across 20+ models (reasoning, vision, tool, code). Reuse it as the template for
 later passes — **NIM and science models are handled by separate, tweaked plans** (not this doc).
 
 > Scope of this playbook: the vLLM-served chat/completions/reasoning/vision LLMs. NIM containers,
@@ -10,9 +10,9 @@ later passes — **NIM and science models are handled by separate, tweaked plans
 
 ## Context
 
-Cluster **43 (aleph1, 172.26.92.43)** — 3 control-plane VMs + **5 GPU workers (20× L40S)**. The
-model-gateway is up (`rkhoja/aleph:latest`); the public edge is Traefik on VIP **129.128.190.56** with
-Tyk behind it (internal ClusterIP). **Cards are the discovery mechanism** — a model is catalogued only
+HA control-plane VMs + a pool of Warewulf GPU workers (**L40S**, stateless — the inventory is
+dynamic). The model-gateway is up (pinned immutable `rkhoja/aleph:gateway-<sha>`); the public edge
+is Traefik terminating real Let's Encrypt TLS, with Tyk behind it (internal ClusterIP). **Cards are the discovery mechanism** — a model is catalogued only
 when its v2 `details.yaml` is applied as a ConfigMap labeled `model-details: "true"`. All chat LLMs are
 already v2, so they're detected once applied.
 
@@ -34,7 +34,7 @@ with no mess left behind before moving on. Already-deployed workloads are **do n
 - **Source of truth = the repo files.** The live cluster must be reproducible from
   `models/<m>/{pvc,inferenceservice,details}.yaml` alone. Whatever you tweak live, you put back into
   the repo before finishing the model.
-- **Don't lean on RUNBOOK/AUDIT-PROMPT** — the standards below are self-contained.
+- **Don't lean on the RUNBOOK** — the standards below are self-contained.
 
 ---
 
@@ -89,9 +89,9 @@ for the card/reasoning args; `gpt-oss-120b/` for the clean `<model>` PVC naming.
    `set -a; source .env; set +a; kubectl create secret generic hf-token -n models
    --from-literal=token="$HF_TOKEN" --dry-run=client -o yaml | kubectl apply -f -`
 8. **test.py convention** (test.template.py): `GW_URL` + `TYK_KEY` env overrides, no hardcoded
-   IPs/hostnames in committed files; all calls carry `Authorization: Bearer $TYK_KEY`. Add the
+   IPs/hostnames in committed files; all calls carry `Authorization: Bearer $TYK_KEY`. Keep the
    env-gated `GW_INSECURE` toggle (`verify=False` for httpx, an unverified `ssl` context for urllib)
-   because the edge serves a self-signed cert.
+   for edges serving self-signed certs — not needed where real TLS terminates.
 
 ## Naming standard
 
@@ -119,7 +119,7 @@ Common "funny" names to fix: PVC/volume `model-data`, `data`, `<model>-data`; vo
 **Operational specifics:**
 - **Apply each file in its own `kubectl apply -f -`** (pvc → [parser-cm] → isvc → details). Concatenating fuses the YAML ("ConfigMap unknown field spec"); `--server-side --force-conflicts` also breaks on ConfigMaps → use plain `apply`.
 - **Run test.py in the background** (`> /tmp/<m>-test.log 2>&1 &`) — the full reasoning battery exceeds the 10-min foreground cap.
-- **`GW_INSECURE=1`** for login-node tests — the public edge (`https://inference.vulcan.alliancecan.ca`, Traefik on VIP .56) serves a self-signed `cert-manager.local` cert. httpx 0.28.1 is already importable on the login node (no venv needed there).
+- **The public edge serves real Let's Encrypt TLS** — no `GW_INSECURE` needed against it (keep the toggle for test clusters with self-signed certs). httpx 0.28.1 is already importable on the admin/login node (no venv needed there).
 - **Tyk timeout** is 600 s in `51-tyk.yaml` (`TYK_GW_PROXYDEFAULTTIMEOUT`/read/write) — the old 30 s default 504'd long reasoning gens; fixed.
 - **Gated models OK**: hf-token has access to google/gemma-3-4b-it, google/medgemma-27b-it, zai-org/GLM-4-32B-0414, geobrain-ai/geogalactica.
 - **`guard_embed` can 404**: the auto-detect test's "embed via chat" guard picks the first embedder from `/v1/models?all=true` and may 404 — a cross-cutting guard/catalog artifact, **not** a per-model defect. Note + move on.
@@ -153,7 +153,7 @@ Common "funny" names to fix: PVC/volume `model-data`, `data`, `<model>-data`; vo
    re-apply/patch/scale while it's downloading/building (two writers on the RWX PVC → corrupted
    venv/weights → crashes). Big models: 4–20 min first time.
 3. **Test from the login node** against the public edge:
-   `GW_URL=https://inference.vulcan.alliancecan.ca TYK_KEY=<key> GW_INSECURE=1 MODEL=<id> python3 models/<m>/test.py`
+   `GW_URL=https://inference.vulcan.alliancecan.ca TYK_KEY=<key> MODEL=<id> python3 models/<m>/test.py`
    Reasoning models = full battery (copy `gpt-oss-120b/test.py`); vision models include the image
    block; non-reasoning = trimmed set.
 4. **Tweak until only PASS/EXP remain.** Real failure → small fix only (missing parser flag, wrong
@@ -167,7 +167,7 @@ Common "funny" names to fix: PVC/volume `model-data`, `data`, `<model>-data`; vo
    name had to change.) This guarantees the live model is reproduced purely from the repo.
 6. **Leave deployed, scale to 0:** `minReplicas: 0`, no stop annotation; confirm 0 pods after the
    idle window and that the next request wakes it (503-with-ETA → 200).
-7. **Record + commit:** `models/MODEL-STATUS.md` row + dated `CHANGELOG.md` entry (changelog-first),
+7. **Record + commit:** dated `CHANGELOG.md` entry (changelog-first),
    commit to `main`.
 8. **Confirm no mess** (no stray pods, no half-state, working tree clean), **then** start the next model.
 
@@ -175,19 +175,19 @@ Common "funny" names to fix: PVC/volume `model-data`, `data`, `<model>-data`; vo
 
 ## Prerequisites (do once, before model 1)
 
-- **`nfs-models` SC healthy:** via SSH to 43, `kubectl get sc nfs-models -o jsonpath='{.mountOptions}'`
+- **`nfs-models` SC healthy:** via SSH to a control-plane node, `kubectl get sc nfs-models -o jsonpath='{.mountOptions}'`
   must be non-empty (`nfsvers=4.2,wsize=131072,rsize=131072`). If empty, STOP (weight writes EIO; the
   SC is immutable and must be deleted + `30-nfs.yaml` re-applied).
-- **GPU nodes labeled `gpu=on`** → expect 5 workers.
+- **GPU nodes labeled `gpu=on`** → expect the GPU workers.
 - **`hf-token` Secret** present + current (gated models: gemma, medgemma, glm, geogalactica).
 - **A Tyk key** for login-node testing (existing keys in `.env`, or `tyk-admin.sh add-user …`). Smoke
-  test: `GW_URL=https://inference.vulcan.alliancecan.ca; curl -sk $GW_URL/v1/models -H "Authorization: Bearer $TYK_KEY"`.
+  test: `GW_URL=https://inference.vulcan.alliancecan.ca; curl -s $GW_URL/v1/models -H "Authorization: Bearer $TYK_KEY"`.
 
 ---
 
 ## Phase A — Chat-LLM fleet
 
-The 29 chat/completions LLMs **minus the 4 already on 43** (`gpt-oss-120b`, `gpt-oss-20b`,
+The 29 chat/completions LLMs **minus the 4 already deployed** (`gpt-oss-120b`, `gpt-oss-20b`,
 `gemma-4-26b-a4b`, `qwen25-vl-7b` — do-not-touch).
 
 **Reasoning models (verify thinking ON exposes `reasoning`, OFF strips+caps):**
@@ -204,14 +204,14 @@ Per-model repo tidy notes:
 - **Drop `kustomization.yaml`** (`tinyllama-1-1b` is the only chat LLM with one).
 - Keep `glm-4-32b`'s `glm4_0414_tool_parser.py` + `parser-configmap.yaml`; keep `geogalactica/chat_template.jinja`.
 - TP4 models (`qwen3-235b`, `qwen35-122b`, `openbiollm-70b`, `r1-distill-llama-70b`, `qwen25-vl-72b`)
-  each bind 4 tenant-free L40S — fine at scale-0, but don't expect many hot at once.
+  each bind 4 whole cards — fine at scale-0, but don't expect many hot at once.
 
 > **Progress (2026-06-27): Phase A COMPLETE — all 25 chat LLMs live + committed.** The 21 vLLM models
 > (phi-4-reasoning, qwen3-32b/235b, qwen35-122b, qwen36-27b/35b-a3b, qwq-32b, r1-distill-qwen-32b/
 > llama-70b, glm-4-32b, gemma-3-4b-it, medgemma-27b-it, qwen25-coder-32b, command-r-7b,
 > deepseek-v2-lite-16b, oceangpt-30b, qwen25-vl-3b/72b/72b-awq, openbiollm-70b, geogalactica) plus
 > the 4 custom-server models (progen2, crysta-llm, astrosage, tinyllama-1-1b). All green. See
-> `models/MODEL-STATUS.md` for per-model results + the `CHANGELOG.md` dated entries.
+> the `CHANGELOG.md` dated entries for per-model results.
 > **Next:** NIM + science models get their own tweaked plans (out of scope here).
 
 ---
@@ -231,11 +231,10 @@ Per-model repo tidy notes:
 
 ## Verification (per model, end-to-end)
 
-- `GW_URL=https://inference.vulcan.alliancecan.ca TYK_KEY=… GW_INSECURE=1 MODEL=<id> python3 models/<m>/test.py` → only PASS/EXP remain.
+- `GW_URL=https://inference.vulcan.alliancecan.ca TYK_KEY=… MODEL=<id> python3 models/<m>/test.py` → only PASS/EXP remain.
 - After the clean redeploy, the test **still passes** (repo is the source of truth).
 - Model stays in the catalog; `kubectl get isvc <m> -n models` is `READY=True`, no CrashLoop, 0 pods
   after idle, wakes on next request.
 
 ## Tracking
-- `models/MODEL-STATUS.md` (committed, source of truth) — refresh rows + chat matrix.
 - `CHANGELOG.md` — dated entry per model/dir commit (changelog-first).

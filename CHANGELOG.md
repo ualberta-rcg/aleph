@@ -2,6 +2,37 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Overhaul public docs: align repo with the deployed platform, generalize site specifics
+
+Rewrite the stale pre-rebuild docs to match the live Traefik-edge platform and remove
+site-specific deployment details from the public repo. README: new Aleph logo (assets/aleph.png,
+20% width), live endpoint shown, model counts generalized to "over a hundred" (catalog grows;
+not everything is tested), corrected the wrong `kubectl rollout restart` gateway-rollout
+guidance to the real pin-bump + `kubectl set image` flow, docs index added; logo/top section and
+Support/License/About kept. Root CLAUDE.md rewritten as a generalized repo guide (no node
+table/IPs; current namespaces; deploy lineage). LOGGING.md: PVC-backed ledger + `key_fp` field.
+TYK-USERS.md: Traefik edge path, PAM auto-provisioning live, 3-API table rebuilt. RUNBOOK.md:
+overlay-based bring-up (dead deploy-aleph/ scripts removed), edge wiring, pin flow, park/stop.
+MODEL-DEPLOY-PLAYBOOK.md: site values placeholder-ized, real-TLS note replaces GW_INSECURE
+guidance. QUICKSTART.md: boot chain gains gpu-autolabel + Traefik, apply order pvc → isvc →
+details, https URL. gateway/README.md: Traefik edge layer added, model counts made non-specific.
+ww-overlays README/SITE-VALUES: node names/racks/IPs/NFS host removed from prose (SITE-VALUES
+now documents value *kinds* only); CONTROL-PLANE-REBOOT.md and RACK-BOOT.md kept as sanitized
+reusable templates. post-deploy/README: tyk-admin.sh key flow replaces hand-curl on the VIP
+(`meta_data` misuse fixed), TLS section reflects auto-issued certificates. Deleted from the
+repo (copies retained in the operators' local working dir): models/MODEL-STATUS.md +
+docs/AUDIT-PROMPT.md (operational tracker), model-usage.md, docs/models.md (stale June fleet
+snapshots), GATEWAY-DESIGN/ARCHITECTURE (superseded; live card-schema content lives in
+gateway/README.md), LLM-MODEL-TRACKER, MODEL-CAMPAIGN-PLAN, aleph-anthropic-fix-PLAN (finished
+campaign/one-off artifacts). gateway/app/gateway.py doc comments repointed from the deleted
+GATEWAY-ARCHITECTURE.md to gateway/README.md (comments only, no behavior change).
+
+Validation: grep sweep over all changed files found no internal IPs, node/rack names, VIP,
+NFS host, or exact fleet counts (the public endpoint hostname is intentionally kept); all
+README doc links resolve; factual claims cross-checked against the live cluster 2026-09-13
+(edge path, PVC usage log, PAM keys, gateway pin flow, 3 Tyk API definitions). Manifest set
+unchanged — the 24 verified overlays are untouched by this docs-only pass.
+
 ## 2026-09-10 — Validate Aleph reboot overlays and repair rack firstboot
 
 Add the exact Aleph-specific package playbook tested on rack09-01. It removes the unused CVMFS APT repository while preserving the remaining package setup; the shared non-Aleph playbook and base image are unchanged. Corrected the operational common overlay's /usr, /usr/local and /usr/local/bin permissions from 0750 to 0755 so APT's unprivileged signature verifier can execute. Document those directory modes explicitly because Git does not track them.

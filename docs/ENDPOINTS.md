@@ -5,11 +5,9 @@ routes by path family and forwards each request to the backing model's declared
 endpoint; the model cards (`details.yaml` → `endpoints.primary`) are the source of
 truth for which path each model listens on.
 
-> Sourced from the legacy POC cluster (`/root/kuberflow-working/` on the 232
-> cluster) as the reference surface. Aleph's gateway forwards `/v1/{path}`
-> generically, so treat this as a **coverage checklist**, not a hard-coded list —
-> a card can declare any path its `server.py` exposes. (232 specifics are kept in
-> the local working dir.)
+> Aleph's gateway forwards `/v1/{path}` generically, so treat this as a
+> **coverage checklist**, not a hard-coded list — a card can declare any path its
+> `server.py` exposes.
 
 ## Chat / text
 - `/v1/chat/completions` — OpenAI chat

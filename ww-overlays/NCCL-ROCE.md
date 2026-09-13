@@ -21,7 +21,7 @@ Three things are required, in order:
 
 Intra-node NCCL (single node, tensor-parallel within one host) already works
 fine over shared memory without any of this. RoCE matters for **multi-node**
-collectives (a model sharded across both GPU nodes), and for forcing the network
+collectives (a model sharded across multiple GPU nodes), and for forcing the network
 path when you want RDMA throughput.
 
 ## Root cause (what we observed on the cluster)

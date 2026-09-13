@@ -1,36 +1,38 @@
 # Operations Guide — Model Inference Gateway
 
 How to stand up and operate the card-driven model inference gateway: a FastAPI gateway
-(card routing + OpenAI/Anthropic translation) fronted by **Tyk** (token auth), serving
+(card routing + OpenAI/Anthropic translation) fronted by **Traefik/TLS + Tyk** (token auth), serving
 models on **HAMi** fractional GPUs via **KServe/Knative**. This is a **manual, step-by-step**
 guide so it can be reproduced on **any** equivalent cluster.
 
-> **Cluster-specific values** (IPs, hostnames, the worked-example values for the **230**
-> test/POC cluster and the **232** legacy POC it replaced) are **not committed here** — they
-> live in the local working directory on the deploy host. The table in §0 uses placeholders;
-> fill them in for your cluster. No cluster number appears in this file by design.
+> **Cluster-specific values** (IPs, hostnames) are **not committed here**. The table in
+> §0 uses placeholders; fill them in for your cluster.
 >
-> Companion docs (this repo): [`GATEWAY-DESIGN.md`](GATEWAY-DESIGN.md) (design rationale),
-> [`GATEWAY-ARCHITECTURE.md`](GATEWAY-ARCHITECTURE.md) (card schema + handler map). The
-> platform manifests (RKE2 auto-deploy + WW overlay) live in [`ww-overlays/`](../ww-overlays/).
+> Companion docs (this repo): [`../TYK-USERS.md`](../TYK-USERS.md) (keys/identity),
+> [`../LOGGING.md`](../LOGGING.md) (usage ledger), [`gateway/README.md`](../gateway/README.md)
+> (gateway internals + card schema). The platform manifests (RKE2 auto-deploy + WW
+> overlay) live in [`ww-overlays/`](../ww-overlays/).
 
 ---
 
 ## Architecture at a glance
 
 ```
-client ──HTTP──> <VIP>:80 (MetalLB) ──> Tyk (token auth/keys, Redis) ──> model-gateway (cards)
+client ──HTTPS──> https://<public-hostname>
+              ──> <VIP> (MetalLB) ──> Traefik rke2-traefik-public (TLS, Let's Encrypt)
+              ──> Tyk (token auth/keys, Redis; ClusterIP) ──> model-gateway (cards)
                                                                        │
-                                            ┌──────────────────────────┴───────────────────────────┐
-                                            ▼ (Knative local gateway, Host: <isvc>-predictor)       ▼ (direct Service / RayService)
-                                       KServe ISVC predictors — chat / embed / science        media backends (image gen, TTS)
+                                            ┌──────────────────────────┴────────────────────────────┐
+                                            ▼ (Knative local gateway, Host: <isvc>-predictor)        ▼ (same, custom /v1/* paths)
+                                       KServe ISVC predictors — chat / embed / science         media backends (image gen, TTS)
                                             ▼
                                        HAMi vGPU slices on GPU workers (label gpu=on)
 ```
 
 - **Gateway** is pinned to control-plane (non-GPU) nodes; it never steals resources from model pods.
-- **Two backend planes:** most models are Knative `InferenceService`s (scale-to-zero); a few media
-  models run as raw `Deployment`/`RayService` behind the cluster ingress (Plane 2).
+- **One plane, all ISVCs**: *every* model — chat, science, embed, media — runs as a Knative
+  `InferenceService`. The only non-Knative Deployment in the `models` ns is model-gateway
+  itself.
 - **Cards are the single source of model truth.** The gateway reads them at runtime — adding a
   model = apply an ISVC + a card ConfigMap, **zero gateway changes, zero restart**.
 
@@ -42,10 +44,10 @@ Find these on the target cluster first; every command below references them.
 
 | Placeholder | What it is | How to find it |
 |---|---|---|
-| `VIP` | MetalLB public VIP (primary endpoint, port 80) | `kubectl get svc tyk-gateway-nodeport -n tyk -o jsonpath='{.status.loadBalancer.ingress[0].ip}'` |
-| `HEAD_IP` | a control-plane node IP (NodePort fallback :30808 if VIP unavailable) | any CP VM address |
+| `VIP` | MetalLB public VIP (Traefik TLS edge, port 443) | `kubectl get svc rke2-traefik-public -n kube-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}'` |
+| `GW_URL` | public endpoint hostname | `https://inference.vulcan.alliancecan.ca` (the live deployment) |
 | `GPU_NODE` | a GPU worker hostname | `kubectl get nodes -l gpu=on` |
-| GPU node label | label HAMi device-plugin keys on | `gpu=on` (label it if missing — see gotcha #9) |
+| GPU node label | label HAMi device-plugin keys on | `gpu=on` (applied automatically by `09-gpu-autolabel` — see gotcha #10) |
 | CP node label | control-plane selector | `node-role.kubernetes.io/control-plane=true` |
 | `TYK_DEPLOY` | Tyk gateway Deployment | `kubectl get deploy -n tyk` (Helm default `gateway-tyk-oss-tyk-gateway`) |
 | `TYK_SECRET` | Tyk admin `APISecret` | `kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk -o jsonpath='{.data.APISecret}' \| base64 -d` |
@@ -53,36 +55,26 @@ Find these on the target cluster first; every command below references them.
 | StorageClass | default SC | `kubectl get sc` (⚠️ see NFS gotcha #4) |
 | RKE2 containerd sock | socket `ctr` must talk to | `/run/k3s/containerd/containerd.sock` (RKE2 default) |
 
-> The literal values for the **230** and **232** clusters are in the local working dir, not here.
+Keep your site's literal values outside this repo (gitignored `.env` / site notes).
 
 ---
 
 ## Prerequisites — verify the built-ins are healthy
 
-An RKE2 cluster built the standard way **ships with HAMi, Rancher, the NFS provisioner, and
-cert-manager built in** (plus NVIDIA drivers baked into the GPU node images). So a rebuild is:
-
-| Step | What | Where |
-|---|---|---|
-| A | **Label GPU nodes** `gpu=on` (the one thing the build doesn't do) | `kubectl label node <GPU_NODE> gpu=on` |
-| B | Install **Istio + Knative + KServe + Profiles** | `deploy-aleph/01-install.sh` then `02-post-install.sh` (run on the head node) |
-| C | Install **Tyk OSS + Redis** (Helm) | `deploy-aleph/04-install-tyk-gateway.sh` *(see note)* |
-| D | Deploy **our gateway + model + Tyk wiring** | §1–§5 below |
-
-> **Note on step C / Tyk:** `04-install-tyk-gateway.sh` does the Helm install of Tyk + Redis,
-> but its API-definition section wires the **old** per-ISVC keyless routes (`/serving/<isvc>/`).
-> The current design routes everything through the **model-gateway** with **token auth**, so
-> **§5 supersedes** that part — run 04 for the Helm install, then apply §5 (single
-> `model-gateway` API def + the two env overrides). Ignore 04's per-ISVC routes.
+**Everything installs from the numbered RKE2 auto-deploy manifests** baked into the
+Warewulf control-plane overlay (`ww-overlays/overlays/control-plane/etc/rancher/manifests/`,
+00→80 — see [`ww-overlays/README.md`](../ww-overlays/README.md)). Provision/boot the WW nodes and the
+whole platform (cert-manager, HAMi, NFS, MetalLB+VIP, Traefik, Tyk+Redis, Istio,
+Knative, KServe, model-gateway) comes up. There is no installer script — the overlay
+set is the installer.
 
 ```bash
-kubectl label node <GPU_NODE> gpu=on                                                # step A
-kubectl get nodes -l gpu=on                                                          # GPU node shows up
-kubectl get node <GPU_NODE> -o jsonpath='{.status.allocatable}' | tr ',' '\n' | grep nvidia  # nvidia.com/gpu: N
+kubectl get nodes -l gpu=on                # GPU workers (auto-labeled by 09-gpu-autolabel)
+kubectl get node <GPU_NODE> -o jsonpath='{.status.allocatable}' | tr ',' '\n' | grep nvidia  # nvidia.com/gpu: N (10 × physical cards)
 kubectl get pods -n kube-system | grep -i hami                                       # hami-scheduler + device-plugin
-kubectl get sc                                                                       # default SC
-kubectl get pods -n cert-manager                                                     # cert-manager up
-kubectl get deploy -n tyk                                                            # after step C
+kubectl get sc                             # nfs-models default (verify mountOptions — gotcha #4)
+kubectl get pods -n cert-manager           # cert-manager up
+kubectl get deploy -n tyk                  # gateway-tyk-oss-tyk-gateway
 ```
 
 ---
@@ -93,27 +85,30 @@ CI publishes the gateway to **`rkhoja/aleph`** on Docker Hub on every push to `m
 `gateway/**` (workflow: `.github/workflows/deploy-gateway.yml`). Tags: moving `latest` and
 immutable `gateway-<shortsha>`.
 
-The Deployment (`ww-overlays/overlay/etc/rancher/manifests/63-model-gateway.yaml`) is part of
-the WW overlay auto-deploy set — it comes up automatically when the cluster boots. To roll out
-a new build after a push:
+The Deployment (`ww-overlays/overlays/control-plane/etc/rancher/manifests/63-model-gateway.yaml`)
+is part of the WW overlay auto-deploy set — it comes up automatically when the cluster boots.
+To roll out a new build after a push, **pin it — never roll `:latest` in prod**:
 
 ```bash
-kubectl rollout restart deploy/model-gateway -n models
-kubectl rollout status  deploy/model-gateway -n models
-
-# Pin a specific CI build if needed:
+# 1. Bump the image pin in 63-model-gateway.yaml (repo copy AND on all CP nodes — keep in sync)
+# 2. Apply the new tag:
 kubectl set image deploy/model-gateway -n models gateway=rkhoja/aleph:gateway-<sha>
+kubectl rollout status deploy/model-gateway -n models
 ```
+
+(`imagePullPolicy: IfNotPresent` — a bare `rollout restart` does NOT pull a new build.)
 
 ## 2. Gateway RBAC + Service + Deployment
 
-**Auto-deployed** by `ww-overlays/overlay/etc/rancher/manifests/63-model-gateway.yaml` as part
+**Auto-deployed** by `ww-overlays/overlays/control-plane/etc/rancher/manifests/63-model-gateway.yaml` as part
 of the RKE2 auto-deploy set. No manual apply needed on a fresh cluster.
 
 Key deployment choices (from `gateway/k8s/deployment.yaml`, now baked into `63-model-gateway.yaml`):
 - **Pinned to control-plane / non-GPU nodes:** `nodeSelector node-role.kubernetes.io/control-plane: "true"`
   + nodeAffinity `gpu NotIn [on]`. Keeps it off GPU workers; covers all CP VMs.
-- `image: rkhoja/aleph:latest` from Docker Hub (`imagePullPolicy: Always`).
+- `image: rkhoja/aleph:gateway-<sha>` — immutable pin from Docker Hub (`imagePullPolicy: IfNotPresent`).
+- **3 replicas** (sized for ~200 concurrent users; podAntiAffinity across CP nodes).
+- Usage-log PVC `model-gateway-usage-logs` mounted at `/var/log/aleph` (per-replica subPath).
 - Istio sidecar via pod label `sidecar.istio.io/inject: "true"`.
 
 The gateway needs at least one card applied (next step) before `/readyz` goes green.
@@ -128,7 +123,8 @@ kubectl apply -f gateway/cards/                       # e.g. bge-small
 kubectl apply -f models/command-r-7b/details.yaml     # a GPU model's card
 ```
 
-Card schema = [`GATEWAY-ARCHITECTURE.md`](GATEWAY-ARCHITECTURE.md). Minimal core: `id`, `type`,
+Card schema: [`models/DETAILS-TEMPLATE-LLM.md`](../models/DETAILS-TEMPLATE-LLM.md) (templates) and
+[`gateway/README.md`](../gateway/README.md) (which fields the gateway reads). Minimal core: `id`, `type`,
 `endpoints.primary`, `routing`, `limits`, `behavior`, `param_translation.thinking`, `defaults`.
 Everything else (`catalog`, `input_map`, `output_map`) is documentation/catalog only — not read
 by the gateway routing path.
@@ -159,10 +155,11 @@ kubectl get isvc command-r-7b -n models -w        # wait for READY=True (first r
 ```
 
 **Scaling model:** cards carry a `scaling` block (`scale_to_zero`, `cold_start_estimate`,
-`idle_retention`). Most models run `minReplicas: 0` (scale-to-zero, 15m idle retention); a few
+`idle_retention`). Most models run `minReplicas: 0` (scale-to-zero, idle retention); a few
 stay `minReplicas: 1` (always-warm). When a request hits a scaled-to-zero model, the gateway
-detects 0 ready replicas, fires an async Knative wake-up, and returns a fast
-`503 {code: model_scaled_to_zero}` "retry in <estimate>" instead of hanging into a 504.
+detects 0 ready replicas, runs a capacity check, and returns a fast
+`503 {code: model_scaled_to_zero}` "retry in <estimate>" (or `503 insufficient_capacity`)
+instead of hanging into a 504.
 
 ### Response telemetry — `resources` block
 
@@ -192,13 +189,14 @@ Tyk is fully configured by the WW-overlay manifests — no manual steps on a fre
 | Manifest | What it does |
 |---|---|
 | `50-tyk-redis.yaml` | Installs Redis (Bitnami) |
-| `51-tyk.yaml` | Installs Tyk OSS; bakes in `TYK_GW_APPPATH`, `ENABLEHASHEDKEYSLISTING`, JSVM (`TYK_GW_ENABLEJSVM`), `MIDDLEWAREPATH`, and the api-defs + middleware volume mounts |
-| `52-tyk-loadbalancer.yaml` | LoadBalancer Service → MetalLB assigns the VIP |
-| `53-tyk-api-definitions.yaml` | ConfigMap with `model-gateway.json` (token auth, proxies to `model-gateway.models.svc:80`, custom_middleware pre/post) |
+| `42-traefik-loadbalancer.yaml` | `rke2-traefik-public` LoadBalancer → MetalLB assigns the public VIP (TLS edge) |
+| `51-tyk.yaml` | Installs Tyk OSS; bakes in `TYK_GW_APPPATH`, `ENABLEHASHEDKEYSLISTING`, JSVM (`TYK_GW_ENABLEJSVM`), `MIDDLEWAREPATH`, and the api-defs + middleware volume mounts; 600 s proxy timeouts (long reasoning gens) |
+| `52-tyk-loadbalancer.yaml` | Tyk Service — **ClusterIP** (legacy name kept for scripts; the VIP belongs to Traefik) |
+| `53-tyk-api-definitions.yaml` | ConfigMap with the API definitions (`model-gateway.json` token auth, proxies to `model-gateway.models.svc:80`, custom_middleware pre/post) |
 | `54-tyk-middleware.yaml` | ConfigMap with JSVM middleware: `normalizeAuth` (catch-all key acceptance) + `injectIdentity` (X-Aleph-* from alias/tags) |
 
 API definition: `gateway/tyk/model-gateway-api.json` — `use_keyless:false`, `use_standard_auth:true`,
-`listen_path:/`, target `http://model-gateway.models.svc.cluster.local:80`. The committed source
+target `http://model-gateway.models.svc.cluster.local:80`. The committed source
 is inlined into `53-tyk-api-definitions.yaml`.
 
 Verify Tyk loaded the API definition:
@@ -221,7 +219,7 @@ It reads the APISecret from the in-cluster Secret
 (LB VIP, else ClusterIP), and writes an audit log (`/var/log/aleph/tyk-admin.log`).
 
 ```bash
-# Mint a key (prints the key string). identity = service name OR LDAP username.
+# Mint a key (prints the key string). identity = service name OR cluster username.
 KEY=$(tyk-admin.sh add-user openwebui shared-pool service)
 
 tyk-admin.sh validate-key openwebui "$KEY"   # true/false (exit 0/1)
@@ -230,6 +228,8 @@ tyk-admin.sh invalidate-key "$KEY"
 tyk-admin.sh list-user openwebui
 tyk-admin.sh invalidate-user openwebui
 ```
+
+Full key/identity documentation: [`../TYK-USERS.md`](../TYK-USERS.md).
 
 **Identity model.** Tyk OSS has no "user" object. Identity is stored on the key as
 the **alias** (= identity) and **tags** (`account:<x>`, `type:<service|user>`).
@@ -245,11 +245,13 @@ pre-hook normalizes any of them to Bearer before auth.
 <details><summary>Raw Tyk REST API (under the hood)</summary>
 
 The Tyk admin API is authenticated with `x-tyk-authorization: <APISecret>`. Keys
-live in Redis. Keys only take effect when the API is protected
-(`use_keyless:false`, `use_standard_auth:true`).
+live in Redis (hash-only — back that datastore up; keys cannot be re-derived).
+Keys only take effect when the API is protected (`use_keyless:false`,
+`use_standard_auth:true`).
 
 ```bash
-TYK=http://<VIP>           # MetalLB VIP :80 (primary). Fallback: http://<HEAD_IP>:30808
+# Run from a control-plane node (keep the admin API off the public edge):
+TYK=http://<tyk-svc-clusterip>:8080
 SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk -o jsonpath='{.data.APISecret}' | base64 -d)
 
 curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Content-Type: application/json" -d '{
@@ -260,11 +262,9 @@ curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Conte
 # -> {"key":"<TYK_KEY>","key_hash":"...","status":"ok","action":"added"}
 ```
 
-</details>
-
 | Action | Call (against `$TYK/tyk/...`) |
 |---|---|
-| Issue key for a user | `POST /tyk/keys/create` (body above; `meta_data.username` = the user) |
+| Issue key for a user | `POST /tyk/keys/create` (body above; identity = `alias` + `type:<user\|service>` tag — NOT `meta_data`, which Tyk OSS wipes) |
 | Deterministic key id | `POST /tyk/keys/<your-id>` (same body) — you choose the token, e.g. derive from uid |
 | List all keys | `GET /tyk/keys` → `{"keys":[<hash>,...]}` (hashes, not raw tokens) |
 | Inspect by raw key | `GET /tyk/keys/<key>` (shows `alias`, `meta_data`, `access_rights`) |
@@ -273,16 +273,18 @@ curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Conte
 | Revoke by raw key | `DELETE /tyk/keys/<key>` |
 | Revoke by hash | `DELETE /tyk/keys/<hash>?hashed=true` (effective after the ~10s session cache) |
 
-Primary tool: `tyk-admin.sh` (above). The login-node
-`gateway/tyk/tyk-keys.sh` still works for quick list/inspect/test but stores
-identity in `meta_data.username` (wiped on first request) — prefer `tyk-admin.sh`.
+</details>
+
+Primary tool: `tyk-admin.sh` (above). The `gateway/tyk/tyk-keys.sh` helper still
+works for quick list/inspect/test but stores identity in `meta_data.username`
+(wiped on first request) — prefer `tyk-admin.sh`.
 
 **List / revoke by identity:** Tyk OSS has **no identity index** — `GET /tyk/keys`
 only returns hashes. So `list-user` / `invalidate-user` *scan*: list hashes →
 `GET /tyk/keys/<hash>?hashed=true` → filter on `alias` → `DELETE` each match. O(n)
 over all keys — fine for modest counts.
 
-Verified lifecycle: no key → `401`; valid key → `200`; bad key → `403`. Tyk keeps
+Lifecycle: no key → `401`; valid key → `200`; bad key → `403`. Tyk keeps
 an in-memory **session cache (~10s)**, so a revoked key may keep working briefly —
 expected, not a bug.
 
@@ -290,14 +292,13 @@ expected, not a bug.
 > `TYK_GW_MIDDLEWAREPATH` are baked into `51-tyk.yaml` via `extraEnvs`.
 >
 > Per-user **rate limit / quota** go in `access_rights.model-gateway.limit`
-> (`rate`, `per`, `quota_max`, `quota_renewal_rate`). Per-identity accounting **is
-> wired**: `injectIdentity` stamps `X-Aleph-Identity`/`-Account`/`-Identity-Type`
-> from the key alias/tags and the gateway logs them (see Usage accounting below).
+> (`rate`, `per`, `quota_max`, `quota_renewal_rate`).
 
 ### Usage accounting / fairshare
 
-The gateway writes one JSON line per request to an in-pod log (emptyDir, not on
-the host) for fairshare/billing:
+The gateway writes one JSON line per request to the usage-log PVC
+(`model-gateway-usage-logs`, RWX NFS — survives pod replacement and re-images) for
+fairshare/billing — full schema in [`../LOGGING.md`](../LOGGING.md):
 
 ```bash
 kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph/usage.log
@@ -307,20 +308,17 @@ Each record has `identity`/`account`/`identity_type`, `model`, `api`, `status`,
 `latency_ms`, `cold_start`, `tokens` (prompt/completion/total + `detail` = verbatim
 vLLM usage with reasoning/cached breakdown), `context_window`,
 `max_completion_tokens`, `resources` (gpus, vram_mib, cpu_cores, system_ram_mib,
-`gpu_product`, `node`), and derived `gpu_seconds`. Per-model rollups are on
-`/metrics`. `gpu_product`/`node` come from the `node-labeler` DaemonSet
-(`11-node-labeler.yaml`) labels (`aleph.gpu/product` etc).
+`gpu_product`, `node`), `derived.gpu_seconds`, and a key `key_fp` fingerprint.
+Per-model rollups are on `/metrics`. `gpu_product`/`node` come from the
+`node-labeler` DaemonSet (`11-node-labeler.yaml`) labels (`aleph.gpu/product` etc).
 
 ### Verify
 
 ```bash
-U=http://<VIP>       # MetalLB VIP port 80 — primary endpoint
-S=<TYK_SECRET>
+# Mint the smoke key on a CP node (admin API is in-cluster only):
+K=$(ssh <cp-node> "tyk-admin.sh add-user smoketest" | tail -1)
 
-# make a key
-K=$(curl -s -X POST $U/tyk/keys/create -H "x-tyk-authorization: $S" -H "Content-Type: application/json" \
-  -d '{"alias":"smoketest","access_rights":{"model-gateway":{"api_id":"model-gateway","api_name":"model-gateway","versions":["Default"]}}}' \
-  | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+U=https://<public-hostname>    # public TLS endpoint
 
 curl -s -o /dev/null -w '%{http_code}\n' $U/v1/models                       # 401 (no key)
 curl -s $U/v1/models -H "Authorization: Bearer $K"                          # 200 list
@@ -330,9 +328,8 @@ curl -s $U/v1/messages -H "Authorization: Bearer $K" -H "Content-Type: applicati
   -d '{"model":"command-r-7b","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}'   # Anthropic
 ```
 
-OpenAI SDK: `base_url="http://<VIP>/v1"`, `api_key=<tyk key>`.
-Anthropic SDK: `base_url="http://<VIP>"` (it appends `/v1/messages`), `api_key=<tyk key>`.
-NodePort fallback (internal): `http://<HEAD_IP>:30808` (same Tyk gateway, port 30808).
+OpenAI SDK: `base_url="https://<public-hostname>/v1"`, `api_key=<tyk key>`.
+Anthropic SDK: `base_url="https://<public-hostname>"` (it appends `/v1/messages`), `api_key=<tyk key>`.
 
 ### Gotchas we hit (read before redeploying)
 
@@ -342,8 +339,8 @@ NodePort fallback (internal): `http://<HEAD_IP>:30808` (same Tyk gateway, port 3
    loads **0 APIs**. Point it at the API-defs ConfigMap mount (`/opt/tyk-gateway/apps`).
 3. **Tyk key listing off by default** — set `TYK_GW_ENABLEHASHEDKEYSLISTING=true` or `GET /tyk/keys`
    errors. List returns **hashes only**; raw tokens aren't recoverable (store at create time).
-4. **NFS large-write EIO (SOLVED)** — the default SC mounts NFSv4.2 with `wsize/rsize=1Mi`; the
-   OneFS/Isilon backend returns `Errno 5 Input/output error` on COMMIT for >128Ki write RPCs over
+4. **NFS large-write EIO (SOLVED)** — the default SC mounts NFSv4.2 with `wsize/rsize=1Mi`; some
+   backends (e.g. OneFS/Isilon) return `Errno 5 Input/output error` on COMMIT for >128Ki write RPCs over
    NFSv4.1/4.2, so multi-GB safetensors failed at `close()` (small files OK).
    **Fix:** the `nfs-models` SC (auto-deploy `ww-overlays/.../30-nfs.yaml`) sets
    `mountOptions: nfsvers=4.2,wsize=131072,rsize=131072` → ~700 MB/s, verified. Model PVCs use this
@@ -359,16 +356,17 @@ NodePort fallback (internal): `http://<HEAD_IP>:30808` (same Tyk gateway, port 3
 5. **vLLM image is ~9 GB** — first model start on a fresh GPU node is slow (image pull). Subsequent
    starts are fast.
 6. **Bearer prefix** — Tyk strips `Bearer `, so OpenAI/Anthropic SDKs work; raw key also accepted.
-7. **No public IP** — use a NodePort on a control-plane node IP. With 3 CP VMs, front with a VIP
-   (kube-vip/keepalived) so the endpoint isn't a single point of failure.
+7. **Public access** — MetalLB L2 VIP → `rke2-traefik-public` LoadBalancer (TLS, Let's Encrypt)
+   → Tyk. Never expose the Tyk admin API (`/tyk/*`) through the edge.
 8. **Fresh node has no container builder** — no docker/podman. Install one (`apt-get install -y
    podman`). podman tags images `localhost/...`; retag to `docker.io/library/...` so the bare
    image name in the deployment resolves.
 9. **Fresh Tyk has no API-defs mount** — the `tyk-oss` Helm install only mounts an empty scratch
-   emptyDir. You must create **and mount** the `tyk-api-definitions` ConfigMap (§5c), not just set
+   emptyDir. You must create **and mount** the `tyk-api-definitions` ConfigMap, not just set
    APPPATH.
-10. **`gpu=on` label** — the cluster build does not label GPU nodes. Without it HAMi's device-plugin
-    won't run and `nvidia.com/gpu` stays absent. `kubectl label node <GPU_NODE> gpu=on`.
+10. **`gpu=on` label** — HAMi's device-plugin won't run and `nvidia.com/gpu` stays absent without
+    it. On this platform `09-gpu-autolabel.yaml` applies it automatically at boot; on a hand-built
+    cluster: `kubectl label node <GPU_NODE> gpu=on`.
 
 ### Teardown (to redo cleanly)
 
@@ -385,9 +383,9 @@ kubectl delete cm -n models -l model-details=true
 # The gateway Deployment, RBAC, Service, Tyk LB svc, and api-def ConfigMap are managed by
 # the WW-overlay manifests — they are re-applied automatically on the next RKE2 reconcile.
 # To force-remove them manually (e.g. to test a full rebuild):
-kubectl delete -f ww-overlays/overlay/etc/rancher/manifests/63-model-gateway.yaml
-kubectl delete -f ww-overlays/overlay/etc/rancher/manifests/52-tyk-loadbalancer.yaml
-kubectl delete -f ww-overlays/overlay/etc/rancher/manifests/53-tyk-api-definitions.yaml
+kubectl delete -f ww-overlays/overlays/control-plane/etc/rancher/manifests/63-model-gateway.yaml
+kubectl delete -f ww-overlays/overlays/control-plane/etc/rancher/manifests/52-tyk-loadbalancer.yaml
+kubectl delete -f ww-overlays/overlays/control-plane/etc/rancher/manifests/53-tyk-api-definitions.yaml
 ```
 
 ---
@@ -396,14 +394,18 @@ kubectl delete -f ww-overlays/overlay/etc/rancher/manifests/53-tyk-api-definitio
 
 ### GPU format conversion cheatsheet (GPU Operator → HAMi)
 
-| | GPU Operator (legacy POC) | HAMi (this platform) |
+| | GPU Operator (legacy) | HAMi (this platform) |
 |---|---|---|
 | Node select | `nvidia.com/gpu.product: NVIDIA-L40S` | label `gpu=on` |
-| Whole GPU | `nvidia.com/gpu: 4` | `nvidia.com/gpu: 4` + `nvidia.com/gpumem: 46068` |
-| Shared slice | n/a | `nvidia.com/gpu: 1` + `nvidia.com/gpumem: 10240` |
-| Slicing | operator time-slice config | HAMi `deviceSplitCount: 10` |
+| Whole GPU (>40 GB/card, TP≥2, large TP1) | `nvidia.com/gpu: 4` | `nvidia.com/gpu: "4"` + **NO `gpumem`** (HAMi binds tenant-free cards, full VRAM) |
+| Shared slice (<40 GB) | n/a | `nvidia.com/gpu: "1"` + `nvidia.com/gpumem: "10240"` (MiB) |
+| Slicing | operator time-slice config | HAMi `deviceSplitCount: 10` (10 vGPU per physical card) |
+| TP≥2 extra | — | always `--disable-custom-all-reduce` (L40S PCIe, no P2P) + `VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1` |
 
-### Migrating models from a legacy POC cluster
+> The old "`gpumem: 46068` for whole GPUs" workaround (HAMi#1781 era) is **obsolete** —
+> whole-device requests without `gpumem` schedule cleanly since the NCCL fix.
+
+### Migrating models from a legacy cluster
 
 Reuse, don't reinvent. Per model:
 
@@ -411,31 +413,27 @@ Reuse, don't reinvent. Per model:
    `deployment.gpu*`, `container_image`, `node`) and runtime-derivable ones, move catalog text
    (`description`, `license`, `tags`, `input_map`/`output_map`) into an optional `catalog` block,
    then add the behavior sections (`param_translation`, `defaults`, `behavior`). Bump
-   `schema_version`. See [`GATEWAY-ARCHITECTURE.md`](GATEWAY-ARCHITECTURE.md) and
-   `models/MIGRATION.md`.
+   `schema_version`. See the card templates ([`models/DETAILS-TEMPLATE-LLM.md`](../models/DETAILS-TEMPLATE-LLM.md)).
 2. **Convert ISVC GPU format:** `nvidia.com/gpu.product` selector → `gpu: "on"` label +
    `nvidia.com/gpu` + `nvidia.com/gpumem` (cheatsheet above).
 3. `kubectl apply` ISVC + card → gateway auto-discovers.
 4. Verify routing + response.
 
 **Order:** CPU models → single-GPU → multi-GPU → science models. Card migration is
-bulk-scriptable (the legacy cards share the v1 schema; the behavior sections template per `type`
+bulk-scriptable (legacy cards often share a v1 schema; the behavior sections template per `type`
 and per thinking `mode`, hand-tuned for reasoning models).
 
-### Roadmap / phases
+### Build phases (for context)
 
-- **Phase 1 — Gateway core:** ✅ done. Card-driven gateway built, deployed, behind Tyk,
-  OpenAI + Anthropic endpoints, `resources` telemetry, proven against many models.
-- **Phase 2 — Auth + key management:** ⚠️ design before code. Tyk key per user (`alias` = LDAP
-  username; LDAP used once at key creation, never per-request). Vulcan users provisioned via a
-  `/etc/profile.d` Warewulf-overlay script on login → `$HOME/.inference_api_key`. `inference-key`
-  CLI (self-service + admin) over the Tyk REST API. ⚠️ review admin-secret distribution
-  (Warewulf overlay vs K8s Secret) and public LDAP-bind exposure before building.
-- **Phase 3 — Usage logging (no monitoring stack):** partial. Gateway emits one JSON log line per
-  request (user/model/tokens/gpu/duration); Tyk analytics already in Redis. GPU-hours computed in
-  reporting: `gpu_hours = (ms/3.6e6) × physical_gpu_count × (hami_vram_mb / per_card_vram)`.
+- **Gateway core:** ✅ done. Card-driven gateway, behind Traefik/Tyk, OpenAI + Anthropic
+  endpoints, `resources` telemetry, proven against the model fleet.
+- **Auth + key management:** ✅ done. Tyk key per user (`alias` = cluster username); per-user
+  keys are auto-minted by the login-node PAM hook (`aleph-tyk-key` → CP `tyk-admin.sh`) →
+  `~/.aleph_tyk.env` on every SSH login. Manual minting for services/admins via `tyk-admin.sh`.
+- **Usage logging:** ✅ done + durable. Gateway emits one JSON log line per request on the RWX
+  PVC (survives re-images); Tyk analytics in Redis. GPU-time computed in reporting;
   `/metrics` exposed for whenever Prometheus gets a home.
-- **Phase 4 — External access:** pending. Traefik IngressRoute → Tyk → `model-gateway`; TLS via
-  cert-manager (DNS-01) or manual cert.
-- **Phase 5 — Model migration:** largely complete (the bulk of the fleet is migrated and carded);
-  remaining work is per-model card v2 backfill (science input/output schema) — see `models/MODEL-STATUS.md`.
+- **External access:** ✅ done. MetalLB VIP → Traefik → Tyk → model-gateway; real Let's
+  Encrypt TLS via cert-manager (HTTP-01), auto-renewing.
+- **Model migration:** largely complete; remaining work is per-model card v2 backfill
+  (science input/output schemas).

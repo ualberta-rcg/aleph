@@ -49,7 +49,7 @@ Each model directory should contain (as applicable):
 - **VRAM guard (bash `nvidia-smi memory.free` retry loop) is now redundant** for
   whole-device models: HAMi only schedules them onto tenant-free cards, so VRAM is
   always free on first check. Harmless to keep, fine to drop.
-- **vLLM image is standardized to `vllm/vllm-openai:v0.20.2`** for all LLMs (matches 232).
+- **vLLM image is standardized to `vllm/vllm-openai:v0.20.2`** for all LLMs.
 - Do NOT add `--kv-cache-dtype fp8` or `--enable-prefix-caching` to gpt-oss models:
   attention sinks break under fp8, and TP>1 + prefix-caching can yield empty responses.
 

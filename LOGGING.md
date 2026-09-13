@@ -10,10 +10,10 @@ See also: [TYK-USERS.md](TYK-USERS.md) (identity/keys), `gateway/README.md`.
 
 - File: `GATEWAY_USAGE_LOG` (default **`/var/log/aleph/usage.log`**), one JSON
   object per line (JSON-lines), rotated (50 MB × 5 by default).
-- Storage: an **`emptyDir`** mounted into the gateway pod. It is intentionally
-  **in-pod**, kept separate from application stdout, and **never written to the
-  host**. Ship it to a central system out of band later (promtail / fluent-bit /
-  Vector → Loki/Elasticsearch/Prometheus).
+- Storage: RWX PVC **`model-gateway-usage-logs`** (10Gi, `nfs-models`) mounted at
+  `/var/log/aleph`, one subPath per gateway replica (`$(POD_NAME)`) — logs **survive
+  pod replacement, node reprovisioning, and cluster re-images**. Kept separate from
+  application stdout; no out-of-band shipper is needed.
 - If the file handler can't be created the logger falls back to stdout so events
   are never silently dropped.
 
@@ -25,12 +25,12 @@ kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph
 kubectl exec -n models deploy/model-gateway -c gateway -- cat /var/log/aleph/usage.log > usage.log
 ```
 
-Config (env on the gateway Deployment, `63-model-gateway.yaml`):
+Config (env on the gateway Deployment, `ww-overlays/.../63-model-gateway.yaml`):
 
 | Env | Default | Meaning |
 |---|---|---|
 | `SITE_NAME` | `aleph` | stamped on every record as `site` (set per cluster) |
-| `GATEWAY_USAGE_LOG` | `/var/log/aleph/usage.log` | log path (inside the emptyDir) |
+| `GATEWAY_USAGE_LOG` | `/var/log/aleph/usage.log` | log path (on the usage-log PVC, per-replica subPath) |
 | `GATEWAY_USAGE_LOG_MAX_BYTES` | `52428800` | rotation size |
 | `GATEWAY_USAGE_LOG_BACKUPS` | `5` | rotated copies kept |
 
@@ -70,11 +70,12 @@ Config (env on the gateway Deployment, `63-model-gateway.yaml`):
     "vram_mib": 20480,
     "cpu_cores": 8.0,
     "system_ram_mib": 24576,
-    "node": "rack15-03",
+    "node": "gpu-worker-3",
     "gpu_product": "L40S",
     "latency_ms": 765
   },
-  "derived": { "gpu_seconds": 0.765 }
+  "derived": { "gpu_seconds": 0.765 },
+  "key_fp": { "sha256_8": "1a2b3c4d", "last4": "wxyz" }
 }
 ```
 
@@ -85,6 +86,7 @@ Config (env on the gateway Deployment, `63-model-gateway.yaml`):
 | `ts` | UTC timestamp (ISO-8601, `Z`) |
 | `site` | cluster tag (`SITE_NAME`) — lets multiple sites pool into one ledger |
 | `identity` / `account` / `identity_type` | caller identity from Tyk (`anonymous` if not via Tyk) — see [TYK-USERS.md](TYK-USERS.md) |
+| `key_fp` | fingerprint of the API key (sha256 prefix + last 4 chars) — **not** the key itself |
 | `endpoint` / `api` | `/v1/chat/completions`,`/v1/messages`,`/v1/embeddings`,`/v1/rerank`,`/v1/<custom>`; api = `openai`/`anthropic`/`cohere`/`custom` |
 | `model` | model id |
 | `status` | upstream HTTP status (200 served, 503 cold-start, 4xx errors) |
@@ -101,14 +103,16 @@ Config (env on the gateway Deployment, `63-model-gateway.yaml`):
 
 - `gpus`, `vram_mib`, `cpu_cores`, `system_ram_mib` — the model's **ISVC predictor
   resource spec** (HAMi vGPU requests). With HAMi a model may hold a *slice* of a
-  card, so `vram_mib` can be < the physical 48 GB.
+  card, so `vram_mib` can be less than the physical card capacity.
 - `node`, `gpu_product` — resolved live: `model → predictor pod → node`, then the
   node's `aleph.gpu/product` label. Those labels are written by the **node-labeler
-  DaemonSet** (`11-node-labeler.yaml`), which auto-detects GPU/CPU/RAM per worker.
+  DaemonSet** (`ww-overlays/.../11-node-labeler.yaml`), which auto-detects
+  GPU/CPU/RAM per worker.
 
 > Note: `resources` is the **allocated** footprint, not live utilization. Live
 > GPU%/instantaneous VRAM needs a metrics exporter (DCGM / HAMi exporter) and is
-> not wired here.
+> not wired here. Concurrent requests share one running model, so summed
+> `gpu_seconds` measures allocated GPU-time, not physical utilization.
 
 ## Token detail — what to expect
 
@@ -144,8 +148,9 @@ any token is produced. A client retrying a cold model therefore produces several
 ## Prometheus metrics
 
 `GET /metrics` exposes per-model rollups derived from the same events. Default
-scrape **fans in** across gateway replicas (sum counters, max gauges); pass
-`?local=true` for this process only.
+scrape **fans in** across gateway replicas (peers found via the k8s API, each
+scraped at `/metrics?local=true`, counters summed, gauges maxed; degrades to
+local-only if any peer fails); pass `?local=true` for this process only.
 
 ```
 gateway_model_requests_total{model="..."}
@@ -169,8 +174,11 @@ source of truth.
 
 ## Example: aggregating the ledger
 
+The full ledger is the concatenation of every replica's file (one directory each
+under the PVC mount):
+
 ```bash
-# GPU-seconds per account, this file:
+# GPU-seconds per account, one replica's file (loop over the gateway pods for the full ledger):
 kubectl exec -n models deploy/model-gateway -c gateway -- cat /var/log/aleph/usage.log \
  | python3 -c '
 import sys, json, collections

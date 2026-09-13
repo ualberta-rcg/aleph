@@ -6,37 +6,29 @@ one-time verifications.
 
 **Everything else is fully automated.** Once the Warewulf image is baked with the tokens
 filled in `ww-overlays/overlays/` and nodes are provisioned, the entire platform comes up:
-MetalLB, Tyk, NFS, cert-manager, Istio, Knative, KServe, and the model-gateway.
+MetalLB, Traefik edge, Tyk, NFS, cert-manager, Istio, Knative, KServe, and the model-gateway.
 
 ## 1. Issue a Tyk API key (required to use the gateway)
 
+`tyk-admin.sh` is baked onto every control-plane node at `/usr/local/bin`. On any
+control-plane node:
+
 ```bash
-# Discover the VIP MetalLB assigned to Tyk (or use your __VIP__ directly):
-VIP=$(kubectl get svc tyk-gateway-nodeport -n tyk \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk \
-  -o jsonpath='{.data.APISecret}' | base64 -d)
+# Mint a key (prints the key string once — save it; Tyk stores hashes only):
+KEY=$(tyk-admin.sh add-user <identity> [account] [type])
+#   identity = service name or cluster username
+#   account  = fairshare bucket   (default: identity)
+#   type     = service | user     (default: service)
 
-KEY=$(curl -s -X POST http://$VIP/tyk/keys/create \
-  -H "x-tyk-authorization: $SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "alias": "myuser",
-    "meta_data": {"username": "myuser"},
-    "access_rights": {
-      "model-gateway": {
-        "api_id": "model-gateway",
-        "api_name": "model-gateway",
-        "versions": ["Default"]
-      }
-    }
-  }' | grep -o '"key":"[^"]*"' | cut -d'"' -f4)
-
-echo "TYK_KEY=$KEY"
+tyk-admin.sh validate-key <identity> "$KEY"   # sanity check
 ```
 
-Save the key — Tyk does not return raw tokens after creation (only hashes).
-For day-2 key management: `gateway/tyk/tyk-keys.sh`.
+Identity lives on the key as `alias` + tags (`account:<x>`, `type:<service|user>`) — NOT
+`meta_data` (Tyk OSS wipes it on first request). For day-2 key management see
+[`../../TYK-USERS.md`](../../TYK-USERS.md).
+
+If your site runs the login-node PAM hook, personal keys are minted automatically into
+`~/.aleph_tyk.env` on every SSH login — manual minting is then only for services and admins.
 
 ## 2. Smoke-test the stack
 
@@ -49,44 +41,46 @@ bash ww-overlays/post-deploy/verify-test-model.sh cleanup
 
 ## 3. Add models
 
-For each model, apply its card and InferenceService. The gateway picks them up via K8s Watch
-within seconds — no gateway restart needed.
+For each model, apply its files (each in its own `kubectl apply`; the gateway picks the card
+up via K8s watch within seconds — no gateway restart needed):
 
 ```bash
-kubectl apply -f models/<model>/details.yaml
+kubectl apply -f models/<model>/pvc.yaml
 kubectl apply -f models/<model>/inferenceservice.yaml
+kubectl apply -f models/<model>/details.yaml
 kubectl get isvc <model> -n models -w    # wait for Ready
 ```
 
 ## 4. Bake the node-deregister SSH keys (stateless rejoin cleanup)
 
-On shutdown each node SSHes a head node to delete its own stale `Node` object so it rejoins clean.
-The repo ships a **DUMMY** key pair; swap in a real one at bake (real keys live outside the repo).
+On shutdown each node SSHes a control-plane node to delete its own stale `Node` object so it
+rejoins clean. The repo ships a **DUMMY** key pair; swap in a real one at bake (real keys
+live outside the repo).
 
 ```bash
-# Generate a real key pair once (keep it OUT of the repo, e.g. in the local working dir):
+# Generate a real key pair once (keep it OUT of the repo, e.g. in your secure key dir):
 ssh-keygen -t ed25519 -N '' -C aleph-node-deregister \
-  -f ~/hami-cluster-test/deregister-keys/id_ed25519
+  -f <your-secure-key-dir>/deregister/id_ed25519
 
 # Private half -> common overlay (all nodes):
-cp ~/hami-cluster-test/deregister-keys/id_ed25519 \
+cp <your-secure-key-dir>/deregister/id_ed25519 \
    ww-overlays/overlays/common/etc/rke2-deregister/id_ed25519
 chmod 600 ww-overlays/overlays/common/etc/rke2-deregister/id_ed25519
 
 # Public half -> control-plane overlay, kept restricted to the delete wrapper:
 printf 'command="/usr/local/sbin/deregister-node.sh",restrict %s\n' \
-  "$(cat ~/hami-cluster-test/deregister-keys/id_ed25519.pub)" \
+  "$(cat <your-secure-key-dir>/deregister/id_ed25519.pub)" \
   > ww-overlays/overlays/control-plane/etc/ssh/deregister.authorized_keys
 ```
 
-Then re-bake. Head nodes are auto-detected at runtime from the RKE2 agent load-balancer config, so
-nothing needs an IP. Verify the path from a worker WITHOUT deleting a real node (bogus name + the
-wrapper's `--ignore-not-found` makes it a no-op):
+Then re-bake. Head nodes are auto-detected at runtime from the RKE2 agent load-balancer
+config, so nothing needs an IP. Verify the path from a worker WITHOUT deleting a real node
+(bogus name + the wrapper's `--ignore-not-found` makes it a no-op):
 
 ```bash
-HEAD=$(sudo ssh root@<worker> "grep -oE '\"[0-9.]+:[0-9]+\"' \
+HEAD=$(ssh <worker-node> "grep -oE '\"[0-9.]+:[0-9]+\"' \
   /var/lib/rancher/rke2/agent/etc/rke2-agent-load-balancer.json | tr -d '\"' | sed 's/:.*//' | head -1")
-sudo ssh root@<worker> "ssh -i /etc/rke2-deregister/id_ed25519 \
+ssh <worker-node> "ssh -i /etc/rke2-deregister/id_ed25519 \
   -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   root@$HEAD 'zzz-fake-node'"            # -> deregister-node: deleting node 'zzz-fake-node'
 ```
@@ -94,20 +88,21 @@ sudo ssh root@<worker> "ssh -i /etc/rke2-deregister/id_ed25519 \
 The server-guard toggle and an optional manual `HEAD_NODES` override live in
 `ww-overlays/overlays/common/etc/default/rke2-deregister` (detection is the default).
 
-## 5. TLS certificate (optional, requires public DNS + port 80)
+## 5. TLS certificate
 
-Once DNS points `__PUBLIC_HOSTNAME__` at the VIP and Traefik exposes port 80:
+With DNS pointing the public hostname at the VIP and Traefik exposing port 80, cert-manager
+issues the real certificate automatically from the shipped ClusterIssuer (ACME HTTP-01) —
+verify with `kubectl get certificate -n tyk` (Ready=True). To serve **additional** hostnames,
+fill in and apply the example:
 
 ```bash
-# Fill in __PUBLIC_HOSTNAME__ then:
 kubectl apply -f ww-overlays/post-deploy/certificate.example.yaml
-kubectl get certificate -n tyk    # Ready=True once ACME challenge passes
 ```
 
 ## Nothing else needed
 
 The following are fully managed by the WW-overlay manifests — no manual kubectl required:
-- MetalLB install + VIP pool + L2 advertisement
+- MetalLB install + VIP pool + L2 advertisement, Traefik public service + edge routes
 - Tyk OSS + Redis install, env config, API-def ConfigMap mount
 - model-gateway Deployment + RBAC + Service
 - cert-manager + ClusterIssuer

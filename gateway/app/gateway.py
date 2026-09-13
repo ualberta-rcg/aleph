@@ -1,7 +1,7 @@
 """
 Card-driven model inference gateway (HAMi / KServe / Knative).
 
-Design: docs/GATEWAY-ARCHITECTURE.md. Models declare themselves via `details.yaml`
+Design: gateway/README.md. Models declare themselves via `details.yaml`
 ConfigMaps (label `model-details=true`). The gateway reads these cards, merges
 live state from InferenceServices, and routes requests to model pods through the
 knative-local-gateway. No model names are hardcoded.
@@ -1019,7 +1019,7 @@ def resource_block(info: dict, latency_ms: int) -> dict:
 
     NOTE: gpus/vram/cpu/ram are the *allocated* footprint from the ISVC spec.
     Live GPU utilization (% / instantaneous VRAM) needs a metrics source
-    (DCGM / HAMi exporter) and is not wired yet — see docs/GATEWAY-ARCHITECTURE.md.
+    (DCGM / HAMi exporter) and is not wired yet — see gateway/README.md.
     """
     block = {"model": info["id"]}
     block.update(info.get("resources", {}) or {})

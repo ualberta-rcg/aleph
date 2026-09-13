@@ -28,8 +28,8 @@ Fill in your site values (`ww-overlays/SITE-VALUES.md`) — VIP, NFS server/path
 ### 3. Boot nodes — the cluster self-deploys
 
 Boot the provisioned nodes. On first boot:
-- Control-plane nodes read `etc/rancher/manifests/` and RKE2 applies the full manifest set cluster-wide — cert-manager → HAMi → NFS → MetalLB → Tyk → Istio → Knative → KServe → model-gateway — no deploy script, no SSH push
-- GPU worker nodes join the cluster, NVIDIA persistence starts, and the HAMi device plugin schedules onto `gpu=on` nodes automatically
+- Control-plane nodes read `etc/rancher/manifests/` and RKE2 applies the full manifest set cluster-wide — cert-manager → gpu-autolabel → HAMi → NFS → MetalLB + Traefik (public TLS edge) → Tyk → Istio → Knative → KServe → model-gateway — no deploy script, no SSH push
+- GPU worker nodes join the cluster, NVIDIA persistence starts, `gpu-autolabel` stamps `gpu=on`, and the HAMi device plugin schedules onto those nodes automatically
 
 ### 4. Post-deploy: secrets and first API key
 
@@ -49,25 +49,29 @@ kubectl create secret docker-registry ngc-registry-secret -n models \
   --docker-server=nvcr.io --docker-username='$oauthtoken' \
   --docker-password="$NGC_API_KEY" --docker-email=you@example.com
 
-# Issue a Tyk API key (see ww-overlays/post-deploy/README.md or gateway/tyk/tyk-keys.sh)
+# Issue a Tyk API key — on a control-plane node (see TYK-USERS.md):
+#   tyk-admin.sh add-user <identity> [account] [type]
 ```
 
 ### 5. Deploy a model
 
+Apply each file separately (concatenated YAML fuses documents and breaks
+server-side apply); details last so the card appears once the ISVC exists:
+
 ```bash
 kubectl apply -f models/<model>/pvc.yaml
-kubectl apply -f models/<model>/details.yaml          # gateway picks it up live
 kubectl apply -f models/<model>/inferenceservice.yaml
+kubectl apply -f models/<model>/details.yaml   # gateway picks it up live
 ```
 
 ### 6. Test
 
 ```bash
 # Gateway checks (catalog, health, auth, routing guardrails)
-GW_URL=http://<VIP> TYK_KEY=<key> python3 gateway/test.py
+GW_URL=https://<public-hostname> TYK_KEY=<key> python3 gateway/test.py
 
 # Per-model battery
-GW_URL=http://<VIP> TYK_KEY=<key> MODEL=<id> python3 models/<model>/test.py
+GW_URL=https://<public-hostname> TYK_KEY=<key> MODEL=<id> python3 models/<model>/test.py
 ```
 
 ## ➕ Adding a Model
@@ -92,12 +96,12 @@ models/<name>/
 2. Write `inferenceservice.yaml` — the init container handles weight download and venv setup (short-circuits if the PVC already has the artifacts). For vLLM LLMs, prefer `vllm/vllm-openai:v0.20.2` — it's the version pinned across the existing fleet and is cached on the nodes, so staying on it keeps cold starts fast and behavior consistent. Newer tags work; you just lose the cached-layer head start and risk per-model arg drift. For custom science servers, embed the FastAPI server script inline as a ConfigMap in the same file.
 3. Write `pvc.yaml` using `storageClassName: nfs-models`. Size generously — the init container caches both weights and the venv so cold starts don't re-download.
 4. Copy `models/test.template.py` → `models/<name>/test.py`. Keep only the sections that apply (chat, embeddings, science), update `MODEL` and expected outputs.
-5. Deploy and validate:
+5. Deploy and validate (each file separately, details last):
    ```bash
    kubectl apply -f models/<name>/pvc.yaml
-   kubectl apply -f models/<name>/details.yaml
    kubectl apply -f models/<name>/inferenceservice.yaml
-   GW_URL=http://<VIP> TYK_KEY=<key> MODEL=<name> python3 models/<name>/test.py
+   kubectl apply -f models/<name>/details.yaml
+   GW_URL=https://<public-hostname> TYK_KEY=<key> MODEL=<name> python3 models/<name>/test.py
    ```
 
 For HAMi GPU resources: use `nvidia.com/gpumem: "<MiB>"` + `nvidia.com/gpu: "1"` for fractional single-GPU models; use `nvidia.com/gpu: "<N>"` (no `gpumem`) + `--disable-custom-all-reduce` for multi-GPU tensor-parallel models.
