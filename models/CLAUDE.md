@@ -8,6 +8,9 @@ Each model directory should contain (as applicable):
 - `details.yaml` — model card metadata used by the gateway catalog
 - `inferenceservice.yaml` — KServe runtime spec
 - `pvc.yaml` — persistent storage claim for weights/cache
+- `README.md` — **the model's status record**: does it work, current test state, quirks,
+  anything in progress. Deployments often take a few iterations to get right — keep this
+  current through the deploy/test loop so it always answers "is this one working?"
 - optional extras: `download-job.yaml`, `server-configmap.yaml`, helper scripts
 - optional local notes: `CLAUDE.md` for model-specific quirks
 

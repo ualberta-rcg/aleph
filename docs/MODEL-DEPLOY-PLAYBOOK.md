@@ -52,6 +52,9 @@ for the card/reasoning args; `gpt-oss-120b/` for the clean `<model>` PVC naming.
 
 1. **Flat 6-file layout** (no subdirs, **no `kustomization.yaml`**):
    `details.yaml` · `inferenceservice.yaml` · `pvc.yaml` · `test.py` · `README.md` · `CLAUDE.md`.
+   **`README.md` is the model's status record** — works / in-progress / known issues,
+   current test state, quirks. Models sometimes take several iterations to get working;
+   update it as you go so it always answers "does this one work?".
    Keep model-specific extras only when genuinely required (e.g. `geogalactica/chat_template.jinja`,
    `glm-4-32b/glm4_0414_tool_parser.py` + `parser-configmap.yaml`).
 2. **Card = v2** (`schema_version: 2`), ConfigMap `name: <model>-details`, label
@@ -167,8 +170,8 @@ Common "funny" names to fix: PVC/volume `model-data`, `data`, `<model>-data`; vo
    name had to change.) This guarantees the live model is reproduced purely from the repo.
 6. **Leave deployed, scale to 0:** `minReplicas: 0`, no stop annotation; confirm 0 pods after the
    idle window and that the next request wakes it (503-with-ETA → 200).
-7. **Record + commit:** dated `CHANGELOG.md` entry (changelog-first),
-   commit to `main`.
+7. **Record + commit:** update `models/<m>/README.md` status (works / tested / known
+   issues), add the dated `CHANGELOG.md` entry (changelog-first), commit to `main`.
 8. **Confirm no mess** (no stray pods, no half-state, working tree clean), **then** start the next model.
 
 ---

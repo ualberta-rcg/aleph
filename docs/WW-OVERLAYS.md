@@ -1,9 +1,10 @@
 # Aleph Warewulf overlays
 
-The manifests in this directory mirror the verified Aleph Warewulf sources. They carry the
-deployed site values needed for re-derivation; only the Tyk admin secret and ACME contact are
-redacted, and SSH credentials are never exported from Warewulf into Git. See
-[SITE-VALUES.md](SITE-VALUES.md).
+The manifests under `ww-overlays/overlays/` mirror the verified Aleph Warewulf sources,
+**tokenized**: every site-specific value is a `__TOKEN__` placeholder (see
+[SITE-VALUES.md](SITE-VALUES.md) and `ww-overlays/site.env.example`, which carries dummy
+values — copy it to `site.env`, fill in your real ones, and substitute before baking).
+SSH credentials are never exported from Warewulf into Git.
 
 ## Repository paths and deployed overlays
 
@@ -45,11 +46,11 @@ before restoring storage objects.
 
 ## Reconciliation provenance
 
-The labeler, pinned gateway manifest, and Tyk admin script were copied directly from the live
-control-plane node. The Tyk ConfigMap was exported from the live cluster so its three existing
-routes, including `/anthropic/`, survive a rebuild. The appended storage binding with its
-missing YAML document separator was repaired. All 24 repository manifests match the sanitized
-Warewulf export byte-for-byte; non-secret site values are retained.
+The labeler, pinned gateway manifest, and Tyk admin script were captured directly from the
+live control-plane node. The Tyk ConfigMap was exported from the live cluster so its three
+existing routes, including `/anthropic/`, survive a rebuild. The appended storage binding with
+its missing YAML document separator was repaired. The repository set matches the verified
+operational sources modulo site-value tokens.
 
 Existing networking examples and SSH/PAM scaffolding elsewhere in this tree were not refreshed
 or certified by the manifest reconciliation; do not bulk-copy the entire repository tree over an

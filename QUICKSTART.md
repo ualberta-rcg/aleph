@@ -17,7 +17,7 @@ set -a; source .env; set +a
 
 Start with the base OS image from [`warewulf-rke2-hami`](https://github.com/ualberta-rcg/warewulf-rke2-hami) (Ubuntu 24.04 + NVIDIA drivers + HAMi runtime + RKE2 pre-baked).
 
-Fill in your site values (`ww-overlays/SITE-VALUES.md`) — VIP, NFS server/path, K8s version, RoCE NIC, ACME email, Tyk secret — then bake the appropriate overlay on top of the base image for each node role:
+Fill in your site values (`docs/SITE-VALUES.md`) — VIP, NFS server/path, K8s version, RoCE NIC, ACME email, Tyk secret — then bake the appropriate overlay on top of the base image for each node role:
 
 | Node type | Base image | Overlay | Enables |
 |---|---|---|---|
@@ -87,6 +87,7 @@ models/<name>/
                         #   download + venv setup on PVC), server code, resources, scaling
   pvc.yaml              # PersistentVolumeClaim — NFS storage for weights and venv cache
   test.py               # Test battery (copy from models/test.template.py)
+  README.md             # The model's status record — works? quirks? in-progress?
   CLAUDE.md             # Optional — model-specific quirks and deployment notes
 ```
 

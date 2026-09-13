@@ -1,4 +1,4 @@
-# Edge routing for inference.vulcan.alliancecan.ca — POST-DEPLOY (apply once, not auto-deployed).
+# Edge routing for __INFERENCE_HOST__ — POST-DEPLOY (apply once, not auto-deployed).
 # Reconstructed 2026-08-22 after the WW reprovision wiped etcd (the live .71-era objects
 # were never committed to the repo — only the retired kubeflow backup host's were).
 apiVersion: traefik.io/v1alpha1
@@ -13,7 +13,7 @@ spec:
     - websecure
   routes:
     - kind: Rule
-      match: Host(`inference.vulcan.alliancecan.ca`) && PathPrefix(`/`)
+      match: Host(`__INFERENCE_HOST__`) && PathPrefix(`/`)
       services:
         - name: gateway-svc-tyk-oss-tyk-gateway
           port: 8080
@@ -32,7 +32,7 @@ spec:
     - web
   routes:
     - kind: Rule
-      match: Host(`inference.vulcan.alliancecan.ca`) && PathPrefix(`/`)
+      match: Host(`__INFERENCE_HOST__`) && PathPrefix(`/`)
       priority: 1
       middlewares:
         - name: inference-redirect-https
@@ -61,4 +61,4 @@ spec:
     kind: ClusterIssuer
     name: letsencrypt-prod
   dnsNames:
-    - inference.vulcan.alliancecan.ca
+    - __INFERENCE_HOST__

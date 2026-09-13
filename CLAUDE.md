@@ -8,7 +8,7 @@ Tyk (auth) and Traefik (public TLS edge).
 > **Secrets live in `.env` (gitignored), never in committed files.** See
 > [Secrets & `.env`](#secrets--env) below. Copy `.env.example` → `.env` and fill it in.
 > Site-specific deployment values (VIP, NFS server, NIC names) are `__TOKEN__`ized —
-> see `ww-overlays/SITE-VALUES.md`.
+> see `docs/SITE-VALUES.md`.
 
 ## Repo Layout
 

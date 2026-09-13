@@ -1,13 +1,13 @@
 # Tyk OSS gateway — RKE2 auto-deploy manifest (API-key auth + routing in front of KServe).
 #
 # APPLIES TO: all nodes (cluster-wide component).
-# SITE VALUES: bdb4b0408dc7e422685729052a57e97fcdf1e0d12027023f7885bebc3d15ef98  (see ww-overlays/SITE-VALUES.md)
+# SITE VALUES: __TYK_API_SECRET__  (see ww-overlays/SITE-VALUES.md)
 #
 # Sits behind the public VIP (52-tyk-loadbalancer.yaml); proxies to the model-gateway / KServe.
 # Pump + operator off.
 #
 # SECRET: global.secrets.APISecret is the admin API secret. The chart materializes it into
-# Secret `secrets-tyk-oss-tyk-gateway` (key `APISecret`). Set bdb4b0408dc7e422685729052a57e97fcdf1e0d12027023f7885bebc3d15ef98 from .env
+# Secret `secrets-tyk-oss-tyk-gateway` (key `APISecret`). Set __TYK_API_SECRET__ from .env
 # (TYK_API_SECRET) before baking — never commit a real secret.
 #
 # API definitions are loaded POST-DEPLOY (ww-overlays/post-deploy/post-deploy.sh ->

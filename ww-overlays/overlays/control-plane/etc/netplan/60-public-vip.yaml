@@ -4,7 +4,7 @@
 #             VIP). Do NOT bake this onto GPU workers — they have no public NIC.
 # TARGET PATH on node: /etc/netplan/60-public-vip.yaml      Apply: netplan apply
 # SITE VALUES: __PUBLIC_NIC__, __PUBLIC_NIC_IP__, __PUBLIC_PREFIX__, __PUBLIC_GW__
-#              (see ww-overlays/SITE-VALUES.md)
+#              (see docs/SITE-VALUES.md)
 #
 # ---------------------------------------------------------------------------------------------
 # RECIPE (proven on this cluster — see the metric tests in CHANGELOG):

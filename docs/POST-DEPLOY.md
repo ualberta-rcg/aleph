@@ -25,7 +25,7 @@ tyk-admin.sh validate-key <identity> "$KEY"   # sanity check
 
 Identity lives on the key as `alias` + tags (`account:<x>`, `type:<service|user>`) — NOT
 `meta_data` (Tyk OSS wipes it on first request). For day-2 key management see
-[`../../TYK-USERS.md`](../../TYK-USERS.md).
+[`../TYK-USERS.md`](../TYK-USERS.md).
 
 If your site runs the login-node PAM hook, personal keys are minted automatically into
 `~/.aleph_tyk.env` on every SSH login — manual minting is then only for services and admins.

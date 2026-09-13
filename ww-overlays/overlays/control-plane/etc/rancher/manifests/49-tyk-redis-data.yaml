@@ -18,8 +18,8 @@ spec:
   accessModes: [ReadWriteOnce]
   persistentVolumeReclaimPolicy: Retain
   nfs:
-    server: manage.storage.data.vulcan.local
-    path: /aleph/tyk-redis-data-tyk-redis-master-0-pvc-f232f647-d15a-46f9-96ee-32980a7ac45d
+    server: __NFS_SERVER__
+    path: __NFS_PATH__/tyk-redis-data-tyk-redis-master-0-pvc-f232f647-d15a-46f9-96ee-32980a7ac45d
   claimRef:
     namespace: tyk
     name: redis-data-tyk-redis-master-0

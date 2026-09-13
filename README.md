@@ -138,7 +138,7 @@ The catalog grows continuously and not every model receives the same testing att
 | [docs/ENDPOINTS.md](./docs/ENDPOINTS.md) | Full endpoint surface + client configs |
 | [gateway/README.md](./gateway/README.md) | Gateway internals: cards, routing, translation, metrics |
 | [models/CLAUDE.md](./models/CLAUDE.md) | Per-model directory contract |
-| [ww-overlays/README.md](./ww-overlays/README.md) | Overlay structure, manifest index, boot self-ordering |
+| [docs/WW-OVERLAYS.md](./docs/WW-OVERLAYS.md) | Overlay structure, manifest index, boot self-ordering |
 
 ## 🧪 Status
 

@@ -2,6 +2,28 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Tokenize overlay site values, move overlay docs to docs/, per-model README as status record
+
+Re-tokenize the ww-overlays manifests back to the `__TOKEN__` placeholder design: NFS
+server/export path (30/49/80), VIP + public NIC (41), Kubernetes version (10-hami imageTag),
+public hostname (56-edge-routes) all become tokens; bake-time substitution restored via
+`ww-overlays/site.env.example`, which now carries **dummy values** (RFC 5737 ranges /
+example domains) so it doubles as a working test-bake template, and documents the
+`__INFERENCE_HOST__` token. SECURITY FIX included: `51-tyk.yaml` header comments carried the
+real Tyk admin secret and `01-cluster-issuer.yaml` carried the real ACME contact — both
+scrubbed to tokens (body was already tokenized). The real secret should be treated as
+exposed and rotated. Move all overlay readmes out of ww-overlays/ into docs/: README →
+docs/WW-OVERLAYS.md, SITE-VALUES → docs/SITE-VALUES.md (rewritten for the tokenized flow),
+NCCL-ROCE, CONTROL-PLANE-REBOOT, RACK-BOOT, STORAGE-RECOVERY (sanitized), post-deploy/README
+→ docs/POST-DEPLOY.md; all inbound references updated. New convention: each model's
+`models/<m>/README.md` is its status record (works / in-progress / quirks) — wired into the
+deploy playbook loop, QUICKSTART's file contract, and models/CLAUDE.md.
+
+Validation: grep sweep of ww-overlays/overlays/ shows zero real IPs/hostnames/NICs/secret
+strings (only tokens, the public Docker Hub gateway pin, and /var/log/aleph app paths);
+netplan was already tokenized and untouched; all moved-doc links re-resolved; the token
+set in site.env.example matches the substitution sites in the manifests.
+
 ## 2026-09-13 — Overhaul public docs: align repo with the deployed platform, generalize site specifics
 
 Rewrite the stale pre-rebuild docs to match the live Traefik-edge platform and remove

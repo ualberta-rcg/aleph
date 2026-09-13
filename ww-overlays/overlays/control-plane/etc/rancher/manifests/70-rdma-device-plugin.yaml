@@ -16,7 +16,7 @@
 # also needs a userspace verbs provider in the container that matches the host
 # kernel driver ABI. For Broadcom bnxt_re (out-of-tree, ABI 8) the inbox
 # rdma-core provider only speaks ABI 1 and NCCL falls back to TCP. See
-# ww-overlays/NCCL-ROCE.md for the per-pod provider-injection recipe.
+# docs/NCCL-ROCE.md for the per-pod provider-injection recipe.
 #
 # `rdmaHcaMax` is how many pods on a node may share the single RoCE HCA.
 # `ifNames` selects the active RoCE interface; set to eth0 for

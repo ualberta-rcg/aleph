@@ -63,7 +63,7 @@ Keep your site's literal values outside this repo (gitignored `.env` / site note
 
 **Everything installs from the numbered RKE2 auto-deploy manifests** baked into the
 Warewulf control-plane overlay (`ww-overlays/overlays/control-plane/etc/rancher/manifests/`,
-00→80 — see [`ww-overlays/README.md`](../ww-overlays/README.md)). Provision/boot the WW nodes and the
+00→80 — see [`docs/WW-OVERLAYS.md`](WW-OVERLAYS.md)). Provision/boot the WW nodes and the
 whole platform (cert-manager, HAMi, NFS, MetalLB+VIP, Traefik, Tyk+Redis, Istio,
 Knative, KServe, model-gateway) comes up. There is no installer script — the overlay
 set is the installer.
