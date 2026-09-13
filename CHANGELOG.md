@@ -2,6 +2,17 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Rewrite QUICKSTART requirements-first; CLAUDE.md back to repo root
+
+QUICKSTART becomes a basic, requirements-first doc in the style of RKE2/KServe/Kubespray/
+OpenStack quickstarts: a systems table (what each component needs from you — ports, VIP,
+DNS, PXE), per-role compute minimums, networking-to-plan (boot/cluster/edge networks,
+public vs private choice), the single site.env config artifact + secrets checklist, the six
+site Ansible playbooks as required input, minimal-vs-HA guidance, six lean steps with
+verify commands, boot acceptance checklist, first model. No site-specific values; deep
+detail lives in docs/ + the warewulf-rke2-hami README. Also: docs/CLAUDE.md returns to the
+repo root (its conventional home for agent tooling); LOGGING.md + TYK-USERS.md stay in docs/.
+
 ## 2026-09-13 — Strip operational docs from the repo into the local working dir (amended)
 
 Correction: the operational docs that lived under docs/ stay moved to the local working
