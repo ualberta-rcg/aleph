@@ -49,3 +49,14 @@ as evidence for that tested configuration, not a current fleet guarantee.
 - Update `CHANGELOG.md` before committing a substantive change. Report what
   changed, validation performed, and anything still unverified. Do not describe
   source changes as deployed or live checks as broader validation than they are.
+
+## Preserve README customizations
+
+Keep the README's original header and branding: logos, title, badges, tagline,
+institutional attribution, and maintainer names/links. Preserve the boxed
+architecture diagram and the closing References, Support, License, and About
+University of Alberta Research Computing sections, including their exact wording
+and links. Update technical sections around these customizations; do not replace
+the README wholesale. Change a protected part only when the user explicitly
+requests that particular change. The historical baseline is commit e8e6777
+(2026-09-10); retain the subsequently added Aleph logo as well.

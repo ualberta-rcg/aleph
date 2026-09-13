@@ -2,6 +2,19 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Restore historical guidance and preserve README customizations
+
+Restore CLAUDE.md from e8e6777, the repository snapshot as of 2026-09-10.
+Use that same snapshot's README as the base, updating its Description, Features,
+Quickstart, catalog guidance, and deployment references while preserving the
+original header, domain table, boxed architecture diagram, References, Support,
+License, and University of Alberta closing section. Retain the subsequently added
+Aleph logo. Link the current model workflow and logging/metrics guide.
+
+Add the README preservation rule to both CLAUDE.md and AGENTS.md. The historical
+Claude content is otherwise unchanged. Validation: compare preserved text against
+its source Git blobs, check README links and whitespace. No runtime changes.
+
 ## 2026-09-13 — Simplify public docs and explain logging and metrics
 
 Shorten README and QUICKSTART around the service, repository layout, deployment
