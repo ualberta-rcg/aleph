@@ -2,6 +2,16 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Strip operational docs from the repo into the local working dir
+
+Move every doc that describes operating/deploying this instance out of the public repo
+and into the operators' local `~/aleph/docs/`: docs/{RUNBOOK,MODEL-DEPLOY-PLAYBOOK,RESEARCHER-GUIDE,POST-DEPLOY,CONTROL-PLANE-REBOOT,RACK-BOOT,NCCL-ROCE,STORAGE-RECOVERY}.md
++ examples/, and root {CLAUDE,LOGGING,TYK-USERS}.md. The repo keeps only README,
+QUICKSTART (being rewritten lean), CHANGELOG, LICENSE, docs/{SITE-VALUES,ENDPOINTS,WW-OVERLAYS}.md
+and the claude-code settings example. README docs table and inline links shrunk to match;
+"use the service" now points at the Alliance wiki + ENDPOINTS; models/CLAUDE.md carries the
+directory contract pointer. Local working dir holds the current copies (INDEX.md updated).
+
 ## 2026-09-13 — Tokenize overlay site values, move overlay docs to docs/, per-model README as status record
 
 Follow-up: link every docs/ file from the README docs table (SITE-VALUES, POST-DEPLOY, CONTROL-PLANE-REBOOT, RACK-BOOT, NCCL-ROCE, STORAGE-RECOVERY were previously unlinked).

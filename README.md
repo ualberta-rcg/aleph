@@ -48,7 +48,9 @@ It runs on hardware we operate (the Vulcan cluster), so model inference stays lo
 
 Two different starts:
 
-- **Use the service** — get a key, point your SDK at the endpoint: see **[docs/RESEARCHER-GUIDE.md](./docs/RESEARCHER-GUIDE.md)** and **[docs/ENDPOINTS.md](./docs/ENDPOINTS.md)**
+- **Use the service** — get a key, point your SDK at the endpoint: see the
+  [Alliance Aleph documentation](https://docs.alliancecan.ca/wiki/aleph) and
+  **[docs/ENDPOINTS.md](./docs/ENDPOINTS.md)**
 - **Stand up your own** — bake the Warewulf overlays, boot the nodes, and the cluster self-deploys from the numbered RKE2 auto-deploy manifests; then issue a key and apply model YAML. Full walkthrough: **[QUICKSTART.md](./QUICKSTART.md)**
 
 ## 🔬 Model Catalog
@@ -68,7 +70,7 @@ The `models/` directory holds model definitions across scientific and language d
 | **Language models** | Gemma 3/4, Qwen 3/3.5/3.6, GLM-4/Z1, GPT OSS 20B/120B, DeepSeek R1, Command-R |
 | **Science NLP** | SciBERT, BioGPT, SciNCL, SpecTer2, OceanGPT, GeoGalactica, OpenBioLLM |
 
-The catalog grows continuously and not every model receives the same testing attention — per-model state is tracked operationally, and the deployed set at any moment is what `GET /v1/models` reports. Each model in `models/<name>/` carries `details.yaml` (the card), `inferenceservice.yaml`, `pvc.yaml`, and a `test.py` battery; adding one is a few files plus `kubectl apply` — see **[docs/MODEL-DEPLOY-PLAYBOOK.md](./docs/MODEL-DEPLOY-PLAYBOOK.md)**.
+The catalog grows continuously and not every model receives the same testing attention — per-model state is tracked operationally, and the deployed set at any moment is what `GET /v1/models` reports. Each model in `models/<name>/` carries `details.yaml` (the card), `inferenceservice.yaml`, `pvc.yaml`, and a `test.py` battery; adding one is a few files plus `kubectl apply` — the directory contract is in **[models/CLAUDE.md](./models/CLAUDE.md)**.
 
 ## 🏗️ Architecture
 
@@ -131,20 +133,12 @@ The catalog grows continuously and not every model receives the same testing att
 
 | Doc | What |
 |---|---|
-| [QUICKSTART.md](./QUICKSTART.md) | Bring up the whole platform from Warewulf bake to first model |
-| [docs/RUNBOOK.md](./docs/RUNBOOK.md) | Day-2 operations: gateway rollouts, keys, storage, teardown |
-| [docs/MODEL-DEPLOY-PLAYBOOK.md](./docs/MODEL-DEPLOY-PLAYBOOK.md) | The per-model deploy loop and standards |
-| [docs/RESEARCHER-GUIDE.md](./docs/RESEARCHER-GUIDE.md) | Using Aleph: choosing models, cold starts, reproducibility |
+| [QUICKSTART.md](./QUICKSTART.md) | What you need to deploy Aleph |
 | [docs/ENDPOINTS.md](./docs/ENDPOINTS.md) | Full endpoint surface + client configs |
-| [gateway/README.md](./gateway/README.md) | Gateway internals: cards, routing, translation, metrics |
-| [models/CLAUDE.md](./models/CLAUDE.md) | Per-model directory contract |
 | [docs/WW-OVERLAYS.md](./docs/WW-OVERLAYS.md) | Overlay structure, manifest index, boot self-ordering |
 | [docs/SITE-VALUES.md](./docs/SITE-VALUES.md) | Every `__TOKEN__` in the overlays + the site.env substitution flow |
-| [docs/POST-DEPLOY.md](./docs/POST-DEPLOY.md) | The few manual steps after first boot: keys, smoke test, TLS |
-| [docs/CONTROL-PLANE-REBOOT.md](./docs/CONTROL-PLANE-REBOOT.md) | Verified joining control-plane reboot procedure |
-| [docs/RACK-BOOT.md](./docs/RACK-BOOT.md) | Worker firstboot requirements + reboot canary |
-| [docs/NCCL-ROCE.md](./docs/NCCL-ROCE.md) | NCCL over RoCE on the GPU workers |
-| [docs/STORAGE-RECOVERY.md](./docs/STORAGE-RECOVERY.md) | Static PV/PVC recovery bindings explained |
+| [gateway/README.md](./gateway/README.md) | Gateway internals: cards, routing, translation, metrics |
+| [models/CLAUDE.md](./models/CLAUDE.md) | Per-model directory contract |
 
 ## 🧪 Status
 

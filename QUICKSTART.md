@@ -49,7 +49,7 @@ kubectl create secret docker-registry ngc-registry-secret -n models \
   --docker-server=nvcr.io --docker-username='$oauthtoken' \
   --docker-password="$NGC_API_KEY" --docker-email=you@example.com
 
-# Issue a Tyk API key — on a control-plane node (see TYK-USERS.md):
+# Issue a Tyk API key — on a control-plane node:
 #   tyk-admin.sh add-user <identity> [account] [type]
 ```
 
