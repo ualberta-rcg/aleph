@@ -135,6 +135,8 @@ The catalog grows continuously and not every model receives the same testing att
 |---|---|
 | [QUICKSTART.md](./QUICKSTART.md) | What you need to deploy Aleph |
 | [docs/ENDPOINTS.md](./docs/ENDPOINTS.md) | Full endpoint surface + client configs |
+| [docs/TYK-USERS.md](./docs/TYK-USERS.md) | API keys, identity, and the PAM auto-provisioning model |
+| [docs/LOGGING.md](./docs/LOGGING.md) | Usage-accounting ledger schema + metrics |
 | [docs/WW-OVERLAYS.md](./docs/WW-OVERLAYS.md) | Overlay structure, manifest index, boot self-ordering |
 | [docs/SITE-VALUES.md](./docs/SITE-VALUES.md) | Every `__TOKEN__` in the overlays + the site.env substitution flow |
 | [gateway/README.md](./gateway/README.md) | Gateway internals: cards, routing, translation, metrics |

@@ -2,6 +2,15 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Strip operational docs from the repo into the local working dir (amended)
+
+Correction: the operational docs that lived under docs/ stay moved to the local working
+dir (RUNBOOK, MODEL-DEPLOY-PLAYBOOK, RESEARCHER-GUIDE + examples, POST-DEPLOY,
+CONTROL-PLANE-REBOOT, RACK-BOOT, NCCL-ROCE, STORAGE-RECOVERY). The three docs that lived
+at the repo ROOT — CLAUDE.md, LOGGING.md, TYK-USERS.md — return to the repo, relocated
+into docs/ (original content; two cross-references repointed away from docs that went
+local). README docs table lists TYK-USERS and LOGGING again.
+
 ## 2026-09-13 — Strip operational docs from the repo into the local working dir
 
 Move every doc that describes operating/deploying this instance out of the public repo
