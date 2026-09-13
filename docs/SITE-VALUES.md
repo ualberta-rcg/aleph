@@ -17,7 +17,7 @@ contains the ready-to-use sed loop. The `common` and `gpu-worker` overlays carry
 | `__INFERENCE_HOST__` | public hostname (edge routing + cert CN) | `56-edge-routes.yaml`; DNS must point at the VIP |
 | `__ACME_EMAIL__` | Let's Encrypt registration contact | `01-cluster-issuer.yaml` |
 | `__TYK_API_SECRET__` | Tyk admin `APISecret` | `51-tyk.yaml`; load from the gitignored `.env`, never commit |
-| `__ROCE_IFNAME__` | GPU-worker RoCE NIC | `70-rdma-device-plugin.yaml`; see [NCCL-ROCE.md](NCCL-ROCE.md) |
+| `__ROCE_IFNAME__` | GPU-worker RoCE NIC | `70-rdma-device-plugin.yaml`; verify the interface and provider for your hardware |
 
 Networking model: each control-plane node carries three addresses — cluster IP, its own
 public IP on the public NIC (in the VIP's prefix), and the floating VIP that MetalLB

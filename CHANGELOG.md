@@ -2,6 +2,27 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Simplify public docs and explain logging and metrics
+
+Shorten README and QUICKSTART around the service, repository layout, deployment
+prerequisites, and first-model validation. Remove local operating history, fixed
+sizing and availability claims, and the obsolete smoke-test shortcut. Keep Slurm
+and CVMFS setup outside the Aleph deployment guide.
+
+Condense the overlay guide and restore a short STORAGE-RECOVERY reference for
+fresh-install versus existing-volume bindings. Remove links to local-only reboot
+and hardware procedures. Expand LOGGING into a logging-and-metrics guide with
+synthetic records, content exclusions, reporting access, size-based retention,
+metric collection, and accounting limitations verified against the implementation.
+Add a concise ADD-A-MODEL workflow and root AGENTS.md for Codex; consolidate the
+root and models CLAUDE guides into pointers to the shared instructions.
+
+Validation: reviewed gateway handlers, usage logger, deployment manifests, and
+existing documentation; read-only checks confirmed gateway availability, Tyk
+service types, storage class, TLS readiness, and model-card presence on the control
+plane. Checked edited documentation links and example syntax. No runtime or
+manifest changes; no model inference or deployment tests were run.
+
 ## 2026-09-13 — Rewrite QUICKSTART requirements-first; CLAUDE.md back to repo root
 
 QUICKSTART becomes a basic, requirements-first doc in the style of RKE2/KServe/Kubespray/

@@ -1,211 +1,176 @@
-# Usage Accounting & Logging
+# Logging and metrics
 
-The gateway emits a structured **usage record** for every request so we can do
-SLURM-style fairshare/accounting: who used which model, how many tokens, on what
-hardware, for how long, and whether the call paid a cold-start cost.
+Aleph records usage metadata for accounting and troubleshooting, and exposes
+aggregate metrics for monitoring. The usage ledger identifies the caller and
+model; it is not a conversation archive.
 
-See also: [TYK-USERS.md](TYK-USERS.md) (identity/keys), `gateway/README.md`.
+## What is recorded
 
-## Where it goes
+| Information | Examples |
+|---|---|
+| Caller | Identity, account, and whether the key represents a user or service |
+| Request | Timestamp, model ID, endpoint, API format, HTTP status, streaming flag |
+| Usage | Input/output token counts and upstream usage details, including reasoning or cached-token counts when available |
+| Timing | Request latency and cold-start guard events |
+| Resources | Model resource allocation, resolved node/GPU information, and estimated GPU-seconds |
+| Key reference | A short SHA-256 fingerprint and the key's last four characters; not the full key |
+| Audio | Byte counts, duration when available, and text character counts |
 
-- File: `GATEWAY_USAGE_LOG` (default **`/var/log/aleph/usage.log`**), one JSON
-  object per line (JSON-lines), rotated (50 MB × 5 by default).
-- Storage: RWX PVC **`model-gateway-usage-logs`** (10Gi, `nfs-models`) mounted at
-  `/var/log/aleph`, one subPath per gateway replica (`$(POD_NAME)`) — logs **survive
-  pod replacement, node reprovisioning, and cluster re-images**. Kept separate from
-  application stdout; no out-of-band shipper is needed.
-- If the file handler can't be created the logger falls back to stdout so events
-  are never silently dropped.
+The gateway's accounting code does not add prompts, answers, conversation history,
+tool payloads, uploaded files, audio contents, transcripts, or filenames to the
+ledger. Token and character fields are **counts**, not text.
 
-```bash
-# Tail it live:
-kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph/usage.log
+This describes the gateway's usage ledger and metrics. It is not a retention
+statement for browser chat history, client applications, or model-server and
+infrastructure logs. The upstream `usage` object is retained in `tokens.detail`
+without field filtering, so custom runtimes must keep that object limited to
+usage metadata.
 
-# Copy a snapshot out:
-kubectl exec -n models deploy/model-gateway -c gateway -- cat /var/log/aleph/usage.log > usage.log
-```
+## Example usage records
 
-Config (env on the gateway Deployment, `ww-overlays/.../63-model-gateway.yaml`):
+These examples are synthetic. Identities, models, hardware, and numbers are
+illustrative; none are copied from user logs.
 
-| Env | Default | Meaning |
-|---|---|---|
-| `SITE_NAME` | `aleph` | stamped on every record as `site` (set per cluster) |
-| `GATEWAY_USAGE_LOG` | `/var/log/aleph/usage.log` | log path (on the usage-log PVC, per-replica subPath) |
-| `GATEWAY_USAGE_LOG_MAX_BYTES` | `52428800` | rotation size |
-| `GATEWAY_USAGE_LOG_BACKUPS` | `5` | rotated copies kept |
-
-## Record schema
+A completed chat request:
 
 ```json
 {
-  "ts": "2026-06-25T02:25:04Z",
-  "site": "aleph",
-  "identity": "openwebui",
-  "identity_type": "service",
-  "account": "shared-pool",
+  "ts": "2026-01-01T12:00:00Z",
+  "site": "example-site",
+  "identity": "example-user",
+  "identity_type": "user",
+  "account": "example-project",
   "endpoint": "/v1/chat/completions",
   "api": "openai",
-  "model": "gemma-3-4b-it",
+  "model": "example-chat",
   "status": 200,
   "stream": false,
   "cold_start": false,
-  "latency_ms": 765,
+  "latency_ms": 1500,
   "tokens": {
-    "prompt": 15,
-    "completion": 6,
-    "total": 21,
+    "prompt": 100,
+    "completion": 40,
+    "total": 140,
     "detail": {
-      "prompt_tokens": 15,
-      "completion_tokens": 6,
-      "total_tokens": 21,
-      "prompt_tokens_details": null,
-      "completion_tokens_details": { "reasoning_tokens": 0 }
+      "prompt_tokens": 100,
+      "completion_tokens": 40,
+      "total_tokens": 140
     }
   },
-  "context_window": 131072,
-  "max_completion_tokens": 8192,
+  "context_window": 32768,
+  "max_completion_tokens": 4096,
   "resources": {
-    "model": "gemma-3-4b-it",
+    "model": "example-chat",
     "gpus": 1,
-    "vram_mib": 20480,
-    "cpu_cores": 8.0,
-    "system_ram_mib": 24576,
-    "node": "gpu-worker-3",
-    "gpu_product": "L40S",
-    "latency_ms": 765
+    "vram_mib": 8192,
+    "cpu_cores": 4,
+    "system_ram_mib": 16384,
+    "node": "example-worker",
+    "gpu_product": "example-gpu",
+    "latency_ms": 1500
   },
-  "derived": { "gpu_seconds": 0.765 },
-  "key_fp": { "sha256_8": "1a2b3c4d", "last4": "wxyz" }
+  "derived": {"gpu_seconds": 1.5},
+  "key_fp": {"sha256_8": "0123abcd", "last4": "DEMO"}
 }
 ```
 
-### Fields
+This records 140 tokens and 1.5 seconds of latency, without the question or answer.
+`context_window` and `max_completion_tokens` are model-card limits, not the size
+or requested output budget of this particular call.
 
-| Field | Meaning |
-|---|---|
-| `ts` | UTC timestamp (ISO-8601, `Z`) |
-| `site` | cluster tag (`SITE_NAME`) — lets multiple sites pool into one ledger |
-| `identity` / `account` / `identity_type` | caller identity from Tyk (`anonymous` if not via Tyk) — see [TYK-USERS.md](TYK-USERS.md) |
-| `key_fp` | fingerprint of the API key (sha256 prefix + last 4 chars) — **not** the key itself |
-| `endpoint` / `api` | `/v1/chat/completions`,`/v1/messages`,`/v1/embeddings`,`/v1/rerank`,`/v1/<custom>`; api = `openai`/`anthropic`/`cohere`/`custom` |
-| `model` | model id |
-| `status` | upstream HTTP status (200 served, 503 cold-start, 4xx errors) |
-| `stream` | whether the client streamed (SSE) |
-| `cold_start` | `true` for a scale-from-zero 503 event (a wake-up was fired) |
-| `latency_ms` | gateway↔upstream round trip (0 for cold-start events) |
-| `tokens.prompt/completion/total` | normalized counts for easy aggregation |
-| `tokens.detail` | the **verbatim** upstream `usage` object — preserves engine-specific breakdowns (`completion_tokens_details.reasoning_tokens`, `prompt_tokens_details.cached_tokens`, audio, …) whenever vLLM emits them |
-| `context_window` / `max_completion_tokens` | the model card's declared limits |
-| `resources` | allocated compute footprint + hardware (below) |
-| `derived.gpu_seconds` | `gpus × latency_ms/1000` — a simple GPU-time unit for fairshare |
+An audio transcription can instead carry this usage detail (excerpt):
 
-### Where the compute facts come from
-
-- `gpus`, `vram_mib`, `cpu_cores`, `system_ram_mib` — the model's **ISVC predictor
-  resource spec** (HAMi vGPU requests). With HAMi a model may hold a *slice* of a
-  card, so `vram_mib` can be less than the physical card capacity.
-- `node`, `gpu_product` — resolved live: `model → predictor pod → node`, then the
-  node's `aleph.gpu/product` label. Those labels are written by the **node-labeler
-  DaemonSet** (`ww-overlays/.../11-node-labeler.yaml`), which auto-detects
-  GPU/CPU/RAM per worker.
-
-> Note: `resources` is the **allocated** footprint, not live utilization. Live
-> GPU%/instantaneous VRAM needs a metrics exporter (DCGM / HAMi exporter) and is
-> not wired here. Concurrent requests share one running model, so summed
-> `gpu_seconds` measures allocated GPU-time, not physical utilization.
-
-## Token detail — what to expect
-
-Plain chat/instruct models report just prompt/completion/total (the detail keys are
-present, often `null`). **Reasoning** models additionally populate
-`completion_tokens_details.reasoning_tokens`, and prompt caching populates
-`prompt_tokens_details.cached_tokens`. Because we log the upstream `usage` verbatim
-in `tokens.detail`, those appear automatically without any gateway change — you can
-separate "thinking" tokens from answer tokens downstream.
-
-For **streamed** chat the gateway sets `stream_options.include_usage` so the final
-SSE chunk carries `usage`; that is captured into the record (`stream: true`). If an
-upstream/streamed call ends without a usage chunk, token counts may be 0 for that
-record (best-effort) while identity/resources/latency are still logged.
-
-Audio endpoints have no LLM tokens. STT/TTS/clone still go through `_log_usage`
-(same identity / `key_fp` / `resource_block`) with counts only in `tokens.detail`:
-`audio_input_bytes`, `audio_output_bytes`, `audio_seconds` (STT duration when the
-upstream sends it), `text_chars` (transcript length, never the text), `tts_chars`
-(TTS/clone input length, never the input string). Filenames are not logged.
-
-`POST /v1/messages/count_tokens` is a metadata call: `input_tokens` is stored in
-`tokens.detail` only and is **not** added to prompt/completion totals.
-
-## Cold starts in the ledger
-
-A scale-from-zero wake-up is logged as its own record with `cold_start: true`,
-`status: 503`, and zero tokens — because spinning a model up burns GPU time before
-any token is produced. A client retrying a cold model therefore produces several
-`cold_start: true` records followed by one served `200`. Example (a real wake-up of
-`gemma-3-4b-it` from a login node): 15 × `cold_start:true` 503, then 1 × `200`.
-
-## Prometheus metrics
-
-`GET /metrics` exposes per-model rollups derived from the same events. Default
-scrape **fans in** across gateway replicas (peers found via the k8s API, each
-scraped at `/metrics?local=true`, counters summed, gauges maxed; degrades to
-local-only if any peer fails); pass `?local=true` for this process only.
-
-```
-gateway_model_requests_total{model="..."}
-gateway_model_errors_total{model="..."}
-gateway_model_prompt_tokens_total{model="..."}
-gateway_model_completion_tokens_total{model="..."}
-gateway_model_total_tokens_total{model="..."}
-gateway_model_cold_starts_total{model="..."}
-gateway_model_gpu_seconds_total{model="..."}
-gateway_model_scaled_up{model="..."}
-gateway_model_replicas{model="..."}
-gateway_model_audio_seconds_total{model="..."}
-gateway_model_audio_bytes_in_total{model="..."}
-gateway_model_audio_bytes_out_total{model="..."}
-gateway_model_tts_chars_total{model="..."}
+```json
+{
+  "tokens": {
+    "prompt": 0,
+    "completion": 0,
+    "total": 0,
+    "detail": {
+      "audio_input_bytes": 96000,
+      "audio_seconds": 3.0,
+      "text_chars": 42
+    }
+  }
+}
 ```
 
-plus the global gauges (`gateway_requests_total`, `gateway_models_ready`, …). These
-are in-process counters (reset on pod restart); the JSON-lines file is the durable
-source of truth.
+The transcript itself is absent. Available detail varies by runtime and endpoint.
 
-## Example: aggregating the ledger
+## How to interpret the numbers
 
-The full ledger is the concatenation of every replica's file (one directory each
-under the PVC mount):
+- **Tokens can be incomplete.** If a backend omits usage, or a stream ends before
+  its final usage event, counts may be zero. Zero does not prove no work occurred.
+- **Cold-start records are attempts.** A guard response is logged with status
+  `503`, `cold_start: true`, and zero latency/tokens. This includes capacity
+  refusals; it does not prove that a new model pod started. Retries create more
+  records. These events do not measure actual model-loading time.
+- **GPU-seconds are an estimate:** GPU allocation count × request latency in
+  seconds. Shared GPUs and concurrent requests mean this is not measured GPU
+  utilization, exclusive GPU time, or a billing total.
+- **Coverage is not a full access audit.** Authentication failures rejected by
+  Tyk and some early gateway validation failures do not reach the usage logger.
+  Per-model ledger counts and global request counters can therefore differ.
+- **Identity follows the key.** A shared application's service key identifies
+  that service, not necessarily its individual end user.
 
-```bash
-# GPU-seconds per account, one replica's file (loop over the gateway pods for the full ledger):
-kubectl exec -n models deploy/model-gateway -c gateway -- cat /var/log/aleph/usage.log \
- | python3 -c '
-import sys, json, collections
-acct = collections.defaultdict(float); tok = collections.defaultdict(int)
-for line in sys.stdin:
-    d = json.loads(line)
-    acct[d["account"]] += d["derived"]["gpu_seconds"]
-    tok[d["account"]]  += d["tokens"]["total"]
-for a in sorted(acct, key=acct.get, reverse=True):
-    print(f"{a:20s} gpu_s={acct[a]:8.1f}  tokens={tok[a]}")
-'
+## Metrics
+
+`GET /metrics` returns Prometheus text with per-model request, error, token,
+cold-start, audio, and estimated GPU-time counters, plus model and replica gauges.
+Metrics have model labels, not per-user identities or key fingerprints.
+
+Synthetic example:
+
+```text
+gateway_model_requests_total{model="example-chat"} 12
+gateway_model_errors_total{model="example-chat"} 2
+gateway_model_total_tokens_total{model="example-chat"} 1400
+gateway_model_cold_starts_total{model="example-chat"} 2
+gateway_model_gpu_seconds_total{model="example-chat"} 15
+gateway_model_replicas{model="example-chat"} 1
 ```
 
-## Node hardware labels (`11-node-labeler.yaml`)
+Counters live in memory and reset when a gateway process restarts. The replica
+gauge counts Running predictor pods, not independently verified ready replicas.
+By default, the endpoint combines gateway replicas; if a peer cannot be reached,
+it falls back to local metrics, so a successful scrape can still be partial.
 
-The labeler stamps each GPU worker so the gateway (and any scheduler/report) can
-read hardware facts off the Node object:
+For monitoring, scrape the combined endpoint once, or scrape each replica's
+`/metrics?local=true` and aggregate in your monitoring system. Do not sum multiple
+copies of the combined view. Historical charts require a separately configured
+metrics collector and retention policy.
 
-| Label | Example |
-|---|---|
-| `aleph.gpu/product` | `L40S` |
-| `aleph.gpu/count` | `4` |
-| `aleph.gpu/memory-mib` | `46068` |
-| `aleph.cpu/model` | `Intel_R__Xeon_R__Gold_6448Y` (sanitized to label rules) |
-| `aleph.cpu/cores` | `64` |
-| `aleph.node/memory-gib` | `503` |
+## Storage and retention
 
-```bash
-kubectl get nodes -L aleph.gpu/product,aleph.gpu/count,aleph.cpu/cores,aleph.node/memory-gib
-```
+The gateway writes one JSON object per line to a separate usage file. The supplied
+deployment keeps these files on persistent storage in a directory per replica.
+A complete report must consider retained files from all relevant replicas,
+including rotated files and directories left by replaced pods.
+
+The logger defaults to size-based rotation: a 50 MiB active file and up to five
+rotated copies per replica directory. These are configurable defaults, **not a
+retention period in days**. There is no time-based deletion policy in the usage
+logger, and old replica directories are not removed by its file rotation.
+Deployment operators determine archival, cleanup, backup, and metrics retention.
+If file logging cannot initialize, the logger falls back to the process logging
+stream; this is not a guarantee of complete or durable delivery.
+
+## Get your usage information
+
+For the hosted Vulcan service, contact
+[support@tech.alliancecan.ca](mailto:support@tech.alliancecan.ca), mention **Aleph
+usage or metrics**, and specify the time range, time zone, models, and whether you
+need a usage summary or help with failed requests. Ask the operator to confirm
+what records are still available and the applicable retention policy.
+
+Do not send an API key or research content. Raw usage records contain caller
+identities and are not exposed as a public per-user download API. Operators can
+arrange an appropriately scoped report; a shared service key may require usage
+information from the application itself to separate individual users.
+
+For your own deployment, access to the ledger is an administrative storage
+operation. Restrict raw-log access and filter exports to the intended recipient.
+Implementation references: [usage logger](../gateway/app/usage.py),
+[gateway handlers and metrics](../gateway/app/gateway.py), and
+[identity handling](TYK-USERS.md).
