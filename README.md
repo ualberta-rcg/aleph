@@ -139,6 +139,12 @@ The catalog grows continuously and not every model receives the same testing att
 | [gateway/README.md](./gateway/README.md) | Gateway internals: cards, routing, translation, metrics |
 | [models/CLAUDE.md](./models/CLAUDE.md) | Per-model directory contract |
 | [docs/WW-OVERLAYS.md](./docs/WW-OVERLAYS.md) | Overlay structure, manifest index, boot self-ordering |
+| [docs/SITE-VALUES.md](./docs/SITE-VALUES.md) | Every `__TOKEN__` in the overlays + the site.env substitution flow |
+| [docs/POST-DEPLOY.md](./docs/POST-DEPLOY.md) | The few manual steps after first boot: keys, smoke test, TLS |
+| [docs/CONTROL-PLANE-REBOOT.md](./docs/CONTROL-PLANE-REBOOT.md) | Verified joining control-plane reboot procedure |
+| [docs/RACK-BOOT.md](./docs/RACK-BOOT.md) | Worker firstboot requirements + reboot canary |
+| [docs/NCCL-ROCE.md](./docs/NCCL-ROCE.md) | NCCL over RoCE on the GPU workers |
+| [docs/STORAGE-RECOVERY.md](./docs/STORAGE-RECOVERY.md) | Static PV/PVC recovery bindings explained |
 
 ## 🧪 Status
 

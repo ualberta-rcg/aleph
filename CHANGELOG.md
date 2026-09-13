@@ -4,6 +4,8 @@ Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 ## 2026-09-13 — Tokenize overlay site values, move overlay docs to docs/, per-model README as status record
 
+Follow-up: link every docs/ file from the README docs table (SITE-VALUES, POST-DEPLOY, CONTROL-PLANE-REBOOT, RACK-BOOT, NCCL-ROCE, STORAGE-RECOVERY were previously unlinked).
+
 Re-tokenize the ww-overlays manifests back to the `__TOKEN__` placeholder design: NFS
 server/export path (30/49/80), VIP + public NIC (41), Kubernetes version (10-hami imageTag),
 public hostname (56-edge-routes) all become tokens; bake-time substitution restored via
