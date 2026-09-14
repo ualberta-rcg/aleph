@@ -1,6 +1,13 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — QUICKSTART review fixes
+
+Point the site-values token reference at docs/SITE-VALUES.md (the
+WW-OVERLAYS#site-values-and-tokens anchor did not exist), and add the control-plane
+note to the requirements table: one node for evaluation, odd count (3/5) for HA,
+no GPUs on the control plane. No other changes; links and commands re-verified.
+
 ## 2026-09-14 — Models root: the six reference files only
 
 Remove the standalone test batteries and the ops helper entirely: models/templates/

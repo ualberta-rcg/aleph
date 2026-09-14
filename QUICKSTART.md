@@ -10,7 +10,7 @@ To use the existing Vulcan service, follow the
 | Requirement | What to prepare |
 |---|---|
 | Provisioning | A working Warewulf installation and a compatible RKE2 node image |
-| Compute | Control-plane nodes and NVIDIA GPU workers sized for the models you intend to serve |
+| Compute | Control-plane nodes and NVIDIA GPU workers sized for the models you intend to serve. One control plane is enough for evaluation; use an odd number (3 or 5) for HA, and keep GPUs off the control plane |
 | Storage | Persistent NFS storage accessible from the nodes, with capacity for weights and platform data |
 | Networking | Node connectivity, a service IP for MetalLB, and a DNS hostname for the API |
 | TLS | Certificate configuration for that hostname; the supplied manifests use ACME HTTP-01 |
@@ -26,7 +26,7 @@ and placement; the supplied configuration is not a universal sizing recommendati
 
 Clone this repository and prepare a private copy of the overlays for your site.
 Use `ww-overlays/site.env.example` as the starting point for site values, following
-[the token reference](docs/WW-OVERLAYS.md#site-values-and-tokens). Render the placeholders before deployment
+[the token reference](docs/SITE-VALUES.md). Render the placeholders before deployment
 and configure node-specific networking separately.
 
 Keep real credentials and rendered files out of Git. Preserve your site's private
