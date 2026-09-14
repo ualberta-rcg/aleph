@@ -1,11 +1,25 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Gateway README: fix the broken CI/CD Mermaid block
+
+The CI/CD section used a ```mermaid``` fence containing plain text (no flowchart/graph
+declaration), so GitHub rendered "No diagram type detected". Replaced with a valid
+flowchart LR matching the root README's working Mermaid style; labels avoid raw angle
+brackets.
+
 ## 2026-09-14 — Gateway docs: review fixes against source and live behavior
 
 Additions from the completeness sweep: /v1/audio/clone + /v1/audio/voices rows in the
 endpoint table (dedicated handlers, already in docs/ENDPOINTS.md); the client-visible
 `resources` telemetry block on responses; and client-disconnect cancellation (499).
+
+## 2026-09-14 — Gateway README: fix the broken CI/CD Mermaid block
+
+The CI/CD section used a ```mermaid``` fence containing plain text (no flowchart/graph
+declaration), so GitHub rendered "No diagram type detected". Replaced with a valid
+flowchart LR matching the root README's working Mermaid style; labels avoid raw angle
+brackets.
 
 ## 2026-09-14 — Gateway docs: review fixes against source and live behavior
 

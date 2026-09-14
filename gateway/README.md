@@ -219,9 +219,10 @@ request, so we don't depend on it.
 ## CI/CD
 
 ```mermaid
-main push (gateway/**) → GitHub Actions → Docker build → Docker Hub push
-    Image: rkhoja/aleph:latest
-    Image: rkhoja/aleph:gateway-<sha>
+flowchart LR
+    push["Push to main touching gateway/**"] --> actions["GitHub Actions build"]
+    actions --> latest["rkhoja/aleph:latest (rolling)"]
+    actions --> sha["rkhoja/aleph:gateway-shortsha (immutable, pinned in production)"]
 ```
 
 **Workflow:** `.github/workflows/deploy-gateway.yml`
