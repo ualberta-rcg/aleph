@@ -3,6 +3,10 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 ## 2026-09-14 — Complete the per-file-type model references
 
+Follow-up: restore the exemplars table (deployed cards to study, live-verified
+2026-09-14) to details.md — the only substantive piece of the retired
+DETAILS-TEMPLATE-LLM.md not previously re-homed.
+
 Augment models/ root references to the complete per-file-type set (six .md files:
 CLAUDE.md index + pvc/inferenceservice/details/test/model-notes), grounded in a full
 review of the gateway source (card parser, handlers, thinking modes, catalog generation,

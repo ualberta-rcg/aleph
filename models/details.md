@@ -12,6 +12,25 @@ Implementation: [gateway source](../gateway/app/gateway.py), especially
 when extending an integration; a field appearing in an old card does not prove
 that the gateway implements it.
 
+## Exemplars (deployed cards to study, verified 2026-09-14)
+
+| Pattern | Example `models/<dir>/details.yaml` |
+|---|---|
+| Chat, effort thinking + tools (max features) | `gpt-oss-120b` |
+| Chat, effort thinking with build-quirk effort aliases | `qwen38-27b` |
+| Chat, toggle thinking, whole-device multi-GPU | `qwen35-122b` |
+| Vision chat, no tools | `qwen25-vl-72b-awq` |
+| Vision chat, medical | `medgemma-27b-it` |
+| Embedding (TEI) | `bge-m3` |
+| Reranker (TEI via /v1/rerank) | `bge-reranker-v2-m3` |
+| Custom science server | `esmfold` |
+| NIM with `strip_v1_prefix` | `boltz-2` |
+| Native path via `upstream_path` | `genmol`, `molmim` |
+| Completions-only | `progen2` |
+| Multi-endpoint audio (clone/voices) | `xtts-v2` |
+
+Read the matching `inferenceservice.yaml` and `test.py` beside each card.
+
 ## Card structure and discovery
 
 Create a ConfigMap in the model namespace, normally named `<model>-details`, with
