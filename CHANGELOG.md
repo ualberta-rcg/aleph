@@ -2,6 +2,26 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Draw the verified provisioning and serving architecture
+
+Replace the README's boxed architecture sketch, as requested, with two editable
+Mermaid diagrams: Warewulf provisioning/model deployment and the request/data path.
+Show control-plane VMs and GPU workers, KServe/Knative management, HAMi placement,
+MetalLB's L2 advertisement for Traefik, internal Tyk, model-card discovery, the
+activation path, and separate NFS-backed data claims. Distinguish keyless web
+routing, gateway cold-start responses, accounting metrics and physical GPU use.
+Update both agent files to protect the new diagrams. Preserve all other README
+sections, branding, institutional attribution, support and license. Refresh the
+References links with official component documentation as separately requested.
+
+Validation: read-only control-plane checks of service types, controllers, certificate
+readiness, gateway placement, HAMi/device components and bound data claims; reviewed
+gateway watches, boot-source documentation and manifests. GitHub documents native
+Mermaid support. Both diagrams rendered successfully through Kroki for temporary
+layout previews; only Mermaid markup is committed. Check diagram structure,
+verified official reference destinations, relative links and unchanged README sections.
+No deployment, credential access or user-record inspection.
+
 ## 2026-09-13 — Restore practical operator guidance to Claude instructions
 
 Expand CLAUDE.md with environment setup, private configuration handling, Tyk key

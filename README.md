@@ -97,49 +97,122 @@ follow [Add a model](docs/ADD-A-MODEL.md).
 
 ## 🏗️ Architecture
 
-```
-   HPC job / SDK / curl
-          │  HTTPS  (OpenAI or Anthropic dialect)
-          ▼
-  ┌─────────────────┐
-  │     MetalLB     │  public VIP (L2) advertised out the head node's public NIC;
-  │                 │  hands traffic to the Traefik LoadBalancer Service
-  └────────┬────────┘
-           ▼
-  ┌─────────────────┐  ◄── cert-manager + Let's Encrypt (ACME HTTP-01) issues the
-  │  Traefik (RKE2) │      public TLS cert; Traefik terminates HTTPS here, redirects
-  │ (TLS terminate) │      :80 → :443, and routes by Host header to the Tyk Service
-  └────────┬────────┘
-           ▼
-  ┌─────────────────┐
-  │    Tyk OSS      │  catch-all auth (Bearer / x-api-key / api-key / x-goog-api-key / ?api_key),
-  │                 │  rate-limit, JSVM middleware stamps X-Aleph-* identity headers
-  └────────┬────────┘
-           ▼
-  ┌─────────────────┐
-  │  model-gateway  │  FastAPI: OAI⇄Anthropic translation, card-based routing,
-  │   (FastAPI)     │  cold-start guard (503 + Retry-After), usage accounting
-  └────────┬────────┘
-           ▼
-  ┌─────────────────┐
-  │   Istio mesh    │  service mesh Knative programs; knative-local-gateway routes
-  │                 │  by Host header to the live revision — or to the Knative
-  │                 │  activator, which holds the request while a cold pod boots
-  └────────┬────────┘
-           ▼
-  ┌─────────────────┐
-  │ KServe ISVC pod │  vLLM / TEI / ONNX / JAX / NIM / custom FastAPI on a
-  │                 │  HAMi vGPU slice; weights on NFS PVC
-  └─────────────────┘
+The diagrams reflect the running deployment checked on **2026-09-13**, together
+with its Warewulf boot sources. Site addresses and hardware counts are kept in
+private operating notes.
+
+**Provisioning and model deployment**
+
+Warewulf supplies the operating environment for both control-plane VMs and physical
+GPU workers. RKE2 then manages the cluster; model deployments are applied separately.
+Dotted arrows below show configuration and management relationships.
+
+```mermaid
+flowchart TB
+    Image["Node-image repository<br/>OS, RKE2, GPU driver and toolkit"]
+    Config["Aleph repository + private site configuration<br/>Common and role overlays, networking, join configuration"]
+    WW["Warewulf<br/>Node profiles, images and built overlays"]
+    Image --> WW
+    Config --> WW
+
+    subgraph Cluster["RKE2 Kubernetes cluster"]
+        CP["Control-plane VMs<br/>RKE2 server, Kubernetes API and etcd"]
+        Workers["Physical GPU workers<br/>RKE2 agent, NVIDIA runtime and GPUs"]
+        Bootstrap["Bootstrap control plane<br/>Firstboot stages platform manifests for RKE2"]
+        Controllers["KServe + Knative<br/>Services, revisions and replica scaling"]
+        HAMi["Kubernetes + HAMi<br/>Placement, GPU allocation and sharing"]
+        Pods["GPU model predictor pods<br/>Serving runtime and model weights"]
+        CP -.-> Bootstrap
+        Bootstrap -.-> Controllers
+        Bootstrap -.-> HAMi
+        Controllers -.->|desired replicas| Pods
+        HAMi -.->|place and allocate| Pods
+        Workers -.->|host| Pods
+    end
+
+    WW -->|network boot + firstboot| CP
+    WW -->|network boot + firstboot| Workers
+    Models["Selected model directories<br/>InferenceService, PVC and details ConfigMap"]
+    Models -.->|apply through Kubernetes API| Controllers
+
+    classDef provision fill:#e8f5e9,stroke:#357a38,color:#163a19
+    classDef control fill:#e8f0fe,stroke:#4568a8,color:#183153
+    classDef runtime fill:#fff3df,stroke:#b7791f,color:#513510
+    class Image,Config,WW provision
+    class CP,Bootstrap,Controllers,HAMi,Models control
+    class Workers,Pods runtime
 ```
 
-Gateway releases are built by the repository's CI workflow. Production deployments
-pin a specific image version/digest; restarting a Deployment alone does not update
-that pin. Keep deployed configuration and boot sources aligned.
+Ingress and the Aleph gateway run on control-plane nodes; GPU model predictors
+run on workers. The bootstrap node stages `/etc/rancher/manifests/` into RKE2's auto-deploy directory.
+The node image supplies drivers; HAMi supplies GPU allocation and sharing. Git,
+rendered boot sources, and running configuration must agree for changes to survive
+reprovisioning. See [Warewulf](docs/WW-OVERLAYS.md) and [System](docs/SYSTEM.md).
 
-The [overlay guide](docs/WW-OVERLAYS.md) describes the deployment layout. Model
-manifests and cards live under `models/`; gateway source and tests live under
-`gateway/`.
+**Requests, discovery, and persistent data**
+
+Solid arrows show requests or data access; dotted arrows show configuration,
+discovery, and accounting. The serving path includes an activator when needed;
+KServe and Knative's controllers manage that path rather than proxying every call.
+
+```mermaid
+flowchart TB
+    Client["Applications, researchers and agents<br/>OpenAI, Anthropic and science APIs"]
+    Edge["Traefik public LoadBalancer service<br/>Service IP advertised by MetalLB over L2"]
+    TLS["Traefik<br/>HTTPS termination and hostname routing"]
+    Cert["cert-manager + ACME<br/>TLS certificate renewal"]
+    Tyk["Tyk OSS<br/>API-key authentication, rate limits and identity headers"]
+    Gateway["Aleph model gateway - FastAPI<br/>API translation, routing, cold-start guard and accounting"]
+
+    Client -->|HTTPS| Edge
+    Edge --> TLS
+    Cert -.->|certificate| TLS
+    TLS -->|internal service| Tyk
+    Tyk -->|authenticated model API request| Gateway
+
+    Cards["Model cards + deployment state<br/>ConfigMaps, InferenceServices and predictor pods"]
+    Cards -.->|Kubernetes watches| Gateway
+    Redis[("Redis on its NFS-backed PVC<br/>Key sessions and rate-limit state")]
+    Tyk <-->|session lookup and counters| Redis
+
+    Route["Istio / Knative local gateway<br/>Route to the selected revision"]
+    Activator["Knative activator<br/>Activation / buffering when in the traffic path"]
+    Runtime["Predictor pod: queue-proxy + serving container<br/>vLLM, TEI, NIM or a custom runtime"]
+    Gateway -->|backend request| Route
+    Route -->|ready revision path| Runtime
+    Route -->|activation path| Activator
+    Activator --> Runtime
+
+    Weights[("Model PVCs on NFS<br/>Weights, caches and prepared environments")]
+    Usage[("Usage-log PVC on NFS<br/>Per-replica JSONL records and rotations")]
+    Metrics["Gateway /metrics<br/>Aggregate request and accounting counters"]
+    Runtime -->|load reusable files| Weights
+    Gateway -.->|write usage metadata| Usage
+    Gateway -.->|expose| Metrics
+
+    classDef edge fill:#e8f0fe,stroke:#4568a8,color:#183153
+    classDef serving fill:#e8f5e9,stroke:#357a38,color:#163a19
+    classDef data fill:#fff3df,stroke:#b7791f,color:#513510
+    class Client,Edge,TLS,Cert,Tyk edge
+    class Gateway,Route,Activator,Runtime serving
+    class Cards,Redis,Weights,Usage,Metrics data
+```
+
+Tyk requires keys for `/v1/` and `/anthropic/`; its root web route is keyless.
+The gateway can return `503` with retry guidance before forwarding when a model
+is asleep or capacity appears unavailable. Knative controls replica counts;
+Kubernetes and HAMi must still find resources for them.
+
+NFS data survives pod replacement and model scale-to-zero. Redis key state, model
+weights, and gateway usage records use separate claims. The admin command's audit
+file is separate again. Prometheus counters need a collector for historical charts;
+they do not measure physical GPU utilization. See [Kubernetes](docs/KUBERNETES.md),
+[Tyk](docs/TYK-USERS.md), and [Logging and metrics](docs/LOGGING.md).
+
+Gateway releases are built by CI and deployed with an explicit image version/digest.
+A diagram describes the component relationships; it does not imply every fresh
+installation reproduces all live settings. Known configuration gaps belong in the
+owning infrastructure guides.
 
 ## 📚 Docs
 
@@ -160,8 +233,13 @@ manifests and cards live under `models/`; gateway source and tests live under
 - [University of Alberta Research Computing](https://www.ualberta.ca/en/information-services-and-technology/research-computing/index.html)
 - [Alberta Machine Intelligence Institute (AMII)](https://www.amii.ca/)
 - [Digital Research Alliance of Canada](https://alliancecan.ca/)
-- [HAMi — Heterogeneous AI Computing Virtualization Middleware](https://github.com/Project-HAMi/HAMi)
-- [WareWulf RKE2 + Hami Node Image](https://github.com/ualberta-rcg/warewulf-rke2-hami)
+- [HAMi — GPU allocation and sharing](https://project-hami.io/docs/)
+- [Warewulf/RKE2/HAMi node-image repository](https://github.com/ualberta-rcg/warewulf-rke2-hami)
+- [Warewulf provisioning and overlays](https://warewulf.org/docs/main/)
+- [RKE2 Kubernetes documentation](https://docs.rke2.io/)
+- [KServe model serving](https://kserve.github.io/website/)
+- [Knative Serving and autoscaling](https://knative.dev/docs/serving/)
+- [Tyk API gateway documentation](https://tyk.io/docs/)
 
 ---
 
