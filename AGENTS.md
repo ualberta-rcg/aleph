@@ -46,7 +46,8 @@ as evidence for that tested configuration, not a current fleet guarantee.
   regression check when behavior changes.
 - Model changes: follow the deploy/test/recreate loop in the model guide within
   the authorized environment. Record limitations in that model's README.
-- Update `CHANGELOG.md` before committing a substantive change. Report what
+- Every repository change, including documentation, comments, and typos, requires
+  a dated `CHANGELOG.md` entry before committing. Include it in the same commit. Report what
   changed, validation performed, and anything still unverified. Do not describe
   source changes as deployed or live checks as broader validation than they are.
 

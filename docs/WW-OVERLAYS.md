@@ -124,6 +124,14 @@ bindings from an existing deployment:
 | `49-tyk-redis-data.yaml` | Redis PV/PVC binding |
 | `80-model-pvcs.yaml` | Model-weight PV/PVC bindings |
 
+The Redis chart in `50-tyk-redis.yaml` enables persistence. The preceding
+`49-tyk-redis-data.yaml` supplies the exact claim expected by its StatefulSet:
+`tyk/redis-data-tyk-redis-master-0`, explicitly bound to `pv-tyk-redis-data`.
+A read-only check on 2026-09-13 confirmed that the Redis pod mounts this Bound
+claim and the PV uses `Retain`. During recovery, preserve the binding to the
+surviving data; a newly provisioned empty volume will not restore key sessions.
+`Retain` preserves the PV's data on claim release; it is not a backup.
+
 **For a fresh installation**, replace these bindings with storage definitions for
 your site. Use the selected models' `pvc.yaml` files with the configured storage
 class, and provide persistent Redis storage compatible with the Tyk deployment.
@@ -138,3 +146,54 @@ These YAML files contain configuration, not a backup of weights or API keys.
 Redis contains authentication state that cannot be regenerated from manifests.
 Maintain private backups and recovery procedures for that state and the other
 data your deployment needs. Preserve PVCs when replacing model services.
+
+## Joining control-plane filesystem configuration
+
+The September 2026 reboot work identified an important boundary between stateless
+boot configuration and persistent local RKE2 state. In that deployment's
+shutdown/rejoin design, a joining control-plane node lost its etcd membership but
+retained the removed member's database. Delivering the correct manifests was not
+enough to make it rejoin.
+
+The verified correction used Warewulf's ignition filesystem configuration to
+recreate `/var/lib/rancher` on the **joining** control-plane node. It was a
+per-node filesystem setting, not a Kubernetes manifest or a base-image change.
+The relevant partial configuration was:
+
+```yaml
+filesystems:
+  /dev/disk/by-partlabel/rancher:
+    format: ext4
+    path: /var/lib/rancher
+    wipe_filesystem: true
+```
+
+This destroys and recreates the selected local filesystem on **every boot**,
+including its RKE2 database, local certificates, and cached images. It is specific
+to that fresh-rejoin design, not a default for an arbitrary RKE2 installation.
+Do not apply it to the bootstrap control plane or a shared all-node profile.
+The recorded setup left `/var/lib/kubelet` unwiped and NFS storage unaffected.
+
+For a deployment using this design, inspect the built system archive's
+`warewulf/ignition.json`: the intended rancher filesystem should render
+`wipeFilesystem: true`, without changing other filesystems. Rebuild the affected
+node's overlays after changing its definition. Follow the
+[system rejoin checks](SYSTEM.md#shutdown-and-rejoin); a successful overlay build
+is not proof of a successful reboot.
+
+Historical evidence: [control-plane reboot record](https://github.com/ualberta-rcg/aleph/blob/e8e6777/ww-overlays/CONTROL-PLANE-REBOOT.md)
+from the rollout completed in September 2026. This records the tested mechanism;
+it does not certify the current node inventory or authorize filesystem changes.
+
+### Diagnosing storage writes
+
+The 128 KiB NFS transfer sizes in `30-nfs.yaml` came from a backend-specific
+failure: small writes succeeded while large model files failed with an I/O error
+at flush/close. Keep that distinction in mind when testing a new storage backend;
+creating a small file does not validate a complete weight download.
+
+Check the rendered StorageClass's `mountOptions`, the affected PV, and the actual
+mount. Setting options in the wrong chart section can leave the intended fix
+unapplied. The configuration is already described under
+[overlay settings](#overlay-settings-to-review); avoid creating another recovery
+manifest or deleting model claims to work around a mount-option problem.

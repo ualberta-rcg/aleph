@@ -157,7 +157,9 @@ from `.env` (e.g. `set -a; source .env; set +a`) before running.
 
 ## Changelog-First Commit Process
 
-Every code/config change must be reflected in `CHANGELOG.md` **before** creating a commit.
+Every repository change, including documentation, comments, and typos, must have
+a dated entry in `CHANGELOG.md` **before** creating a commit. Stage that entry in
+the same commit as the change.
 
 ### Required workflow (before `git commit`)
 
@@ -173,8 +175,8 @@ Every code/config change must be reflected in `CHANGELOG.md` **before** creating
 
 ### Commit gate
 
-- Do **not** commit if code changed but `CHANGELOG.md` was not updated.
-- Small exceptions (typos/comments-only) are allowed, but should be explicitly noted in the commit message.
+- Do **not** commit any repository change without a dated `CHANGELOG.md` entry.
+- Documentation, comments, and typo fixes have no exception to this rule.
 
 ## Card Templates (v2 Schema — one standard)
 

@@ -174,3 +174,13 @@ operation. Restrict raw-log access and filter exports to the intended recipient.
 Implementation references: [usage logger](../gateway/app/usage.py),
 [gateway handlers and metrics](../gateway/app/gateway.py), and
 [identity handling](TYK-USERS.md).
+
+### Administrative audit is separate
+
+The control-plane `tyk-admin.sh` command has its own audit file. It records operator
+and target identity, actions such as creation/rotation/revocation, and validation
+results. Single-key invalidation records a prefix of the supplied key or hash.
+It is not the per-request model usage ledger described above and does not inherit
+that ledger's PVC storage or rotation settings. Its writes are best-effort; the
+helper supplies no retention mechanism. See [Tyk administration](TYK-USERS.md#state-audit-and-configuration-ownership)
+for configuration and access implications.

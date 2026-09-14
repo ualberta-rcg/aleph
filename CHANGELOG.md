@@ -2,6 +2,29 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Merge reusable local operating guidance into infrastructure docs
+
+Review local guide ownership and extract missing material into the existing three
+infrastructure guides. Warewulf gains the documented joining-control-plane
+filesystem setting and NFS write diagnostics; System gains reboot acceptance and
+RDMA provider troubleshooting; Kubernetes gains bootstrap and request-path checks.
+Keep local inventories, credentials, usage records, and historical rollout details
+out of the public guides. Preserve original local files and the README.
+
+Rewrite TYK-USERS against the live-matching overlay command, selected live route
+flags and mounts, and August 25/26 changelog entries. Correct creation/rotation
+defaults, bulk grants, API access, quotas, PAM integration and admin-audit behavior.
+Document Redis session persistence and its verified Bound PVC/Retain PV, keeping
+recovery guidance in Warewulf. Distinguish the admin audit from the usage ledger
+in LOGGING. Require a dated
+changelog entry for every repository change in both CLAUDE.md and AGENTS.md.
+
+Validation: compare extracted guidance with local records and committed source,
+label historical findings, check links/anchors and historical source paths. Verify
+the live admin-script checksum matches the repo; inspect only non-secret Tyk
+configuration, without key/session records or executing admin commands. No
+node, filesystem, model, or deployment changes; no reboot/inference tests.
+
 ## 2026-09-13 — Organize advanced infrastructure documentation
 
 Consolidate storage recovery and site-value tokens into WW-OVERLAYS.md, including

@@ -1,255 +1,164 @@
-# Tyk Users & API Keys
+# Tyk users and API keys
 
-How identity and API keys work for the Aleph model gateway: how to create, validate,
-rotate, and revoke keys, what conventions clients can use to send them, and how
-identity flows into usage accounting.
+Tyk authenticates Aleph API requests, applies key rate limits, and passes caller
+identity to the model gateway. Operators manage keys with the control-plane
+`tyk-admin.sh` command. Researchers use the resulting key; they do not need
+Kubernetes or Tyk administration access.
 
-See also: [LOGGING.md](LOGGING.md) (usage/accounting), [WW-OVERLAYS.md](WW-OVERLAYS.md) (overlay/manifest index)
-(operations), and `gateway/README.md`.
+## Current configuration
 
-## The request path
+Verified on the control plane on **2026-09-13**: the installed
+`/usr/local/bin/tyk-admin.sh` matches the
+[repository overlay source](../ww-overlays/overlays/control-plane/usr/local/bin/tyk-admin.sh)
+byte for byte. The route flags below were checked against the live API definitions.
+No user sessions, key values, or Redis contents were inspected.
 
-```
-client ──► https://<public-endpoint>
-        ──► MetalLB VIP ──► Traefik (TLS, Let's Encrypt via cert-manager)
-        ──► Tyk OSS (ClusterIP) ──► model-gateway ──► KServe/vLLM pod
-                                 │
-                                 ├─ normalizeAuth (pre):  accept key in any form → Bearer
-                                 ├─ standard token auth:  validate the key (Redis)
-                                 └─ injectIdentity (post): X-Aleph-* headers from key alias/tags
-```
-
-Tyk is the only authenticated entrypoint. The gateway itself is a ClusterIP with
-no auth — it trusts the `X-Aleph-*` headers Tyk injects (and Tyk strips any
-client-supplied `X-Aleph-*` first, so they cannot be spoofed).
-
-## Identity model
-
-Tyk OSS has no "user" object — identity lives **on the key**:
-
-| Field | Stored as | Example | Notes |
-|---|---|---|---|
-| identity | key **alias** | `openwebui`, `jdoe` | service name OR cluster username |
-| account | tag `account:<x>` | `account:shared-pool` | fairshare/billing bucket; defaults to identity |
-| identity_type | tag `type:<x>` | `type:service` / `type:user` | `service` for shared apps, `user` for a person |
-
-> We deliberately do **not** use Tyk `meta_data` for identity: Tyk OSS wipes
-> `meta_data` on a key's first request (it re-saves a thin session after
-> rate-limiting). The `alias` and `tags` persist, so identity injection reads those.
-
-`injectIdentity.js` (a JSVM post-auth hook) maps these onto the upstream request:
-
-```
-X-Aleph-Identity:      <alias>
-X-Aleph-Account:       <account tag, or alias>
-X-Aleph-Identity-Type: <type tag, or "service">
-```
-
-The gateway reads them and stamps every usage record (see [LOGGING.md](LOGGING.md)).
-A request that bypasses Tyk is logged as `anonymous`.
-
-## Managing keys — `tyk-admin.sh` (control plane)
-
-Run on **any control-plane node** — `tyk-admin.sh` is baked onto the node at
-`/usr/local/bin` (source: `ww-overlays/overlays/control-plane/usr/local/bin/tyk-admin.sh`).
-It reads the Tyk admin secret from the in-cluster Secret
-(`secrets-tyk-oss-tyk-gateway` / `APISecret`), auto-discovers the Tyk endpoint
-(LB VIP, else ClusterIP), and appends every mutating action to an audit log
-(`/var/log/aleph/tyk-admin.log`).
-
-```bash
-# On a control-plane node (tyk-admin.sh is already on PATH):
-
-# Create a key (prints the key string — give it to the user/service):
-KEY=$(tyk-admin.sh add-user <identity> [account] [type])
-#   identity = service name or cluster username
-#   account  = fairshare bucket   (default: identity)
-#   type     = service | user     (default: service)
-
-# Check a key is valid AND belongs to an identity (prints true/false, exit 0/1):
-tyk-admin.sh validate-key <identity> <key>
-
-# Rotate: issue a NEW key for the identity and revoke its old keys:
-NEWKEY=$(tyk-admin.sh update-user <identity> [account] [type])
-
-# Revoke a single key:
-tyk-admin.sh invalidate-key <key|hash>
-
-# List / revoke all keys for an identity:
-tyk-admin.sh list-user <identity>
-tyk-admin.sh invalidate-user <identity>
-
-# Backfill a new api_id onto every existing key (used for model-anthropic):
-tyk-admin.sh grant-api model-anthropic
-```
-
-New keys get `access_rights` on **both** `model-gateway` (`/v1/`) and
-`model-anthropic` (`/anthropic/`). Existing keys need `grant-api` after the
-Anthropic API definition is applied, or keyed `/anthropic/` calls 403.
-
-### Examples
-
-```bash
-# A shared service (e.g. OpenWebUI) on a shared fairshare pool:
-KEY=$(tyk-admin.sh add-user openwebui shared-pool service)
-
-# A named person (cluster username), own account bucket:
-KEY=$(tyk-admin.sh add-user jdoe def-pi-alloc user)
-
-# Rotate a possibly-leaked key:
-tyk-admin.sh update-user openwebui
-```
-
-### Env overrides
-
-| Var | Default |
-|---|---|
-| `TYK_URL` | auto: Tyk service endpoint in-cluster (the admin API is NOT exposed through the public edge) |
-| `TYK_SECRET` | auto: Secret `tyk/secrets-tyk-oss-tyk-gateway` key `APISecret` |
-| `API_ID` | unused for minting — new keys always get `model-gateway` **and** `model-anthropic` |
-| `AUDIT_LOG` | `/var/log/aleph/tyk-admin.log` |
-| `KUBECTL` | `kubectl` (falls back to the RKE2 bundle + KUBECONFIG) |
-
-## How clients send the key (catch-all)
-
-The `normalizeAuth` pre-hook accepts the key under any common convention and
-normalizes it to `Authorization: Bearer` before auth, so OpenAI, Anthropic, Azure,
-Google, and Cohere SDKs all work unchanged:
-
-| Convention | Header / param |
-|---|---|
-| OpenAI / Cohere | `Authorization: Bearer <key>` |
-| (also) raw | `Authorization: <key>` |
-| Anthropic | `x-api-key: <key>` |
-| Azure OpenAI | `api-key: <key>` |
-| Google | `x-goog-api-key: <key>` |
-| query string | `?api_key=<key>` / `?api-key=<key>` / `?key=<key>` |
-
-Verified from source (both layers): Tyk's `normalizeAuth.js` normalizes any of
-these to `Authorization: Bearer` **before** auth (and deletes any client-supplied
-`X-Aleph-*` identity headers — identity can't be spoofed); the gateway
-independently fingerprints whatever arrived (`sha256` last-8 + last-4, identical
-lookup order) and logs it as `key_fp` on every usage record. The raw key is never
-stored or logged anywhere past the mint response.
-
-### Verify from a client (data path only)
-
-The key works against the public endpoint from anywhere with network access —
-no kubectl/secret needed (that's the whole point of an API key):
-
-```bash
-GW=https://inference.vulcan.alliancecan.ca
-
-# no key -> 401, valid key -> 200
-curl -s -o /dev/null -w '%{http_code}\n' $GW/v1/models
-curl -s -o /dev/null -w '%{http_code}\n' $GW/v1/models -H "Authorization: Bearer $KEY"
-
-# chat (any of the header styles above):
-curl -s $GW/v1/chat/completions -H "Content-Type: application/json" \
-  -H "x-api-key: $KEY" \
-  -d '{"model":"command-r-7b","messages":[{"role":"user","content":"hi"}],"max_tokens":16}'
-```
-
-Lifecycle: no key → `401`; valid key → `200`; bad key → `403`. Tyk has a ~10s
-in-memory session cache, so a freshly revoked key may keep working for a few
-seconds — expected.
-
-## Cold starts (scale-to-zero)
-
-Most models scale to zero when idle. The first request wakes the model and returns
-a friendly 503 telling the client to retry — it is **not** an error:
-
-```json
-{"error":{"message":"Model 'gemma-3-4b-it' is starting up (scaled to zero for efficiency). Please retry in 1-2 minutes.","type":"model_starting","code":"model_scaled_to_zero"}}
-```
-
-The response also carries `Retry-After`. Clients should retry until they get a
-`200` (typically 1-3 min for a small model, longer for large ones). A model whose
-ISVC is genuinely not healthy returns a different 503 (`code: model_not_ready`),
-and a wake that cannot fit in remaining GPU capacity returns
-`code: insufficient_capacity`.
-
-Each scale-up (503) is itself recorded in the usage log with `cold_start: true`,
-because spinning a model up has real GPU cost — see [LOGGING.md](LOGGING.md).
-
-## Per-user keys: PAM auto-provisioning
-
-Every SSH login to a cluster login node fires a PAM session hook
-(`/etc/pam.d/sshd` → `pam_exec.so /usr/local/sbin/aleph-tyk-key`, `optional` so
-login never breaks). It mints/rotates that user's personal Tyk key via a
-control-plane node (hostbased SSH → `tyk-admin.sh add-user|update-user`, or the
-`tyk-pam-cmd` forced-command wrapper in hardening mode) and writes
-**`~/.aleph_tyk.env`** (mode 600) into the user's home. Users
-`source ~/.aleph_tyk.env` and call the endpoint with
-`Authorization: Bearer $TYK_KEY`. So `identity` = the cluster username and
-`type` = `user` — exactly as the alias/tags model above describes. Manual
-`tyk-admin.sh` minting remains for services and admins.
-
-The login-node hook script and the hostbased trust files are installed as manual
-overlays on the login nodes (not tracked in this repo).
-
-## Under the hood — Tyk configuration
-
-**Config (Tyk pod env):** `TYK_GW_HASHKEYS=true`, `TYK_GW_HASHKEYFUNCTION=murmur128`
-(raw keys never stored — Redis is keyed by `apikey-<murmur128-hex>`), single-node
-Redis DB0 (`STORAGE_ENABLECLUSTER=false`), `ENABLENONTRANSACTIONALRATELIMITER=true`,
-APPS/MIDDLEWARE mounted from ConfigMaps at `/mnt/tyk-gateway/{apps,middleware}`.
-
-**Session blob anatomy** (at `apikey-<hash>`): `allowance`/`rate` + `per` window
-at top level · `quota_max: -1` = quota disabled, rate-limit only · `expires: 0` =
-never expires · `access_rights` for **both** APIs (`model-gateway` +
-`model-anthropic`), each carrying its own limit copy · identity = `alias` +
-`tags: ["aleph","account:<x>","type:<user|service>"]` (injection reads these;
-historically Tyk wipes `meta_data` on first request, so alias/tags are the
-durable source) · `apply_policies: null` — no policy layer, plain access_rights.
-
-**Rate counters are ephemeral**: the non-transactional limiter creates per-window
-counters with short TTLs that vanish seconds later, so a SCAN for them usually
-finds nothing unless traffic is flowing that instant. The persistent keys ≈ the
-key blobs themselves. **Keys live only in Redis (hash-only) — back that
-datastore up; keys cannot be re-derived.**
-
-## Under the hood (raw Tyk admin API)
-
-`tyk-admin.sh` wraps the Tyk gateway admin API (`x-tyk-authorization: <APISecret>`):
-
-```bash
-# Run from a control-plane node (the admin API is in-cluster only):
-TYK=http://<tyk-svc-clusterip>:8080
-SECRET=$(kubectl get secret secrets-tyk-oss-tyk-gateway -n tyk -o jsonpath='{.data.APISecret}' | base64 -d)
-
-# create
-curl -s -X POST $TYK/tyk/keys/create -H "x-tyk-authorization: $SECRET" -H "Content-Type: application/json" -d '{
-  "alias": "openwebui",
-  "tags": ["aleph", "account:shared-pool", "type:service"],
-  "access_rights": {
-    "model-gateway": {"api_id": "model-gateway", "api_name": "model-gateway", "versions": ["Default"], "limit": {"rate": 300, "per": 60}},
-    "model-anthropic": {"api_id": "model-anthropic", "api_name": "model-anthropic", "versions": ["Default"], "limit": {"rate": 300, "per": 60}}
-  }
-}'
-# list (hashes only) / inspect / delete
-curl -s $TYK/tyk/keys -H "x-tyk-authorization: $SECRET"
-curl -s $TYK/tyk/keys/<key>           -H "x-tyk-authorization: $SECRET"   # by raw key
-curl -s $TYK/tyk/keys/<hash>?hashed=true -H "x-tyk-authorization: $SECRET"
-curl -s -X DELETE $TYK/tyk/keys/<key> -H "x-tyk-authorization: $SECRET"
-```
-
-Tyk OSS has no identity index, so `list-user`/`invalidate-user` scan all key hashes
-and filter on `alias`. Fine for modest key counts.
-
-## API definitions & manifests
-
-| Tyk API | listen_path | strip | auth | notes |
+| API | Listen path | Authentication | Rate limits | Cumulative quotas |
 |---|---|---|---|---|
-| `model-gateway` | `/v1/` | no | **authed** (standard token) | rate-limit on, quota off; pre normalizeAuth + post injectIdentity |
-| `model-anthropic` | `/anthropic/` | yes | **authed** | injects `X-Aleph-Api: anthropic`; `/api/hello` (GET/HEAD) is a **pre-auth Tyk mock** `{"message":"hello"}` (agent warm probe — never proxied) |
-| `model-web` | `/` | no | **keyless** | the public landing page; also forwards `/healthz` and `/metrics` |
+| `model-gateway` | `/v1/` | Key required | Enabled | Disabled |
+| `model-anthropic` | `/anthropic/` | Key required; prefix stripped | Enabled | Disabled |
+| `model-web` | `/` | Keyless | Disabled | Disabled |
 
-| Manifest | Role |
+The edge path is MetalLB → Traefik/TLS → Tyk → model-gateway. Tyk's services are
+ClusterIP, including the legacy-named `tyk-gateway-nodeport`. Do not infer public
+exposure from that name. The keyless root definition is a catch-all, not a
+proof that every route except the landing page requires authentication.
+
+## Identity belongs to the key
+
+| Value | Durable session field |
 |---|---|
-| `51-tyk.yaml` | Tyk OSS (JSVM enabled, api-defs + middleware volume mounts) |
-| `52-tyk-loadbalancer.yaml` | Tyk Service (ClusterIP; legacy name kept for scripts) |
-| `53-tyk-api-definitions.yaml` | The three API definitions above |
-| `54-tyk-middleware.yaml` | JSVM: `normalizeAuth` + `injectIdentity` |
+| Researcher or service identity | `alias` |
+| Account/group for accounting | `account:<value>` tag |
+| Caller type | `type:user` or `type:service` tag |
 
-Source of truth for the JS + API defs: `gateway/tyk/`.
+The helper also fills `meta_data`, but identity handling relies on alias and tags:
+the recorded Tyk behavior can discard metadata when a session is updated.
+Middleware normalizes authentication and injects `X-Aleph-Identity`,
+`X-Aleph-Account`, and `X-Aleph-Identity-Type` for usage attribution.
+
+A shared application's key identifies the application, not each person using it.
+The model gateway trusts this authentication layer; do not expose a bypass path
+as though it provided the same identity checks.
+
+## Use a key
+
+For Vulcan access and automatic key provisioning, follow the
+[Alliance Aleph guide](https://docs.alliancecan.ca/wiki/aleph). In a shell where
+your client key is exported as `TYK_KEY`, check the catalog:
+
+```bash
+curl --silent --show-error --fail-with-body --max-time 120 \
+  -H "Authorization: Bearer $TYK_KEY" \
+  https://inference.vulcan.alliancecan.ca/v1/models
+```
+
+The authentication middleware also accepts raw `Authorization`, `x-api-key`,
+`api-key`, `x-goog-api-key`, and the legacy query parameters `api_key`, `api-key`,
+or `key`. Prefer a header. API authentication compatibility does not mean every
+client feature or model capability is supported; see [Endpoints](ENDPOINTS.md).
+
+## The operator command
+
+Run `tyk-admin.sh` on a control-plane node with administrative Kubernetes access.
+It discovers `kubectl`, obtains the Tyk admin secret from the configured Kubernetes
+Secret, and resolves the internal service endpoint. The current installation
+uses its ClusterIP fallback; the helper still contains a legacy LoadBalancer lookup.
+There is no need to print the secret or paste it into a raw admin-API command.
+
+| Command | Behavior |
+|---|---|
+| `add-user <identity> [account] [type]` | Creates an additional key and prints it. It does not rotate an existing key. |
+| `validate-key <identity> <key-or-hash>` | Checks that a session with access rights belongs to the identity; prints true/false and returns success/failure. It does not test model inference. |
+| `update-user <identity> [account] [type]` | Creates a new key first, then attempts to revoke other keys for that identity. |
+| `list-user <identity>` | Prints matching hashes, identity, account, and type; does not recover raw key strings. |
+| `invalidate-key <key-or-hash>` | Attempts to revoke one key. |
+| `invalidate-user <identity>` | Attempts to revoke all keys for the identity. |
+| `grant-api <api-id> [api-name]` | Adds missing API access to existing keys across the key store; this is a bulk operation. |
+
+Account defaults to the identity; type defaults to **service**, including during
+rotation. Supply both explicitly to preserve a user's intended account and type.
+Examples use fictitious identities and capture the returned key without printing it:
+
+```bash
+KEY=$(tyk-admin.sh add-user example-user example-project user)
+NEW_KEY=$(tyk-admin.sh update-user example-user example-project user)
+SERVICE_KEY=$(tyk-admin.sh add-user example-service example-project service)
+```
+
+Deliver keys through your private credential workflow. Creation and rotation return
+raw keys because clients need them; personal provisioning can store a key in the
+user's private environment file. Do not claim that raw keys never exist outside
+the mint response.
+
+The script classifies arguments of 40 characters or fewer as hashes when looking
+up or revoking one key. Some revoke paths suppress request failures; the reported
+count is not an independently verified revocation result. Verify an authorized
+rotation/revocation before relying on it to remove access.
+
+## New-key limits and access
+
+These are defaults in the verified helper, not an audit of all existing keys:
+
+| Setting | New user key | New service key |
+|---|---|---|
+| Rate | 300 requests per 60 seconds | 100000 requests per 60 seconds |
+| Expiry | No expiry (`expires: 0`) | No expiry (`expires: 0`) |
+| Cumulative quota | Disabled (`quota_max: -1`) | Disabled (`quota_max: -1`) |
+| API access | `model-gateway` and `model-anthropic` | Both APIs |
+
+The service limit is high, not literally unlimited. Rate/per are included at the
+session level and in both API access blocks. Setting the helper's `API_ID`
+variable does not change which APIs `key_body()` grants.
+
+The August 26 changelog supersedes the older 60/minute policy. The August 25
+entry explains another important behavior: **do not GET a Tyk session and PUT
+that response back unchanged**. Runtime allowance/quota fields can be hydrated
+with values unsuitable for writing back. `grant-api` builds a reduced session,
+cleans nested limits, uses `suppress_reset=1`, and skips keys that already have
+the requested API. It is not a general rate-limit repair command.
+
+## Provisioning integration
+
+The login-node provisioning hook is separate from the key store and is not
+included in this repository. The optional overlay
+[`tyk-pam-cmd`](../ww-overlays/overlays/control-plane/usr/local/sbin/tyk-pam-cmd)
+is a restricted SSH command wrapper: it permits add, update, and validation,
+forces `account=identity` and `type=user`, and calls `tyk-admin.sh`. Deploying the
+wrapper alone does not install or prove a working PAM hook.
+
+The admin script's old comment saying keys are created only by hand does not
+describe this integration. Read the implementation and the deployment's access
+configuration rather than treating that comment as current system state.
+
+## State, audit, and configuration ownership
+
+Tyk stores hashed key sessions in Redis; the checked deployment has
+`TYK_GW_HASHKEYS=true` and `TYK_GW_HASHKEYFUNCTION=murmur128`. Preserve Redis data
+and its private recovery process. The Redis pod uses PVC
+`redis-data-tyk-redis-master-0` in namespace `tyk`, bound to
+`pv-tyk-redis-data` with reclaim policy `Retain` (verified 2026-09-13).
+This is an explicit existing-volume binding, rather than a newly provisioned
+`nfs-models` volume. Sessions include identity, API access, and configured limits;
+Redis also supports rate-limit counters. This is separate from the gateway usage
+ledger and the admin audit file below. See
+[Warewulf storage](WW-OVERLAYS.md#storage-setup-and-recovery) for binding and recovery.
+An overlay reconstructs configuration, not the
+sessions or the client-side raw key files.
+
+`tyk-admin.sh` writes a separate administrative audit file, defaulting to
+`/var/log/aleph/tyk-admin.log`. Records contain timestamp, operator/host, action,
+identity, and action details. Validation calls are logged too. Single-key
+invalidation includes the first eight characters of the supplied key or hash.
+Writes are best-effort; the script does not implement rotation or guaranteed
+delivery. This is not the gateway's persistent per-request usage ledger; see
+[Logging and metrics](LOGGING.md).
+
+Configuration overrides are `TYK_URL`, `TYK_SECRET`, `AUDIT_LOG`, and `KUBECTL`.
+Keep real values in private configuration. The owning overlay manifests are
+`51-tyk.yaml` (deployment/mounts), `53-tyk-api-definitions.yaml` (routes), and
+`54-tyk-middleware.yaml` (middleware). The API definitions and middleware mount at
+`/opt/tyk-gateway/apps` and `/opt/tyk-gateway/middleware`; the chart also supplies a
+scratch mount under `/mnt/tyk-gateway`. Review the effective override when debugging
+an empty API catalog. See [Kubernetes](KUBERNETES.md#bootstrap-and-request-path-diagnostics)
+and [Warewulf](WW-OVERLAYS.md) for platform and overlay concerns.

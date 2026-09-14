@@ -80,3 +80,29 @@ configuration therefore does not prove a fresh bootstrap reproduces it. Review
 and persist the intended autoscaler settings in the owning deployment source
 before relying on that behavior after a rebuild. This documentation update does
 not change the live ConfigMap or the bootstrap manifest.
+
+## Bootstrap and request-path diagnostics
+
+The older runbook combines several independent failure modes. Check the owning
+component instead of restarting the entire stack:
+
+| Symptom | Check |
+|---|---|
+| Serving bootstrap has stalled | Inspect the Jobs in `60-istio.yaml`, `61-knative.yaml`, and `62-kserve.yaml`, their prerequisite namespaces/controllers, and image/download reachability. Filenames alone do not enforce readiness. |
+| Tyk starts but loads no APIs | `51-tyk.yaml` must both mount the `tyk-api-definitions` ConfigMap and set `TYK_GW_APPPATH` to that mount. Setting the path without mounting definitions is insufficient. |
+| A GPU worker is Ready but advertises no HAMi resources | Check host GPUs first, then `09-gpu-autolabel.yaml` and the `gpu=on` selector that enables the GPU stack. |
+| A model appears in the catalog but requests fail | Check its InferenceService, predictor readiness and startup, card route, then a valid request through the authenticated public endpoint. |
+| A long request times out | Review the Tyk proxy limits, gateway upstream timeout, predictor settings, and client timeout together. Identify which layer ended the request before changing all of them. |
+| A fresh worker starts a model slowly | Distinguish container-image pull, weight download, environment preparation, and loading weights into GPU memory. An existing weight PVC does not mean every startup cost is cached. |
+
+Keep Tyk administration on the operator's internal path. User-facing HTTPS and
+catalog checks do not establish that key administration or access to private
+records is appropriately restricted; use [the Tyk guide](TYK-USERS.md) for that
+interface. Keep usage-ledger access and metric semantics in
+[Logging and metrics](LOGGING.md).
+
+These checks were extracted from the local runbook and post-deploy notes and
+reviewed against the committed bootstrap and Tyk manifests on 2026-09-13. The
+old post-deploy smoke helper is not the acceptance path: it does not create the
+cards the gateway needs. Deploy and test one complete model using
+[Add a model](ADD-A-MODEL.md).

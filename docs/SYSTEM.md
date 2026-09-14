@@ -60,3 +60,54 @@ a complete etcd recovery procedure: local state and the site's rejoin design
 must also agree. Preserve quorum and validate one node's rejoin before proceeding
 to another. Keep site-specific recovery commands and credentials in private
 operating notes.
+
+### Rejoin acceptance checks
+
+The local rack and control-plane reboot records distinguish three stages:
+provisioning, firstboot configuration, and Kubernetes registration. Validate each.
+For planned maintenance, evacuate workloads gracefully, preserve control-plane
+quorum, and complete one canary before continuing.
+
+- Confirm the node booted the intended image and built overlays; a runtime
+  `wwclient` refresh is not equivalent to a fresh boot.
+- Require successful completion of the intended firstboot playbooks, not just a
+  Ready node. Inspect rendered files and permissions if package setup failed.
+- Check routes and service reachability. Where the deployment uses a fresh etcd
+  join, verify healthy membership and the intended local filesystem behavior.
+- On workers, check host GPU visibility, automatic `gpu=on` labeling, hardware
+  labels, HAMi resources, and RDMA resources when required.
+- Validate configured site services separately. For example, a running log
+  shipper is weaker evidence than successful delivery acknowledgements.
+
+The September 2026 worker canary traced failed package verification to 0750
+permissions on system directories. Its correction restored 0755 on `/usr`,
+`/usr/local`, and `/usr/local/bin` in the common overlay. Inspect directory entries
+in the built archive as well as the source tree. This finding does not justify
+recursively changing permissions across an installed system.
+
+### RDMA provider compatibility
+
+The [recorded Broadcom RoCE investigation](https://github.com/ualberta-rcg/aleph/blob/e8e6777/ww-overlays/NCCL-ROCE.md)
+found that exposing `/dev/infiniband` was insufficient: the container's verbs
+provider could not speak the host driver's ABI. NCCL reported `NET/IB : No device
+found` and used sockets even though Kubernetes had assigned an RDMA resource.
+
+Diagnose the layers in order:
+
+1. Host driver, modules, and active RDMA port.
+2. The device plugin's resource advertisement and device injection into the pod.
+3. The container's compatible verbs provider and its library dependencies.
+4. The selected HCA, GID, and bootstrap interface, then the transport actually
+   reported by NCCL.
+
+The recorded workaround exposed the matching host Broadcom provider and its
+library dependencies inside the serving container. A serving image with a matching
+provider is another option. Neither recipe transfers blindly to a different
+host driver, container distribution, or NIC; verify the ABI and library paths.
+Do not copy the old `NCCL_IB_GID_INDEX` without checking the target device.
+
+Use `ibv_devinfo` in the prepared container to check the device, then inspect
+NCCL diagnostic output: `via NET/IB` indicates the RDMA path, while
+`via NET/Socket` indicates sockets. Single-host tensor parallelism can use shared
+memory; multiple GPUs alone do not establish a requirement for RoCE. Keep forced
+transport settings used for a diagnostic separate from production defaults.
