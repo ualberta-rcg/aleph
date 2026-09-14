@@ -8,10 +8,10 @@
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-RKE2-blue.svg)](https://www.rke2.io/)
 [![GPU Scheduling](https://img.shields.io/badge/GPU-HAMi-76B900.svg)](https://github.com/Project-HAMi/HAMi)
 [![Serving](https://img.shields.io/badge/Serving-KServe%20%2B%20Knative-orange.svg)](https://kserve.github.io/website/latest/)
-[![Models](https://img.shields.io/badge/Models-170%2B-blueviolet.svg)](./models/)
+[![Models](https://img.shields.io/badge/Models-100%2B-blueviolet.svg)](./models/)
 [![Docker Hub](https://img.shields.io/docker/v/rkhoja/aleph?label=Docker%20Hub&color=blue)](https://hub.docker.com/r/rkhoja/aleph)
 
-> **170+ science and language models — one endpoint, one key, from protein folds to LLMs.**
+> **Over 100 model deployments — one endpoint, one key, from protein folds to LLMs.**
 >
 > *One point. Every model. Infinite unity.*
 
@@ -23,13 +23,20 @@
 
 ## 📖 Description
 
-Aleph serves scientific and language models through one HTTP API. Researchers can
-call models from notebooks, pipelines, or existing API clients without managing
-their weights, software environments, or GPU allocations.
+Aleph is a local inference server. It serves AI models much like a web server
+serves content: send a request over HTTP and receive text, an image, a prediction,
+or another model-specific result. The hosted models run on hardware we operate
+on Vulcan.
 
-The platform combines RKE2 Kubernetes, HAMi GPU sharing, KServe/Knative serving,
-and a FastAPI gateway. Model cards define routes and capabilities; the gateway
-discovers them from Kubernetes without a restart.
+Compatible tools use the same API formats they already support: change the server
+address, supply an Aleph API key, and name the model. A notebook, research pipeline,
+browser application, or agent can use the service without managing its own model
+weights, software environment, or GPU allocation.
+
+Researchers share running model servers, avoiding repeated setup and loading for
+each workflow. The model stays loaded while in use; idle models can release their
+GPU resources while retaining their weights on persistent storage. The researcher
+chooses the right model and evaluates its results; Aleph handles serving it.
 
 ## ✨ Features
 
@@ -37,11 +44,19 @@ discovers them from Kubernetes without a restart.
   medical imaging, and other scientific tasks alongside chat, vision, and audio.
 - **Compatible APIs** — OpenAI-style chat and embeddings, Anthropic-style messages,
   and model-specific science endpoints. Check each card for supported inputs and features.
-- **Flexible runtimes** — choose the serving engine appropriate for each model.
-- **GPU sharing and scaling** — HAMi supports shared allocations; idle models can
-  scale to zero. Cold starts and capacity refusals return retry guidance.
+- **Flexible runtimes** — KServe manages deployment; vLLM, Text Embeddings
+  Inference, NVIDIA NIM, or custom servers execute the models. A new API may need
+  a gateway adapter; adding a supported model needs its deployment and card.
+- **GPU sharing and scaling** — small models can share a GPU through HAMi, while
+  larger models can request multiple devices. Adding workers expands the pool;
+  starting more model copies shares demand within that pool. Both need capacity.
+- **Always-on or on-demand** — selected models keep a running copy; others scale
+  to zero when idle. A wake-up can return `503` with retry guidance, or a capacity
+  refusal when the gateway cannot find a suitable placement.
 - **Authentication and accounting** — Tyk handles API keys and rate limits; the
-  gateway records usage metadata and exposes aggregate metrics.
+  gateway records caller identity, token counts, latency, status, and allocated
+  resources, and exposes aggregate metrics. See [Logging and metrics](docs/LOGGING.md)
+  for examples, content exclusions, and retention.
 - **Persistent weights** — NFS-backed storage allows models to reuse downloaded
   weights across pod and node replacement.
 
@@ -59,7 +74,7 @@ The hosted service is a proof of concept with shared capacity and no SLA.
 
 ## 🔬 Model Catalog
 
-The `models/` directory contains deployment definitions across scientific and language domains:
+Aleph hosts over 100 model deployments across scientific and language domains:
 
 | Domain | Examples |
 |---|---|
@@ -135,9 +150,9 @@ manifests and cards live under `models/`; gateway source and tests live under
 | [Endpoints](docs/ENDPOINTS.md) | API paths and client configuration |
 | [API keys](docs/TYK-USERS.md) | Authentication and identity |
 | [Logging and metrics](docs/LOGGING.md) | Recorded data, examples, retention, and usage reports |
-| [Overlays](docs/WW-OVERLAYS.md) | Deployment layout |
-| [Site values](docs/SITE-VALUES.md) | Configure an instance |
-| [Storage](docs/STORAGE-RECOVERY.md) | Fresh storage versus recovery bindings |
+| [Warewulf](docs/WW-OVERLAYS.md) | Overlays, site settings, and storage |
+| [Kubernetes](docs/KUBERNETES.md) | Serving components, placement, and model lifecycle |
+| [System](docs/SYSTEM.md) | Boot integration, node services, and GPU/RDMA support |
 | [Gateway reference](gateway/README.md) | Routing and model-card behavior |
 
 ## 🔗 References

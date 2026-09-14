@@ -304,3 +304,18 @@ and links. Update technical sections around these customizations; do not replace
 the README wholesale. Change a protected part only when the user explicitly
 requests that particular change. The historical baseline is commit e8e6777
 (2026-09-10); retain the subsequently added Aleph logo as well.
+
+## Advanced documentation
+
+Record reusable infrastructure findings in the guide that owns the topic:
+
+- `docs/WW-OVERLAYS.md`: Warewulf, overlay settings, site tokens, and storage bindings.
+- `docs/KUBERNETES.md`: serving components, scheduling, networking, and model lifecycle.
+- `docs/SYSTEM.md`: node image integration, boot, systemd, kernel, GPU, and RDMA behavior.
+
+Extend these guides instead of adding a separate document for each setting or
+expanding the README. Link the owning source file and explain what the setting
+does, why it matters, and how it was checked. Date measured findings and state
+the tested scope; do not present proposals or old snapshots as verified live state.
+Keep addresses, credentials, user records, and site-specific recovery details in
+private operating notes. Add a dated changelog entry for documentation changes.

@@ -26,7 +26,7 @@ and placement; the supplied configuration is not a universal sizing recommendati
 
 Clone this repository and prepare a private copy of the overlays for your site.
 Use `ww-overlays/site.env.example` as the starting point for site values, following
-[the token reference](docs/SITE-VALUES.md). Render the placeholders before deployment
+[the token reference](docs/WW-OVERLAYS.md#site-values-and-tokens). Render the placeholders before deployment
 and configure node-specific networking separately.
 
 Keep real credentials and rendered files out of Git. Preserve your site's private
@@ -35,7 +35,7 @@ SSH and cluster-join configuration when integrating the supplied overlays.
 **Choose storage bindings before baking.** The included static PV/PVC manifests
 record an existing deployment's storage layout. For a fresh installation, replace
 those bindings with your own; changing the NFS address alone is insufficient.
-See [storage setup and recovery](docs/STORAGE-RECOVERY.md).
+See [storage setup and recovery](docs/WW-OVERLAYS.md#storage-setup-and-recovery).
 
 ## 2. Provision the nodes
 

@@ -2,6 +2,25 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Organize advanced infrastructure documentation
+
+Consolidate storage recovery and site-value tokens into WW-OVERLAYS.md, including
+an index of overlay settings that need review. Remove the separate STORAGE-RECOVERY
+page; keep SITE-VALUES as a short link for existing source-comment references. Add KUBERNETES.md for serving configuration and SYSTEM.md for
+node behavior. Update the README documentation table, quickstart links, and both
+agent guides so future reusable findings go into these three guides.
+
+Refresh the README explanation of local inference, shared models, runtimes, and
+scaling using the last ten repository revisions and read-only checks on the
+control plane. Use the requested wording: over 100 model deployments.
+Preserve the original branding, diagram, support, references, and licence.
+Record the observed Knative initial-scale configuration gap in KUBERNETES.md.
+
+Validation: reviewed source configuration and README history; checked live gateway,
+ingress/auth services, TLS, storage, model categories, GPU resources, and selected
+model scaling settings. Check relative documentation links and anchors and compare
+protected README sections. Documentation only; no deployment or inference tests.
+
 ## 2026-09-13 — Restore historical guidance and preserve README customizations
 
 Restore CLAUDE.md from e8e6777, the repository snapshot as of 2026-09-10.
