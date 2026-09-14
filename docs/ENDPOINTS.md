@@ -63,21 +63,12 @@ HTTP validation below does not establish that every Claude Code feature works.
 | `GET /v1/models` | Chat model list in OpenAI-style shape. Listing does not prove readiness. |
 | `GET /v1/models?all=true` | Full catalog, including non-chat models, inputs, endpoints and deployment information. |
 | `GET /anthropic/v1/models` | Tyk strips `/anthropic` and marks the request as Anthropic. Returns always-on chat models in Anthropic list shape; `all=true` does not expand this list. Other chat models remain callable by ID. |
-| `GET` or `HEAD /anthropic/api/hello` | Keyless Tyk startup-probe response; GET returns `{"message":"hello"}`. This is an edge route, not a gateway handler. |
-| `GET /v1/capacity` | Advisory GPU-capacity snapshot, including freshness. It is not a reservation or guarantee of placement. |
-| `GET /healthz` | Whether initial card and service discovery completed. |
-| `GET /readyz` | Whether cards exist and initial card/service/node/pod discovery completed. This is gateway readiness, not every model's readiness. |
 | `GET /metrics` | Aggregate gateway metrics; `?local=true` selects the receiving replica. See [Logging and metrics](LOGGING.md). |
 
 The gateway also selects Anthropic catalog format when the request carries an
 `anthropic-version` header. Use ordinary `/v1/models?all=true` without that header
 to retrieve the full catalog.
 
-`/serving/api/v1/*` is **not a general keyless API mirror**. The current public
-host returns `404` for `/serving/api/v1/models` and the corresponding chat path.
-An older catalogue-only Tyk definition remains in the repository; do not use it
-as evidence that a route is installed. Health and metrics exposure depends on
-the deployment's edge configuration.
 
 ## Dedicated inference handlers
 
@@ -137,21 +128,3 @@ support for those APIs.
 - Follow retry guidance with a bounded deadline. Do not retry invalid requests
   indefinitely or treat catalog membership as guaranteed capacity.
 
-## Validation — 2026-09-13
-
-Compared the running gateway handlers with repository source and checked the
-public edge from the control plane. Public catalog HTML and the GET/HEAD hello
-probe returned `200`; unauthenticated model-list paths returned `401`; the old
-`/serving/api/v1/` model/chat paths returned `404`.
-
-Small sequential synthetic requests through the internal gateway passed chat and
-Anthropic answer checks, both SSE completion formats, token counting and text
-completions with GPT-OSS-20B; BGE-M3 and ESM2-650M embedding dimensions/finite values;
-and BGE reranking order. Catalog formats, unknown-model and non-chat guards,
-query-only custom-request rejection, capacity, health, readiness and local metrics
-also behaved as described.
-
-Successful inference checks bypassed Tyk. Authenticated public inference, audio
-generation/uploads, image/vision inference, other science runtimes, cold starts,
-load limits and an interactive Claude Code session were not tested in this review.
-No model deployments or gateway settings changed.
