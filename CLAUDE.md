@@ -134,7 +134,7 @@ not the gateway ledger. Preserve Redis storage across rebuilds.
    resource requirements instead of copying another model's claims.
 2. Prepare `pvc.yaml` where needed, `inferenceservice.yaml`, `details.yaml`,
    `test.py`, and a README. Add custom server/configuration files as required.
-   Record runtime quirks in the model's own CLAUDE notes. Use the card templates;
+   Record runtime quirks in the model's own CLAUDE notes. Use the card reference;
    keep gateway capabilities in `behavior` and scaling consistent with the service.
 3. Apply storage, then supporting ConfigMaps, then service, then card. Do not
    interrupt weight/environment staging with repeated redeployments or create
@@ -200,11 +200,10 @@ Cold-start `503`/retry guidance and unavailable capacity are distinct from runti
 failure. Check the Knative initial-scale finding in [Kubernetes](docs/KUBERNETES.md)
 when validating a new deployment.
 
-The local workspace's older scaling one-offs patch InferenceServices and are
-historical, not the current procedure. Also inspect `scripts/test-model.sh` before
-using it: its `zero` action directly scales a generated Deployment, `up`/`curl`
-use an internal gateway path, and recreation can continue after its wait loop.
-It is not a substitute for the guarded sequence and authenticated tests above.
+The local workspace's older scaling one-offs and the removed `test-model.sh`
+helper are historical, not the current procedure: the helper's `zero` action
+scaled a generated Deployment directly, `up`/`curl` used an internal gateway
+path, and its recreation could continue after its wait loop.
 
 ## HAMi troubleshooting and GPU usage
 

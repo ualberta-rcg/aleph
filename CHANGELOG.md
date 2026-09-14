@@ -1,6 +1,19 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Models root: the six reference files only
+
+Remove the standalone test batteries and the ops helper entirely: models/templates/
+(test.template.py, test.science-template.py, test.science-openapi-template.py) and
+scripts/test-model.sh are deleted. test.md now points at deployed per-model batteries
+as the copy source (gpt-oss-120b chat battery, qwen25-vl-72b-awq vision, bge-m3
+embeddings, esmfold/diffdock science, boltz-2 native NIM, progen2 completions,
+xtts-v2 audio); ADD-A-MODEL and root CLAUDE.md wording updated from "templates" to
+deployed examples; gateway/test.py pointer and models/timer-s1/CLAUDE.md commands
+repointed; the removed helper is noted as historical. models/ root now contains only
+the six .md reference files. No battery knowledge lost: the checks/conventions live
+in test.md and the working code in each model directory.
+
 ## 2026-09-14 — Clean the models root to the per-file-type reference set
 
 Move the three test batteries (test.template.py, test.science-template.py,

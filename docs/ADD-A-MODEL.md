@@ -3,7 +3,7 @@
 A deployment defines how to run a model, how Aleph exposes it, and how to check
 its results. The manual steps and agentic loop below use the same files and tests.
 
-1. Research the model and inspect templates and similar deployments in `models/`.
+1. Research the model and inspect similar deployed models in `models/`.
 2. Prepare the deployment files and adapt one `test.py` to the model's capabilities and limits.
 3. Apply storage, then the service, then the card; recreate an existing service when updating its spec.
 4. Run `test.py`, fix problems and repeat against the final deployment.
@@ -43,11 +43,11 @@ For language or multimodal models, check quantization, parsers, chat formatting,
 sampling and supported tools/reasoning. For science models, check domain units,
 output interpretation and a suitable reference result.
 
-Look at templates and examples in `models/`. Choose by runtime and task, read
-the deployment YAML, card, test and notes, and adapt them together. The templates
-include chat, custom science, and embedding/reranking/audio patterns. File names
-and examples can change; inspect their contents rather than assuming a template
-is limited to the task in its name.
+Look at deployed examples in `models/`. Choose by runtime and task, read
+the deployment YAML, card, test and notes, and adapt them together. Exemplar batteries cover chat,
+custom science, and embedding/reranking/audio patterns. Directories and their
+files can change; inspect contents rather than assuming a file is limited to
+the task in its name.
 
 For an existing deployment, compare its live configuration with source before
 editing. Check what it actually runs and preserve the working settings you are
@@ -72,7 +72,7 @@ Use these as the starting point, then verify compatibility with the model:
 | Layout | Four implementation files plus README and CLAUDE notes, described below. Keep setup and small server/configuration definitions in the service YAML. |
 | Storage | A model-specific PVC using `ReadWriteMany` and the `nfs-models` storage class, with persistent weights, caches and any required venv. Adapt storage settings through [Site values](SITE-VALUES.md). |
 | Model card | ConfigMap `<model>-details`, consistent model naming and the gateway discovery label; use the [current field reference](../models/details.md). |
-| Validation | One basic `test.py`, starting from templates and examples in `models/`; adapt its inputs and assertions while retaining the applicable standard battery. |
+| Validation | One basic `test.py`, adapted from the closest deployed battery in `models/`; adapt its inputs and assertions while retaining the applicable standard battery. |
 
 The version above is a reviewed baseline, not a claim that every deployment uses
 it or that it supports every new model. Record tested exceptions with the model
@@ -158,7 +158,7 @@ per replica. Verify topology and runtime compatibility for multi-GPU operation.
 Use [HAMi diagnostics](KUBERNETES.md#hami-diagnostics) to distinguish placement
 problems from runtime memory exhaustion.
 
-**Model card.** Inspect the relevant card templates and examples in `models/`:
+**Model card.** Read the [card reference](../models/details.md) and the closest deployed examples:
 
 - Label the ConfigMap `model-details: "true"` and store valid JSON in `data.details.json`.
 - Set the public `id`, task `type` and documented API/health paths.
@@ -192,7 +192,7 @@ are different settings. Keep idle-retention settings consistent too.
 ### 3. Adapt the standard test battery
 
 Prepare `models/example-model/test.py` alongside the manifest and card, using
-templates and examples in `models/`. Keep the script basic: small functions,
+deployed batteries in `models/`. Keep the script basic: small functions,
 ordinary API requests, meaningful assertions and one result summary. Start with
 the relevant existing checks, then set the model's requests, fixtures, expected
 results, boundaries and workload sizes before deploying.
@@ -225,7 +225,7 @@ account for tokenized input including chat formatting and the output allowance;
 test near the supported limit and the documented rejection or truncation beyond
 it. For other tasks, use the appropriate units, batch sizes or payload dimensions.
 
-The templates report `PASS` for a successful check, `EXP` for a documented expected
+The batteries report `PASS` for a successful check, `EXP` for a documented expected
 outcome such as rejecting unsupported tools, `FAIL`/`ERR` for failures or exceptions,
 and `SKIP` for an untested case. Define expected outcomes before checking them;
 fix failures rather than relabeling them. The script must exit nonzero on failures

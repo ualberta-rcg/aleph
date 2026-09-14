@@ -7,15 +7,22 @@ it does not replace them with a framework or change their assertions.
 
 ## Choose existing material
 
-| Existing example | Use and adaptation |
-|---|---|
-| [Chat and API battery](templates/test.template.py) | Chat, system prompts, sampling, tools, vision, reasoning, meta-tasks, OpenAI/Anthropic and accounting. Also contains embedding/reranking sections to select when relevant. |
-| [Custom science battery](templates/test.science-template.py) | Explicit scientific request, output shape, domain checks, limits, concurrency and recovery. Supply the model's real fixture and assertions. |
-| [OpenAPI science battery](templates/test.science-openapi-template.py) | Native scientific/NIM schema exploration, required fields, enums/ranges and gateway checks. Understand its direct-backend calls and endpoint discovery before using it. |
+There is no standalone template: copy the closest deployed battery and adapt it.
 
-Read the whole selected file and comparable model tests. A name does not limit
-which useful checks can be adapted from it. Templates contain illustrative values
-and incomplete assertions; copying one unchanged does not validate a model.
+| Deployed battery (`models/<model>/test.py`) | Covers |
+|---|---|
+| `gpt-oss-120b/test.py` | The full chat/API battery: system prompts, sampling, tools, vision-content handling, reasoning effort, streaming, OpenAI+Anthropic, accounting, limits, load and recovery |
+| `qwen25-vl-72b-awq/test.py` | Vision chat variant of the same battery |
+| `bge-m3/test.py` | Embeddings: dimensions, similarity/ordering, batches, boundaries |
+| `esmfold/test.py`, `diffdock/test.py` | Custom science servers: real fixture, output shape, domain checks, wake/retry |
+| `boltz-2/test.py` | Packaged native/NIM server: native payload, schema-driven checks |
+| `progen2/test.py` | Completions-only API |
+| `xtts-v2/test.py` | Audio endpoints: speech, clone, voices |
+
+Read the whole selected file and comparable model tests. A model's name does not
+limit which useful checks can be adapted from it. Deployed batteries contain
+illustrative values and model-specific assertions; copying one unchanged does not
+validate a different model.
 
 ## What to customize
 
@@ -47,7 +54,7 @@ toggle or budget controls. Check enabled/disabled behavior where applicable,
 reasoning versus final content, a verifiable final answer and streaming in each
 supported API. Some models always reason internally; hidden output is not proof
 that computation stopped. Use [the gateway's thinking behavior](details.md#capabilities-and-reasoning)
-to choose expectations. Template budgets are examples, not model-independent limits.
+to choose expectations. Battery budgets are examples, not model-independent limits.
 
 **Tools.** Check function names, argument structure and tool-result continuation.
 Test interaction with thinking where supported. A tools capability flag does not
@@ -97,7 +104,7 @@ measure production capacity.
 | `FAIL` / `ERR` | Failed assertion or exception; resolve and rerun |
 | `SKIP` | Not checked; record why and keep the limitation visible |
 
-Some template sections deliberately require stronger model-specific assertions.
+Some battery sections deliberately require stronger model-specific assertions.
 For example, an HTTP 200 or a nonempty reasoning field alone cannot establish
 scientific correctness or a correct final answer. Inspect the checks before claiming
 coverage. Expected results must be defined in advance, not relabeled after failure.
