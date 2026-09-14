@@ -2,6 +2,20 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-14 — Organize model-file documentation by purpose
+
+Add Markdown references for model storage, InferenceServices, gateway cards,
+existing test examples and model notes. Reuse the prior card guide's scientific
+input/output patterns, explain serving and storage variations, and map card
+options and limitations to the current repository gateway implementation.
+Keep the old card-guide filename as a navigation link, update model guidance and
+the deployment guide, and explain integration of additional runtimes.
+
+Validation: reviewed gateway handlers and existing model/template files; checked
+Markdown links, YAML examples, embedded JSON and the diff. Executable tests,
+operations helpers, model subdirectories and gateway code are unchanged.
+No live inference or model deployment was performed.
+
 ## 2026-09-14 — Clarify deployment standards and the model test battery
 
 Update the model deployment guide to start from established patterns and tested

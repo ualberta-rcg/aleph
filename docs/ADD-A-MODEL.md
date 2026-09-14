@@ -15,6 +15,25 @@ wait for old predictor pods and revisions to clear, then recreate it. Never patc
 its spec or delete its PVC.** The [update procedure](#update-an-existing-service)
 applies to both human operators and agents.
 
+## References for each model file
+
+Use these Markdown references for field explanations, embedded examples and
+variations. Start with the established patterns, then adapt them to the model.
+
+| Deployment file | Reference |
+|---|---|
+| `models/example-model/pvc.yaml` | [Storage, caches and environments](../models/pvc.md) |
+| `models/example-model/inferenceservice.yaml` | [Runtime, initialization, resources and scaling](../models/inferenceservice.md) |
+| `models/example-model/details.yaml` | [Model-card options mapped to the gateway](../models/details.md) |
+| `models/example-model/test.py` | [Using the existing test examples](../models/test.md) |
+| `models/example-model/README.md` and `CLAUDE.md` | [Current status and research notes](../models/model-notes.md) |
+
+The references contain example blocks, not another set of deployable manifests.
+Read relevant deployments in `models/` alongside them. An existing runtime is a
+starting point, not a restriction: another runtime can use a compatible gateway
+interface or a separately implemented and tested adapter. Keep its service, card
+and tests consistent; descriptive card fields do not implement new translations.
+
 ## Research once, then adapt
 
 Read the model's upstream instructions and the documentation for the intended
@@ -52,7 +71,7 @@ Use these as the starting point, then verify compatibility with the model:
 | Dependencies | Use the compatible environment supplied by the runtime where possible. For custom environments, record and pin the tested Python, PyTorch/CUDA and model-library combination; there is no single version combination for every model. |
 | Layout | Four implementation files plus README and CLAUDE notes, described below. Keep setup and small server/configuration definitions in the service YAML. |
 | Storage | A model-specific PVC using `ReadWriteMany` and the `nfs-models` storage class, with persistent weights, caches and any required venv. Adapt storage settings through [Site values](SITE-VALUES.md). |
-| Model card | `schema_version: 2`, ConfigMap `<model>-details`, consistent model naming and the gateway discovery label. |
+| Model card | ConfigMap `<model>-details`, consistent model naming and the gateway discovery label; use the [current field reference](../models/details.md). |
 | Validation | One basic `test.py`, starting from templates and examples in `models/`; adapt its inputs and assertions while retaining the applicable standard battery. |
 
 The version above is a reviewed baseline, not a claim that every deployment uses
