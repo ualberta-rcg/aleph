@@ -1,233 +1,173 @@
 # Deploy a model
 
-A model deployment brings together three things: **how to run it**, **how Aleph
-exposes it**, and **evidence that it works**.
+A deployment defines how to run a model, how Aleph exposes it, and how to check
+its results. The manual steps and agentic loop below use the same files and tests.
 
-[Part 1](#part-1-deploy-manually) explains the files and manual deployment steps.
-[Part 2](#part-2-the-agentic-deployment-loop) is the process an AI coding agent uses
-to research an unfamiliar model, tune it, test it, and prove the final deployment.
-Both use the same repository files and public API.
+1. Research the model and inspect templates and similar deployments in `models/`.
+2. Prepare `pvc.yaml`, `inferenceservice.yaml`, `details.yaml` and one `test.py`.
+3. Apply storage, then the service, then the card; recreate an existing service when updating its spec.
+4. Run `test.py`, fix problems and repeat against the final deployment.
+5. Record configuration, findings and dated results in the model's README and CLAUDE notes.
+6. Review the final diff, add a dated changelog entry, then commit and push.
+
+**Updating an existing InferenceService: edit its source, delete the service,
+wait for old predictor pods and revisions to clear, then recreate it. Never patch
+its spec or delete its PVC.** The [update procedure](#update-an-existing-service)
+applies to both human operators and agents.
+
+## Research once, then adapt
+
+Read the model's upstream instructions and the documentation for the intended
+runtime version. Establish the task, real inputs and outputs, license/access
+requirements, model files, dependencies, hardware needs and input limits.
+For language or multimodal models, check quantization, parsers, chat formatting,
+sampling and supported tools/reasoning. For science models, check domain units,
+output interpretation and a suitable reference result.
+
+Look at templates and examples in `models/`. Choose by runtime and task, read
+the deployment YAML, card, test and notes, and adapt them together. The templates
+include chat, custom science, and embedding/reranking/audio patterns. File names
+and examples can change; inspect their contents rather than assuming a template
+is limited to the task in its name.
+
+For an existing deployment, compare its live configuration with source before
+editing. Check what it actually runs and preserve the working settings you are
+not changing. Readiness and old test results are starting evidence, not proof of
+a modified deployment. Keep dated measurements with the model rather than adding
+fleet snapshots to this guide.
+
+Record research, chosen versions, reasons and deviations in
+`models/example-model/CLAUDE.md`. An operator or AI agent may deviate from the
+usual layout when research establishes a need; explain the reason and make the
+result reproducible. Work within the authorized environment and resource budget.
 
 ## Part 1: Deploy manually
 
-### 1. Start with an existing model
+### 1. Prepare the model directory
 
-Read the upstream model's serving instructions, then inspect a similar directory
-under `models/`. Read its manifests, card, test, README and implementation notes
-before copying. Choose by runtime and task, not just model size.
+Paths below are relative to the repository root. Replace `example-model` with
+your directory name. The normal layout has four implementation files plus notes:
 
-| Pattern | Repository example | What to study |
-|---|---|---|
-| vLLM chat/reasoning | [models/gpt-oss-20b/](../models/gpt-oss-20b/) | Serving configuration, reasoning translation and a tailored chat test battery |
-| Embeddings with TEI | [models/bge-m3/](../models/bge-m3/) | Shared GPU allocation, model mount, embeddings route and dimension/batch tests |
-| Reranking with TEI | [models/bge-reranker-v2-m3/](../models/bge-reranker-v2-m3/) | Query/documents contract, top-N output and relevance-order tests |
-| Custom science server | [models/esm2-650m/](../models/esm2-650m/) | Embedded server ConfigMap, persistent environment/weights and protein-embedding checks |
-| NVIDIA NIM | [models/boltz-2/](../models/boltz-2/) | Registry/download credentials, NIM cache, port/health paths and prefix translation; inference not verified in this review |
-
-
-| Model | Output checks that passed |
+| File | Contents |
 |---|---|
-| `gpt-oss-20b` | Correct answer to 2 + 5, normal stop completion, no exposed reasoning when disabled |
-| `bge-m3` | Three-input batch, 1,024-dimensional finite/nonzero vectors, consistent duplicate inputs and distinguishable different text |
-| `bge-reranker-v2-m3` | Two results requested from three documents; relevant document first, finite descending scores |
-| `esm2-650m` | Three short synthetic protein sequences, 1,280-dimensional finite/nonzero vectors, duplicate consistency and distinct-input differences |
+| `models/example-model/pvc.yaml` | PersistentVolumeClaim: name, namespace, storage class, access mode and capacity for weights, caches and any required virtual environment. |
+| `models/example-model/inferenceservice.yaml` | Runtime image/version, startup commands, init containers, ports, probes, resource requests/limits, scaling, mounts and Secret references. Keep model-specific setup and small server/configuration definitions here. |
+| `models/example-model/details.yaml` | Gateway card ConfigMap: model ID, task, API paths, routing, inputs/outputs, capabilities, limits, defaults, scaling and provenance. |
+| `models/example-model/test.py` | One basic script covering valid/invalid requests, expected results, supported features, limits, cold starts, load/stress and recovery. Customize it during deployment; a normal run executes all applicable checks. |
+| `models/example-model/README.md` | What the model does, sample requests/results, complete deployment/test commands, final configuration, dated results and limitations. |
+| `models/example-model/CLAUDE.md` | Research sources, configuration decisions, runtime quirks, failed approaches and findings for the next operator or agent session. |
 
-These are basic functional checks, not the complete batteries. They did not test
-public Tyk authentication, cold starts, redeployment, load, or scientific validity.
-Boltz remains a configuration reference without inference verification in this
-review. Do not transfer these results to a copied or modified deployment.
+Most deployments should fit this layout. A custom server can be a ConfigMap
+document inside `models/example-model/inferenceservice.yaml`, followed by the
+InferenceService document, separated with `---`. Mount the ConfigMap into the
+serving container. Initialization scripts belong in that file's init containers.
+This keeps setup, server configuration and deployment together in one apply.
 
-For additional implementation patterns, inspect
-[models/gemma-4-26b-a4b/](../models/gemma-4-26b-a4b/) for multimodal setup and
-[models/caduceus/](../models/caduceus/) for a custom compiled-dependency environment.
+### 2. Connect storage, runtime and card
 
-For an existing deployment, inspect its live configuration before proposing a
-change; that is the evidence for how it currently runs. Compare it with source and
-record differences. A running cluster, an installed service, or a Ready condition
-is not evidence that every model or capability has been tested.
+**Persistent storage and environments.** Match the service's
+`persistentVolumeClaim.claimName` to `models/example-model/pvc.yaml`, and each
+mount name to its volume. Use a unique claim for a new model and preserve an
+existing model's claim and data. Omit a PVC only when no persistent files are
+needed. Deployment-specific storage values belong in [Site values](SITE-VALUES.md).
 
-These are patterns, not universally correct defaults. Existing README text and
-comments can lag behind manifests; some examples retain historical workarounds or
-floating image tags. Verify the current implementation and select an explicit
-compatible runtime version for your model. Do not inherit another model's test
-results, capability claims, storage names or scaling limits.
+When a model needs a Python virtual environment, **create it on the model's PVC**.
+For example, mount the claim at `/data`, prepare `/data/venv` in an init container,
+then start the server with `/data/venv/bin/python`. Mount that same claim and path
+in both containers. Use compatible Python, system libraries and CUDA dependencies
+between setup and serving. A runtime image that already provides the required
+environment does not need another venv.
 
-### 2. Understand the model directory
+Persist downloaded weights and prepared dependencies so restarts and scale-from-zero
+reuse them. Make setup idempotent: verify required files and imports before marking
+it complete, and coordinate initialization so replicas do not build the same
+unfinished environment concurrently. Prepare a replacement environment deliberately
+when dependencies change; preserve the working one until replacement is validated.
+Supply credentials through Kubernetes Secrets referenced in the YAML.
 
-All paths below are relative to the repository root. Replace `example-model`
-with your chosen directory name throughout the files and commands.
+**Runtime and resources.** Select an explicit compatible image version or digest.
+Match its serving port, health endpoint, model path and API format. Allow startup
+probes enough time for preparation/loading, and use readiness to exclude an unready
+server. Set CPU, RAM, GPU and storage budgets from measured needs.
 
-| File | What goes in it |
-|---|---|
-| `models/example-model/pvc.yaml` | A PersistentVolumeClaim: namespace, unique claim name, storage class, access mode and requested capacity for reusable weights/caches. Aleph's shared NFS pattern uses `ReadWriteMany` with `nfs-models`. Omit only when the runtime genuinely needs no persistent files. |
-| `models/example-model/inferenceservice.yaml` | The KServe InferenceService: runtime image/version, command and arguments, container port, resource requests/limits, placement, probes, timeouts, scaling, storage mounts and Secret references. Include init containers for any download or environment preparation. |
-| `models/example-model/details.yaml` | The gateway model card, stored as JSON inside a ConfigMap. Describes the public model ID, task, endpoints, backend mapping, tested capabilities, input/output descriptions, limits, defaults and scaling behavior. This makes the deployment discoverable. |
-| `models/example-model/test.py` | One test script for this model through Aleph: valid and invalid requests, expected outputs, supported features, limits, cold starts, load/stress and recovery. Customize it during deployment; running it executes all applicable checks. Accept `GW_URL`, `TYK_KEY` and `MODEL` through the environment. |
-| `models/example-model/README.md` | What the model does and how to use/deploy it: runtime configuration, file list, complete commands, sample input/output, tested capabilities, dated results and known limitations. Distinguish upstream capability from what this deployment exposes. |
-| `models/example-model/CLAUDE.md` | Implementation memory for the agent/operator: research links, why settings were chosen, dependency/parser quirks, failed approaches, measurements and remaining work. Start from [models/CLAUDE-TEMPLATE.md](../models/CLAUDE-TEMPLATE.md). |
+For HAMi sharing, request a GPU count and a memory allowance in MiB. For example,
+this container resource block requests one shared device with 20 GiB of GPU memory:
 
-Add files only when the model needs them:
+```yaml
+# Inside a serving container in models/example-model/inferenceservice.yaml
+resources:
+  requests:
+    cpu: "2"
+    memory: 8Gi
+    nvidia.com/gpu: "1"
+    nvidia.com/gpumem: "20480"
+  limits:
+    cpu: "4"
+    memory: 16Gi
+    nvidia.com/gpu: "1"
+    nvidia.com/gpumem: "20480"
+```
 
-| Additional file examples | Purpose |
-|---|---|
-| `models/example-model/server-configmap.yaml` and/or `models/example-model/server.py` | Custom HTTP server that loads the model and implements its request/response contract; mount or package the code as appropriate. |
-| `models/example-model/parser-configmap.yaml` and/or `models/example-model/parser.py` | A runtime-specific parser, mounted and enabled by the serving command. |
-| `models/example-model/chat_template.jinja` | A required chat format, supplied through the image, storage or a supporting ConfigMap. |
-| `models/example-model/test-input.json` or domain fixture files | Small, redistributable test inputs with a documented expected result. Keep research data and credentials out. |
+These are illustrative budgets. GPU memory must cover weights, runtime overhead
+and the intended input/concurrency, not just the model file size. Whole-device
+allocations omit `nvidia.com/gpumem`; set GPU count to the number of devices needed
+per replica. Verify topology and runtime compatibility for multi-GPU operation.
+Use [HAMi diagnostics](KUBERNETES.md#hami-diagnostics) to distinguish placement
+problems from runtime memory exhaustion.
 
-Prefer individual YAML applies; a new model does not need a kustomization layer.
-Some existing files contain several YAML documents separated by `---`: for example,
-Caduceus's service file also defines its server ConfigMap. Inspect the file before
-assuming its basename tells you every resource it creates. Avoid defining the same
-supporting ConfigMap in two places.
+**Model card.** Inspect the relevant card templates and examples in `models/`:
 
-### 3. Connect storage, runtime and card
+- Label the ConfigMap `model-details: "true"` and store valid JSON in `data.details.json`.
+- Set the public `id`, task `type`, schema version and documented API/health paths.
+- Set `routing.k8s_name` if the service name differs and `routing.upstream_model_id`
+  if the backend model name differs. Use only translations the gateway implements;
+  [Endpoints](ENDPOINTS.md) explains dedicated handlers and custom-path forwarding.
+- Put capability flags in `behavior`. Describe input/output types and domain units
+  in `input_map`/`output_map`; these descriptions do not implement validation or adapters.
+- Keep tested limits, defaults and parameter translations consistent with the
+  runtime. Put provenance, license and upstream links in `catalog`.
 
-**Storage and startup.** The service's `persistentVolumeClaim.claimName` must match
-`models/example-model/pvc.yaml`; its `volumeMounts[].name` must match its own volume
-name. Names need not all be identical. Use a unique claim for a new deployment;
-never rename or delete an existing model's claim just to match a naming convention.
+Science cards need their actual input/output contract, not copied chat capabilities.
+A custom server must produce real model results. Limit any upstream `usage` object
+to accounting metadata because it is retained in [usage records](LOGGING.md).
 
-Make setup idempotent. Cache downloaded weights and required prepared environments
-so a restart does not repeat installation. A lightweight download-helper environment
-is different from a custom server's full runtime environment. Mark setup complete
-only after required artifacts are usable: one existing file or directory does not
-prove a partial download/build finished. Prevent multiple initializers from writing
-the same unfinished environment. Keep credentials in Kubernetes Secrets; an export
-in your local shell does not supply them to a pod.
+**Scaling and visibility.** Keep service and card settings consistent:
 
-**Runtime and resources.** Match the actual serving port, health endpoint, model
-path and API format. Budget startup probes for loading/initialization and use
-readiness to exclude an unready server. Choose CPU, RAM, storage and GPU resources
-from evidence. With HAMi, shared allocations request GPU count plus
-`nvidia.com/gpumem` in MiB; whole-device allocations omit `gpumem`. Check topology
-and runtime compatibility before copying tensor-parallel, attention or memory flags.
-See [HAMi diagnostics](KUBERNETES.md#hami-diagnostics) for placement failures.
-
-**Card.** Follow [models/DETAILS-TEMPLATE-LLM.md](../models/DETAILS-TEMPLATE-LLM.md):
-
-- Set ConfigMap label `model-details: "true"` and put valid JSON in `data.details.json`.
-- Set `id`, `type`, `schema_version`, and the appropriate public/health `endpoints`.
-- Use `routing.k8s_name` for a differing InferenceService name and
-  `routing.upstream_model_id` for a differing backend model name. Add only routing
-  translations the gateway actually implements; Boltz's prefix handling is one example.
-- Put capability flags in `behavior`, not `compatibility`. Describe input/output
-  fields, types and units in `input_map`/`output_map`; descriptive maps alone do not
-  implement a new backend adapter or input validator.
-- Set tested `limits`, `defaults`, and any required `param_translation`. Put model
-  provenance, license, upstream links and descriptions in `catalog`.
-
-A custom server must return real results, not a demonstration response. Keep any
-upstream `usage` object limited to accounting metadata because the gateway retains
-it in [usage records](LOGGING.md).
-
-**Scaling.** Configure the service and card together:
-
-| Mode | `models/example-model/inferenceservice.yaml` | `models/example-model/details.yaml` |
+| State | Service | Card |
 |---|---|---|
 | Idle scale-to-zero | `spec.predictor.minReplicas: 0`; no stop annotation | `scaling.scale_to_zero: true`, `scaling.min_replicas: 0` |
-| Always up | Minimum at least 1; no stop annotation | `scaling.scale_to_zero: false`, matching `scaling.min_replicas` |
+| Always up | Minimum at least 1; no stop annotation | `scaling.scale_to_zero: false`, matching minimum |
+| Park/hide | Service unchanged; this alone does not stop compute | Remove the deployed details ConfigMap; retain source |
+| Stop execution | `serving.kserve.io/stop: "true"` annotation | May remain visible, or also be hidden |
 
-Set `maxReplicas` to a capacity-conscious bound, at least the minimum. Keep idle
-retention settings consistent. `scaleTarget` is an autoscaling target, not the
-runtime's batching limit; tune their interaction rather than assuming they must
-be numerically equal. See [KServe's Knative autoscaling guide](https://kserve.github.io/website/docs/model-serving/predictive-inference/autoscaling/kpa-autoscaler).
+Parking and stopping are separate actions. Preserve an intentionally hidden card
+when updating its service. See the [operator procedures](../CLAUDE.md#park-stop-scale-to-zero-or-keep-always-up)
+for commands. Set `maxReplicas` at least as high as the minimum and within capacity.
+Tune the Knative concurrency target against the runtime's batching behavior; they
+are different settings. Keep idle-retention settings consistent too.
 
-### 4. Apply and call the model
+### 3. Apply a new deployment or update an existing one
 
-Use a shell with administrative `kubectl` access to the intended cluster and a
-checkout of the repository. Follow [Quickstart](../QUICKSTART.md) for platform
-prerequisites and [environment setup](../CLAUDE.md#environment-and-private-configuration)
-for access configuration. Check storage, available capacity and the required Secrets
-without printing credentials.
+Use an administrative shell for the intended cluster and the repository checkout.
+[Quickstart](../QUICKSTART.md) covers prerequisites; [Site values](SITE-VALUES.md)
+owns site configuration. Check available capacity, storage and required Secrets
+without displaying credentials. Commands below use `example-model` as both the
+directory and service name; substitute the actual service name where they differ.
 
-For a **new** model, run from the repository root, applying each file separately:
+#### New deployment
+
+Apply each file in order, from the repository root:
 
 ```bash
 kubectl apply -f models/example-model/pvc.yaml
-# Apply required supporting files, if present, before the service:
-kubectl apply -f models/example-model/server-configmap.yaml
 kubectl apply -f models/example-model/inferenceservice.yaml
 kubectl apply -f models/example-model/details.yaml
-kubectl get isvc example-model -n models
-kubectl get pods -n models -l serving.kserve.io/inferenceservice=example-model
 ```
 
-Skip the supporting-file command when that file is absent or its ConfigMap is
-already included in the service YAML. Add other required supporting files explicitly.
-For an existing service whose spec changes, use the recreation steps in Part 2.
+#### Update an existing service
 
-The gateway watches cards; adding one needs no gateway restart. A catalog entry
-alone is not proof of a working model. With `GW_URL` set to the public origin
-(without `/v1`) and `TYK_KEY` supplied privately, check the full catalog:
-
-```bash
-curl --silent --show-error --fail-with-body --max-time 120 \
-  -H "Authorization: Bearer $TYK_KEY" "$GW_URL/v1/models?all=true"
-```
-
-Send the model's documented valid request or run its tailored test. An idle service
-may need that request to activate. Honor cold-start retry guidance within a bounded
-startup window; capacity refusal, loading and runtime failure are different outcomes.
-Do not repeatedly reapply while weights or environments are being prepared.
-
-In your prepared test environment, with dependencies installed and the endpoint/key
-exported, run:
-
-```bash
-MODEL=example-model python3 models/example-model/test.py
-```
-
-Use an appropriate allocated environment for tests/builds, not a shared login node.
-Keep TLS verification enabled. Public API tests exercise authentication and routing;
-an internal backend call is a diagnostic, not a substitute. Check the reported
-results as well as the process exit code—some existing batteries only print failures.
-
-## Part 2: The agentic deployment loop
-
-This is the workflow for an AI coding agent developing or repairing a deployment.
-A human specifies the model, intended capability, allowed environment and resource
-budget. The agent works one model at a time, records evidence in its directory,
-and stays within that scope. Existing unrelated deployments are left alone.
-
-```text
-Research → adapt files → deploy → inspect → tune settings
-                            ▲                  │
-                            └──────────────────┘
-       → functional battery → pressure and recovery tests
-       → clean redeployment → repeat verification → record → commit/push
-```
-
-### 1. Research and adapt
-
-Read the upstream model card, architecture/configuration, license and access terms,
-then the serving runtime's documentation for the version you intend to deploy.
-Confirm task, real I/O, context/input limits, quantization, hardware fit, parsers,
-sampling recommendations and dependency compatibility. Use upstream issues and
-recipes to investigate failures; verify suggestions against the selected version.
-Useful starting points are [vLLM serving](https://docs.vllm.ai/en/latest/serving/online_serving/)
-and [TEI's quick tour](https://huggingface.co/docs/text-embeddings-inference/quick_tour).
-A science/NIM model needs its own runtime's API and domain documentation.
-
-Adapt the closest example from Part 1. Record source links, chosen settings and
-reasons in `models/example-model/CLAUDE.md`. Do not copy historical fleet version
-ladders, memory thresholds, replica counts or model-specific workarounds as defaults.
-
-### 2. Iterate settings until the model works
-
-Deploy, inspect startup and a small valid request, identify the cause of a failure,
-change the owning source file, recreate, and try again. This settings iteration is
-a separate phase from running the full battery. Record each useful finding so the
-next agent session continues from evidence.
-
-Distinguish image pull/download failures, incomplete setup, scheduler capacity,
-GPU-memory exhaustion, wrong ports/probes, parser failures and wrong output shape.
-For a runtime issue, inspect its relevant diagnostic output and research the exact
-version. Change a small, explainable set of settings, then check its effect.
-Do not expose credentials, private prompts or other users' records in reports.
-
-**Every InferenceService spec update uses delete and recreate, never patch.**
-Edit `models/example-model/inferenceservice.yaml` first, then:
+Edit `models/example-model/inferenceservice.yaml` first. For a spec change,
+delete only the InferenceService, leaving its PVC and data intact:
 
 ```bash
 kubectl delete isvc example-model -n models
@@ -235,90 +175,122 @@ kubectl wait --for=delete pod -n models \
   -l serving.kserve.io/inferenceservice=example-model --timeout=300s
 kubectl get revisions.serving.knative.dev -n models \
   -l serving.kserve.io/inferenceservice=example-model
-# Continue only after old predictor pods AND revisions have cleared.
-# Apply changed supporting ConfigMaps before recreating the service.
+```
+
+Continue only when the wait succeeds **and** no old predictor pods or revisions
+remain. If either check fails, inspect the remaining resources before proceeding.
+Then recreate from source:
+
+```bash
 kubectl apply -f models/example-model/inferenceservice.yaml
+# Apply the card only when the model should be listed:
 kubectl apply -f models/example-model/details.yaml
 ```
 
-Use the actual service name when it differs from the directory name. Stop on a
-failed wait and investigate remaining resources; never fall through to recreate.
-Preserve the PVC and shared data. Do not manually scale controller-owned predictor
-Deployments. Do not interrupt staging or delete a cached environment without a
-separately justified recovery plan. Keep intentionally parked cards absent.
+Applying the service file also applies its embedded ConfigMaps. Set desired replica
+behavior in the InferenceService rather than scaling controller-owned Deployments.
 
-### 3. Prove the advertised features
+### 4. Call and test the model
 
-Keep one test script per model: `models/example-model/test.py`. Start from the
-appropriate template:
+Inspect startup before sending a small valid request:
 
-- [models/test.template.py](../models/test.template.py): chat, reasoning, tools,
-  vision, Anthropic, embeddings and reranking sections to select from.
-- [models/test.science-template.py](../models/test.science-template.py): custom
-  science requests, output shape and domain sanity checks.
-- [models/test.science-openapi-template.py](../models/test.science-openapi-template.py):
-  models with a documented/OpenAPI-described science API.
+```bash
+kubectl get isvc example-model -n models
+kubectl get pods -n models -l serving.kserve.io/inferenceservice=example-model
+```
 
-Customize this file as you deploy and learn about the model. The operator or AI
-agent should update its requests, fixtures, expected outputs, boundary cases and
-load sizes to match the model and available resources. Keep those checks in the
-same file and rerun the complete battery against the final deployment.
+Allow weight and environment preparation to finish. If a request returns a
+cold-start response, follow its retry guidance within a bounded startup window.
+Distinguish loading from insufficient capacity or runtime failure before changing
+settings. The gateway discovers the card without a gateway restart.
 
-Templates are menus, not automatic proof of support. Replace placeholder inputs
-and expected results, remove irrelevant positive tests, and retain useful checks
-that unsupported requests fail cleanly. Verify results, not just HTTP 200:
+In a prepared test environment with `GW_URL` set to the public origin, `TYK_KEY`
+supplied privately and `MODEL` set to the public model ID, run:
 
-| Capability | Evidence |
+```bash
+MODEL=example-model python3 models/example-model/test.py
+```
+
+Use an appropriate allocated environment for tests/builds, not a shared login node.
+Keep TLS verification enabled. A public API run checks authentication and routing;
+internal calls help diagnose failures but do not replace that check. Review both
+the result summary and exit status. Use the validation and completion steps below
+for manual work as well as agent-assisted deployment.
+
+## Part 2: The agentic deployment loop
+
+A human supplies the model, intended capability, environment and resource budget.
+The agent works one model at a time, using the research and deployment steps above:
+
+```text
+Research → adapt files → deploy → inspect a small request → tune and recreate
+                       → run test.py → fix failures and repeat
+                       → clean redeployment → run test.py → record → commit/push
+```
+
+### 1. Diagnose and tune
+
+Identify the cause before changing settings. Image/download errors need registry,
+access or file checks; setup failures need dependency/import checks; pending pods
+need scheduler events and capacity checks; runtime OOM needs measured memory
+headroom and input/batch limits. Wrong ports, probes, parsers and output formats
+need a direct comparison with the selected runtime's contract.
+
+Change a small, explainable set of settings in the owning source file, follow the
+update procedure, and check the effect. Use the existing research section when
+new evidence requires a different runtime or approach. Record useful findings in
+`models/example-model/CLAUDE.md` so another session can continue the work.
+
+### 2. Customize and run one test script
+
+Build `models/example-model/test.py` from templates and examples in `models/`.
+Keep it basic: small functions, ordinary API requests, meaningful assertions and
+one result summary. The operator or AI agent should customize requests, fixtures,
+expected results, boundaries and workload sizes as deployment proceeds.
+
+**Running `test.py` runs all applicable checks**, including functional behavior,
+limits, stress/load and recovery. There are no separate stress scripts or
+test-selection flags. Choose workloads within the authorized budget and preserve
+these checks in the final file for the next deployment.
+
+| Capability | What to check |
 |---|---|
-| Chat/completions | Correct simple answer, model identity, stop/truncation behavior, streaming completion |
-| Tools/reasoning | Correct tool and arguments, follow-up result handling, supported thinking on/off behavior and token budgets |
-| Images/audio | Known inline fixture, correct interpretation/output and explicit size/format limits |
-| Embeddings/reranking | Dimension, finite values, ordering or similarity expectations, batches and input limits |
-| Science | Real domain input, output schema/units and comparison to a suitable reference; a plausible shape alone is not scientific validation |
-| Alternate APIs and guards | Supported Anthropic behavior, invalid model/input handling and endpoint/type rejection |
+| Chat | Known answer, model identity, stop/truncation, output limits and streaming completion |
+| Tools/reasoning | Tool name/arguments and result handling; supported thinking behavior and budgets |
+| Images/audio | Known fixture, meaningful interpretation/output, supported formats and size limits |
+| Embeddings/reranking | Dimensions, finite values, expected similarity/order, batches and input limits |
+| Science | Real domain input, schema/units and comparison with a suitable reference result |
+| Errors and alternate APIs | Expected rejection of invalid requests and unsupported features; supported Anthropic behavior |
+| Load and recovery | Representative long inputs, concurrency, sustained requests and a valid final request |
 
-Resolve failures and errors. `EXP` must mean a documented expected outcome, not a
-failure relabeled to pass. A missing fixture or skipped capability remains unverified;
-remove the claim or report the limitation. Preserve the detailed result summary.
+The templates report `PASS` for a successful check, `EXP` for a documented expected
+outcome such as rejecting unsupported tools, `FAIL`/`ERR` for failures or exceptions,
+and `SKIP` for an untested case. Define expected outcomes before checking them;
+fix failures rather than relabeling them. Missing fixtures and skipped checks
+remain unverified. A successful HTTP status or plausible output shape alone is
+not scientific validation.
 
-### 4. Pressure-test and harden
+Observe request latency/throughput, queueing, GPU memory and runtime errors during
+load checks. A growing queue calls for comparing arrival rate, per-replica throughput,
+batching and placement capacity before increasing replicas. Free KV cache alone
+does not establish safe concurrency; measure peak memory under representative
+input sizes. After tuning, recreate and rerun the battery. See
+[Logging and metrics](LOGGING.md) for runtime and physical GPU measurements.
 
-Keep functional, limit and pressure checks together in `models/example-model/test.py`.
-Running that file runs the whole battery, with no separate stress command or test-selection
-flags. Follow the existing simple style: small test functions, API calls, assertions
-and one results summary. Keep the workload within the authorized resource budget.
-Start small, then exercise representative long inputs, concurrency,
-bursts and a sustained mix; include multimodal inputs where advertised.
+### 3. Prove reproducibility and finish
 
-Measure request latency/throughput, queueing, GPU memory and runtime health. Check
-for OOM/engine death and finish with a valid request proving the server still works.
-Exercise scale-up when capacity permits and scale-down after traffic stops; record
-capacity-blocked checks as unverified. Scope recovery tests so they cannot disrupt
-other models. [Logging and metrics](LOGGING.md) explains physical GPU measurements,
-runtime load and the limits of accounting estimates.
+Recreate the service from the final repository files while preserving its PVC.
+Run the complete `models/example-model/test.py` again. This checks that the result
+survives pod replacement and does not depend on an unrecorded live edit.
 
-Tune memory headroom, context, batching/concurrency, probes and scaling from those
-measurements. Do not infer that a queue always means too few replicas or that free
-KV cache alone justifies increasing concurrency. After a fix, recreate and repeat
-the affected functional and pressure checks. One successful long request does not
-prove that the same input size works under concurrent load.
+Verify the intended lifecycle: idle models stop after their idle window and wake
+on a later valid request; always-up models retain their minimum; hidden cards stay
+hidden. Check scale-up when capacity permits and record capacity-blocked checks
+as unverified. Scope recovery checks to this model.
 
-### 5. Prove reproducibility, then finish
-
-Once the settings, battery and pressure checks pass, recreate the service from the
-final repository files while preserving its weights. Reapply all required supporting
-resources and the intended card. Repeat functional verification and the relevant
-load/recovery checks against that final deployment. A live-only patch or a cached
-manual dependency is not a reproducible result.
-
-For idle scale-to-zero, confirm pods disappear after the idle window and a later
-valid request wakes the service. For always-up, confirm the intended minimum stays
-ready. Parking hides a card; stopping execution is different—see the
-[operator scaling procedures](../CLAUDE.md#park-stop-scale-to-zero-or-keep-always-up).
-
-Update `models/example-model/README.md` with the final runtime/image, resources,
-scaling, complete deployment/test commands, dated measurements and limitations.
-Keep the research and tuning record in `models/example-model/CLAUDE.md`. Remove
-stray test resources, preserve intended services/storage, and record unfinished
-work honestly if blocked.
-
+Update `models/example-model/README.md` with final versions, resources, scaling,
+commands, dated results and limitations. Keep research and tuning history in
+`models/example-model/CLAUDE.md`. Review the diff, remove temporary test resources,
+preserve service data, and add a dated repository changelog entry before committing
+and pushing. Report incomplete work explicitly instead of claiming a deployment
+or capability that has not been verified.
