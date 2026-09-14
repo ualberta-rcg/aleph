@@ -201,7 +201,7 @@ failure. Check the Knative initial-scale finding in [Kubernetes](docs/KUBERNETES
 when validating a new deployment.
 
 The local workspace's older scaling one-offs patch InferenceServices and are
-historical, not the current procedure. Also inspect `models/test-model.sh` before
+historical, not the current procedure. Also inspect `scripts/test-model.sh` before
 using it: its `zero` action directly scales a generated Deployment, `up`/`curl`
 use an internal gateway path, and recreation can continue after its wait loop.
 It is not a substitute for the guarded sequence and authenticated tests above.

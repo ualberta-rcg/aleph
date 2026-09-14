@@ -1,6 +1,17 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Clean the models root to the per-file-type reference set
+
+Move the three test batteries (test.template.py, test.science-template.py,
+test.science-openapi-template.py) into models/templates/, and the per-model ops helper
+test-model.sh into scripts/ (recreated for it). models/ root now contains exactly the
+six reference .md files (CLAUDE index + pvc/inferenceservice/details/test/model-notes).
+References updated: models/test.md template links, root CLAUDE.md and the helper's
+self-references, gateway/test.py pointer, models/timer-s1/CLAUDE.md command examples.
+Also removed an untracked models/__pycache__ directory. No content changes to the
+batteries or helper.
+
 ## 2026-09-14 — Complete the per-file-type model references
 
 Follow-up: restore the exemplars table (deployed cards to study, live-verified

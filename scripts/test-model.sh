@@ -2,7 +2,7 @@
 # Per-model OPS helper (not a test battery — that's models/<model>/test.py).
 # Run from the repo root on a Vulcan login node.
 #
-#   models/test-model.sh <model-dir-name> [action]
+#   scripts/test-model.sh <model-dir-name> [action]
 #
 # actions:
 #   apply     - kubectl apply the model's local manifests (reconcile drift)
@@ -20,7 +20,7 @@
 # reachable from inside the cluster). Override the node with HEAD=, and the gateway
 # address with GW= ; if GW is unset it is discovered from the model-gateway Service.
 # Request PAYLOADS are intentionally NOT baked in: each model's checks live in
-# models/<model>/test.py (start from models/test.template.py).
+# models/<model>/test.py (start from models/templates/test.template.py).
 set -uo pipefail
 
 HEAD="${HEAD:-172.26.92.43}"

@@ -9,9 +9,9 @@ it does not replace them with a framework or change their assertions.
 
 | Existing example | Use and adaptation |
 |---|---|
-| [Chat and API battery](test.template.py) | Chat, system prompts, sampling, tools, vision, reasoning, meta-tasks, OpenAI/Anthropic and accounting. Also contains embedding/reranking sections to select when relevant. |
-| [Custom science battery](test.science-template.py) | Explicit scientific request, output shape, domain checks, limits, concurrency and recovery. Supply the model's real fixture and assertions. |
-| [OpenAPI science battery](test.science-openapi-template.py) | Native scientific/NIM schema exploration, required fields, enums/ranges and gateway checks. Understand its direct-backend calls and endpoint discovery before using it. |
+| [Chat and API battery](templates/test.template.py) | Chat, system prompts, sampling, tools, vision, reasoning, meta-tasks, OpenAI/Anthropic and accounting. Also contains embedding/reranking sections to select when relevant. |
+| [Custom science battery](templates/test.science-template.py) | Explicit scientific request, output shape, domain checks, limits, concurrency and recovery. Supply the model's real fixture and assertions. |
+| [OpenAPI science battery](templates/test.science-openapi-template.py) | Native scientific/NIM schema exploration, required fields, enums/ranges and gateway checks. Understand its direct-backend calls and endpoint discovery before using it. |
 
 Read the whole selected file and comparable model tests. A name does not limit
 which useful checks can be adapted from it. Templates contain illustrative values

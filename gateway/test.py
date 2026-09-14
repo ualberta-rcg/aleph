@@ -13,7 +13,7 @@ Inside the gateway pod (no auth):
   cat gateway/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 
 Per-model feature batteries live next to each model: models/<model>/test.py
-(start from models/test.template.py).
+(start from models/templates/test.template.py).
 """
 import base64, json, os, struct, sys, time, zlib
 import httpx
