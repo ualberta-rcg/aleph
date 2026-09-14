@@ -3,6 +3,12 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 ## 2026-09-14 — Gateway docs: review fixes against source and live behavior
 
+Additions from the completeness sweep: /v1/audio/clone + /v1/audio/voices rows in the
+endpoint table (dedicated handlers, already in docs/ENDPOINTS.md); the client-visible
+`resources` telemetry block on responses; and client-disconnect cancellation (499).
+
+## 2026-09-14 — Gateway docs: review fixes against source and live behavior
+
 Reviewed gateway/README.md + gateway/CLAUDE.md claim-by-claim against the gateway
 source and read-only live checks on the cluster (8/9 checks passed; the ninth — flat
 usage.log in a pod — is per-replica subPath working as designed). Fixes: the

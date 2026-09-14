@@ -78,6 +78,8 @@ Only **chat-type LLMs** support the Anthropic Messages API. Everything else is O
 | `POST /v1/vision/*` | POST | Vision tasks (classify, detect, segment, depth, embed, face) |
 | `POST /v1/audio/speech` | POST | Text-to-speech |
 | `POST /v1/audio/transcriptions` | POST | Speech-to-text |
+| `POST /v1/audio/clone` | POST | Voice cloning from a reference clip |
+| `GET /v1/audio/voices` | GET | List built-in + saved clone voices |
 | `POST /v1/images/generations` | POST | Text-to-image |
 | `POST /v1/dock` | POST | Molecular docking |
 | `POST /v1/design` | POST | Protein design |
@@ -85,6 +87,12 @@ Only **chat-type LLMs** support the Anthropic Messages API. Everything else is O
 | `POST /v1/forecast` | POST | Time-series forecasting |
 | `POST /v1/translate` | POST | Translation |
 | `POST /v1/detect` | POST | Detection |
+Non-streaming chat/embeddings responses (and the final Anthropic `message_delta`)
+carry a `resources` block next to `usage` — the model's live allocation (gpus,
+vram_mib, cpu_cores, system_ram_mib, latency_ms). If a client disconnects mid-request,
+the gateway cancels the upstream call (logged as 499) instead of letting the model
+generate into the void.
+
 | `GET /healthz` | GET | Health check |
 | `GET /readyz` | GET | Readiness (cards loaded) |
 | `GET /metrics` | GET | Prometheus metrics (cluster-wide fan-in; `?local=true` for this replica) |
