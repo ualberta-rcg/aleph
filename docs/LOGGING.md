@@ -141,6 +141,19 @@ For monitoring, scrape the combined endpoint once, or scrape each replica's
 copies of the combined view. Historical charts require a separately configured
 metrics collector and retention policy.
 
+Access mechanics: the endpoint serves on the gateway container port 8080 (the
+in-cluster Service exposes 80). The gateway container has no `curl` or `wget` —
+fetch from outside it:
+
+```bash
+pip=$(kubectl get pod -n models <gateway-pod> -o jsonpath={.status.podIP})
+curl -s "http://$pip:8080/metrics"        # from a node/admin shell
+```
+
+Only models with traffic since the last process start have non-zero counter
+series; the gauge families enumerate the whole catalog. Counters are point-in-time
+snapshots unless you deploy a scraper.
+
 ## Storage and retention
 
 The gateway writes one JSON object per line to a separate usage file. The supplied
@@ -204,6 +217,46 @@ avoid also counting copies in archives. A consistent snapshot avoids rotation or
 an incomplete trailing record during collection. Do not create a new storage mount
 or reporting workload without the necessary authorization.
 
+### Collecting the full ledger
+
+Three authorized patterns reach the complete ledger (a single replica is never the
+ledger — `kubectl exec deploy/model-gateway` round-robins to one pod):
+
+```bash
+# (a) Loop over every gateway pod — quick, current replicas only:
+for pod in $(kubectl get pods -n models -l app=model-gateway -o name); do
+  kubectl exec -n models "$pod" -c gateway --     sh -c 'cat /var/log/aleph/usage.log /var/log/aleph/usage.log.[1-9] 2>/dev/null'
+done
+
+# (b) Temporary pod mounting the whole PVC — sees retired replicas' directories too:
+kubectl run pvc-peek -n models --image=busybox:1.36 --restart=Never --   sleep 600 --overrides="$(printf '%s' '{"spec":{"volumes":[{"name":"logs","persistentVolumeClaim":{"claimName":"model-gateway-usage-logs"}}],"containers":[{"name":"pvc-peek","command":["sleep","600"],"volumeMounts":[{"name":"logs","mountPath":"/logs"}]}]}}')"
+kubectl exec -n models pvc-peek -- sh -c 'cat /logs/*/usage.log /logs/*/usage.log.[1-9] 2>/dev/null'
+kubectl delete pod pvc-peek -n models
+
+# (c) Node-side: read the NFS export directory the kubelet mounts (operator shell):
+#   /var/lib/kubelet/pods/<gateway-pod-uid>/volumes/kubernetes.io~nfs/<pv>/*/usage.log*
+```
+
+Include active files and all rotations; directories from replaced pods are part of
+the history. When sources can overlap (a snapshot plus live reads, or archives),
+deduplicate on `(ts, identity, model, latency_ms, tokens.completion)` — endpoint
+and prompt counts break remaining ties.
+
+### Auditing coverage before reporting
+
+Report the span you actually covered, and check for holes first:
+
+```bash
+kubectl exec -n models pvc-peek -- sh -c 'for f in /logs/*/usage.log*; do
+  [ -f "$f" ] || continue
+  printf "%s %s %s\n" "$f" "$(wc -l < "$f")" "$(tail -1 "$f" | cut -c1-19)"
+done'
+```
+
+Timestamps are normalized UTC `YYYY-MM-DDTHH:MM:SSZ`, so lexicographic `ts >=`
+comparisons window records correctly. Count malformed lines rather than skipping
+them silently.
+
 Agree on the identity/account, models, UTC interval, and whether the report covers
 all attempts or only successful responses. Aggregate within the cluster and return
 only the authorized summary. Token fields are `tokens.prompt`, `tokens.completion`,
@@ -232,6 +285,23 @@ jq -n --arg who example-user \
 ' "${LEDGER_FILES[@]}"
 ```
 
+The same report in the streamed-Python shape used for fleet-wide operator reports
+(per-day and per-identity tables, GPU-time, bad-line counts; run in an allocated
+environment):
+
+```python
+import json, sys, collections
+who, start, end = "example-user", "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"
+per_day = collections.Counter(); gpu_s = 0.0; bad = 0
+for line in sys.stdin:                      # feed collected usage.log* files
+    try: r = json.loads(line)
+    except json.JSONDecodeError: bad += 1; continue
+    if who in (None, r.get("identity")) and start <= r.get("ts","") < end        and 200 <= int(r.get("status", 0)) < 300:
+        per_day[r["ts"][:10]] += r.get("tokens",{}).get("total",0)
+        gpu_s += r.get("derived",{}).get("gpu_seconds",0.0)
+print(dict(per_day), round(gpu_s/3600, 2), "gpu-hours", bad, "bad lines")
+```
+
 The string comparisons assume the logger's normalized `YYYY-MM-DDTHH:MM:SSZ`
 timestamps. This example excludes cold-start/error attempts; count those separately
 when reporting failures. Report which retained files and time span were covered,
@@ -239,6 +309,14 @@ missing records or backend usage, and shared-key attribution limits. Do not repo
 a zero count as proof of no compute use. Do not expose raw records, key fingerprints,
 or unrelated identities. Never silently ignore malformed input to claim a complete
 report.
+
+### Verifying whether a key was ever used
+
+The `key_fp` field answers "did this key ever work" without exposing the key: hash
+the candidate key (`sha256(value).hexdigest()[-8:]` + last 4 characters), then grep
+it across every replica's rotations. Zero matches across all replicas and rotations
+means no usage record ever carried that key — typically requests were rejected by
+Tyk (401/403/429 produce no usage records at all) or the key was never sent.
 
 ## Measure physical GPU usage
 

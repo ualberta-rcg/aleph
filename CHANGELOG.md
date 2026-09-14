@@ -1,6 +1,26 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Gateway review, second pass: full-tree code check
+
+File-by-file review of the whole gateway tree (app modules, Tyk definitions and
+middleware, k8s manifests, Dockerfile/requirements, tests + CI workflow, cards)
+against the docs, plus mining of past operator sessions for how usage data is
+actually retrieved. Fixes: gateway/README corrections (tool_result → OpenAI
+role:"tool" messages; Anthropic thinking inputs incl. output_config.effort precedence;
+_ANTH_STOP_MAP name; new GET /v1/capacity row; stream + key_fp in the record list;
+rbac row scoped to the repo file with the overlay granting pods/nodes; upstream
+timeout 300 s default vs 600 s deployed; Istio sidecar note). gateway/k8s/deployment.yaml
+synced to the deployed spec (was :latest/Always, 1 replica, no ledger PVC or startup
+probe — contradicting every doc claim); placeholder pin + pointer to 63-model-gateway.yaml.
+Deleted gateway/tyk/model-catalogue-api.json — a fourth, undeployed, undocumented
+keyless mirror API (verified unreferenced and returning 404 live). docs/LOGGING.md
+gains the operator how-to from session histories: three full-ledger collection
+patterns, the streamed-Python aggregation shape, the dedupe key, a coverage-audit
+recipe, /metrics access mechanics, and the key_fp verification workflow.
+Recorded-not-fixed (deferred): 51-tyk.yaml comment timeout drift, the CI workflow
+leftover debug step, tyk-keys.sh default-identity nuance.
+
 ## 2026-09-14 — Gateway README: fix the broken CI/CD Mermaid block
 
 The CI/CD section used a ```mermaid``` fence containing plain text (no flowchart/graph
@@ -13,6 +33,26 @@ brackets.
 Additions from the completeness sweep: /v1/audio/clone + /v1/audio/voices rows in the
 endpoint table (dedicated handlers, already in docs/ENDPOINTS.md); the client-visible
 `resources` telemetry block on responses; and client-disconnect cancellation (499).
+
+## 2026-09-14 — Gateway review, second pass: full-tree code check
+
+File-by-file review of the whole gateway tree (app modules, Tyk definitions and
+middleware, k8s manifests, Dockerfile/requirements, tests + CI workflow, cards)
+against the docs, plus mining of past operator sessions for how usage data is
+actually retrieved. Fixes: gateway/README corrections (tool_result → OpenAI
+role:"tool" messages; Anthropic thinking inputs incl. output_config.effort precedence;
+_ANTH_STOP_MAP name; new GET /v1/capacity row; stream + key_fp in the record list;
+rbac row scoped to the repo file with the overlay granting pods/nodes; upstream
+timeout 300 s default vs 600 s deployed; Istio sidecar note). gateway/k8s/deployment.yaml
+synced to the deployed spec (was :latest/Always, 1 replica, no ledger PVC or startup
+probe — contradicting every doc claim); placeholder pin + pointer to 63-model-gateway.yaml.
+Deleted gateway/tyk/model-catalogue-api.json — a fourth, undeployed, undocumented
+keyless mirror API (verified unreferenced and returning 404 live). docs/LOGGING.md
+gains the operator how-to from session histories: three full-ledger collection
+patterns, the streamed-Python aggregation shape, the dedupe key, a coverage-audit
+recipe, /metrics access mechanics, and the key_fp verification workflow.
+Recorded-not-fixed (deferred): 51-tyk.yaml comment timeout drift, the CI workflow
+leftover debug step, tyk-keys.sh default-identity nuance.
 
 ## 2026-09-14 — Gateway README: fix the broken CI/CD Mermaid block
 

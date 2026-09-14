@@ -17,7 +17,7 @@ Client → Traefik (public TLS edge) → Tyk (auth, rate-limit) → model-gatewa
     (via Knative local GW)        (via Knative local GW)  (via Knative local GW)
 ```
 
-**No model names are hardcoded.** The gateway discovers models at runtime from `details.yaml` ConfigMaps (label `model-details=true`) and live InferenceService state via the Kubernetes API.
+**No model names are hardcoded.** The gateway discovers models at runtime from `details.yaml` ConfigMaps (label `model-details=true`) and live InferenceService state via the Kubernetes API. Gateway pods run with an injected Istio sidecar (`sidecar.istio.io/inject: "true"`).
 
 ## API Standards
 
@@ -38,15 +38,15 @@ The gateway translates between OpenAI and Anthropic formats inline in `gateway.p
 | Concept | OpenAI (`/v1/chat/completions`) | Anthropic (`/v1/messages`) | Translation |
 |---|---|---|---|
 | System prompt | `messages[0].role == "system"` | Top-level `system` field | Prepended; extra system/developer messages folded to the front (Qwen chat-template) |
-| Message roles | system, user, assistant, tool | user, assistant only | Tool results → text blocks |
+| Message roles | system, user, assistant, tool | user, assistant only | Anthropic `tool_result` blocks → OpenAI `role:"tool"` messages (`tool_call_id` = `tool_use_id`); one Anthropic user message can expand to user+tool+user |
 | Tools | `{type:"function", function:{name,desc,parameters}}` | `{name, description, input_schema}` | Wrap/unwrap nesting |
 | Tool choice | "auto", "none", "required" | `{type:"auto"|"any"|"tool"|"none"}` | `"any"` → `"required"` |
 | Stop sequences | `stop` field | `stop_sequences` field | Rename |
 | Max tokens | Optional | **Required** | Inject default from card |
-| Thinking | `reasoning_effort` string | `thinking.budget_tokens` int | Via card `param_translation.thinking` |
+| Thinking | `reasoning_effort` string | `output_config.effort`, or `thinking.type` adaptive/enabled/disabled (`budget_tokens` int = capped; non-int = on/uncapped) | Via card `param_translation.thinking`; `output_config.effort` takes precedence |
 | Streaming | `data: {json}\n\n` + `[DONE]` | Typed SSE events (`event: message_start`) | Full format conversion |
 | Images | `{type:"image_url", image_url:{url}}` | `{type:"image", source:{type:"base64"}}` | Convert base64 URL |
-| Finish reasons | stop, length, tool_calls | end_turn, max_tokens, tool_use | `_STOP_MAP` lookup |
+| Finish reasons | stop, length, tool_calls | end_turn, max_tokens, tool_use | `_ANTH_STOP_MAP` lookup (unknown/None → end_turn) |
 | Response content | `choices[0].message.content` (string) | `content` (array of typed blocks) | Wrap/unwrap |
 
 ### Which models support which API
@@ -93,6 +93,7 @@ vram_mib, cpu_cores, system_ram_mib, latency_ms). If a client disconnects mid-re
 the gateway cancels the upstream call (logged as 499) instead of letting the model
 generate into the void.
 
+| `GET /v1/capacity` | GET | Cold-start capacity snapshot freshness (diagnostics) |
 | `GET /healthz` | GET | Health check |
 | `GET /readyz` | GET | Readiness (cards loaded) |
 | `GET /metrics` | GET | Prometheus metrics (cluster-wide fan-in; `?local=true` for this replica) |
@@ -173,8 +174,9 @@ Each record carries: `identity`/`account`/`identity_type`, `model`, `api`,
 `endpoint`, `status`, `latency_ms`, `cold_start`, `tokens` (normalized
 prompt/completion/total plus `detail` = the verbatim vLLM `usage`, so
 reasoning/cached token breakdowns are preserved when present), `context_window`,
-`max_completion_tokens`, a `resources` block (gpus, vram_mib, cpu_cores,
-system_ram_mib, **gpu_product**, **node**), and derived `gpu_seconds`. Per-model
+`max_completion_tokens`, `stream`, a `resources` block (gpus, vram_mib, cpu_cores,
+system_ram_mib, **gpu_product**, **node**), derived `gpu_seconds`, and a key
+fingerprint (`key_fp` — sha256 prefix + last 4 chars, never the raw key). Per-model
 rollups are exposed on `/metrics`.
 
 **Where the compute facts come from:**
@@ -244,8 +246,8 @@ sudo ssh root@<control-plane> "kubectl set image deploy/model-gateway -n models 
 ```
 
 A rebuild resurrects whatever tag is pinned in the overlay — never leave live
-on `:latest`. The gateway's upstream call timeout defaults to 300 s
-(`UPSTREAM_TIMEOUT`); Tyk's proxy timeout is set in `51-tyk.yaml`.
+on `:latest`. The gateway's upstream call timeout defaults to 300 s (`UPSTREAM_TIMEOUT`);
+the deployed manifest sets 600 s to match Tyk's 600 s proxy timeouts end-to-end.
 
 ## Key files
 
@@ -258,7 +260,7 @@ on `:latest`. The gateway's upstream call timeout defaults to 300 s
 | `app/static/` | Landing-page assets (favicon provenance in `FAVICON-SOURCE.md`) |
 | `cards/*.yaml` | Gateway-side model cards (almost all live in per-model dirs) |
 | `k8s/deployment.yaml` | Gateway Deployment (runs on control-plane, no GPUs) |
-| `k8s/rbac.yaml` | ServiceAccount + RBAC for ConfigMap/ISVC/pod/node reads |
+| `k8s/rbac.yaml` | ServiceAccount + Role for ConfigMap/ISVC/Deployment reads (the deployed 63 overlay additionally grants pods + a nodes ClusterRole for hardware attribution) |
 | `k8s/service.yaml` | ClusterIP Service |
 | `tyk/*.json` | Tyk API definitions |
 | `tyk/middleware/*.js` | Tyk JSVM: `normalizeAuth` + `injectIdentity` |

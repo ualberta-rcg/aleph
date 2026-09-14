@@ -1,3 +1,8 @@
+# Gateway Deployment — reference copy of the deployed spec.
+# The deployed source of truth is
+#   ww-overlays/overlays/control-plane/etc/rancher/manifests/63-model-gateway.yaml
+# which carries the real immutable image pin (rkhoja/aleph:gateway-<sha>@sha256:...).
+# Keep this file aligned with it; the image below is a placeholder, never :latest.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,7 +11,13 @@ metadata:
   labels:
     app: model-gateway
 spec:
-  replicas: 1
+  replicas: 3
+  minReadySeconds: 15
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: model-gateway
@@ -17,9 +28,10 @@ spec:
         sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: model-gateway
-      # Run only on control-plane (non-GPU) VMs. This selector auto-covers all
-      # future control-plane nodes (going to 3 VMs) and keeps the gateway off the
-      # GPU workers so it never competes with model pods for GPU-node resources.
+      # Let uvicorn finish active requests during termination.
+      terminationGracePeriodSeconds: 660
+      # Pinned to control-plane (non-GPU) nodes so the gateway never competes with
+      # model pods for GPU-node resources; covers all control-plane nodes (HA or single).
       nodeSelector:
         node-role.kubernetes.io/control-plane: "true"
       affinity:
@@ -30,33 +42,72 @@ spec:
                   - key: gpu
                     operator: NotIn
                     values: ["on"]
-      # Gateway image is published by CI to Docker Hub (rkhoja/aleph). Pin a tag in
-      # deployment.yaml or override at deploy time: GATEWAY_IMAGE=rkhoja/aleph:gateway-<sha>
+        # Spread replicas across control-plane nodes so a node loss never drops the edge.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: model-gateway
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
-          image: rkhoja/aleph:latest
-          imagePullPolicy: Always
+          image: rkhoja/aleph:gateway-<sha>
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
             - name: MODELS_NAMESPACE
               value: models
+            - name: SITE_NAME
+              value: aleph
+            - name: GATEWAY_USAGE_LOG
+              value: /var/log/aleph/usage.log
+            # Match Tyk's 600s proxy timeouts end-to-end (app default is 300s).
+            - name: UPSTREAM_TIMEOUT
+              value: "600"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: usage-log
+              mountPath: /var/log/aleph
+              subPathExpr: $(POD_NAME)
           resources:
             requests:
-              cpu: 100m
+              cpu: 500m
               memory: 256Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: 2000m
+              memory: 1Gi
+          # /healthz stays 503 until the model cards + ISVCs seed from the K8s API;
+          # the startup probe owns that boot window so liveness is never tripped by it.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 18
           readinessProbe:
             httpGet:
               path: /readyz
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 5
+      volumes:
+        # Usage ledger on shared NFS (RWX); each replica writes its own $(POD_NAME) dir.
+        - name: usage-log
+          persistentVolumeClaim:
+            claimName: model-gateway-usage-logs
