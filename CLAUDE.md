@@ -252,11 +252,13 @@ committed changes from deployed changes and historical tests from live checks.
 ## Preserve README customizations
 
 Keep the README's original header and branding: logos, title, badges, tagline,
-institutional attribution, and maintainer names/links. Preserve the architecture
-diagrams and the closing References, Support, License, and About
+institutional attribution, and maintainer names/links. Preserve the boxed text
+architecture diagram and the closing References, Support, License, and About
 University of Alberta Research Computing sections, including their exact wording
 and links. Update technical sections around these customizations; do not replace
 the README wholesale. Change a protected part only when the user explicitly
 requests that particular change. The historical baseline is commit e8e6777
 (2026-09-10) for the branding and closing sections; retain the subsequently added
-Aleph logo and the user-authorized Mermaid architecture update of 2026-09-13.
+Aleph logo. Keep the original boxed text architecture style, including the added
+provisioning and serving components; do not replace it with Mermaid or an image
+unless the user explicitly requests that format.

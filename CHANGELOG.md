@@ -2,6 +2,20 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Restore and extend the original boxed architecture diagram
+
+Restore the README's original text-box style and request-flow spine, replacing
+the rejected Mermaid diagrams. Add Warewulf/image/overlay provisioning, both node
+roles, Redis persistence, card discovery, usage storage/metrics, the activator
+branch, controller and HAMi responsibilities, and persistent model storage.
+Retain the verified routing corrections. Reduce References to the requested five:
+U of A, AMII, Warewulf, KServe and HAMi. Update
+both agent guides to preserve the boxed text format explicitly.
+
+Validation: use the preceding read-only live/source checks; inspect branch and
+component relationships, relative links and whitespace. Verify README content
+outside Architecture and References is unchanged. Documentation only; no deployment changes.
+
 ## 2026-09-13 — Draw the verified provisioning and serving architecture
 
 Replace the README's boxed architecture sketch, as requested, with two editable
