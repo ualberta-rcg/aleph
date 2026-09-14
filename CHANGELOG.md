@@ -2,6 +2,26 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Restore practical operator guidance to Claude instructions
+
+Expand CLAUDE.md with environment setup, private configuration handling, Tyk key
+operations, model deployment/testing, park versus stop, idle scale-to-zero and
+always-up settings, resource troubleshooting, and usage-history retrieval. Link
+AGENTS.md to these shared procedures. Add HAMi diagnostics to Kubernetes and
+operator token aggregation/physical GPU measurement to Logging and metrics.
+Keep site addresses and private values local; preserve README protections.
+
+Validation: reviewed public and local operating/model guides, environment templates,
+HAMi/model manifests, installed-helper evidence and usage logger implementation.
+Review the workspace INDEX, root operating rules, legacy scale scripts, vLLM stats
+parser and implementation status; flag superseded helpers and distinguish runtime
+load/throughput from physical GPU utilization.
+Saved Bash history exists on the control plane; argument-free extraction found only
+get-nodes/get-pods patterns, not additional model-management procedures. No raw
+history, credential files, key sessions or usage records returned. Check links,
+shell examples, synthetic accounting results and whitespace. Documentation only;
+no model, key, storage or deployment mutations.
+
 ## 2026-09-13 — Streamline repository Claude instructions
 
 Replace the restored historical CLAUDE.md operations notebook with concise repo

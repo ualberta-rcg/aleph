@@ -106,3 +106,41 @@ reviewed against the committed bootstrap and Tyk manifests on 2026-09-13. The
 old post-deploy smoke helper is not the acceptance path: it does not create the
 cards the gateway needs. Deploy and test one complete model using
 [Add a model](ADD-A-MODEL.md).
+
+## HAMi diagnostics
+
+Begin with the affected model and worker, not a stack restart:
+
+```bash
+kubectl get nodes -L gpu
+kubectl get daemonsets,deployments -n kube-system
+kubectl get pods -n models -l "serving.kserve.io/inferenceservice=$ISVC" -o wide
+kubectl get events -n models --field-selector "involvedObject.name=$POD" \
+  --sort-by=.metadata.creationTimestamp
+```
+
+Set `ISVC` and `POD` to the affected service/pod. Inspect only relevant events;
+keep raw application logs and private data out of shared reports.
+
+| Finding | Next check |
+|---|---|
+| No GPU resource advertised | Verify worker-side `nvidia-smi`, the `gpu=on` label, device-plugin readiness, NVIDIA toolkit/containerd runtime and `nvidia` RuntimeClass. The node image supplies drivers; installing another GPU Operator is not this deployment's repair procedure. |
+| Scheduler fails after Kubernetes update | Compare the running Kubernetes version with the HAMi scheduler image selected by `__K8S_VERSION__` in `10-hami.yaml`. |
+| Pending with insufficient resources | Inspect requests, selectors/affinity, tolerations, current HAMi assignments and old predictor revisions. Check fit on one suitable node for a multi-GPU replica, not fleet-wide free-slot totals. |
+| Whole-device allocation fails despite free slots | `nvidia.com/gpu` allocatable represents sharing slots. Whole-device requests omit `gpumem`; existing tenants can prevent a whole-device allocation. Do not restore the historical near-full-memory workaround. |
+| Shared model gets a memory-limit failure | Check `nvidia.com/gpumem` in MiB, runtime memory settings, context/concurrency, and actual loaded footprint. Free host VRAM does not override a tenant's allowance. |
+| Pod scheduled but not ready | Separate image pulls, downloads/NFS writes, initialization, runtime OOM, and health-probe failures. HAMi scheduling success is not inference readiness. |
+| Multi-GPU execution falls back or hangs | Check tensor-parallel configuration and the actual transport; use System's RDMA provider diagnostics if RDMA is required. |
+
+For the exact assigned pod, inspect resource configuration without dumping its
+entire environment:
+
+```bash
+kubectl get pod "$POD" -n models -o jsonpath='{.spec.nodeName}{"\n"}{range .spec.containers[*]}{.name}{": "}{.resources}{"\n"}{end}'
+```
+
+HAMi split counts and policies may come from chart defaults; source comments are
+not proof of effective values. Inspect the deployed configuration before estimating
+capacity. Preserve PVCs during service recreation and wait for old revisions to
+release resources. Physical utilization measurement is covered in
+[Logging and metrics](LOGGING.md#measure-physical-gpu-usage).

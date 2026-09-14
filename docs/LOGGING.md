@@ -184,3 +184,104 @@ It is not the per-request model usage ledger described above and does not inheri
 that ledger's PVC storage or rotation settings. Its writes are best-effort; the
 helper supplies no retention mechanism. See [Tyk administration](TYK-USERS.md#state-audit-and-configuration-ownership)
 for configuration and access implications.
+
+## Operator token history
+
+The supplied `63-model-gateway.yaml` sets `GATEWAY_USAGE_LOG` to
+`/var/log/aleph/usage.log`, mounting PVC `models/model-gateway-usage-logs` through
+`subPathExpr: $(POD_NAME)`. Inspect the binding without reading records:
+
+```bash
+kubectl get pvc model-gateway-usage-logs -n models \
+  -o custom-columns=CLAIM:.metadata.name,STATUS:.status.phase,PV:.spec.volumeName
+kubectl get pods -n models -l app=model-gateway
+```
+
+A current gateway pod sees only its own ledger directory. For historical reporting,
+use the site's authorized read-only mount or snapshot of the full PVC. Include
+retained directories from replaced pods, active files and rotations exactly once;
+avoid also counting copies in archives. A consistent snapshot avoids rotation or
+an incomplete trailing record during collection. Do not create a new storage mount
+or reporting workload without the necessary authorization.
+
+Agree on the identity/account, models, UTC interval, and whether the report covers
+all attempts or only successful responses. Aggregate within the cluster and return
+only the authorized summary. Token fields are `tokens.prompt`, `tokens.completion`,
+and `tokens.total`; GPU-time estimates are `derived.gpu_seconds`. Redis key state
+is not this history. There is no per-user history API.
+
+This example aggregates successful requests for one identity over a half-open UTC
+interval, using an explicitly selected set of snapshot files. Replace the example
+paths and identity privately. It streams records instead of loading the ledger
+into memory; run substantial reporting work in an appropriate allocated environment.
+
+```bash
+LEDGER_FILES=(/private/snapshot/example-replica/usage.log /private/snapshot/example-replica/usage.log.1)
+jq -n --arg who example-user \
+  --arg start '2026-01-01T00:00:00Z' --arg end '2026-01-02T00:00:00Z' '
+  reduce inputs as $r
+    ({requests:0, input_tokens:0, output_tokens:0, total_tokens:0, estimated_gpu_seconds:0};
+     if $r.identity == $who and $r.ts >= $start and $r.ts < $end
+        and $r.status >= 200 and $r.status < 300 then
+       .requests += 1 |
+       .input_tokens += ($r.tokens.prompt // 0) |
+       .output_tokens += ($r.tokens.completion // 0) |
+       .total_tokens += ($r.tokens.total // 0) |
+       .estimated_gpu_seconds += ($r.derived.gpu_seconds // 0)
+     else . end)
+' "${LEDGER_FILES[@]}"
+```
+
+The string comparisons assume the logger's normalized `YYYY-MM-DDTHH:MM:SSZ`
+timestamps. This example excludes cold-start/error attempts; count those separately
+when reporting failures. Report which retained files and time span were covered,
+missing records or backend usage, and shared-key attribution limits. Do not report
+a zero count as proof of no compute use. Do not expose raw records, key fingerprints,
+or unrelated identities. Never silently ignore malformed input to claim a complete
+report.
+
+## Measure physical GPU usage
+
+Measure on the selected GPU worker, using private site access details. This bounded
+sample reports each physical GPU's UUID, utilization, VRAM and power without listing
+processes or users:
+
+```bash
+timeout 15s nvidia-smi \
+  --query-gpu=timestamp,uuid,name,utilization.gpu,memory.used,memory.total,power.draw \
+  --format=csv --loop=5
+```
+
+Exit status 124 is expected when `timeout` ends sampling. GPU utilization is a
+sampled activity percentage, memory used is occupancy, and power is watts; none is
+a per-user billing measure. A loaded idle model can occupy substantial VRAM with
+low utilization. Measure on the host for physical totals: a shared serving container
+can expose a virtualized memory view.
+
+For allocation, inspect the model/pod resource requests and HAMi assignment. For
+per-request accounting, use the ledger's estimated GPU-seconds. Multiple concurrent
+requests and GPU sharing prevent adding those estimates into physical utilization.
+
+Historical utilization needs a verified GPU telemetry exporter and a time-series
+collector with retention. Discover the site's existing monitoring configuration
+before assuming DCGM or HAMi telemetry is scraped. Gateway `/metrics` provides
+request/accounting counters, not a historical record of physical GPU utilization.
+For a physical busy-time estimate, integrate sampled utilization/100 over elapsed
+seconds per GPU; label sampling gaps and the approximation, and do not attribute
+shared-device activity to a researcher without additional measurements.
+
+### Runtime load and throughput
+
+The local `scripts/vllm_stats.py` illustrates another useful layer: running and
+waiting requests, KV-cache occupancy, and prompt/generation token counters from
+the serving runtime's own `/metrics`. Its historical parser accepts both
+`kv_cache_usage_perc` and `gpu_cache_usage_perc`; inspect the actual runtime's
+metric names and labels before using it with another version. These are backend
+metrics, not the gateway's combined `/metrics` output.
+
+For a selected authorized backend, take two bounded samples from the same process.
+Token throughput is the counter difference divided by elapsed seconds. Detect
+process restarts/counter resets and combine distinct replicas once. Running/waiting
+requests show load; KV-cache occupancy describes the runtime cache, not total
+physical VRAM or GPU utilization. Verify the container's port and available HTTP
+tool rather than assuming every runtime serves metrics on port 8080.

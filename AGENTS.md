@@ -17,6 +17,9 @@ credentials, inventories, and operating history belong in private working notes.
 Check code and manifests before trusting prose. Treat dated validation results
 as evidence for that tested configuration, not a current fleet guarantee.
 
+Read [CLAUDE.md](CLAUDE.md) for the shared operator procedures: environment, Tyk
+keys, model deployment, parking/scaling, HAMi diagnostics, and usage reporting.
+
 ## Make changes
 
 - Keep changes within the requested scope. Repository work does not by itself
