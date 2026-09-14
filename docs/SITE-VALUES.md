@@ -45,7 +45,7 @@ section of [CLAUDE.md](../CLAUDE.md).
 | Variable | Why you need it / where it is used |
 |---|---|
 | `HF_TOKEN` | Model init containers download weights from HuggingFace with it. Create the `hf-token` Secret (key `token`, `models` namespace) from it; InferenceService init containers reference that Secret. A local export alone does not reach pods. |
-| `NGC_API_KEY` | Only for NIM-container models: creates the `ngc-api-key` Secret and the `ngc-registry-secret` docker-registry pull secret for `nvcr.io`. Skip entirely if you deploy no NIMs. |
+| `NGC_API_KEY` | Only for NIM-container models: creates the `ngc-api-key` Secret. Pulling NIM images from `nvcr.io` additionally needs the `ngc-registry-secret` docker-registry pull secret — a separate `kubectl create secret docker-registry` command (shown in `.env.example`), not an env var. Skip entirely if you deploy no NIMs. |
 | `TYK_SECRET` / `TYK_API_SECRET` | The Tyk admin `APISecret` (same value in both). **At deploy time this is the value of the `__TYK_API_SECRET__` token** — it is rendered into `51-tyk.yaml`, becomes the in-cluster Secret `secrets-tyk-oss-tyk-gateway`, and is what authenticates Tyk administration (`tyk-admin.sh` discovers it automatically). Generate it fresh per deployment. |
 | `HEAD` | Operator convenience for SSH one-liners to a control-plane node; it is not kubectl context selection. Optional. |
 

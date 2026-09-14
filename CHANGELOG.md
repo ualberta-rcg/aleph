@@ -3,6 +3,9 @@
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 ## 2026-09-14 — SITE-VALUES: document the .env environment values
 
+Follow-up: the NGC row now states explicitly that the nvcr.io image-pull secret is a
+separate kubectl command, not an env var (matching .env.example).
+
 Add an "Environment values (.env)" section to docs/SITE-VALUES.md: why each credential
 variable is needed and where it lands (HF_TOKEN → hf-token Secret used by init
 containers; NGC_API_KEY → ngc secrets, NIM-only; the Tyk admin secret is explicitly the
