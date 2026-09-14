@@ -1,6 +1,19 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Expand QUICKSTART; add the per-file overlay walkthrough
+
+QUICKSTART becomes a full deploy guide: a richer requirements table (Warewulf 4 server +
+node image, 1-vs-3 control-plane guidance, RWX NFS sizing, VIP/DNS/ports), a new
+accounts-and-keys step (HuggingFace token, optional NGC key + pull secret, fresh Tyk
+admin secret, the DNS record for INFERENCE_HOST), a gather-your-values step splitting
+site.env tokens from .env credentials, explicit node-image import, node/boot roles
+(bootstrap head, joining control planes with the ignition wipe pointer, GPU workers),
+and post-boot secrets + first-key commands. docs/WW-OVERLAYS.md gains "The overlay
+files": every file in all three trees annotated one line each (24 manifests + 9 other
+control-plane files + 6 common + 2 gpu-worker), with the manual-overlay/swap-at-bake
+files flagged. All internal anchors verified; no site values.
+
 ## 2026-09-14 — QUICKSTART review fixes
 
 Point the site-values token reference at docs/SITE-VALUES.md (the

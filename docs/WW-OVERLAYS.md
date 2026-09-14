@@ -39,6 +39,71 @@ that file order guarantees every dependency is ready.
 | `70` | RDMA device plugin |
 | `80` | Static model-storage bindings |
 
+## The overlay files
+
+Every file in the three trees, one line each. Paths are relative to
+`ww-overlays/overlays/`.
+
+### Control-plane manifests (`control-plane/etc/rancher/manifests/`)
+
+| File | Installs |
+|---|---|
+| `00-cert-manager.yaml` | cert-manager (certificate automation) |
+| `01-cluster-issuer.yaml` | Let's Encrypt ACME issuer (`__ACME_EMAIL__`) |
+| `09-gpu-autolabel.yaml` | Labels NVIDIA nodes `gpu=on` at boot |
+| `10-hami.yaml` | HAMi vGPU scheduler + device plugin (`__K8S_VERSION__` must match) |
+| `11-node-labeler.yaml` | Stamps `aleph.gpu/cpu/node` hardware labels per worker |
+| `30-nfs.yaml` | NFS subdir provisioner + `nfs-models` StorageClass (`__NFS_SERVER__`, `__NFS_PATH__`) |
+| `40-metallb.yaml` | MetalLB (LB controller + speaker) |
+| `41-metallb-vip.yaml` | VIP IPAddressPool + L2 advertisement (`__VIP__`, `__PUBLIC_NIC__`) |
+| `42-traefik-loadbalancer.yaml` | Public Traefik LoadBalancer Service (owns the VIP) |
+| `43-traefik-config.yaml` | Traefik deployment config/edge placement |
+| `44-canal-config.yaml` | Pins the Canal/flannel cluster NIC |
+| `49-tyk-redis-data.yaml` | Static PV binding for Tyk Redis (key store — see [storage](#storage-setup-and-recovery)) |
+| `50-tyk-redis.yaml` | Redis (Bitnami) for Tyk sessions |
+| `51-tyk.yaml` | Tyk OSS gateway (`__TYK_API_SECRET__`) |
+| `52-tyk-loadbalancer.yaml` | Tyk in-cluster Service (ClusterIP) |
+| `53-tyk-api-definitions.yaml` | The three Tyk APIs (`/v1/` authed, `/anthropic/`, keyless web) |
+| `54-tyk-middleware.yaml` | Tyk JSVM: catch-all key normalization + identity injection |
+| `56-edge-routes.yaml` | Public hostname TLS routes (`__INFERENCE_HOST__`) |
+| `60-istio.yaml` | Istio (serving mesh) |
+| `61-knative.yaml` | Knative Serving (scale-to-zero; see its autoscaler note in [Kubernetes](KUBERNETES.md)) |
+| `62-kserve.yaml` | KServe (InferenceService CRD + controller) |
+| `63-model-gateway.yaml` | The Aleph gateway Deployment (pinned image; runs on control-plane) |
+| `70-rdma-device-plugin.yaml` | Advertises `rdma/roce` on GPU nodes (`__ROCE_IFNAME__`) |
+| `80-model-pvcs.yaml` | Static model-storage bindings (recovery snapshot — see [storage](#storage-setup-and-recovery)) |
+
+### Other control-plane files
+
+| File | Purpose |
+|---|---|
+| `control-plane/etc/netplan/60-public-vip.yaml` | Per-head public NIC config: own IP, prefix, preferred-route gateway. Carries `__PUBLIC_NIC__`, `__PUBLIC_NIC_IP__` (per node), `__PUBLIC_PREFIX__`, `__PUBLIC_GW__`. Never configure the VIP itself as a static address. |
+| `control-plane/etc/ssh/sshd_config.d/00-hostauth.conf` | Enables hostbased SSH auth so trusted login nodes can run key administration |
+| `control-plane/etc/ssh/shosts.equiv`, `control-plane/etc/ssh/ssh_known_hosts` | Hostbased trust list + host keys. **Manual overlays** — the real files are site-private and never committed |
+| `control-plane/etc/ssh/sshd_config.d/10-deregister.conf` | Adds the deregister key file as an extra `AuthorizedKeysFile` |
+| `control-plane/etc/ssh/deregister.authorized_keys` | Forced-command public key for node self-deregistration (committed example — swap at bake) |
+| `control-plane/usr/local/bin/tyk-admin.sh` | Tyk key/user administration CLI baked onto heads |
+| `control-plane/usr/local/sbin/deregister-node.sh` | Forced-command target: validates a node name, deletes that Node object |
+| `control-plane/usr/local/sbin/tyk-pam-cmd` | Forced-command wrapper for login-node key minting (hardening mode) |
+
+### Common files (all nodes)
+
+| File | Purpose |
+|---|---|
+| `common/etc/ansible/playbooks/03-install-packages.yaml` | Aleph's override of the shared firstboot package playbook |
+| `common/etc/sysctl.d/90-inotify.conf` | Raises inotify instance limit for dense pod watching (optional) |
+| `common/etc/systemd/system/rke2-deregister.service` | Oneshot unit whose ExecStop performs deregistration while networking is up |
+| `common/etc/default/rke2-deregister` | Deregistration config: target discovery (`HEAD_NODES` autodetected), server guard |
+| `common/usr/local/bin/rke2-deregister.sh` | On shutdown, deletes this node's stale Node object via the forced-command key |
+| `common/etc/rke2-deregister/id_ed25519` | Deregistration private key (committed example — swap at bake) |
+
+### GPU-worker files
+
+| File | Purpose |
+|---|---|
+| `gpu-worker/etc/modules-load.d/rdma.conf` | Loads RDMA/RoCE kernel modules so the device plugin can advertise them |
+| `gpu-worker/etc/systemd/system/nvidia-persistenced.service` | Enables NVIDIA persistence mode (optional) |
+
 ## Before building
 
 1. Render site placeholders using [site values](#site-values-and-tokens), with separate
