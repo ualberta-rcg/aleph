@@ -71,7 +71,7 @@ with your chosen directory name throughout the files and commands.
 
 Add files only when the model needs them:
 
-| Additional file | Purpose |
+| Additional file examples | Purpose |
 |---|---|
 | `models/example-model/server-configmap.yaml` and/or `models/example-model/server.py` | Custom HTTP server that loads the model and implements its request/response contract; mount or package the code as appropriate. |
 | `models/example-model/parser-configmap.yaml` and/or `models/example-model/parser.py` | A runtime-specific parser, mounted and enabled by the serving command. |
