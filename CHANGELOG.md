@@ -1,6 +1,23 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Gateway docs: review fixes against source and live behavior
+
+Reviewed gateway/README.md + gateway/CLAUDE.md claim-by-claim against the gateway
+source and read-only live checks on the cluster (8/9 checks passed; the ninth — flat
+usage.log in a pod — is per-replica subPath working as designed). Fixes: the
+cold-start section now documents BOTH 503s and the real Retry-After derivation
+(largest integer in cold_start_estimate × 60 s; capacity refusal = 120 s, no wake,
+fail-open); the usage-log section describes the RWX PVC ledger (was: stale emptyDir /
+ship-later text); limits.context_window corrected to catalog/usage metadata (no
+gateway-side input enforcement); the custom catch-all /v1/{path} route documented;
+key-files tables completed (conversation/capacity/usage modules, middleware, tests,
+tyk-keys); UPSTREAM_TIMEOUT (300 s) noted; CLAUDE.md scope gains usage/metrics, its
+field table points at models/details.md as authoritative with parser reality (only
+id required), and the testing section now gives the actual battery command. Dropped
+the four-vs-five API-format count. Removed ~100 untracked local __pycache__ dirs
+(gitignore already covered them). Documentation only.
+
 ## 2026-09-14 — Drop HEAD; adapt docs to the removed .env.example
 
 The root .env.example template was deleted (operator change). SITE-VALUES' environment-values

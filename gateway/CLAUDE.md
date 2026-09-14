@@ -11,21 +11,30 @@ Gateway responsibilities:
 - Science/custom model catch-all forward via `/v1/{path:path}`
 - Thinking/reasoning parameter translation + stripping behavior
 - Tool support gating by model card metadata
-- Scale-to-zero detection + cold-start wake-up guard
+- Scale-to-zero detection + cold-start wake-up guard (two cold 503s: wake with
+  estimate-derived Retry-After, or capacity refusal with no wake)
+- Per-request usage accounting to a persistent JSONL ledger + Prometheus `/metrics`
+  (cluster-wide fan-in)
 
 Full architecture and API docs: see `gateway/README.md`
 
 ## Key files
 
-- `app/gateway.py` — primary request handling, forwarding, and Anthropic<->OpenAI translation (single-file)
-- `cards/*.yaml` — gateway-facing model card metadata (most live in per-model dirs)
-- `k8s/deployment.yaml` — gateway Deployment (runs on control-plane, no GPUs)
-- `tyk/*.json` + `tyk/tyk-keys.sh` — Tyk API definitions and key helpers
+- `app/gateway.py` — primary request handling, forwarding, and Anthropic<->OpenAI translation
+- `app/conversation.py` — OpenAI⇄Anthropic conversation translation helpers
+- `app/capacity.py` — cold-start GPU-fit simulation (HAMi metrics parsing)
+- `app/usage.py` — usage records + JSONL ledger
+- `cards/*.yaml` — gateway-facing model card metadata (almost all live in per-model dirs)
+- `k8s/{deployment,rbac,service}.yaml` — Deployment (control-plane, no GPUs), RBAC, Service
+- `tyk/*.json`, `tyk/middleware/*.js`, `tyk/tyk-keys.sh` — Tyk API definitions, JSVM middleware, key helper
+- `test.py` (+ `tests/`) — model-agnostic gateway battery and CI regressions
 - `README.md` — full architecture, API mapping, deploy instructions
 
 ## Gateway fields from details.yaml
 
-The gateway reads these fields from model cards. When creating/updating `details.yaml`, make sure these are present:
+The gateway reads these fields from model cards ("Required" below = needed for the
+behavior to work, not parser validation — the parser only requires a nonempty `id`;
+see [models/details.md](../models/details.md) for the authoritative reference):
 
 | Field | Used for | Required |
 |---|---|---|
@@ -39,10 +48,10 @@ The gateway reads these fields from model cards. When creating/updating `details
 | `param_translation.thinking.*` | Effort → budget mapping | Yes for reasoning models |
 | `defaults.chat.*` | Auto-fill missing params | Recommended for LLMs |
 | `defaults.meta_tasks.*` | OpenWebUI title/tags/followups | Recommended for LLMs |
-| `limits.context_window` | Hard context cap | Yes |
-| `limits.max_completion_tokens` | Hard output cap | Yes |
-| `scaling.scale_to_zero` | Cold-start guard | Yes |
-| `scaling.cold_start_estimate` | ETA in 503 message | Recommended |
+| `limits.context_window` | Catalog/docs + usage-record metadata (no gateway-side input enforcement) | Recommended |
+| `limits.max_completion_tokens` | Caps prepared chat output tokens | Yes for chat |
+| `scaling.scale_to_zero` | Catalog/listing metadata (cold guard reads observed state) | Yes |
+| `scaling.cold_start_estimate` | ETA + Retry-After in the cold 503 | Recommended |
 
 **Note:** The gateway reads `behavior.*` (not `compatibility.*`). Some older cards use `compatibility.supports_tools` — that field is NOT read by the gateway. Use `behavior` for gateway-facing feature flags.
 
@@ -93,11 +102,14 @@ air-gapped fallback. Do not use for day-to-day deploys.
 
 ## Testing expectations after gateway changes
 
-- Chat completion non-stream + stream
-- Anthropic translation path
-- Reasoning level handling + strip behavior
-- Tool call pass/block behavior
-- Embeddings + rerank endpoints unaffected by chat changes
+Run the model-agnostic battery (and the CI regressions in `tests/`):
+
+```bash
+GW_URL=https://<hostname> TYK_KEY=<key> python3 gateway/test.py   # FLEET=1 warms + probes every model
+```
+
+Check: chat non-stream + stream, Anthropic translation path, reasoning level
+handling + strip behavior, tool call pass/block, embeddings + rerank unaffected.
 
 ## Optional model-specific notes
 

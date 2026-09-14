@@ -21,7 +21,7 @@ Client → Traefik (public TLS edge) → Tyk (auth, rate-limit) → model-gatewa
 
 ## API Standards
 
-The gateway speaks four API formats depending on the endpoint:
+The gateway speaks these API formats depending on the endpoint:
 
 | Endpoint | Standard | Who defined it | Models |
 |---|---|---|---|
@@ -128,26 +128,34 @@ The gateway:
 | `defaults.chat.*` | Auto-applies default temperature, max_tokens, thinking |
 | `defaults.meta_tasks.*` | Overrides for OpenWebUI title/tags/followup tasks |
 | `scaling.scale_to_zero` | Enables cold-start guard (wake-up + 503) |
-| `scaling.cold_start_estimate` | ETA in the 503 retry message |
-| `limits.context_window` | Hard cap on context |
-| `limits.max_completion_tokens` | Hard cap on output tokens |
+| `scaling.cold_start_estimate` | ETA in the cold-start 503; also derives its `Retry-After` |
+| `limits.context_window` | Catalog/docs and usage-record metadata — the gateway does **not** enforce input length |
+| `limits.max_completion_tokens` | Caps prepared chat output tokens (not custom endpoints) |
+
+The authoritative field reference (defaults, thinking modes, every variation) is
+[models/details.md](../models/details.md).
 
 ## Scale-to-zero
 
-When a model is scaled to zero (minReplicas=0), the gateway:
+When a model is scaled to zero (minReplicas=0) and a request arrives, the gateway
+checks observed replicas and capacity, then:
 
-1. Detects 0 ready replicas for the model's active revision
-2. Fires an async wake-up request to nudge Knative's activator
-3. Returns HTTP 503 with `Retry-After: 30` and an ETA from the card's `cold_start_estimate`
-4. Client retries → model is now warming up → eventually serves
+- **Capacity available** → fires an async wake-up (Knative activator) and returns
+  `503 model_scaled_to_zero` with the card's ETA; `Retry-After` is the largest number
+  in `cold_start_estimate` × 60 s (`"3-6 min"` → 360; no digits → 30).
+- **Capacity unavailable** (live GPU-fit check against HAMi reservations and node
+  labels fails) → `503 insufficient_capacity`, `Retry-After: 120`, and **no wake is
+  fired**. The capacity check fails open when its data is stale.
+
+Client retries → the model warms → eventually serves.
 
 ## Usage accounting & identity
 
 Every served request (and every cold-start event) is written as one JSON line to
-an in-pod log for fairshare/billing. The log is an `emptyDir` at
-`GATEWAY_USAGE_LOG` (default `/var/log/aleph/usage.log`), kept separate from app
-stdout and intentionally not mounted to the host — ship it out of band
-(promtail/fluent-bit) later.
+`GATEWAY_USAGE_LOG` (default `/var/log/aleph/usage.log`) for fairshare/billing. The
+directory is the RWX PVC `model-gateway-usage-logs`, mounted with one subPath per
+replica — a pod sees its own `usage.log` (+ rotations), and the ledger survives pod
+and node replacement. Full schema and aggregation: [docs/LOGGING.md](../docs/LOGGING.md).
 
 ```bash
 kubectl exec -n models deploy/model-gateway -c gateway -- tail -f /var/log/aleph/usage.log
@@ -227,20 +235,28 @@ sudo ssh root@<control-plane> "kubectl set image deploy/model-gateway -n models 
 ```
 
 A rebuild resurrects whatever tag is pinned in the overlay — never leave live
-on `:latest`.
+on `:latest`. The gateway's upstream call timeout defaults to 300 s
+(`UPSTREAM_TIMEOUT`); Tyk's proxy timeout is set in `51-tyk.yaml`.
 
 ## Key files
 
 | File | Purpose |
 |---|---|
 | `app/gateway.py` | Main FastAPI app: discovery, routing, endpoints, Anthropic translation, scale-to-zero |
-| `cards/*.yaml` | Gateway-side model cards (most live in per-model dirs) |
+| `app/conversation.py` | OpenAI⇄Anthropic conversation translation helpers |
+| `app/capacity.py` | Cold-start GPU-fit simulation (HAMi scheduler metrics parsing) |
+| `app/usage.py` | Usage-record construction and the JSONL ledger writer |
+| `app/static/` | Landing-page assets (favicon provenance in `FAVICON-SOURCE.md`) |
+| `cards/*.yaml` | Gateway-side model cards (almost all live in per-model dirs) |
 | `k8s/deployment.yaml` | Gateway Deployment (runs on control-plane, no GPUs) |
-| `k8s/rbac.yaml` | ServiceAccount + RBAC for ConfigMap/ISVC reads |
+| `k8s/rbac.yaml` | ServiceAccount + RBAC for ConfigMap/ISVC/pod/node reads |
 | `k8s/service.yaml` | ClusterIP Service |
-| `tyk/*.json` | Tyk API gateway config |
-| `Dockerfile` | Python 3.11 slim + FastAPI |
-| `requirements.txt` | FastAPI, httpx, kubernetes client |
+| `tyk/*.json` | Tyk API definitions |
+| `tyk/middleware/*.js` | Tyk JSVM: `normalizeAuth` + `injectIdentity` |
+| `tyk/tyk-keys.sh` | Standalone key helper (prefer `tyk-admin.sh` on a control-plane node) |
+| `test.py` | Model-agnostic gateway battery (`FLEET=1` warms and probes every model) |
+| `tests/` | Regression tests run by CI |
+| `Dockerfile` | Python 3.11 slim + FastAPI (deps pinned in `requirements.txt`) |
 
 ## Why not LiteLLM?
 
