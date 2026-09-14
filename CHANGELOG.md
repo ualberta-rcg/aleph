@@ -2,6 +2,16 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Clarify one customized test script per model
+
+Make ADD-A-MODEL.md explicit: each model keeps one test.py containing all
+applicable functional, limit, cold-start, load/stress and recovery checks.
+Operators and AI agents customize requests, fixtures, expectations, boundaries
+and workload sizes during deployment, then rerun the full final battery.
+
+Validation: reviewed the guide against the three updated templates and checked
+the diff. Documentation only; no model deployment or inference.
+
 ## 2026-09-13 — Include load and limit checks in model test templates
 
 Update all three model test templates with small concurrency and recovery checks

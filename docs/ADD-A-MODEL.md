@@ -65,7 +65,7 @@ with your chosen directory name throughout the files and commands.
 | `models/example-model/pvc.yaml` | A PersistentVolumeClaim: namespace, unique claim name, storage class, access mode and requested capacity for reusable weights/caches. Aleph's shared NFS pattern uses `ReadWriteMany` with `nfs-models`. Omit only when the runtime genuinely needs no persistent files. |
 | `models/example-model/inferenceservice.yaml` | The KServe InferenceService: runtime image/version, command and arguments, container port, resource requests/limits, placement, probes, timeouts, scaling, storage mounts and Secret references. Include init containers for any download or environment preparation. |
 | `models/example-model/details.yaml` | The gateway model card, stored as JSON inside a ConfigMap. Describes the public model ID, task, endpoints, backend mapping, tested capabilities, input/output descriptions, limits, defaults and scaling behavior. This makes the deployment discoverable. |
-| `models/example-model/test.py` | Executable checks for this model through Aleph: valid and invalid requests, expected outputs, supported features, limits and cold-start behavior. Accept `GW_URL`, `TYK_KEY` and `MODEL` through the environment. |
+| `models/example-model/test.py` | One test script for this model through Aleph: valid and invalid requests, expected outputs, supported features, limits, cold starts, load/stress and recovery. Customize it during deployment; running it executes all applicable checks. Accept `GW_URL`, `TYK_KEY` and `MODEL` through the environment. |
 | `models/example-model/README.md` | What the model does and how to use/deploy it: runtime configuration, file list, complete commands, sample input/output, tested capabilities, dated results and known limitations. Distinguish upstream capability from what this deployment exposes. |
 | `models/example-model/CLAUDE.md` | Implementation memory for the agent/operator: research links, why settings were chosen, dependency/parser quirks, failed approaches, measurements and remaining work. Start from [models/CLAUDE-TEMPLATE.md](../models/CLAUDE-TEMPLATE.md). |
 
@@ -252,7 +252,8 @@ separately justified recovery plan. Keep intentionally parked cards absent.
 
 ### 3. Prove the advertised features
 
-Build `models/example-model/test.py` from the appropriate template:
+Keep one test script per model: `models/example-model/test.py`. Start from the
+appropriate template:
 
 - [models/test.template.py](../models/test.template.py): chat, reasoning, tools,
   vision, Anthropic, embeddings and reranking sections to select from.
@@ -260,6 +261,11 @@ Build `models/example-model/test.py` from the appropriate template:
   science requests, output shape and domain sanity checks.
 - [models/test.science-openapi-template.py](../models/test.science-openapi-template.py):
   models with a documented/OpenAPI-described science API.
+
+Customize this file as you deploy and learn about the model. The operator or AI
+agent should update its requests, fixtures, expected outputs, boundary cases and
+load sizes to match the model and available resources. Keep those checks in the
+same file and rerun the complete battery against the final deployment.
 
 Templates are menus, not automatic proof of support. Replace placeholder inputs
 and expected results, remove irrelevant positive tests, and retain useful checks
