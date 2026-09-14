@@ -1,6 +1,17 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — SITE-VALUES: document the .env environment values
+
+Add an "Environment values (.env)" section to docs/SITE-VALUES.md: why each credential
+variable is needed and where it lands (HF_TOKEN → hf-token Secret used by init
+containers; NGC_API_KEY → ngc secrets, NIM-only; the Tyk admin secret is explicitly the
+value of the __TYK_API_SECRET__ render token and what authenticates tyk-admin.sh;
+HEAD optional operator convenience), plus sourcing/safety notes and a pointer separating
+test-time variables. QUICKSTART's gather-values step links to it. (A stale deploy.sh
+mention in .env.example remains — that file is protected by a deny rule and was not
+edited.)
+
 ## 2026-09-14 — Expand QUICKSTART; add the per-file overlay walkthrough
 
 QUICKSTART becomes a full deploy guide: a richer requirements table (Warewulf 4 server +
