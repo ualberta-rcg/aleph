@@ -39,6 +39,18 @@ Site storage definitions belong in [Site values](../docs/SITE-VALUES.md) and
 [Warewulf/storage guidance](../docs/WW-OVERLAYS.md). This file requests storage;
 it does not create or recover the site's NFS server.
 
+**Sizing and classes in practice** (fleet survey 2026-09-14): model claims run from
+2 Gi to 200 Gi — small science models 5–10 Gi, chat LLMs 30–100 Gi, the largest
+multi-GPU weights ~200 Gi — plus a few Gi where a venv is persisted. Request what
+the model's weights + caches + environment actually need plus headroom; a claim is
+cheap to create and disruptive to replace. Most existing claims at the reference
+site are bound to pre-provisioned volumes (`storageClassName: ""` with a `volumeName`)
+as part of its storage-recovery snapshot — **new models should use the dynamic
+`nfs-models` class** as shown above; static bindings are recovery state, not the
+pattern to copy. Two platform claims are not model storage: the gateway usage ledger
+(10 Gi RWX, dynamic) and the Tyk Redis key store (2 Gi RWO) — preserve both across
+rebuilds (Redis holds every API key).
+
 ## What persists and where
 
 | Pattern | PVC contents | Serving behavior |

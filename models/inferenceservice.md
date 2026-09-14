@@ -6,6 +6,10 @@ pattern, then adapt it using the model's instructions and the selected runtime's
 actual interface. Pair it with [storage](pvc.md), the [card](details.md), and
 [tests](test.md).
 
+**Layout:** Aleph uses the raw predictor form — containers, initContainers, volumes,
+placement and scaling live directly under `spec.predictor` (no `componentSpecs`).
+Patterns below reflect the deployed fleet (reviewed 2026-09-14).
+
 ## Basic prebuilt-runtime pattern
 
 This illustrative service assumes weights have already been prepared on its PVC.
@@ -76,6 +80,28 @@ spec:
 The vLLM image is the documented baseline reviewed on 2026-09-14, not a universal
 architecture requirement. Prefer an explicit tested image version or digest.
 Verify support before copying runtime arguments or updating a dependency.
+
+Two live container forms:
+
+```yaml
+# vLLM-style: entry command + args list
+command: ["vllm"]
+args:
+  - serve /data/model
+  - --served-model-name=example-model
+  - --port=8080
+  - --tensor-parallel-size=2          # match the GPU count; verify runtime/hardware support
+  - --max-model-len=131072
+  - --gpu-memory-utilization=0.90     # measured, not copied
+  - --disable-custom-all-reduce       # hardware finding, not a universal flag
+```
+
+```yaml
+# Custom-server style: run a PVC venv against mounted server code
+command: ["/data/venv/bin/python", "/app/model-server/server.py"]
+env:
+  - {name: MODEL_DIR, value: /data/model}
+```
 
 ## Choose the serving approach
 
@@ -185,13 +211,13 @@ ConfigMap is distinct from its gateway card ConfigMap in `details.yaml`.
 | Setting | How to choose |
 |---|---|
 | CPU/RAM requests and limits | Include model loading, tokenization/preprocessing, worker processes and peak inputs. Avoid copying another model's budget. |
-| `nvidia.com/gpu` | Device count per replica; match requests and limits when both are provided. |
-| `nvidia.com/gpumem` | HAMi shared memory allowance in MiB. Include weights, runtime overhead, KV cache/activations and concurrency. |
+| `nvidia.com/gpu` | Device count per replica; match requests and limits when both are provided (the fleet convention; limits-only also schedules but hides the ask from the scheduler's bin-packing view). |
+| `nvidia.com/gpumem` | HAMi shared memory allowance in MiB. Include weights, runtime overhead, KV cache/activations and concurrency. Deployed slices range ~8–30 GiB; set the same value in requests and limits. |
 | Whole devices | Omit `gpumem`; request the number of devices required by the replica. |
 | GPU compute share | Some HAMi configurations support `nvidia.com/gpucores`; use only after checking the installed scheduler/device-plugin behavior. It is not an observed utilization reading. |
 | `nodeSelector` / affinity | Match actual node labels; GPU examples select `gpu: "on"` and exclude control-plane nodes. CPU deployments need a suitable alternative. |
 | Tolerations | Add only for taints on the intended nodes. They allow placement; they do not select a node. |
-| Shared memory | Use an `emptyDir` with `medium: Memory` mounted at `/dev/shm` if the runtime requires it. Size it deliberately and include its use in the memory budget. |
+| Shared memory | Use an `emptyDir` with `medium: Memory` mounted at `/dev/shm` if the runtime requires it (vLLM with tensor parallelism does). Deployed sizes are 16Gi for multi-GPU vLLM; size deliberately and include it in the node memory budget. |
 
 For multi-GPU replicas, set the runtime's tensor/pipeline parallelism to match the
 allocation and verify topology, communication libraries and memory on every device.
@@ -202,10 +228,18 @@ copy old HAMi workarounds without reproducing the issue on the current system.
 ## Ports, health, timeout and lifecycle
 
 - Align the listening port, declared container port and probe port. Aleph's common
-  serving pattern uses port 8080. Health paths differ by runtime.
-- Readiness must represent ability to serve; a JSON body saying "loading" with
-  HTTP 200 does not fail an HTTP probe. Startup probes should allow measured load
-  time. Add liveness only with behavior that will not restart a busy healthy model.
+  serving pattern uses port 8080. Health paths differ by runtime: vLLM deployments
+  probe `/v1/models` (it is up only when the engine serves); custom servers expose
+  `/health`. A JSON body saying "loading" with HTTP 200 does not fail an HTTP probe.
+- Readiness must represent ability to serve; startup probes should allow measured
+  load time (deployed failureThreshold × period windows reach 10–30 minutes for
+  heavy weights). Add liveness only with behavior that will not restart a busy
+  healthy model; several deployed custom servers ship readiness-only.
+- Fleet annotation set (deployed on every predictor): `autoscaling.knative.dev/
+  scale-down-delay` and `scale-to-zero-pod-retention-period` (idle lifecycle), plus
+  `serving.knative.dev/progress-deadline` on models whose first boot exceeds the
+  platform default (deployed values 600–2400 s). Set them on the InferenceService,
+  not the card.
 - Distinguish initial downloads/environment builds from cached model loading.
   Coordinate startup/progress deadlines and request timeouts with
   [Kubernetes serving settings](../docs/KUBERNETES.md) and the gateway/ingress limits.

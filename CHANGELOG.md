@@ -1,6 +1,29 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Complete the per-file-type model references
+
+Augment models/ root references to the complete per-file-type set (six .md files:
+CLAUDE.md index + pvc/inferenceservice/details/test/model-notes), grounded in a full
+review of the gateway source (card parser, handlers, thinking modes, catalog generation,
+cold-start guard) and a read-only live census of the deployed cards, InferenceServices and
+PVCs. details.md: document endpoints.clone/voices (web catalog reads), the verbatim echo
+of endpoints/input_map/custom_params into /v1/models entries, limits stamps on usage
+records, the always-JSON card-body parse (details.yaml key accepted, YAML body rejected),
+the cold-start Retry-After derivation, the alias pattern via upstream_model_id, an
+audio multi-endpoint example, an expanded never-read list (supports_streaming,
+secondary/edit, max_input_tokens, pooling), and a fleet-proven note for thinking modes
+(budget/always_on implemented but undeployed). inferenceservice.md: raw-predictor layout
+note, the deployed annotation set incl. progress-deadline ranges, probe patterns by
+runtime, command-vs-args forms, and requests=limits GPU convention with deployed gpumem
+slice sizes. pvc.md: fleet sizing survey, static-recovery-binding vs dynamic nfs-models
+guidance, platform PVCs (usage ledger, Redis key store). model-notes.md: fold the
+CLAUDE-TEMPLATE checklist inline. Deleted the DETAILS-TEMPLATE-LLM.md stub and
+CLAUDE-TEMPLATE.md (links repointed to details.md / model-notes.md).
+
+Validation: field claims checked against gateway/app/gateway.py function-by-function and
+live exemplar cards/services (read-only); repo link sweep clean except historical
+changelog/per-model mentions; documentation-only change, nothing deployed.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
 ## 2026-09-14 — Organize model-file documentation by purpose
 

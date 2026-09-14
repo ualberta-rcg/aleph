@@ -3,7 +3,8 @@
 The model card connects the public API and catalog to a deployed model. Prepare
 `models/<model>/details.yaml` alongside the [InferenceService](inferenceservice.md)
 and [tests](test.md). This reference describes repository gateway behavior reviewed
-on 2026-09-14; it does not claim a live inference test of every configuration.
+on 2026-09-14 against the gateway source and the live card fleet; it does not claim a
+live inference test of every configuration.
 
 Implementation: [gateway source](../gateway/app/gateway.py), especially
 `_parse_card`, `resolve`, `prepare_chat`, `_model_entry` and the endpoint handlers.
@@ -18,6 +19,14 @@ label `model-details: "true"` and JSON in `data.details.json`. The gateway watch
 these ConfigMaps and discovers updates without restarting. The parser requires
 valid JSON and a nonempty `id`; it is not a complete card validator. Include the
 fields needed by the selected handler and validate them with the model's tests.
+
+**The card body is always parsed as JSON.** The parser accepts the ConfigMap key
+`details.json` or `details.yaml`, but either way runs `json.loads` on it — a YAML
+body stored under `details.yaml` is rejected as invalid JSON. Store JSON regardless
+of the key name.
+
+Cards with invalid JSON or a missing `id` are silently dropped (a log line only) —
+the model simply never appears. Renaming a card's `id` evicts the old id on update.
 
 A public model ID, directory name, InferenceService name and runtime's served
 model name may differ. Use them consistently:
@@ -45,16 +54,19 @@ what is known and tested.
 | `type` | String, defaults to `chat` in most routing/catalog paths | Anthropic handlers require `chat`; ordinary catalog lists chat by default. Use an explicit task for non-chat models. |
 | `endpoints.primary` | String; catalog default is empty | Public endpoint shown in generated examples. Does not register a new handler or redirect a dedicated handler. |
 | `endpoints.health` | String | Describe the runtime's health path. This does not configure the Kubernetes probe or the gateway's wake probe. |
+| `endpoints.clone` | String | Voice-cloning card (`type: tts`): adds the clone example block to the public catalog web page |
+| `endpoints.voices` | String | Adds the "list voices" example next to the clone block on the web page |
+| `endpoints` (whole dict) | Object; echoed verbatim | The full `endpoints`, `input_map` and `custom_params` objects are copied into each `/v1/models` entry |
 | `routing.k8s_name` | String; absent/empty uses `id` | Selects service state and internal host |
-| `routing.upstream_model_id` | String or null; omitted means no rewrite | Used by chat, embeddings and dedicated audio handlers; see endpoint table below |
+| `routing.upstream_model_id` | String or null; omitted means no rewrite | Used by chat (incl. Anthropic), `count_tokens`, embeddings and the dedicated audio handlers; not by rerank or the custom catch-all. Also serves as an **alias** mechanism: one public id can point at another model's served name |
 | `routing.no_stream` | Boolean, default false | Suppresses upstream streaming where the handler supports streaming. It does not add streaming to a server. |
 | `routing.upstream_path` | String; absent means no override | Custom forwarding only; takes precedence over prefix stripping |
 | `routing.strip_v1_prefix` | Boolean, default false | Custom forwarding only: `/v1/task` becomes `/task` |
-| `limits.context_window` | Integer, display default 0 | Catalog/documentation; not a general gateway tokenizer-based input-length check |
-| `limits.max_completion_tokens` | Positive integer enables chat preparation cap | Caps prepared chat `max_tokens`; also exposed in catalog. It does not enforce every custom endpoint's output size. |
+| `limits.context_window` | Integer, display default 0 | Catalog/documentation; not a general gateway tokenizer-based input-length check. Also stamped into every usage record |
+| `limits.max_completion_tokens` | Positive integer enables chat preparation cap | Caps prepared chat `max_tokens`; also exposed in catalog and stamped into every usage record. It does not enforce every custom endpoint's output size. |
 | `scaling.scale_to_zero` | Boolean, catalog default false | Catalog and Anthropic listing eligibility; actual cold-start admission checks observed service state |
 | `scaling.min_replicas` | Integer | Catalog/Anthropic listing metadata; set the matching InferenceService minimum separately |
-| `scaling.cold_start_estimate` | String; cold guard fallback `2-5 minutes` | Startup message and derived retry delay. Measure cached 0→1 wake, not first-ever installation. |
+| `scaling.cold_start_estimate` | String; cold guard fallback `2-5 minutes` | Startup message and derived retry delay: `Retry-After` is the largest integer in the string × 60 seconds (`"3-6 min"` → 360; no digits → 30). Measure cached 0→1 wake, not first-ever installation. |
 | `scaling.idle_retention` | String | Operating documentation; set actual retention in the service annotations |
 | `defaults.chat` | Object, default empty | Fill missing/null chat request values; `thinking` is handled separately |
 | `defaults.meta_tasks` | Object keyed by `title`, `tags`, `followups` | Controls detected chat-UI tasks, token settings and thinking behavior |
@@ -70,6 +82,12 @@ does not dispatch between versions. Fields such as `routing.serialize`,
 limit fields are not implemented as controls by this gateway. Do not rely on them
 to serialize calls, rename output-limit parameters or enforce input validation.
 `status: production` is also not a deployment-readiness check.
+
+Fields present on live cards but **never read** by this gateway: `behavior.supports_streaming`
+(streaming is controlled by `routing.no_stream` and the runtime), `endpoints.secondary`,
+`endpoints.edit`, `limits.max_input_tokens` (document it in `catalog.input_format` or
+`input_map` descriptions instead), `catalog.pooling`, `catalog.max_input_tokens`. They are
+inert metadata; harmless to keep, wrong to rely on.
 
 ## Endpoint and runtime variations
 
@@ -111,6 +129,16 @@ For a native server that rejects `model` and `stream`, add:
 {"custom_params": {"passthrough": true}}
 ```
 
+A public id can alias a differently-named deployment or served model (a live pattern —
+an unquantized public id pointing at its quantized deployment):
+
+```json
+{"k8s_name": "example-model-awq", "upstream_model_id": "example-model-awq"}
+```
+
+The rewrite applies on chat (both APIs), `count_tokens`, embeddings and the dedicated
+audio handlers; the custom catch-all does not rewrite the model field.
+
 If the public request is `{ "model": "example-model", "sequence": "MKT" }`, the
 first routing example plus passthrough sends `{ "sequence": "MKT" }` to `/generate`.
 Other fields remain as supplied. `input_map` should describe the public input and
@@ -143,6 +171,11 @@ adapter rather than claiming support through card metadata alone.
 | `effort` | Inject `on` defaults without replacing caller values, or `off` values when disabled; accepted effort names come from aliases/map/default |
 | `toggle` | Merge the `on` or `off` object, such as runtime-specific chat-template kwargs |
 | `always_on` | No native off injection; gateway can hide reasoning and cap output when the caller asks for off |
+
+All five modes are implemented in the gateway. Live-fleet usage (census 2026-09-14): `none`
+dominates, `effort` and `toggle` are each proven on multiple deployed chat models, while
+`budget` and `always_on` have no deployed example yet — test them end-to-end before relying
+on them for a new model.
 
 Managed modes expose reasoning when enabled and hide it when disabled. Hiding
 reasoning does not mean the model stopped computing it. Parser configuration in
@@ -232,6 +265,9 @@ contracts in `output_map` and the model README even if every field is not expose
 by the current catalog renderer.
 
 Ordinary `GET /v1/models` lists chat cards; `?all=true` includes non-chat cards.
+Each entry also carries live state (readiness, replica counts, resource allocation)
+plus verbatim copies of the card's `endpoints`, `input_map` and `custom_params`
+objects — anything secret-shaped must not be placed in those objects.
 The Anthropic catalog surface lists cards classified as always-on chat. That
 predicate treats a missing minimum permissively, so set the minimum and
 scale-to-zero metadata explicitly. Catalog eligibility is not a capacity guarantee.
@@ -352,6 +388,35 @@ Reranking variation:
   "output_map": {"results": {"type": "array", "description": "index, relevance_score and optional document"}}
 }
 ```
+
+Multi-endpoint audio (TTS) variation — `endpoints.clone`/`voices` drive the web page's
+cloning examples (live-derived shape):
+
+```json
+{
+  "type": "tts",
+  "endpoints": {"primary": "/v1/audio/speech", "health": "/health",
+                "clone": "/v1/audio/clone", "voices": "/v1/audio/voices"},
+  "routing": {"k8s_name": "example-tts", "no_stream": true},
+  "input_map": {
+    "input": {"type": "string", "required": true, "description": "Text to synthesize"},
+    "language": {"type": "string", "default": "en"},
+    "voice": {"type": "string", "default": "preset-or-saved-clone-name"}
+  },
+  "custom_params": {
+    "schema": {
+      "speed": {"type": "number", "default": 1.0},
+      "voice_sample": {"type": "string", "example": false, "description": "clone: base64 WAV reference clip"},
+      "save_as": {"type": "string", "example": false, "description": "clone: name to persist the clip"}
+    },
+    "passthrough": true
+  },
+  "catalog": {"input_format": {"input": "text", "voice": "preset or clone name"}}
+}
+```
+
+The `example: false` entries keep the large binary-input fields out of the generated
+request body while documenting them in the parameter table.
 
 Custom science/native server variation:
 
