@@ -2,6 +2,20 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Show GPU-worker components and shared NFS storage
+
+Extend the README's original boxed architecture with an explicit worker boundary:
+predictor serving container and queue-proxy, RKE2/containerd and NVIDIA runtime,
+HAMi plugin/monitor, labeling, networking and RDMA components. Connect Redis,
+usage and model PVCs to a shared NFS server with separate data directories.
+Remove deployment-validation commentary from README prose. Keep five references
+focused on the institution, node-image integration and core platform projects.
+
+Validation: read-only checks of a running predictor's containers/worker placement,
+DaemonSet containers/selectors, Redis binding and usage PVC; reuse verified storage
+and provisioning sources. Check diagram alignment, links and unchanged README
+sections. No deployment or storage changes, and no private values published.
+
 ## 2026-09-13 — Restore and extend the original boxed architecture diagram
 
 Restore the README's original text-box style and request-flow spine, replacing

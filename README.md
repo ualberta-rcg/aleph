@@ -129,16 +129,16 @@ follow [Add a model](docs/ADD-A-MODEL.md).
            ▼
   ┌─────────────────┐       ┌─────────────────┐
   │    Tyk OSS      │ ◄───► │      Redis      │  key sessions, identity, API
-  │ auth + limits   │       │ persistent PVC  │  access and rate-limit state
+  │ auth + limits   │       │  Redis PVC (A)  │  access and rate-limit state
   └────────┬────────┘       └────────┬────────┘
-           │                        └── NFS-backed Redis data
+           │                        └── Redis data on the shared NFS server below
            │  /v1/ and /anthropic/ require keys; root web route is keyless
            │  middleware supplies X-Aleph-* identity headers
            ▼
   ┌─────────────────┐  ◄── model cards (details ConfigMaps) + deployment state
   │  model-gateway  │      discovered through Kubernetes API watches
   │   (FastAPI)     │
-  └────────┬────────┘  ──► usage JSONL: per-replica files on a separate NFS PVC
+  └────────┬────────┘  ──► usage JSONL: per-replica files on usage PVC (B)
            │           ──► /metrics: aggregate request/accounting counters
            │  API translation, model routing and cold-start capacity guard;
            │  may return 503 + retry guidance before forwarding
@@ -155,17 +155,33 @@ follow [Add a model](docs/ADD-A-MODEL.md).
   └────────┬────────┘                                  │
            ◄───────────────────────────────────────────┘
            ▼
-  ┌─────────────────┐  ◄── KServe + Knative controllers manage services,
-  │ Model predictor │      revisions and desired replica counts
-  │       pod       │  ◄── Kubernetes + HAMi place pods and allocate GPUs
-  └────────┬────────┘
-           │  queue-proxy → serving runtime: vLLM / TEI / NIM / custom server
-           │  shared GPU allowance or multiple whole GPUs, as configured
-           ▼
-  ┌─────────────────┐
-  │   Model PVCs    │  NFS-backed weights, caches and prepared environments;
-  │ persistent NFS  │  retained when the model scales to zero or a pod is replaced
-  └─────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │                         GPU WORKER NODE                              │
+  │                                                                      │
+  │  ┌─────────────────┐  ◄── KServe + Knative: services and replicas    │
+  │  │ Model predictor │  ◄── Kubernetes + HAMi: placement/allocation    │
+  │  │       pod       │                                                 │
+  │  │                 │  queue-proxy → serving container                │
+  │  │                 │  vLLM / TEI / NIM / custom runtime              │
+  │  └────────┬────────┘                                                 │
+  │           ├── GPU access: shared allowance or whole devices          │
+  │           └── Model PVCs (C): weights, caches and environments       │
+  │                                                                      │
+  │  RKE2 agent / kubelet / containerd + NVIDIA container runtime        │
+  │  NVIDIA host driver + physical GPUs + persistence service            │
+  │  HAMi device plugin + vGPU monitor; GPU and hardware labelers        │
+  │  Canal / Multus / Istio CNI; RDMA device plugin + host RDMA stack    │
+  └──────────────────────────────────────────────────────────────────────┘
+
+                          ┌─────────────────────────────────────────────┐
+  Redis PVC (A) ──────────►│  SHARED NFS SERVER                          │
+  Usage PVC (B) ──────────►│                                             │
+  Model PVCs (C) ─────────►│  Separate data directories for key state,   │
+                          │  usage records and model files              │
+                          └─────────────────────────────────────────────┘
+    Kubernetes PV/PVC bindings mount the server's storage into pods.
+    Files remain when model pods scale to zero or nodes are reprovisioned.
+    Persistent storage still needs backups.
 
   KServe/Knative controllers and HAMi manage the pods; they are not extra
   inference-request hops. Tyk's admin-command audit file is separate from
@@ -173,9 +189,9 @@ follow [Add a model](docs/ADD-A-MODEL.md).
   from gateway accounting metrics.
 ```
 
-Checked against the running deployment and boot-source documentation on
-**2026-09-13**. Ingress and the gateway run on control-plane nodes; GPU predictors
-run on workers. Site addresses and hardware counts stay in private notes.
+Warewulf provisions both node roles. Ingress and the gateway run on control-plane
+nodes; GPU model predictors run on workers. Shared NFS storage holds the data
+that must outlive their pods.
 
 Gateway releases are built by the repository's CI workflow. Production deployments
 pin a specific image version/digest; restarting a Deployment alone does not update
@@ -204,10 +220,10 @@ management, usage history and GPU measurements.
 ## 🔗 References
 
 - [University of Alberta Research Computing](https://www.ualberta.ca/en/information-services-and-technology/research-computing/index.html)
-- [Alberta Machine Intelligence Institute (AMII)](https://www.amii.ca/)
-- [Warewulf](https://warewulf.org/docs/main/)
+- [Warewulf/RKE2 node-image repository](https://github.com/ualberta-rcg/warewulf-rke2-hami)
+- [RKE2 Kubernetes](https://docs.rke2.io/)
 - [KServe](https://kserve.github.io/website/)
-- [HAMi](https://project-hami.io/docs/)
+- [HAMi GPU sharing](https://project-hami.io/docs/)
 
 ---
 
