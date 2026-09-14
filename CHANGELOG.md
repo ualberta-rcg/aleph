@@ -1,6 +1,23 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — LOGGING: ground in verified live behavior
+
+Replace synthetic examples with real production records (identities/fingerprints
+placeholdered, node names genericized): service-key chat, embeddings, transcription,
+and a cold-start 503. Add "Privacy and accounting, by design": nothing content-shaped
+is stored, the retained field set mirrors scheduler-style accounting for a future
+fairshare/allocation integration (explicitly not implemented). Metrics section gains
+the complete verified family table, a real scrape excerpt, and "Why the numbers are
+live" (request-path counters, on-demand peer fan-in verified as the exact sum of
+per-pod locals, per-pod-lifetime window, cards-not-ISVCs gauge semantics). Storage
+and retention rewritten from the measured PVC: one dir per pod name across
+generations, nothing prunes retired dirs (23 held 79% of bytes), the deployed image
+rotates with ONE backup vs the five-copy source default — effective retention is
+weeks at current rates, days at peak. Audit recipe notes the NFS du understatement.
+All read-only verification on the live cluster 2026-09-14; no identities or record
+contents beyond the redacted examples.
+
 ## 2026-09-14 — Gateway review, second pass: full-tree code check
 
 File-by-file review of the whole gateway tree (app modules, Tyk definitions and
@@ -33,6 +50,23 @@ brackets.
 Additions from the completeness sweep: /v1/audio/clone + /v1/audio/voices rows in the
 endpoint table (dedicated handlers, already in docs/ENDPOINTS.md); the client-visible
 `resources` telemetry block on responses; and client-disconnect cancellation (499).
+
+## 2026-09-14 — LOGGING: ground in verified live behavior
+
+Replace synthetic examples with real production records (identities/fingerprints
+placeholdered, node names genericized): service-key chat, embeddings, transcription,
+and a cold-start 503. Add "Privacy and accounting, by design": nothing content-shaped
+is stored, the retained field set mirrors scheduler-style accounting for a future
+fairshare/allocation integration (explicitly not implemented). Metrics section gains
+the complete verified family table, a real scrape excerpt, and "Why the numbers are
+live" (request-path counters, on-demand peer fan-in verified as the exact sum of
+per-pod locals, per-pod-lifetime window, cards-not-ISVCs gauge semantics). Storage
+and retention rewritten from the measured PVC: one dir per pod name across
+generations, nothing prunes retired dirs (23 held 79% of bytes), the deployed image
+rotates with ONE backup vs the five-copy source default — effective retention is
+weeks at current rates, days at peak. Audit recipe notes the NFS du understatement.
+All read-only verification on the live cluster 2026-09-14; no identities or record
+contents beyond the redacted examples.
 
 ## 2026-09-14 — Gateway review, second pass: full-tree code check
 

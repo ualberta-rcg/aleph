@@ -28,74 +28,49 @@ usage metadata.
 
 ## Example usage records
 
-These examples are synthetic. Identities, models, hardware, and numbers are
-illustrative; none are copied from user logs.
+Real records from the production ledger (2026-09), with identities and key
+fingerprints replaced by placeholders; all other values are as written.
 
-A completed chat request:
-
-```json
-{
-  "ts": "2026-01-01T12:00:00Z",
-  "site": "example-site",
-  "identity": "example-user",
-  "identity_type": "user",
-  "account": "example-project",
-  "endpoint": "/v1/chat/completions",
-  "api": "openai",
-  "model": "example-chat",
-  "status": 200,
-  "stream": false,
-  "cold_start": false,
-  "latency_ms": 1500,
-  "tokens": {
-    "prompt": 100,
-    "completion": 40,
-    "total": 140,
-    "detail": {
-      "prompt_tokens": 100,
-      "completion_tokens": 40,
-      "total_tokens": 140
-    }
-  },
-  "context_window": 32768,
-  "max_completion_tokens": 4096,
-  "resources": {
-    "model": "example-chat",
-    "gpus": 1,
-    "vram_mib": 8192,
-    "cpu_cores": 4,
-    "system_ram_mib": 16384,
-    "node": "example-worker",
-    "gpu_product": "example-gpu",
-    "latency_ms": 1500
-  },
-  "derived": {"gpu_seconds": 1.5},
-  "key_fp": {"sha256_8": "0123abcd", "last4": "DEMO"}
-}
-```
-
-This records 140 tokens and 1.5 seconds of latency, without the question or answer.
-`context_window` and `max_completion_tokens` are model-card limits, not the size
-or requested output budget of this particular call.
-
-An audio transcription can instead carry this usage detail (excerpt):
+A chat completion served to a browser-chat service key:
 
 ```json
-{
-  "tokens": {
-    "prompt": 0,
-    "completion": 0,
-    "total": 0,
-    "detail": {
-      "audio_input_bytes": 96000,
-      "audio_seconds": 3.0,
-      "text_chars": 42
-    }
-  }
-}
+{"ts":"2026-09-14T18:21:58Z","site":"aleph","identity":"service-webui","identity_type":"service","account":"service-webui","endpoint":"/v1/chat/completions","api":"openai","model":"qwen35-122b","status":200,"stream":false,"cold_start":false,"latency_ms":1000,"tokens":{"prompt":272,"completion":11,"total":283,"detail":{"prompt_tokens":272,"total_tokens":283,"completion_tokens":11,"prompt_tokens_details":null}},"context_window":131072,"max_completion_tokens":32768,"resources":{"model":"qwen35-122b","gpus":4,"cpu_cores":16.0,"system_ram_mib":131072,"node":"gpu-worker-5","gpu_product":"L40S","latency_ms":1000},"derived":{"gpu_seconds":4.0},"key_fp":{"sha256_8":"0123abcd","last4":"DEMO"}}
 ```
 
-The transcript itself is absent. Available detail varies by runtime and endpoint.
+Read: 283 tokens through a 4-GPU model in 1 s — 4.0 allocated GPU-seconds.
+
+An embeddings call from a retrieval-pipeline service key:
+
+```json
+{"ts":"2026-09-11T20:55:11Z","site":"aleph","identity":"service-rag","identity_type":"service","account":"service-rag","endpoint":"/v1/embeddings","api":"openai","model":"bge-m3","status":200,"stream":false,"cold_start":false,"latency_ms":137,"tokens":{"prompt":32,"completion":0,"total":32,"detail":{"prompt_tokens":32,"total_tokens":32}},"context_window":8192,"max_completion_tokens":0,"resources":{"model":"bge-m3","gpus":1,"vram_mib":8192,"cpu_cores":4.0,"system_ram_mib":8192,"node":"gpu-worker-2","gpu_product":"L40S","latency_ms":137},"derived":{"gpu_seconds":0.137},"key_fp":{"sha256_8":"0123abcd","last4":"DEMO"}}
+```
+
+Note `vram_mib: 8192` — one HAMi vGPU slice, not a whole card.
+
+A speech transcription (counts only — never the transcript):
+
+```json
+{"ts":"2026-09-12T00:27:56Z","site":"aleph","identity":"service-notes","identity_type":"service","account":"service-notes","endpoint":"/v1/audio/transcriptions","api":"openai","model":"whisper-large-v3","status":200,"stream":false,"cold_start":false,"latency_ms":583,"tokens":{"prompt":0,"completion":0,"total":0,"detail":{"audio_input_bytes":1443884,"audio_output_bytes":50,"text_chars":10}},"context_window":0,"max_completion_tokens":0,"resources":{"model":"whisper-large-v3","gpus":1,"vram_mib":8192,"cpu_cores":8.0,"system_ram_mib":24576,"node":"gpu-worker-3","gpu_product":"L40S","latency_ms":583},"derived":{"gpu_seconds":0.583},"key_fp":{"sha256_8":"0123abcd","last4":"DEMO"}}
+```
+
+A scale-from-zero guard response (an attempt, not a served request):
+
+```json
+{"ts":"2026-09-11T19:32:02Z","site":"aleph","identity":"example-user","identity_type":"user","account":"example-user","endpoint":"/v1/embeddings","api":"openai","model":"ancient-greek-bert","status":503,"stream":false,"cold_start":true,"latency_ms":0,"tokens":{"prompt":0,"completion":0,"total":0,"detail":{}},"context_window":512,"max_completion_tokens":0,"resources":{"model":"ancient-greek-bert","cpu_cores":2.0,"system_ram_mib":4096,"latency_ms":0},"derived":{"gpu_seconds":0.0},"key_fp":{"sha256_8":"0123abcd","last4":"DEMO"}}
+```
+
+`context_window` and `max_completion_tokens` are model-card limits, not the size or
+output budget of the particular call.
+
+### Privacy and accounting, by design
+
+Nothing that was said, typed, uploaded, or generated is stored — the schema holds
+counts only (see [What is recorded](#what-is-recorded)). What **is** kept is the
+accounting spine: caller identity/account/type, model, token counts, allocated
+resources, and derived GPU-time. That field set deliberately mirrors
+scheduler-style accounting — user, account, elapsed time, allocated-resource-time —
+so the ledger can eventually feed a research-computing allocation/fairshare system.
+That integration is future work; today the ledger is report-only.
 
 ## How to interpret the numbers
 
@@ -111,30 +86,67 @@ The transcript itself is absent. Available detail varies by runtime and endpoint
 - **Coverage is not a full access audit.** Authentication failures rejected by
   Tyk and some early gateway validation failures do not reach the usage logger.
   Per-model ledger counts and global request counters can therefore differ.
+- **`count_tokens` is metadata-only.** Its `input_tokens` lands in `tokens.detail`
+  and is never added to the totals.
 - **Identity follows the key.** A shared application's service key identifies
   that service, not necessarily its individual end user.
 
 ## Metrics
 
-`GET /metrics` returns Prometheus text with per-model request, error, token,
-cold-start, audio, and estimated GPU-time counters, plus model and replica gauges.
-Metrics have model labels, not per-user identities or key fingerprints.
+`GET /metrics` returns Prometheus text. Metrics have model labels, not per-user
+identities or key fingerprints.
 
-Synthetic example:
+Complete family list (verified against a live scrape, 2026-09-14):
+
+| Family | Meaning |
+|---|---|
+| `gateway_model_requests_total` | Served requests per model |
+| `gateway_model_errors_total` | Errored requests per model |
+| `gateway_model_prompt_tokens_total` / `_completion_tokens_total` / `_total_tokens_total` | Token counters per model |
+| `gateway_model_cold_starts_total` | Scale-from-zero events per model |
+| `gateway_model_gpu_seconds_total` | Approximate GPU-seconds (gpus x latency) per model |
+| `gateway_model_audio_seconds_total` | Audio duration seconds per model (STT) |
+| `gateway_model_audio_bytes_in_total` | Uploaded audio bytes per model |
+| `gateway_model_audio_bytes_out_total` | Returned audio/SSE bytes per model |
+| `gateway_model_tts_chars_total` | TTS/clone input characters per model |
+| `gateway_model_replicas` (gauge) | Running predictor pods per model |
+| `gateway_model_scaled_up` (gauge) | 1 if the model has at least one predictor pod |
+| `gateway_models_ready` / `gateway_models_total` (gauges) | Ready carded models / discovered cards |
+| `gateway_requests_total` / `gateway_requests_error_total` | Global request/error counters |
+
+Real excerpt (values as scraped 2026-09-14):
 
 ```text
-gateway_model_requests_total{model="example-chat"} 12
-gateway_model_errors_total{model="example-chat"} 2
-gateway_model_total_tokens_total{model="example-chat"} 1400
-gateway_model_cold_starts_total{model="example-chat"} 2
-gateway_model_gpu_seconds_total{model="example-chat"} 15
-gateway_model_replicas{model="example-chat"} 1
+# HELP gateway_requests_total Total requests handled.
+gateway_requests_total 352860
+# HELP gateway_model_requests_total Served requests per model.
+gateway_model_requests_total{model="gpt-oss-120b"} 225151
+gateway_model_requests_total{model="qwen35-122b"} 39220
+# HELP gateway_models_ready Models with a ready ISVC.
+gateway_models_ready 102
 ```
+
+### Why the numbers are live
+
+- Counters increment **on the request path** — verified by scrapes 130 s apart moving
+  `gateway_requests_total` by exactly the then-busy model's per-model delta, with no
+  scraper activity. Gauges recompute from Kubernetes watches (cards, ISVC readiness,
+  predictor replicas). A scrape only reads.
+- A normal scrape is a **cluster snapshot assembled on demand**: the answering pod
+  fetches each peer's `/metrics?local=true` (2 s timeout per peer) and sums.
+  Verified: the combined value equaled the exact sum of the three per-pod local
+  values taken the same second. Local scrapes answer in ~5 ms; combined in ~70–130 ms.
+- The counter **window is the current pods' lifetimes**, not fleet-forever — a
+  gateway restart resets that pod's contribution. At measurement the combined view
+  spanned ~4.8 days (three pods since their last rollout). Gauges are instantaneous.
+- Gauges count **cards**, not InferenceServices: card-less services are invisible
+  here. Scale-to-zero models count as ready; `gateway_model_replicas` distinguishes
+  sleeping (0) from running (1+).
 
 Counters live in memory and reset when a gateway process restarts. The replica
 gauge counts Running predictor pods, not independently verified ready replicas.
-By default, the endpoint combines gateway replicas; if a peer cannot be reached,
-it falls back to local metrics, so a successful scrape can still be partial.
+If a peer cannot be reached, the endpoint falls back to local metrics, so a
+successful scrape can still be partial.
 
 For monitoring, scrape the combined endpoint once, or scrape each replica's
 `/metrics?local=true` and aggregate in your monitoring system. Do not sum multiple
@@ -151,21 +163,28 @@ curl -s "http://$pip:8080/metrics"        # from a node/admin shell
 ```
 
 Only models with traffic since the last process start have non-zero counter
-series; the gauge families enumerate the whole catalog. Counters are point-in-time
-snapshots unless you deploy a scraper.
+series; the gauge families enumerate the whole catalog.
 
 ## Storage and retention
 
-The gateway writes one JSON object per line to a separate usage file. The supplied
-deployment keeps these files on persistent storage in a directory per replica.
-A complete report must consider retained files from all relevant replicas,
-including rotated files and directories left by replaced pods.
+The gateway writes one JSON object per line to a per-replica directory on the
+usage PVC: **one directory per pod name**, and rollouts, restarts, and canaries
+each leave a new set — nothing removes the old ones.
 
-The logger defaults to size-based rotation: a 50 MiB active file and up to five
-rotated copies per replica directory. These are configurable defaults, **not a
-retention period in days**. There is no time-based deletion policy in the usage
-logger, and old replica directories are not removed by its file rotation.
-Deployment operators determine archival, cleanup, backup, and metrics retention.
+The source default is size-based rotation of a 50 MiB active file with up to five
+rotated copies, configurable (`GATEWAY_USAGE_LOG_MAX_BYTES`,
+`GATEWAY_USAGE_LOG_BACKUPS`). **The deployed image currently retains a single
+rotation** (~100 MiB per pod), so the effective depth is image behavior until an
+image carrying the configuration is deployed.
+
+Reference observation (2026-09-14): 26 directories (3 live pods + 23 retired),
+44 files, ~1.06 GiB on the 10 Gi claim — retired generations held 79% of the
+bytes; earliest retained record three weeks old. At then-current write rates
+(~8 MB/day/pod) the two-file budget holds roughly two weeks; at an observed peak
+(~50 MB/day) it held about two days. There is no time-based deletion; operators
+own archiving, pruning retired directories, and backup — the claim's reclaim
+policy does not protect this data.
+
 If file logging cannot initialize, the logger falls back to the process logging
 stream; this is not a guarantee of complete or durable delivery.
 
@@ -256,6 +275,9 @@ done'
 Timestamps are normalized UTC `YYYY-MM-DDTHH:MM:SSZ`, so lexicographic `ts >=`
 comparisons window records correctly. Count malformed lines rather than skipping
 them silently.
+
+On NFS, in-container `du` can understate directory sizes; use `ls`/`stat` byte
+counts when the audit must be exact.
 
 Agree on the identity/account, models, UTC interval, and whether the report covers
 all attempts or only successful responses. Aggregate within the cluster and return
