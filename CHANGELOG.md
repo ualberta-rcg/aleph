@@ -2,6 +2,24 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Correct the endpoint guide against the running gateway
+
+Update only docs/ENDPOINTS.md and this changelog. Explain client base URLs,
+Tyk versus internal access, catalogue formats, dedicated handlers and actual
+custom-path forwarding. Remove the claimed general keyless serving/api mirror;
+clarify JSON model selection, upstream POST/path overrides and buffered forwarding.
+Keep Claude client preferences distinct from the endpoint contract.
+
+Validation: inspected running gateway source (handler behavior matches the repo;
+only two documentation references differ). Public HTML/hello probes returned 200,
+unauthenticated catalogues 401, and old serving/api paths 404. All 22 internal
+checks passed: catalogues, chat/Anthropic responses and SSE completion, token
+counting, text completions, two embedding models, reranking, error guards,
+capacity, health/readiness and local metrics. Small sequential synthetic inputs
+only, on already-running models. No credentials read, public authenticated
+inference, audio/image generation, cold starts, load tests or deployments.
+Checked documentation links and diff. No gateway code/configuration changes.
+
 ## 2026-09-13 — Adopt the revised README layout and markup architecture
 
 Apply the requested centered logos, navigation, task-based getting-started table,

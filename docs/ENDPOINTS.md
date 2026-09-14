@@ -1,84 +1,157 @@
-# Endpoint Paths
+# Endpoints and client configuration
 
-Reference set of HTTP endpoint paths the inference platform serves. The gateway
-routes by path family and forwards each request to the backing model's declared
-endpoint; the model cards (`details.yaml` → `endpoints.primary`) are the source of
-truth for which path each model listens on.
+Use the model's public ID and supported request format from the
+[live catalog](https://inference.vulcan.alliancecan.ca/) or its
+[`models/` directory](../models/). A path being routed by the gateway does not
+mean every model implements it. Model cards describe the contract; the gateway
+handlers and the selected runtime determine what actually works.
 
-> Aleph's gateway forwards `/v1/{path}` generically, so treat this as a
-> **coverage checklist**, not a hard-coded list — a card can declare any path its
-> `server.py` exposes.
+## Connect a client
 
-## Chat / text
-- `/v1/chat/completions` — OpenAI chat
-- `/v1/completions` — completion-only (non-chat) LLM
-- `/v1/messages` (also `/anthropic/v1/messages`) — Anthropic-native
-- `/v1/messages/count_tokens` (also `/anthropic/v1/messages/count_tokens`) — Anthropic token count
+| Client | Base URL | Authentication |
+|---|---|---|
+| Direct HTTP requests and model `test.py` scripts | `https://<aleph-host>` | `Authorization: Bearer <aleph-key>`; tests use `GW_URL` and `TYK_KEY` |
+| OpenAI-compatible clients that append `/chat/completions`, `/embeddings`, etc. | `https://<aleph-host>/v1` | Aleph key in the client's API-key setting |
+| Anthropic-compatible clients, including Claude Code | `https://<aleph-host>/anthropic` | Aleph key as Bearer authorization or `x-api-key` |
 
-The `/anthropic/` prefix is a Tyk listen path (`model-anthropic`, strip prefix, keyed).
-Tyk injects `X-Aleph-Api: anthropic` so `GET /anthropic/v1/models` returns the
-always-on chat list in Anthropic shape. Same keys as `/v1/` (keys need
-`access_rights` on both `model-gateway` and `model-anthropic`).
-`GET`/`HEAD /anthropic/api/hello` is a keyless Tyk mock (`{"message": "hello"}`)
-matching `api.anthropic.com` — Claude Code's startup probe; a 401 here latches
-the session and the first message is never sent.
+Replace `<aleph-host>` with your deployment's hostname. The hosted origin is
+`https://inference.vulcan.alliancecan.ca`. Avoid doubling `/v1` when a client
+appends its own path. Keep TLS verification enabled.
+
+Tyk authenticates `/v1/` and `/anthropic/` requests. Access to both requires key
+rights for `model-gateway` and `model-anthropic`; see [API keys](TYK-USERS.md).
+The gateway's internal service is behind this authentication layer. Calling it
+directly does not validate a public API key.
+
+With `GW_URL` set to the origin and `TYK_KEY` supplied privately:
+
+```bash
+curl --fail-with-body "$GW_URL/v1/models?all=true" \
+  -H "Authorization: Bearer $TYK_KEY"
+
+curl --fail-with-body "$GW_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $TYK_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-oss-20b","messages":[{"role":"user","content":"What is 3+4? Reply with the number only."}],"max_tokens":64,"temperature":0}'
+```
+
+Replace the example model with an available chat model. For supported streaming,
+add `"stream":true` to the body and use `curl -N`.
 
 ### Claude Code
 
-Copy [claude-code.settings.json.example](./claude-code.settings.json.example) to
-`~/.claude/settings.json` (or keep it as a named overlay like
-`~/.claude/settings.json.aleph` and swap it in). Paste your Tyk key into
-`ANTHROPIC_AUTH_TOKEN` — do not commit a real key.
-
-Current Claude Code (v2.1+) options that matter on a **non-Anthropic** gateway:
-
-| Key | Why it is in the example |
-|---|---|
-| `ANTHROPIC_BASE_URL` | Must be the host root plus `/anthropic` (Tyk strips the prefix) |
-| `ANTHROPIC_AUTH_TOKEN` | Tyk key (`x-api-key` / Bearer) |
-| `API_TIMEOUT_MS` | 600000 matches Aleph's 600s proxy timeout (Claude default is 10 min anyway; keep it explicit) |
-| `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | Strips `anthropic-beta` headers and beta tool fields that vLLM rejects |
-| `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` | Fills `/model` from `GET /anthropic/v1/models` (always-on chat list) |
-| `CLAUDE_CODE_ATTRIBUTION_HEADER=0` | Drops the client fingerprint block some gateways mishandle |
-| `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL` | What the `/model` aliases resolve to |
-| `fallbackModel` | Retry chain if the primary 5xx/overloads |
-| `model` | Session starts on `opus` → `qwen35-122b` |
-
-Do **not** set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` if you want gateway model discovery — that flag also skips discovery refreshes.
+Set these in the shell that launches the client, with `MODEL` set to a supported
+chat model and `TYK_KEY` already supplied privately:
 
 ```bash
-export ANTHROPIC_BASE_URL=https://inference.vulcan.alliancecan.ca/anthropic
-export ANTHROPIC_AUTH_TOKEN=<tyk-key>
-export ANTHROPIC_MODEL=qwen35-122b
+export ANTHROPIC_BASE_URL="$GW_URL/anthropic"
+export ANTHROPIC_AUTH_TOKEN="$TYK_KEY"
+export ANTHROPIC_MODEL="$MODEL"
 ```
 
-Alias map in the example (always-on chat models): opus (default) → `qwen35-122b`, sonnet → `gpt-oss-120b`, haiku → `gpt-oss-20b`, fable → `gemma-4-26b-a4b`. Any chat model is still callable by id; `/anthropic/v1/models` only *lists* the always-on set.
+The [settings example](claude-code.settings.json.example) also shows model alias
+and fallback preferences. Its model IDs and optional client settings are examples,
+not requirements of the endpoint; adapt them to your available models and client
+version. Do not overwrite existing personal settings or commit a real key.
+HTTP validation below does not establish that every Claude Code feature works.
 
-## Embeddings / rerank
-- `/v1/embeddings`, `/v1/rerank`, `/v1/embed` (science-embed alias)
+## Catalog and platform endpoints
 
-## Audio (TTS / STT)
-- `/v1/audio/speech` (TTS), `/v1/audio/transcriptions` (STT),
-  `/v1/audio/clone` (voice cloning), `/v1/audio/voices` (voice listing)
+| Method and path | Behavior |
+|---|---|
+| `GET /` | Keyless HTML catalog with model details and examples. |
+| `GET /v1/models` | Chat model list in OpenAI-style shape. Listing does not prove readiness. |
+| `GET /v1/models?all=true` | Full catalog, including non-chat models, inputs, endpoints and deployment information. |
+| `GET /anthropic/v1/models` | Tyk strips `/anthropic` and marks the request as Anthropic. Returns always-on chat models in Anthropic list shape; `all=true` does not expand this list. Other chat models remain callable by ID. |
+| `GET` or `HEAD /anthropic/api/hello` | Keyless Tyk startup-probe response; GET returns `{"message":"hello"}`. This is an edge route, not a gateway handler. |
+| `GET /v1/capacity` | Advisory GPU-capacity snapshot, including freshness. It is not a reservation or guarantee of placement. |
+| `GET /healthz` | Whether initial card and service discovery completed. |
+| `GET /readyz` | Whether cards exist and initial card/service/node/pod discovery completed. This is gateway readiness, not every model's readiness. |
+| `GET /metrics` | Aggregate gateway metrics; `?local=true` selects the receiving replica. See [Logging and metrics](LOGGING.md). |
 
-## Images
-- `/v1/images/generations` (text→image), `/v1/images/edits` (img2img)
+The gateway also selects Anthropic catalog format when the request carries an
+`anthropic-version` header. Use ordinary `/v1/models?all=true` without that header
+to retrieve the full catalog.
 
-## Vision
-- `/v1/vision/{classify, detect, segment, depth, embed, face, pose}`
+`/serving/api/v1/*` is **not a general keyless API mirror**. The current public
+host returns `404` for `/serving/api/v1/models` and the corresponding chat path.
+An older catalogue-only Tyk definition remains in the repository; do not use it
+as evidence that a route is installed. Health and metrics exposure depends on
+the deployment's edge configuration.
 
-## Science (`/v1/science/*`)
-- `classify, deidentify, detect, embed, energy, forecast, generate, identify,
-  info, match, predict, reconstruct, retrieve, segment, relax`
+## Dedicated inference handlers
 
-## Top-level science-ish (no `/science/` prefix)
-- `/v1/{predict, forecast, generate, classify, detect, embed}`
-- `/v1/design` (protein design), `/v1/dock` (molecular docking), `/v1/structure` (folding)
-- `/v1/restore` (text restoration), `/v1/translate` (AA↔3Di)
+| Method and path | Request and response |
+|---|---|
+| `POST /v1/chat/completions` | JSON `model` and `messages`; OpenAI-style chat response or SSE. Features such as tools, vision and reasoning depend on the card/runtime. |
+| `POST /v1/messages` | JSON `model`, `messages` and `max_tokens`; Anthropic-style response or SSE. Only chat-type models are accepted. |
+| `POST /v1/messages/count_tokens` | JSON `model` and Anthropic message input; forwards to the chat runtime's token-count endpoint and returns `input_tokens` when supported. It is not a generic gateway-side tokenizer. |
+| `POST /v1/embeddings` | JSON `model` and `input`; embeddings in the selected model's supported format. Inputs may be text or domain data such as protein sequences. |
+| `POST /v1/rerank` | JSON `model`, `query`, `documents`, and optional `top_n`/`return_documents`; gateway maps to TEI's native rerank contract and returns ranked results. |
+| `POST /v1/audio/speech` | JSON including `model` and `input`; returns audio bytes with the upstream content type. Voice and other fields are model-specific. |
+| `POST /v1/audio/transcriptions` | Multipart form with model and audio file, or model-supported JSON input; dedicated handling preserves multipart uploads. |
+| `POST /v1/audio/clone` | Model-supported multipart reference audio or JSON voice sample; use the model's documented fields. |
+| `GET /v1/audio/voices?model=<model-id>` | Voice listing from the selected runtime. Supply the model explicitly; the current handler defaults to `xtts-v2`. |
 
-## Public catalogue mirror (keyless)
-- `/serving/api/v1/*` — mirrors the main `/v1/*` endpoints for unauthenticated
-  catalogue / preview access.
+The two Messages POST paths are also available publicly beneath `/anthropic`,
+for example `/anthropic/v1/messages/count_tokens`. Tyk removes that prefix before
+the request reaches the gateway. It supplies caller identity for usage accounting.
 
-## Notable / model-specific
-- `/v1/deterministic_2_8_deg` — benchmark/model-specific path.
+## Model-specific paths
+
+The catch-all handles other `/v1/` paths. Examples include:
+
+| Family | Examples; support must be checked per model |
+|---|---|
+| Text completions | `/v1/completions` with `model` and `prompt` |
+| Images | `/v1/images/generations`, `/v1/images/edits` |
+| Vision | `/v1/vision/classify`, `/v1/vision/detect`, `/v1/vision/segment`, `/v1/vision/depth` |
+| Science | `/v1/science/predict`, `/v1/science/embed`, `/v1/science/energy`, `/v1/science/forecast` |
+| Other model APIs | `/v1/predict`, `/v1/forecast`, `/v1/design`, `/v1/dock`, `/v1/structure`, `/v1/translate` |
+
+Use POST with a JSON object containing `model` and the model's documented inputs.
+The catch-all is JSON-only: it does not provide generic multipart upload handling.
+Although it also accepts GET, it still requires `model` in a JSON request body
+and forwards upstream as POST. A query parameter alone is insufficient.
+
+The requested path normally stays unchanged. A card's `routing.upstream_path`
+overrides it; otherwise `routing.strip_v1_prefix` can remove `/v1`.
+`custom_params.passthrough` removes `model` and `stream` from the native payload.
+`endpoints.primary` documents the intended public entry point; it does not
+automatically rewrite arbitrary requests to that path.
+
+This forwarding path is buffered, not a generic streaming adapter. Paths such as
+`/v1/embed` are not universal aliases for `/v1/embeddings`, and `/v1/responses`
+has no dedicated compatibility handler. A catch-all response alone does not prove
+support for those APIs.
+
+## Errors and retries
+
+- Missing public credentials return `401`; an authenticated key still needs the
+  appropriate API rights and is subject to rate limits.
+- Unknown models return `404`. Invalid inputs and unsupported features can return
+  `400` or a runtime-specific validation error; inspect the response body.
+- A cold start can return `503 model_scaled_to_zero` with `Retry-After`.
+  `503 insufficient_capacity` means the gateway did not schedule a wake-up.
+  `503 model_not_ready` is another readiness response. Not every `503` is the same.
+- Follow retry guidance with a bounded deadline. Do not retry invalid requests
+  indefinitely or treat catalog membership as guaranteed capacity.
+
+## Validation — 2026-09-13
+
+Compared the running gateway handlers with repository source and checked the
+public edge from the control plane. Public catalog HTML and the GET/HEAD hello
+probe returned `200`; unauthenticated model-list paths returned `401`; the old
+`/serving/api/v1/` model/chat paths returned `404`.
+
+Small sequential synthetic requests through the internal gateway passed chat and
+Anthropic answer checks, both SSE completion formats, token counting and text
+completions with GPT-OSS-20B; BGE-M3 and ESM2-650M embedding dimensions/finite values;
+and BGE reranking order. Catalog formats, unknown-model and non-chat guards,
+query-only custom-request rejection, capacity, health, readiness and local metrics
+also behaved as described.
+
+Successful inference checks bypassed Tyk. Authenticated public inference, audio
+generation/uploads, image/vision inference, other science runtimes, cold starts,
+load limits and an interactive Claude Code session were not tested in this review.
+No model deployments or gateway settings changed.
