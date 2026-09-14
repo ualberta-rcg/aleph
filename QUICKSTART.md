@@ -37,7 +37,7 @@ Two small sets of values drive the whole deployment; both stay **out of Git**:
   public NIC name, subnet prefix and gateway, each control-plane node's own public IP,
   the API hostname, an ACME contact email, and the GPU workers' RoCE NIC.
   Full token reference: [docs/SITE-VALUES.md](docs/SITE-VALUES.md).
-- **Credentials** (in a copy of [`.env.example`](.env.example)): the HuggingFace token,
+- **Credentials** (in a gitignored `.env` at the repo root): the HuggingFace token,
   the NGC key if used, and the Tyk admin secret — see
   [environment values](docs/SITE-VALUES.md#environment-values-env) for what each is
   for and where it lands.

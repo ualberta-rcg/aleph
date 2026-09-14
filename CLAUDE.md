@@ -44,8 +44,8 @@ owning guides; do not add unrelated Slurm or CVMFS setup to this repo.
 
 ## Environment and private configuration
 
-The repository root's hidden `.env` is private and gitignored; `.env.example`
-documents its interface. Do not print `.env`, dump the environment, or copy secret
+The repository root's hidden `.env` is private and gitignored; its variables are
+documented in [Site values](docs/SITE-VALUES.md#environment-values-env). Do not print `.env`, dump the environment, or copy secret
 values into commands or documentation. An authorized operator can load a trusted
 shell-compatible `.env` in their private shell with tracing disabled:
 
@@ -68,7 +68,6 @@ example `test -n "${TYK_KEY:-}"`.
 | API calls and model tests | `GW_URL` is the public origin, `TYK_KEY` is a client key, `MODEL` is the public model ID. These may need supplying separately from `.env`. Leave `GW_INSECURE` unset for normal TLS verification. |
 | Model downloads | `HF_TOKEN`, and `NGC_API_KEY` where required by the runtime; provision the Kubernetes Secrets referenced by the selected manifests. Local exports alone do not reach pods. |
 | Tyk administration | The installed helper discovers `TYK_SECRET` and `TYK_URL`. Optional overrides: `KUBECTL`, `AUDIT_LOG`. `TYK_API_SECRET` is a legacy helper variable, not a client key or the installed helper's automatic fallback. |
-| Remote target | `HEAD` in `.env.example` is an operator convenience, not kubectl context selection. Get the actual target/access method from private site notes. |
 | Overlay rendering | `ww-overlays/site.env.example` defines `K8S_VERSION`, NFS, public networking, inference hostname, ACME, and RoCE values. Use the Warewulf guide and private rendered configuration; do not put actual site values in Git. |
 | Gateway accounting | Deployment variables `GATEWAY_USAGE_LOG`, `GATEWAY_USAGE_LOG_MAX_BYTES`, `GATEWAY_USAGE_LOG_BACKUPS`, and `SITE_NAME`; `POD_NAME` comes from the Downward API. These configure the server, not API clients. |
 

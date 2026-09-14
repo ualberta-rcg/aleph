@@ -1,6 +1,15 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — Drop HEAD; adapt docs to the removed .env.example
+
+The root .env.example template was deleted (operator change). SITE-VALUES' environment-values
+section is now the interface documentation for the gitignored .env ("create it with the
+variables below"), the NGC pull-secret note no longer points at the removed file, and
+the HEAD variable is dropped entirely from the docs (SITE-VALUES + CLAUDE.md): nothing
+in the repo consumes it; the SSH target belongs in private site notes. QUICKSTART's
+credentials bullet and CLAUDE.md's .env pointer updated to match.
+
 ## 2026-09-14 — SITE-VALUES: document the .env environment values
 
 Follow-up: the NGC row now states explicitly that the nvcr.io image-pull secret is a
