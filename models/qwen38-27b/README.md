@@ -19,8 +19,7 @@ Single-request 256K boundary validation passed on 2026-09-09: 261888 input token
 | `pvc.yaml` | PVC `qwen38-27b`, 60Gi RWX NFS (weights + helper venv) |
 | `inferenceservice.yaml` | KServe ISVC: initContainer staging + pinned vLLM 0.20.2 + TP2 |
 | `details.yaml` | v2 card ConfigMap (`qwen38-27b-details`) — catalog entry |
-| `test.py` | 36-check gateway battery (image+video+tools+effort levels) |
-| `stress.py` | Worst-case-traffic battery (24k prefills, 8-way burst, mm+long, log grep) |
+| `test.py` | Gateway battery: features, output limits, long inputs, concurrency and recovery |
 | `CLAUDE.md` | Model context + research findings + OOM postmortem |
 
 ## Deploy
@@ -39,3 +38,11 @@ GW_URL=https://inference.vulcan.alliancecan.ca TYK_KEY=<key> MODEL=qwen38-27b \
 - `GPU KV cache size` — expect ~1.3–1.5M tokens per TP group (fp8 KV)
 - mamba/GDN state allocation line
 - MTP acceptance metrics (`spec_decode_num_accepted/draft_tokens`)
+
+Running `models/qwen38-27b/test.py` runs all API, output-limit and pressure checks.
+The pressure checks include long prefills, an eight-request concurrent burst,
+long text with images/video, twenty mixed requests and a final health check.
+Video checks report SKIP unless `VIDEO_URL` or `VIDEO_B64` supplies a fixture.
+Inspect scoped runtime logs separately for OOM/engine errors; the API test does
+not perform SSH or claim to validate pod logs. The dated 256K boundary result
+above remains separate evidence; this battery does not retest that full boundary.

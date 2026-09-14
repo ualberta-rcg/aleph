@@ -45,9 +45,15 @@ kubectl apply -f inferenceservice.yaml
 - Custom params: top_p, top_k, repetition_penalty
 
 ## Testing
-The 23-check non-reasoning battery runs inside the gateway pod (first check wakes a scaled-to-zero model):
+The non-reasoning battery, including output limits, sustained load and a final recovery request, runs inside the gateway pod (first check wakes a scaled-to-zero model):
 ```bash
 cat models/command-r-7b/test.py | kubectl exec -i -n models deploy/model-gateway -c gateway -- python3 -
 ```
 Last run (2026-06-18): **18 PASS / 5 EXP / 0 FAIL** — answer/stop/model-echo/truncation assertions,
 meta-tasks, Anthropic parity, tools-rejected + vision-rejected guards.
+
+Running `models/command-r-7b/test.py` runs the whole battery. The load portion
+defaults to 30 concurrent requests for 150 seconds, with up to 200 output tokens
+per request; in-flight requests have a 120-second timeout. `CONC`, `DURATION` and
+`MAX_TOKENS` adjust the workload size, not which checks run. The dated result
+above covers the original functional checks, not the newly combined battery.

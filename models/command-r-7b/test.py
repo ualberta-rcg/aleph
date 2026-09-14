@@ -169,19 +169,63 @@ def catalog():
            f"vision={c.get('vision')} tools={c.get('tools')} reasoning={c.get('reasoning')} ctx={m.get('context_window')}")
 
 
-print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (non-reasoning)", flush=True)
-print("=" * 66, flush=True)
-for t in [wake, stream, temp0, temp_topk, stop_seq, system, tools_oai, max_tokens, truncation, usage, resources,
-          meta_title, meta_tags, meta_followups, vision_rejected,
-          ant_basic, ant_stream, ant_system, ant_temp0, ant_tools,
-          guard_embed, guard_badmodel, catalog]:
-    try:
-        t()
-    except Exception as e:
-        record("ERR", 0, t.__name__, str(e)[:120])
+def sustained_load():
+    from concurrent.futures import ThreadPoolExecutor
+    # Same workload as the original loadtest.py; always part of the battery.
+    concurrency = int(os.environ.get("CONC", "30"))
+    duration = int(os.environ.get("DURATION", "150"))
+    tokens = int(os.environ.get("MAX_TOKENS", "200"))
+    if min(concurrency, duration, tokens) < 1:
+        record("FAIL", 0, "Sustained load", "CONC, DURATION and MAX_TOKENS must be positive")
+        return
+    body = {"model": MODEL, "messages": [{"role": "user", "content": "Write two sentences about the ocean."}],
+            "max_tokens": tokens}
+    deadline = time.monotonic() + duration
+    print(f"Sustained load: {concurrency} concurrent for {duration}s, max_tokens={tokens}", flush=True)
 
-p = sum(1 for x in results if x[0] == "PASS")
-e = sum(1 for x in results if x[0] == "EXP")
-f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
-s = sum(1 for x in results if x[0] == "SKIP")
-print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}", flush=True)
+    def worker(_):
+        passed = failed = 0
+        while time.monotonic() < deadline:
+            try:
+                r = req("POST", "/v1/chat/completions", body)
+                ok = r.status_code == 200 and r.json()["choices"][0]["message"].get("content")
+                if ok:
+                    passed += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+        return passed, failed
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        counts = list(pool.map(worker, range(concurrency)))
+    passed = sum(p for p, f in counts)
+    failed = sum(f for p, f in counts)
+    record("PASS" if passed and not failed else "FAIL", 0, "Sustained load", f"{passed} passed, {failed} failed")
+
+
+def recovery():
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say OK"}], "max_tokens": 20})
+    record("PASS" if r.status_code == 200 and m.get("content") else "FAIL", r.status_code,
+           "Chat after load", safe(m))
+
+
+if __name__ == "__main__":
+    print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (non-reasoning)", flush=True)
+    print("=" * 66, flush=True)
+    for t in [wake, stream, temp0, temp_topk, stop_seq, system, tools_oai, max_tokens, truncation, usage, resources,
+              meta_title, meta_tags, meta_followups, vision_rejected,
+              ant_basic, ant_stream, ant_system, ant_temp0, ant_tools,
+              guard_embed, guard_badmodel, catalog,
+              sustained_load, recovery]:
+        try:
+            t()
+        except Exception as e:
+            record("ERR", 0, t.__name__, str(e)[:120])
+
+    p = sum(1 for x in results if x[0] == "PASS")
+    e = sum(1 for x in results if x[0] == "EXP")
+    f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
+    s = sum(1 for x in results if x[0] == "SKIP")
+    print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}", flush=True)
+    raise SystemExit(1 if f else 0)

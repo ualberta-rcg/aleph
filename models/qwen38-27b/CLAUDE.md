@@ -87,7 +87,7 @@ Fix (all in the ISVC): util **0.88** (~3.4 GiB headroom), `PYTORCH_CUDA_ALLOC_CO
 expandable_segments:True` (fragmentation), liveness `periodSeconds 15 / failureThreshold 2`
 (dead engine recycles in ~1-2 min; restart ≈ 8 min engine init, no re-download).
 
-Proof: `stress.py` — 24.5k-token prefill (bigger than the crash batch), prefix-cache
+Historical proof from `stress.py` (API checks now in `test.py`) — 24.5k-token prefill (bigger than the crash batch), prefix-cache
 repeat, 8×8k concurrent burst, 12k+image, 12k+video, 20-mix sustained — **9/9 PASS, zero
 OutOfMemoryError/EngineDead in logs**. No dial-downs (batched-tokens stayed 16384, mm
 limits 16/2, seqs 64) were needed at 0.88.

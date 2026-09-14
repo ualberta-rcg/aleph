@@ -4,7 +4,7 @@ Qwen3.8-27B-FP8 (hybrid GDN VLM, TP2, vLLM v0.28.0). Effort mode with REAL effor
 (low/medium/xhigh via chat-template kwarg reasoning_effort) + binary enable_thinking off.
 Vision (image + video) + tools (qwen3_coder parser) + prefix caching + MTP spec decode.
 
-Vision+tools variant: image must WORK, tools must WORK. Otherwise the standard battery.
+Vision+tools variant: image must WORK, tools must WORK. Limits, long inputs, concurrent traffic and recovery run in the same battery.
 
 Run externally via the public edge + Tyk auth (preferred):
   GW_URL=https://inference.vulcan.alliancecan.ca TYK_KEY=<key> \
@@ -350,23 +350,137 @@ def catalog():
            f"ctx={m.get('context_window')} max_out={m.get('max_completion_tokens')}")
 
 
-print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (vision+video+tools)", flush=True)
-print("=" * 66, flush=True)
-for t in [wake, stream, temp0, temp_topk, top_p, presence_pen, stop_seq, system,
-          tools_oai, tools_think, vision, video, max_tokens, truncation,
-          usage, resources, prefix_cache, think_on_medium, think_on_high_alias,
-          think_effort_scales, think_off, think_budget, think_stream,
-          meta_title, meta_tags, meta_followups,
-          ant_basic, ant_stream, ant_system, ant_temp0, ant_tools,
-          ant_think_on, ant_think_off, guard_embed, guard_badmodel, catalog]:
-    try:
-        t()
-    except Exception as e:
-        record("ERR", 0, t.__name__, str(e)[:120])
+def chat(body, timeout=600):
+    t0 = time.time()
+    r = req("POST", "/v1/chat/completions", body, timeout=timeout)
+    dt = time.time() - t0
+    if r.status_code != 200:
+        return r, dt, None
+    d = r.json()
+    m = d["choices"][0]["message"] if d.get("choices") else None
+    return r, dt, m if m and (m.get("content") or _rc(m)) else None
 
-p = sum(1 for x in results if x[0] == "PASS")
-e = sum(1 for x in results if x[0] == "EXP")
-f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
-s = sum(1 for x in results if x[0] == "SKIP")
-print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}",
-      flush=True)
+
+def filler_words(n_tokens):
+    # ~1.3 tokens/word for this tokenizer; pad hard and let the server count.
+    base = ("alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi "
+            "omicron pi rho sigma tau upsilon phi chi psi omega ")
+    text = base * (int(n_tokens * 1.4 / len(base.split())) + 1)
+    return text
+
+
+def s1_baseline():
+    r, dt, m = chat({"model": MODEL, "messages": [{"role": "user", "content": "Say OK"}],
+                     "reasoning_effort": "none", "max_tokens": 20})
+    record("PASS" if r.status_code == 200 and m else "FAIL", 0, "s1 baseline",
+           f"{r.status_code} in {dt:.1f}s content={m and (m.get('content') or '')[:20]!r}")
+
+
+def s2_long_prefill():
+    body = {"model": MODEL, "messages": [{"role": "user", "content":
+            filler_words(15000) + "\n\nHow many Greek letter names appear above? Answer briefly."}],
+            "reasoning_effort": "medium", "max_tokens": 512}
+    r, dt, m = chat(body)
+    ok = r.status_code == 200 and m and (m.get("content") or _rc(m))
+    u = r.json().get("usage", {}) if r.status_code == 200 else {}
+    record("PASS" if ok else "FAIL", 0, "s2 long prefill ~15k tok (max chunk)",
+           f"{r.status_code} in {dt:.1f}s prompt={u.get('prompt_tokens')} rc_len={m and len(m.get('reasoning') or '')}")
+
+
+def s3_prefix_cache_hit():
+    body = {"model": MODEL, "messages": [{"role": "user", "content":
+            filler_words(15000) + "\n\nHow many Greek letter names appear above? One word."}],
+            "reasoning_effort": "none", "max_tokens": 100}
+    r1, dt1, m1 = chat(body)
+    r2, dt2, m2 = chat(body)
+    ok = r1.status_code == 200 and r2.status_code == 200 and m1 and m2
+    record("PASS" if ok else "FAIL", 0, "s3 repeat long prefill (prefix-cache path)",
+           f"1st {r1.status_code} {dt1:.1f}s / 2nd {r2.status_code} {dt2:.1f}s ({dt2/max(dt1,0.01):.0%} of first)")
+
+
+def s4_concurrent_burst():
+    import concurrent.futures as cf
+    bodies = [{"model": MODEL, "messages": [{"role": "user", "content":
+               filler_words(8000) + f"\n\nSummarize passage {i} in one sentence."}],
+               "reasoning_effort": "none", "max_tokens": 120} for i in range(8)]
+    t0 = time.time()
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
+        rs = list(ex.map(lambda b: chat(b, timeout=900), bodies))
+    dt = time.time() - t0
+    codes = [r.status_code for r, _, _ in rs]
+    ok = all(r.status_code == 200 and m for r, _, m in rs)
+    record("PASS" if ok else "FAIL", 0, "s4 burst 8x ~8k-token prefills",
+           f"codes={codes} wall={dt:.1f}s avg={dt/8:.1f}s")
+
+
+def s5_long_plus_mm():
+    prompt = filler_words(12000) + "\n\nDescribe the attached image in one word, then name letter #5 above."
+    img_body = {"model": MODEL, "messages": [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": RED_PNG}}]}],
+        "reasoning_effort": "none", "max_tokens": 100}
+    r, dt, m = chat(img_body)
+    ok_img = r.status_code == 200 and m
+    u = r.json().get("usage", {}) if r.status_code == 200 else {}
+    record("PASS" if ok_img else "FAIL", 0, "s5a 12k prefill + image",
+           f"{r.status_code} in {dt:.1f}s prompt={u.get('prompt_tokens')}")
+    vurl = os.environ.get("VIDEO_URL") or (f"data:video/mp4;base64,{os.environ['VIDEO_B64']}" if os.environ.get("VIDEO_B64") else None)
+    if not vurl:
+        record("SKIP", 0, "s5b 12k prefill + video", "set VIDEO_URL or VIDEO_B64 to enable")
+        return
+    vid_body = {"model": MODEL, "messages": [{"role": "user", "content": [
+        {"type": "text", "text": filler_words(12000) + "\n\nDescribe the video in one sentence."},
+        {"type": "video_url", "video_url": {"url": vurl}}]}],
+        "reasoning_effort": "none", "max_tokens": 120}
+    r, dt, m = chat(vid_body, timeout=900)
+    record("PASS" if r.status_code == 200 and m else "FAIL", 0, "s5b 12k prefill + video",
+           f"{r.status_code} in {dt:.1f}s")
+
+
+def s6_sustained_mix():
+    t0 = time.time(); bad = []
+    for i in range(20):
+        n = [30, 2000, 6000, 100, 10000][i % 5]
+        r, dt, m = chat({"model": MODEL, "messages": [{"role": "user", "content":
+                filler_words(n) + f"\n\nReply with the number {i} only."}],
+                "reasoning_effort": "none", "max_tokens": 30})
+        if r.status_code != 200 or not m:
+            bad.append((i, n, r.status_code))
+    dt = time.time() - t0
+    record("PASS" if not bad else "FAIL", 0, "s6 sustained mix x20",
+           f"{20-len(bad)}/20 ok in {dt:.1f}s bad={bad}")
+
+
+def s7_health():
+    r = req("GET", "/v1/models", timeout=30)
+    ok = r.status_code == 200
+    r2, dt, m = chat({"model": MODEL, "messages": [{"role": "user", "content": "final ping"}],
+                      "reasoning_effort": "none", "max_tokens": 10})
+    ok = ok and r2.status_code == 200 and m
+    record("PASS" if ok else "FAIL", 0, "s7a engine alive after stress",
+           f"models={r.status_code} chat={r2.status_code} in {dt:.1f}s")
+
+if __name__ == "__main__":
+    print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (vision+video+tools)", flush=True)
+    print("=" * 66, flush=True)
+    for t in [wake, stream, temp0, temp_topk, top_p, presence_pen, stop_seq, system,
+              tools_oai, tools_think, vision, video, max_tokens, truncation,
+              usage, resources, prefix_cache, think_on_medium, think_on_high_alias,
+              think_effort_scales, think_off, think_budget, think_stream,
+              meta_title, meta_tags, meta_followups,
+              ant_basic, ant_stream, ant_system, ant_temp0, ant_tools,
+              ant_think_on, ant_think_off, guard_embed, guard_badmodel, catalog,
+              s1_baseline, s2_long_prefill, s3_prefix_cache_hit, s4_concurrent_burst,
+              s5_long_plus_mm, s6_sustained_mix, s7_health]:
+        try:
+            t()
+        except Exception as e:
+            record("ERR", 0, t.__name__, str(e)[:120])
+
+    p = sum(1 for x in results if x[0] == "PASS")
+    e = sum(1 for x in results if x[0] == "EXP")
+    f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
+    s = sum(1 for x in results if x[0] == "SKIP")
+    print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}",
+          flush=True)
+    raise SystemExit(1 if f else 0)

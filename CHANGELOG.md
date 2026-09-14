@@ -2,6 +2,21 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Keep model checks in the normal test.py battery
+
+Merge Qwen38-27B pressure checks and Command R 7B sustained load into their
+existing test.py function lists; remove the separate stress.py/loadtest.py files.
+Keep output-limit checks in the same run, with no test-selection flags or runner
+framework. One summary and a nonzero exit status report failures. Reject empty
+load responses, retain video-fixture skips and document the default workloads.
+Remove the Qwen test’s site-specific SSH log command; runtime logs still need
+separate operator inspection. Update the model guide and model notes accordingly.
+
+Validation: both scripts parsed/compiled in the existing gateway container.
+Simulated checks verified all 43/25 functions run by default, failure exit status,
+pressure checks with valid/empty responses, and load timeouts. No live inference
+load, model deployment or full-context boundary retest was performed.
+
 ## 2026-09-13 — Use live-checked model examples in the deployment guide
 
 Select GPT-OSS-20B, BGE-M3, BGE reranker and ESM-2 650M as basic examples in

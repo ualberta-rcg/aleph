@@ -23,7 +23,7 @@ before copying. Choose by runtime and task, not just model size.
 | Reranking with TEI | [models/bge-reranker-v2-m3/](../models/bge-reranker-v2-m3/) | Query/documents contract, top-N output and relevance-order tests |
 | Custom science server | [models/esm2-650m/](../models/esm2-650m/) | Embedded server ConfigMap, persistent environment/weights and protein-embedding checks |
 | NVIDIA NIM | [models/boltz-2/](../models/boltz-2/) | Registry/download credentials, NIM cache, port/health paths and prefix translation; inference not verified in this review |
-| Load and boundary testing | [models/qwen38-27b/](../models/qwen38-27b/) | Functional battery, separate stress test and dated context-boundary evidence |
+| Load and boundary testing | [models/qwen38-27b/](../models/qwen38-27b/) | API, output-limit and pressure checks in test.py; dated context-boundary evidence |
 
 **Small live checks, 2026-09-13:** the following already-running models each
 returned HTTP 200 through the internal Aleph gateway using synthetic inputs:
@@ -76,7 +76,6 @@ Add files only when the model needs them:
 | `models/example-model/server-configmap.yaml` and/or `models/example-model/server.py` | Custom HTTP server that loads the model and implements its request/response contract; mount or package the code as appropriate. |
 | `models/example-model/parser-configmap.yaml` and/or `models/example-model/parser.py` | A runtime-specific parser, mounted and enabled by the serving command. |
 | `models/example-model/chat_template.jinja` | A required chat format, supplied through the image, storage or a supporting ConfigMap. |
-| `models/example-model/stress.py` or `models/example-model/loadtest.py` | Repeatable load, concurrency, long-input and recovery checks. |
 | `models/example-model/test-input.json` or domain fixture files | Small, redistributable test inputs with a documented expected result. Keep research data and credentials out. |
 
 Prefer individual YAML applies; a new model does not need a kustomization layer.
@@ -281,9 +280,11 @@ remove the claim or report the limitation. Preserve the detailed result summary.
 
 ### 4. Pressure-test and harden
 
-Use a model-specific `models/example-model/stress.py` or
-`models/example-model/loadtest.py` to test a bounded workload within the authorized
-resource budget. Start small, then exercise representative long inputs, concurrency,
+Keep functional, limit and pressure checks together in `models/example-model/test.py`.
+Running that file runs the whole battery, with no separate stress command or test-selection
+flags. Follow the existing simple style: small test functions, API calls, assertions
+and one results summary. Keep the workload within the authorized resource budget.
+Start small, then exercise representative long inputs, concurrency,
 bursts and a sustained mix; include multimodal inputs where advertised.
 
 Measure request latency/throughput, queueing, GPU memory and runtime health. Check
