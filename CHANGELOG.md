@@ -2,6 +2,21 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Use live-checked model examples in the deployment guide
+
+Select GPT-OSS-20B, BGE-M3, BGE reranker and ESM-2 650M as basic examples in
+ADD-A-MODEL.md. Retain advanced patterns and explicitly unverified NIM guidance.
+Record the scope of synthetic live checks rather than treating readiness as proof.
+
+Validation: all four already-running services returned HTTP 200 through the internal
+gateway. Chat answered correctly and completed normally without exposed reasoning;
+text/protein embeddings passed batch, dimension (1024/1280), finite/nonzero,
+duplicate-consistency and distinct-input checks; reranking passed top-N and relevance
+ordering. One request per model, sequential, with synthetic inputs and a 60-second
+per-request timeout. Internal gateway checks bypassed public Tyk authentication;
+no cold-start, stress, redeployment or scientific-accuracy claim. No credentials
+or user records read. Only the guide and this changelog changed; check links/diff.
+
 ## 2026-09-13 — Explain manual model deployment and the agentic iteration loop
 
 Rewrite only docs/ADD-A-MODEL.md, with manual deployment first and the agentic

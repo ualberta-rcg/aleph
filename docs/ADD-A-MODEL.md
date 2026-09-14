@@ -18,11 +18,31 @@ before copying. Choose by runtime and task, not just model size.
 
 | Pattern | Repository example | What to study |
 |---|---|---|
-| vLLM chat/multimodal | [models/gemma-4-26b-a4b/](../models/gemma-4-26b-a4b/) | Download-helper environment on a PVC, separate serving image, parser arguments and capability card |
+| vLLM chat/reasoning | [models/gpt-oss-20b/](../models/gpt-oss-20b/) | Serving configuration, reasoning translation and a tailored chat test battery |
 | Embeddings with TEI | [models/bge-m3/](../models/bge-m3/) | Shared GPU allocation, model mount, embeddings route and dimension/batch tests |
-| Custom science server | [models/caduceus/](../models/caduceus/) | Server-code ConfigMap, compiled dependencies in a persistent environment, readiness and domain-specific output |
+| Reranking with TEI | [models/bge-reranker-v2-m3/](../models/bge-reranker-v2-m3/) | Query/documents contract, top-N output and relevance-order tests |
+| Custom science server | [models/esm2-650m/](../models/esm2-650m/) | Embedded server ConfigMap, persistent environment/weights and protein-embedding checks |
 | NVIDIA NIM | [models/boltz-2/](../models/boltz-2/) | Registry/download credentials, NIM cache, port/health paths and prefix translation; inference not verified in this review |
 | Load and boundary testing | [models/qwen38-27b/](../models/qwen38-27b/) | Functional battery, separate stress test and dated context-boundary evidence |
+
+**Small live checks, 2026-09-13:** the following already-running models each
+returned HTTP 200 through the internal Aleph gateway using synthetic inputs:
+
+| Model | Output checks that passed |
+|---|---|
+| `gpt-oss-20b` | Correct answer to 2 + 5, normal stop completion, no exposed reasoning when disabled |
+| `bge-m3` | Three-input batch, 1,024-dimensional finite/nonzero vectors, consistent duplicate inputs and distinguishable different text |
+| `bge-reranker-v2-m3` | Two results requested from three documents; relevant document first, finite descending scores |
+| `esm2-650m` | Three short synthetic protein sequences, 1,280-dimensional finite/nonzero vectors, duplicate consistency and distinct-input differences |
+
+These are basic functional checks, not the complete batteries. They did not test
+public Tyk authentication, cold starts, redeployment, load, or scientific validity.
+Boltz remains a configuration reference without inference verification in this
+review. Do not transfer these results to a copied or modified deployment.
+
+For additional implementation patterns, inspect
+[models/gemma-4-26b-a4b/](../models/gemma-4-26b-a4b/) for multimodal setup and
+[models/caduceus/](../models/caduceus/) for a custom compiled-dependency environment.
 
 For an existing deployment, inspect its live configuration before proposing a
 change; that is the evidence for how it currently runs. Compare it with source and
