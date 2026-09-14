@@ -2,6 +2,20 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Streamline repository Claude instructions
+
+Replace the restored historical CLAUDE.md operations notebook with concise repo
+instructions and links to the owning guides and AGENTS.md. Remove site addresses,
+access commands, fleet/version snapshots, obsolete routing and model-progress
+claims, credential-loading recipes, and duplicated deployment instructions.
+Retain model lifecycle safeguards, source/boot consistency, the dated changelog
+requirement for every change, and the exact README customization protections.
+Private working notes remain the home for site-specific operating details.
+
+Validation: compare the old instructions with current model, infrastructure, Tyk,
+and gateway guides; check all replacement links, README protection text, and the
+diff. Documentation only; no deployment or live configuration changes.
+
 ## 2026-09-13 — Merge reusable local operating guidance into infrastructure docs
 
 Review local guide ownership and extract missing material into the existing three
