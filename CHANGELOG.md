@@ -2,6 +2,19 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Include load and limit checks in model test templates
+
+Update all three model test templates with small concurrency and recovery checks
+in the normal run, and a nonzero failure exit status. Keep existing simple
+functions and summaries. The chat example adds long input; the custom-science
+example provides explicit boundary cases to fill in and reports missing cases
+as unverified. OpenAPI numeric boundaries now require rejection outside the
+declared range. Workload and domain assertions must be adapted per model.
+
+Validation: all three templates compiled in the gateway container. Simulated
+responses verified default execution, success/failure reporting, failure exit
+status and OpenAPI numeric rejection. No live model inference or load performed.
+
 ## 2026-09-13 — Keep model checks in the normal test.py battery
 
 Merge Qwen38-27B pressure checks and Command R 7B sustained load into their

@@ -106,8 +106,45 @@ def catalog():
     record("PASS", r.status_code, "Catalog entry", f"type={m.get('type')} endpoint match")
 
 
+# FILL IN: complete request bodies at the supported limit and just beyond it.
+# Example tuple: ("over batch limit", oversized_payload, (400, 422)).
+LIMIT_CASES = []
+
+
+def input_limits():
+    if not LIMIT_CASES:
+        record("SKIP", 0, "Input limits", "add model-specific boundary cases; unverified"); return
+    for name, body, expected in LIMIT_CASES:
+        r = req("POST", ENDPOINT, body)
+        record("PASS" if r.status_code in expected else "FAIL", r.status_code, name,
+               f"expected status in {expected}; also validate successful domain output")
+
+
+# These checks run with the ordinary battery. Adapt workload and output checks
+# to the model; four requests are a starting example, not a capacity measurement.
+def concurrent_requests():
+    if NO_TEST_VECTOR:
+        record("SKIP", 0, "Concurrent requests", NO_TEST_VECTOR); return
+    from concurrent.futures import ThreadPoolExecutor
+    def send(_):
+        r = req("POST", ENDPOINT, PAYLOAD)
+        # EDIT for science: validate domain output, as in shape()/sanity().
+        return r.status_code == 200 and bool(r.json())
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        checks = list(pool.map(send, range(4)))
+    record("PASS" if all(checks) else "FAIL", 0, "Concurrent requests", f"{sum(checks)}/4 valid")
+
+
+def recovery():
+    if NO_TEST_VECTOR:
+        record("SKIP", 0, "Recovery", NO_TEST_VECTOR); return
+    r = req("POST", ENDPOINT, PAYLOAD)
+    ok = r.status_code == 200 and bool(r.json())
+    record("PASS" if ok else "FAIL", r.status_code, "Recovery after load", "valid response" if ok else "invalid response")
+
+
 # ── run ───────────────────────────────────────────────────────────────────────
-BATTERY = [wake, shape, sanity, model_echo, catalog]
+BATTERY = [wake, shape, sanity, model_echo, catalog, input_limits, concurrent_requests, recovery]
 
 if __name__ == "__main__":
     print("=" * 66, flush=True)
@@ -124,3 +161,4 @@ if __name__ == "__main__":
     s = sum(1 for x in results if x[0] == "SKIP")
     print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}",
           flush=True)
+    raise SystemExit(1 if f else 0)

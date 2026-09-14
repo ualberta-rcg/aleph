@@ -17,6 +17,9 @@ the rest of this file. The harness:
 5. Sanity-checks the response against the operation's response schema.
 6. Checks /v1/health/ready, /v1/models, and gateway catalog.
 
+All applicable checks, including limits, concurrency and recovery, run by default.
+Set workload sizes and boundary cases in the copied file; no test-selection flags.
+
 Copy this file, fill in CONFIG, and save as models/<m>/test.py.
 """
 import copy, httpx, json, os, time, urllib.parse
@@ -307,7 +310,8 @@ def numeric_ranges():
             body = _upstream_body()
             _set_leaf(body, key, val)
             r = ureq("POST", _primary_path, body)
-            if r.status_code in (200, 400, 422):
+            expected = (400, 422) if label in ("below-min", "above-max") else (200,)
+            if r.status_code in expected:
                 passes += 1
             else:
                 fails += 1
@@ -396,6 +400,25 @@ def empty_body():
            "EMPTY-BODY", r.text[:80])
 
 
+# These checks run with the ordinary battery. Adapt workload and output checks
+# to the model; four requests are a starting example, not a capacity measurement.
+def concurrent_requests():
+    from concurrent.futures import ThreadPoolExecutor
+    def send(_):
+        r = greq("POST", ENDPOINT, FIXTURE)
+        # EDIT for science: validate domain output, as in shape()/sanity().
+        return r.status_code == 200 and bool(r.json())
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        checks = list(pool.map(send, range(4)))
+    record("PASS" if all(checks) else "FAIL", 0, "Concurrent requests", f"{sum(checks)}/4 valid")
+
+
+def recovery():
+    r = greq("POST", ENDPOINT, FIXTURE)
+    ok = r.status_code == 200 and bool(r.json())
+    record("PASS" if ok else "FAIL", r.status_code, "Recovery after load", "valid response" if ok else "invalid response")
+
+
 # ── run ────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("=" * 70, flush=True)
@@ -418,9 +441,15 @@ if __name__ == "__main__":
             string_formats()
         malformed_json()
         empty_body()
+        for t in [concurrent_requests, recovery]:
+            try:
+                t()
+            except Exception as error:
+                record("ERR", 0, t.__name__, str(error)[:120])
     p = sum(1 for x in results if x[0] == "PASS")
     e = sum(1 for x in results if x[0] == "EXP")
     f = sum(1 for x in results if x[0] in ("FAIL", "ERR"))
     s = sum(1 for x in results if x[0] == "SKIP")
     print(f"\n{'=' * 70}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}",
           flush=True)
+    raise SystemExit(1 if f else 0)

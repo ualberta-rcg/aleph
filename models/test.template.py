@@ -1,5 +1,8 @@
 """TEMPLATE — per-model gateway test battery (reference example).
 
+All applicable checks, including limits, concurrency and recovery, run by default.
+Set workload sizes and boundary cases in the copied file; no test-selection flags.
+
 Copy this to `models/<your-model>/test.py`, set MODEL, and KEEP THE SECTIONS THAT
 APPLY to your model — delete the rest. This file deliberately pretends the model
 supports *everything* (chat + vision + tools + reasoning + meta-tasks + the
@@ -13,6 +16,8 @@ How to specialize:
                             only if you want to prove no reasoning leaks.
   - Embedding / rerank    → delete the chat battery and use the EMBEDDINGS block.
   - Update HARD / prompts / expected answers to suit the model.
+  - Keep limits, long inputs, concurrency and recovery in the normal test list.
+    For embeddings/reranking, adapt their endpoint, payload and output assertions too.
 
 Run externally via the gateway VIP + Tyk auth (preferred):
   GW_URL=http://<GATEWAY_VIP> TYK_KEY=<key> MODEL=<model-id> python3 models/<m>/test.py
@@ -361,9 +366,39 @@ def guard_embed_via_chat():
     record("EXP" if r.status_code == 400 else "FAIL", r.status_code, "Guard: chat to embedder",
            f"code={r.json().get('error',{}).get('code','')}")
 
+# These checks run with the ordinary battery. Adapt workload and output checks
+# to the model; four requests are a starting example, not a capacity measurement.
+def concurrent_requests():
+    from concurrent.futures import ThreadPoolExecutor
+    body = {"model": MODEL, "messages": [{"role": "user", "content": "Say hello."}], "max_tokens": 32}
+    def send(_):
+        r = req("POST", "/v1/chat/completions", body)
+        return r.status_code == 200 and bool(r.json()["choices"][0]["message"].get("content") or _rc(r.json()["choices"][0]["message"]))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        checks = list(pool.map(send, range(4)))
+    record("PASS" if all(checks) else "FAIL", 0, "Concurrent requests", f"{sum(checks)}/4 valid")
+
+
+def recovery():
+    body = {"model": MODEL, "messages": [{"role": "user", "content": "Say hello."}], "max_tokens": 32}
+    r = req("POST", "/v1/chat/completions", body)
+    ok = r.status_code == 200 and bool(r.json()["choices"][0]["message"].get("content") or _rc(r.json()["choices"][0]["message"]))
+    record("PASS" if ok else "FAIL", r.status_code, "Recovery after load", "valid response" if ok else "invalid response")
+
+
+def long_input():
+    # EDIT: choose a measured input size within this model's context limit.
+    text = "alpha beta gamma delta " * 256 + "\nReply with OK."
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": text}], "max_tokens": 32})
+    ok = r.status_code == 200 and bool(m.get("content") or _rc(m))
+    record("PASS" if ok else "FAIL", r.status_code, "Long input", safe(m))
+
+
 # ── run ───────────────────────────────────────────────────────────────────────
 # CHAT battery (default). For an embedder/reranker, replace this list with:
-#   [wake_embed?, embed_single, embed_batch, embed_base64, rerank, guard_embed_via_chat, catalog]
+#   [embed_single, embed_batch, embed_base64, guard_embed_via_chat,
+#    long_input, concurrent_requests, recovery]
+# For reranking, use rerank in place of embed_*; adapt load/limit checks to that API.
 CHAT_BATTERY = [
     wake, stream, temp0, temp_topk, top_p, stop_seq, system, tools_oai,
     vision, vision_multi_image, max_tokens, truncation, usage, resources,
@@ -371,6 +406,7 @@ CHAT_BATTERY = [
     meta_title, meta_tags, meta_followups,
     ant_basic, ant_stream, ant_system, ant_temp0, ant_topk, ant_stop, ant_tools,
     ant_think_on, ant_think_off, guard_badmodel, catalog,
+    long_input, concurrent_requests, recovery,
 ]
 
 if __name__ == "__main__":
@@ -388,3 +424,4 @@ if __name__ == "__main__":
     s = sum(1 for x in results if x[0] == "SKIP")
     print(f"\n{'=' * 66}\nResults: {p} passed, {e} expected, {f} failed/err, {s} skipped of {len(results)}",
           flush=True)
+    raise SystemExit(1 if f else 0)
