@@ -4,7 +4,7 @@ A deployment defines how to run a model, how Aleph exposes it, and how to check
 its results. The manual steps and agentic loop below use the same files and tests.
 
 1. Research the model and inspect templates and similar deployments in `models/`.
-2. Prepare `pvc.yaml`, `inferenceservice.yaml`, `details.yaml` and one `test.py`.
+2. Prepare the deployment files and adapt one `test.py` to the model's capabilities and limits.
 3. Apply storage, then the service, then the card; recreate an existing service when updating its spec.
 4. Run `test.py`, fix problems and repeat against the final deployment.
 5. Record configuration, findings and dated results in the model's README and CLAUDE notes.
@@ -36,10 +36,28 @@ not changing. Readiness and old test results are starting evidence, not proof of
 a modified deployment. Keep dated measurements with the model rather than adding
 fleet snapshots to this guide.
 
-Record research, chosen versions, reasons and deviations in
-`models/example-model/CLAUDE.md`. An operator or AI agent may deviate from the
-usual layout when research establishes a need; explain the reason and make the
-result reproducible. Work within the authorized environment and resource budget.
+Start with the established standards and examples below. An operator or AI agent
+may adapt the runtime, layout or test approach when research or testing shows a
+need. Record chosen versions, what changed, why and how it was validated in
+`models/example-model/CLAUDE.md`. Preserve applicable test coverage when adapting
+the approach. Work within the authorized environment and resource budget.
+
+## Deployment standards
+
+Use these as the starting point, then verify compatibility with the model:
+
+| Area | Starting convention |
+|---|---|
+| Runtime versions | The documented vLLM baseline reviewed on 2026-09-13 is `vllm/vllm-openai:v0.20.2`. Check architecture support before using it; other runtimes and models may need different versions. Pin the tested image version or digest rather than copying a floating `latest` tag. |
+| Dependencies | Use the compatible environment supplied by the runtime where possible. For custom environments, record and pin the tested Python, PyTorch/CUDA and model-library combination; there is no single version combination for every model. |
+| Layout | Four implementation files plus README and CLAUDE notes, described below. Keep setup and small server/configuration definitions in the service YAML. |
+| Storage | A model-specific PVC using `ReadWriteMany` and the `nfs-models` storage class, with persistent weights, caches and any required venv. Adapt storage settings through [Site values](SITE-VALUES.md). |
+| Model card | `schema_version: 2`, ConfigMap `<model>-details`, consistent model naming and the gateway discovery label. |
+| Validation | One basic `test.py`, starting from templates and examples in `models/`; adapt its inputs and assertions while retaining the applicable standard battery. |
+
+The version above is a reviewed baseline, not a claim that every deployment uses
+it or that it supports every new model. Record tested exceptions with the model
+so the next deployment can reproduce them.
 
 ## Part 1: Deploy manually
 
@@ -72,11 +90,17 @@ existing model's claim and data. Omit a PVC only when no persistent files are
 needed. Deployment-specific storage values belong in [Site values](SITE-VALUES.md).
 
 When a model needs a Python virtual environment, **create it on the model's PVC**.
-For example, mount the claim at `/data`, prepare `/data/venv` in an init container,
-then start the server with `/data/venv/bin/python`. Mount that same claim and path
-in both containers. Use compatible Python, system libraries and CUDA dependencies
-between setup and serving. A runtime image that already provides the required
-environment does not need another venv.
+The examples use two patterns:
+
+- **Download helper:** an init container prepares a small venv such as `/data/venv`
+  with download dependencies and saves weights under `/data/model`. The serving
+  container uses its prebuilt runtime environment to load those weights.
+- **Custom serving environment:** an init container prepares the model's full
+  dependency environment at `/data/venv`; the serving container mounts the same
+  claim and path and starts `/data/venv/bin/python`. Match Python, system libraries
+  and CUDA compatibility between setup and serving.
+
+A runtime image that already provides everything needed does not need another venv.
 
 Persist downloaded weights and prepared dependencies so restarts and scale-from-zero
 reuse them. Make setup idempotent: verify required files and imports before marking
@@ -85,8 +109,8 @@ unfinished environment concurrently. Prepare a replacement environment deliberat
 when dependencies change; preserve the working one until replacement is validated.
 Supply credentials through Kubernetes Secrets referenced in the YAML.
 
-**Runtime and resources.** Select an explicit compatible image version or digest.
-Match its serving port, health endpoint, model path and API format. Allow startup
+**Runtime and resources.** Match the selected runtime's serving port, health
+endpoint, model path and API format. Allow startup
 probes enough time for preparation/loading, and use readiness to exclude an unready
 server. Set CPU, RAM, GPU and storage budgets from measured needs.
 
@@ -118,7 +142,7 @@ problems from runtime memory exhaustion.
 **Model card.** Inspect the relevant card templates and examples in `models/`:
 
 - Label the ConfigMap `model-details: "true"` and store valid JSON in `data.details.json`.
-- Set the public `id`, task `type`, schema version and documented API/health paths.
+- Set the public `id`, task `type` and documented API/health paths.
 - Set `routing.k8s_name` if the service name differs and `routing.upstream_model_id`
   if the backend model name differs. Use only translations the gateway implements;
   [Endpoints](ENDPOINTS.md) explains dedicated handlers and custom-path forwarding.
@@ -146,7 +170,57 @@ for commands. Set `maxReplicas` at least as high as the minimum and within capac
 Tune the Knative concurrency target against the runtime's batching behavior; they
 are different settings. Keep idle-retention settings consistent too.
 
-### 3. Apply a new deployment or update an existing one
+### 3. Adapt the standard test battery
+
+Prepare `models/example-model/test.py` alongside the manifest and card, using
+templates and examples in `models/`. Keep the script basic: small functions,
+ordinary API requests, meaningful assertions and one result summary. Start with
+the relevant existing checks, then set the model's requests, fixtures, expected
+results, boundaries and workload sizes before deploying.
+
+**Running `test.py` runs the complete applicable battery**, including limits,
+stress/load and recovery. Use the same reporting conventions across models;
+inputs and assertions must suit the model. There are no separate stress scripts
+or test-selection flags. Keep workload sizes within the authorized budget.
+
+| Coverage | What to check |
+|---|---|
+| Common checks | Discovery and card agreement, model identity where returned, a meaningful valid result, invalid inputs, documented limits and bounded startup/retry handling |
+| Chat | Known answers, system instructions, stop/truncation, output limits, complete streaming responses and supported sampling controls |
+| Reasoning | A verifiable final answer; supported effort levels or budgets; enabled/disabled behavior where supported; separation of reasoning from final content; complete streamed reasoning and answer output |
+| Tools | Tool names and arguments, tool-result handling and interaction with reasoning where supported |
+| Images/audio | Known fixtures, meaningful interpretation/output, supported formats and size limits |
+| Embeddings/reranking | Dimensions, finite values, expected similarity/order, batches and input limits |
+| Science | Real domain input, schema/units and comparison with a suitable reference result |
+| API compatibility and accounting | Applicable checks through each supported API format, including OpenAI and Anthropic where offered; usage/resource fields with documented units; chat-UI meta-tasks without unwanted reasoning where applicable |
+| Load and recovery | Representative long inputs, concurrency, sustained requests and a valid final request after load and rejected inputs |
+
+Reasoning checks belong in the normal battery for reasoning models. Adapt the
+controls to what the model and runtime support, including models that cannot
+disable thinking. Check the answer as well as the protocol; the presence of a
+reasoning field alone does not prove correct behavior. For unsupported features,
+document the expected behavior and test rejection where that is the API contract.
+
+Replace illustrative limits with measured model-specific boundaries. For chat,
+account for tokenized input including chat formatting and the output allowance;
+test near the supported limit and the documented rejection or truncation beyond
+it. For other tasks, use the appropriate units, batch sizes or payload dimensions.
+
+The templates report `PASS` for a successful check, `EXP` for a documented expected
+outcome such as rejecting unsupported tools, `FAIL`/`ERR` for failures or exceptions,
+and `SKIP` for an untested case. Define expected outcomes before checking them;
+fix failures rather than relabeling them. The script must exit nonzero on failures
+or errors. Missing fixtures and skipped checks remain unverified. A successful
+HTTP status or plausible output shape alone is not scientific validation.
+
+**Update the tests during deployment.** As research and live results establish the
+model's behavior, refine fixtures, assertions and workload sizes, and add regression
+checks for problems found. Keep the card and tests consistent with the supported
+contract. Explain justified deviations in the model's notes; removing a failing
+check without resolving or documenting the underlying limitation is not validation.
+Preserve the completed battery for the next deployment.
+
+### 4. Apply a new deployment or update an existing one
 
 Use an administrative shell for the intended cluster and the repository checkout.
 [Quickstart](../QUICKSTART.md) covers prerequisites; [Site values](SITE-VALUES.md)
@@ -190,7 +264,7 @@ kubectl apply -f models/example-model/details.yaml
 Applying the service file also applies its embedded ConfigMaps. Set desired replica
 behavior in the InferenceService rather than scaling controller-owned Deployments.
 
-### 4. Call and test the model
+### 5. Call and test the model
 
 Inspect startup before sending a small valid request:
 
@@ -223,9 +297,9 @@ A human supplies the model, intended capability, environment and resource budget
 The agent works one model at a time, using the research and deployment steps above:
 
 ```text
-Research → adapt files → deploy → inspect a small request → tune and recreate
-                       → run test.py → fix failures and repeat
-                       → clean redeployment → run test.py → record → commit/push
+Research → adapt deployment and tests → deploy → inspect a small request
+         → run test.py → diagnose → update files and tests → recreate → repeat
+         → recreate from final files → run test.py → record → commit/push
 ```
 
 ### 1. Diagnose and tune
@@ -241,34 +315,11 @@ update procedure, and check the effect. Use the existing research section when
 new evidence requires a different runtime or approach. Record useful findings in
 `models/example-model/CLAUDE.md` so another session can continue the work.
 
-### 2. Customize and run one test script
+### 2. Validate behavior and capacity
 
-Build `models/example-model/test.py` from templates and examples in `models/`.
-Keep it basic: small functions, ordinary API requests, meaningful assertions and
-one result summary. The operator or AI agent should customize requests, fixtures,
-expected results, boundaries and workload sizes as deployment proceeds.
-
-**Running `test.py` runs all applicable checks**, including functional behavior,
-limits, stress/load and recovery. There are no separate stress scripts or
-test-selection flags. Choose workloads within the authorized budget and preserve
-these checks in the final file for the next deployment.
-
-| Capability | What to check |
-|---|---|
-| Chat | Known answer, model identity, stop/truncation, output limits and streaming completion |
-| Tools/reasoning | Tool name/arguments and result handling; supported thinking behavior and budgets |
-| Images/audio | Known fixture, meaningful interpretation/output, supported formats and size limits |
-| Embeddings/reranking | Dimensions, finite values, expected similarity/order, batches and input limits |
-| Science | Real domain input, schema/units and comparison with a suitable reference result |
-| Errors and alternate APIs | Expected rejection of invalid requests and unsupported features; supported Anthropic behavior |
-| Load and recovery | Representative long inputs, concurrency, sustained requests and a valid final request |
-
-The templates report `PASS` for a successful check, `EXP` for a documented expected
-outcome such as rejecting unsupported tools, `FAIL`/`ERR` for failures or exceptions,
-and `SKIP` for an untested case. Define expected outcomes before checking them;
-fix failures rather than relabeling them. Missing fixtures and skipped checks
-remain unverified. A successful HTTP status or plausible output shape alone is
-not scientific validation.
+Maintain and run the [standard test battery](#3-adapt-the-standard-test-battery)
+as settings change. Add regression checks for discovered problems and retain
+applicable coverage when changing runtime or implementation.
 
 Observe request latency/throughput, queueing, GPU memory and runtime errors during
 load checks. A growing queue calls for comparing arrival rate, per-replica throughput,
@@ -281,7 +332,9 @@ input sizes. After tuning, recreate and rerun the battery. See
 
 Recreate the service from the final repository files while preserving its PVC.
 Run the complete `models/example-model/test.py` again. This checks that the result
-survives pod replacement and does not depend on an unrecorded live edit.
+survives pod replacement and does not depend on an unrecorded live edit. Reusing
+the PVC validates cached startup, not first-time installation from empty storage;
+record which was tested and never erase an existing model's data to simulate it.
 
 Verify the intended lifecycle: idle models stop after their idle window and wake
 on a later valid request; always-up models retain their minimum; hidden cards stay
