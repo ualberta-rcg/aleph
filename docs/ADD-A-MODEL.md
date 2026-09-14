@@ -23,10 +23,7 @@ before copying. Choose by runtime and task, not just model size.
 | Reranking with TEI | [models/bge-reranker-v2-m3/](../models/bge-reranker-v2-m3/) | Query/documents contract, top-N output and relevance-order tests |
 | Custom science server | [models/esm2-650m/](../models/esm2-650m/) | Embedded server ConfigMap, persistent environment/weights and protein-embedding checks |
 | NVIDIA NIM | [models/boltz-2/](../models/boltz-2/) | Registry/download credentials, NIM cache, port/health paths and prefix translation; inference not verified in this review |
-| Load and boundary testing | [models/qwen38-27b/](../models/qwen38-27b/) | API, output-limit and pressure checks in test.py; dated context-boundary evidence |
 
-**Small live checks, 2026-09-13:** the following already-running models each
-returned HTTP 200 through the internal Aleph gateway using synthetic inputs:
 
 | Model | Output checks that passed |
 |---|---|
@@ -325,8 +322,3 @@ Keep the research and tuning record in `models/example-model/CLAUDE.md`. Remove
 stray test resources, preserve intended services/storage, and record unfinished
 work honestly if blocked.
 
-For a completed deployment, **commit and push only after the final redeployment
-has been verified**, with a dated [CHANGELOG.md](../CHANGELOG.md) entry in the same
-commit. The entry states what changed, why, operational impact, tests and remaining
-gaps. Apply this changelog rule to documentation-only changes too; writing this
-guide does not itself require running a deployment.
