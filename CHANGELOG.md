@@ -2,6 +2,20 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Adopt the revised README layout and markup architecture
+
+Apply the requested centered logos, navigation, task-based getting-started table,
+section names and documentation links. Replace the boxed architecture with two
+editable Mermaid diagrams separating request flow from provisioning/placement;
+show GPU workers and shared NFS explicitly, with supporting components in a table.
+Preserve badges, attribution, tagline, maintainers and all closing sections.
+Align AGENTS.md and CLAUDE.md preservation rules with the newly approved format.
+
+Validation: checked architecture claims against repository manifests and guides;
+verified local links, image paths, navigation anchors, diagram fences, and exact
+preservation of branding text and References/Support/License/About sections.
+GitHub rendering was not previewed. Documentation only; no cluster changes.
+
 ## 2026-09-13 — Clarify one customized test script per model
 
 Make ADD-A-MODEL.md explicit: each model keeps one test.py containing all

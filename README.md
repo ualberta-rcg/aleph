@@ -1,6 +1,10 @@
-<p align="center"><img src="./assets/aleph.png" alt="Aleph logo" width="20%" /></p>
+<p align="center">
+  <img src="./assets/aleph.png" alt="Aleph logo" width="160" />
+</p>
 
-<img src="./assets/ua_logo_green_rgb.png" alt="University of Alberta Logo" width="50%" />
+<p align="center">
+  <img src="./assets/ua_logo_green_rgb.png" alt="University of Alberta Logo" width="280" />
+</p>
 
 # Aleph — The Science Inference Cluster
 
@@ -19,9 +23,13 @@
 
 **Maintained by:** Rahim Khoja ([khoja1@ualberta.ca](mailto:khoja1@ualberta.ca)) and Karim Ali ([kali2@ualberta.ca](mailto:kali2@ualberta.ca))
 
+[Get started](#get-started) · [Models](#model-catalog) · [Architecture](#architecture) · [Documentation](#documentation)
+
+[Live catalog](https://inference.vulcan.alliancecan.ca/) · [Browser chat](https://llm.vulcan.alliancecan.ca/) · [API access guide](https://docs.alliancecan.ca/wiki/aleph)
+
 ---
 
-## 📖 Description
+## Overview
 
 Aleph is a local inference server. It serves AI models much like a web server
 serves content: send a request over HTTP and receive text, an image, a prediction,
@@ -38,7 +46,7 @@ each workflow. The model stays loaded while in use; idle models can release thei
 GPU resources while retaining their weights on persistent storage. The researcher
 chooses the right model and evaluates its results; Aleph handles serving it.
 
-## ✨ Features
+## Capabilities
 
 - **Science and language models** — protein structure, genomics, materials, weather,
   medical imaging, and other scientific tasks alongside chat, vision, and audio.
@@ -60,19 +68,24 @@ chooses the right model and evaluates its results; Aleph handles serving it.
 - **Persistent weights** — NFS-backed storage allows models to reuse downloaded
   weights across pod and node replacement.
 
-## 🚀 Quickstart
+## Get started
 
-- **Use the hosted service:** browse [models and examples](https://inference.vulcan.alliancecan.ca/),
-  use [browser chat](https://llm.vulcan.alliancecan.ca/), or follow the
-  [Alliance Aleph guide](https://docs.alliancecan.ca/wiki/aleph) for API access.
-- **Deploy your own instance:** [QUICKSTART.md](QUICKSTART.md) covers requirements,
-  configuration, provisioning, and first-model validation.
-- **Add a model:** [the model workflow](docs/ADD-A-MODEL.md) covers runtime selection,
-  deployment, testing, and recording the result.
+| I want to… | Start here |
+|---|---|
+| Find a model and see examples | [Live model catalog](https://inference.vulcan.alliancecan.ca/) |
+| Chat in a browser | [Open WebUI](https://llm.vulcan.alliancecan.ca/) |
+| Get API access | [Alliance Aleph guide](https://docs.alliancecan.ca/wiki/aleph) |
+| Connect a notebook, SDK, or agent | [Endpoints and client configuration](docs/ENDPOINTS.md) |
+| Deploy Aleph | [Deployment quickstart](QUICKSTART.md) |
+| Add a model | [Model deployment and validation](docs/ADD-A-MODEL.md) |
+
+Choose a model from the catalog, use its supported API, and supply your Aleph
+key. Routing follows the model name you request. Each model card describes its
+inputs, examples, and limitations.
 
 The hosted service is a proof of concept with shared capacity and no SLA.
 
-## 🔬 Model Catalog
+## Model catalog
 
 Aleph hosts over 100 model deployments across scientific and language domains:
 
@@ -95,115 +108,104 @@ model's README for its test status and limitations. Authenticated `GET /v1/model
 lists chat models; add `?all=true` for the full catalog. To contribute a deployment,
 follow [Add a model](docs/ADD-A-MODEL.md).
 
-## 🏗️ Architecture
+## Architecture
 
-```text
-  Node-image repo + Aleph overlays + private site configuration
-           │  OS, drivers, RKE2, node profiles and role configuration
-           ▼
-  ┌─────────────────┐
-  │    Warewulf     │  builds and delivers the node image and overlays;
-  │  provisioning   │  network boot + firstboot prepare each node's role
-  └────────┬────────┘
-           ├───────────────────────────────────────────┐
-           ▼                                           ▼
-  ┌─────────────────┐                         ┌─────────────────┐
-  │  Control-plane  │  RKE2 servers,           │   GPU workers   │  RKE2 agents,
-  │       VMs       │  Kubernetes API, etcd    │ physical nodes  │  NVIDIA runtime
-  └─────────────────┘                         └─────────────────┘
-    Bootstrap stages platform manifests;        Drivers come from the image;
-    RKE2 installs the components below.          model pods use the GPU pool.
+Aleph has two main layers: a gateway that accepts and routes requests, and a
+Kubernetes serving platform that runs the selected models. Warewulf provisions
+the cluster; shared NFS storage keeps persistent data outside the pods.
 
-   Applications / research jobs / SDK / curl / agents
-           │  HTTPS (OpenAI, Anthropic or model-specific API)
-           ▼
-  ┌─────────────────┐
-  │     MetalLB     │  advertises the public service IP over L2;
-  │                 │  traffic enters the Traefik LoadBalancer Service
-  └────────┬────────┘
-           ▼
-  ┌─────────────────┐  ◄── cert-manager + Let's Encrypt (ACME HTTP-01)
-  │  Traefik (RKE2) │      issue/renew the TLS certificate; Traefik redirects
-  │ (TLS terminate) │      HTTP to HTTPS and routes by hostname to internal Tyk
-  └────────┬────────┘
-           ▼
-  ┌─────────────────┐       ┌─────────────────┐
-  │    Tyk OSS      │ ◄───► │      Redis      │  key sessions, identity, API
-  │ auth + limits   │       │  Redis PVC (A)  │  access and rate-limit state
-  └────────┬────────┘       └────────┬────────┘
-           │                        └── Redis data on the shared NFS server below
-           │  /v1/ and /anthropic/ require keys; root web route is keyless
-           │  middleware supplies X-Aleph-* identity headers
-           ▼
-  ┌─────────────────┐  ◄── model cards (details ConfigMaps) + deployment state
-  │  model-gateway  │      discovered through Kubernetes API watches
-  │   (FastAPI)     │
-  └────────┬────────┘  ──► usage JSONL: per-replica files on usage PVC (B)
-           │           ──► /metrics: aggregate request/accounting counters
-           │  API translation, model routing and cold-start capacity guard;
-           │  may return 503 + retry guidance before forwarding
-           ▼
-  ┌─────────────────┐
-  │   Istio mesh    │  Knative configures the internal service routes;
-  │  local gateway  │  requests target the selected model revision
-  └────────┬────────┘
-           ├── ready revision path ─────────────────────┐
-           ▼                                           │
-  ┌─────────────────┐                                  │
-  │    Knative      │  activation/buffering when         │
-  │    activator    │  included in the traffic path      │
-  └────────┬────────┘                                  │
-           ◄───────────────────────────────────────────┘
-           ▼
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │                         GPU WORKER NODE                              │
-  │                                                                      │
-  │  ┌─────────────────┐  ◄── KServe + Knative: services and replicas    │
-  │  │ Model predictor │  ◄── Kubernetes + HAMi: placement/allocation    │
-  │  │       pod       │                                                 │
-  │  │                 │  queue-proxy → serving container                │
-  │  │                 │  vLLM / TEI / NIM / custom runtime              │
-  │  └────────┬────────┘                                                 │
-  │           ├── GPU access: shared allowance or whole devices          │
-  │           └── Model PVCs (C): weights, caches and environments       │
-  │                                                                      │
-  │  RKE2 agent / kubelet / containerd + NVIDIA container runtime        │
-  │  NVIDIA host driver + physical GPUs + persistence service            │
-  │  HAMi device plugin + vGPU monitor; GPU and hardware labelers        │
-  │  Canal / Multus / Istio CNI; RDMA device plugin + host RDMA stack    │
-  └──────────────────────────────────────────────────────────────────────┘
+### Request flow
 
-                          ┌─────────────────────────────────────────────┐
-  Redis PVC (A) ──────────►│  SHARED NFS SERVER                          │
-  Usage PVC (B) ──────────►│                                             │
-  Model PVCs (C) ─────────►│  Separate data directories for key state,   │
-                          │  usage records and model files              │
-                          └─────────────────────────────────────────────┘
-    Kubernetes PV/PVC bindings mount the server's storage into pods.
-    Files remain when model pods scale to zero or nodes are reprovisioned.
-    Persistent storage still needs backups.
+Solid arrows show request traffic. Dotted connections show supporting state or
+configuration.
 
-  KServe/Knative controllers and HAMi manage the pods; they are not extra
-  inference-request hops. Tyk's admin-command audit file is separate from
-  Redis and the gateway usage ledger. Physical GPU telemetry is separate
-  from gateway accounting metrics.
+```mermaid
+flowchart TD
+    client["Applications, research jobs and agents"]
+    ingress["Traefik · HTTPS ingress"]
+    auth["Tyk · API keys and rate limits"]
+    gateway["Aleph gateway · Model routing"]
+    mesh["Istio · Internal model routes"]
+    activator["Knative activator"]
+    predictor["Model predictor pod"]
+    redis[("Redis · Key and rate-limit state")]
+    discovery["Kubernetes API · Cards and deployment state"]
+
+    client --> ingress --> auth --> gateway --> mesh
+    auth -.-> redis
+    discovery -.-> gateway
+    mesh -->|Ready revision| predictor
+    mesh -->|When activation is required| activator
+    activator --> predictor
 ```
 
-Warewulf provisions both node roles. Ingress and the gateway run on control-plane
-nodes; GPU model predictors run on workers. Shared NFS storage holds the data
-that must outlive their pods.
+Traefik terminates TLS and routes requests to Tyk. Tyk authenticates API calls,
+applies limits, and supplies caller identity to the FastAPI gateway. The gateway
+translates supported APIs and routes by model name using cards and deployment
+state discovered through Kubernetes watches.
 
-Gateway releases are built by the repository's CI workflow. Production deployments
-pin a specific image version/digest; restarting a Deployment alone does not update
-that pin. Keep deployed configuration and boot sources aligned.
+The gateway checks cold-start capacity before forwarding. A model waking up may
+return `503` with retry guidance; a request may also be refused when suitable
+capacity is unavailable. Knative can include its activator for activation and
+buffering. Ready revisions can receive traffic directly through the model route.
 
-The [overlay guide](docs/WW-OVERLAYS.md) describes provisioning and storage;
-[Kubernetes](docs/KUBERNETES.md) covers serving and scaling. Model manifests and
-cards live under `models/`; gateway source and tests live under `gateway/`.
-See [Tyk](docs/TYK-USERS.md) and [Logging and metrics](docs/LOGGING.md) for key
-management, usage history and GPU measurements.
+### Provisioning and placement
 
-## 📚 Docs
+```mermaid
+flowchart TD
+    source["Node image, Aleph overlays and site configuration"]
+    warewulf["Warewulf · Provisioning"]
+    control["Control-plane VMs · RKE2 servers"]
+    workers["GPU workers · RKE2 agents"]
+    serving["KServe and Knative · Model lifecycle"]
+    placement["Kubernetes and HAMi · GPU placement"]
+    pods["Model predictor pods"]
+    nfs[("Shared NFS server")]
+    state["Redis data and gateway usage records"]
+
+    source --> warewulf
+    warewulf --> control
+    warewulf --> workers
+    control --> serving
+    control --> placement
+    serving -->|Services and replicas| pods
+    placement -->|Scheduling and GPU allocation| pods
+    workers -->|Host| pods
+    pods -.->|Model PVCs · weights and caches| nfs
+    state -.->|Separate PVCs| nfs
+```
+
+Ingress and the gateway run on control-plane nodes; GPU predictors run on workers.
+KServe and Knative manage services, revisions, and replica counts. Kubernetes and
+HAMi place the pods and allocate shared GPU capacity or whole devices. These
+controllers manage inference workloads; they are not extra request hops.
+The dotted connections show persistent storage mounts.
+
+### Supporting components
+
+| Component | Role |
+|---|---|
+| MetalLB | Advertises the public service IP over L2 for Traefik's LoadBalancer Service. |
+| cert-manager + Let's Encrypt | Issue and renew the TLS certificate using ACME HTTP-01. Traefik handles HTTPS and HTTP redirection. |
+| Serving runtimes | A predictor's queue-proxy forwards requests to vLLM, TEI, NVIDIA NIM, or a custom serving container. |
+| GPU worker stack | RKE2, containerd, NVIDIA drivers and container runtime, HAMi device plugin and monitoring. Network and RDMA support are covered in the system guide. |
+| Shared NFS storage | Separate PVCs and directories hold Redis data, gateway usage records, and model weights, caches, and environments. |
+| Usage and metrics | The gateway writes per-replica JSONL usage files and exposes aggregate counters at `/metrics`. Tyk's administrative audit and physical GPU telemetry are separate. |
+
+Persistent files survive model scale-to-zero and node replacement; they still
+need backups. Selected models can remain running, while others release GPU
+resources when idle. More replicas or workers require available capacity.
+
+Deployment details: [provisioning and storage](docs/WW-OVERLAYS.md),
+[serving and scaling](docs/KUBERNETES.md), [worker system](docs/SYSTEM.md),
+and [logging and metrics](docs/LOGGING.md).
+
+Gateway releases are built by CI. Production deployments pin an image version
+or digest; restarting a Deployment alone does not change that pin. Keep deployed
+configuration and boot sources aligned.
+
+
+## Documentation
 
 | Guide | Purpose |
 |---|---|
@@ -216,6 +218,8 @@ management, usage history and GPU measurements.
 | [Kubernetes](docs/KUBERNETES.md) | Serving components, placement, and model lifecycle |
 | [System](docs/SYSTEM.md) | Boot integration, node services, and GPU/RDMA support |
 | [Gateway reference](gateway/README.md) | Routing and model-card behavior |
+| [Model definitions](models/) | Deployment manifests, model cards, and tests |
+| [Gateway source](gateway/) | Implementation and tests |
 
 ## 🔗 References
 
