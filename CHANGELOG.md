@@ -2,6 +2,22 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 Cluster-specific values (the 230 test cluster, 232 legacy POC) are in the local working dir.
+## 2026-09-13 — Explain manual model deployment and the agentic iteration loop
+
+Rewrite only docs/ADD-A-MODEL.md, with manual deployment first and the agentic
+research/tuning/testing process second. Use full model-directory paths throughout
+file tables and commands; explain storage, service, card, tests, README, agent
+notes and optional server/parser/load-test files. Restore distinct settings,
+functional, pressure/recovery and final redeployment phases before commit/push.
+
+Validation: read the local consolidated process/playbook and repository examples
+for Gemma, BGE-M3, Caduceus, Boltz and Qwen, including manifests/cards, notes and
+test/template implementations. Consult official KServe, vLLM and TEI docs.
+Read-only live Boltz check found an installed min-zero service, Ready conditions,
+card and bound PVC but no predictor pods; mark the example as configuration-only,
+without claiming verified inference. Check links/anchors, shell syntax and diff.
+No model files, other guides, deployment resources or credentials changed.
+
 ## 2026-09-13 — Show GPU-worker components and shared NFS storage
 
 Extend the README's original boxed architecture with an explicit worker boundary:
