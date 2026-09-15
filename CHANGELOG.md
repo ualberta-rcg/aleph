@@ -1,6 +1,33 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-15 — qwen38-27b: vLLM 0.29.0, 512K context, 128K outputs, real xhigh, maxReplicas 6
+
+Settings overhaul proven on a parallel lab ISVC (qwen38-27b-lab, other compute, live
+service untouched during testing), then rolled into production. Engine: fleet 0.20.2
+digest → vLLM **0.29.0** digest `sha256:c291476…`. Context: 262144 native → **524288**
+via YaRN 2× hf-overrides (preserving the checkpoint's mrope fields) +
+`VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`; 512K boundary probe passed on the lab (522240 input
+tokens, 3/3 markers recalled, exact accounting). Output cap: card
+`max_completion_tokens` 32768 → **131072** (the 32k cap was gateway-side; engine accepts
+131k; a forced 40000-token completion verified `finish=length`); battery gains
+`max_tokens=131072` acceptance and a >32k long-output check. Thinking: real **xhigh**
+now works (0.20.2's protocol enum blocked it); the model only accepts low/medium/xhigh
+(literal `high` → model-side 400), so the card aliases high/max UP to xhigh; both
+body-level and chat_template_kwargs reasoning_effort reach the template on 0.29.0.
+Memory: util 0.88 → **0.90** (0.29 accounts CUDA-graph memory inside the util budget;
+pressure-verified with the crash-class loads), fp8 KV kept on FlashInfer for fast giant
+prefills — `int4_per_token_head` measured as the capacity fallback (1.78× pool, 2.44M
+tokens/TP-group, TRITON_ATTN, giant prefills 1.6-4× slower) and `nvfp4` proven
+impossible on SM89 (no attention backend — worker ValueError, crashloop);
+`--calculate-kv-scales` crashes the 0.29 worker (do not re-add; offline
+llm-compressor calibration is the proper fix, future work). Multimodal limits:
+image 16/ video 2 → **64/4**. Scaling: maxReplicas 2 → **6** (concurrency-gated).
+Dropped the inert `VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1` env (0.20.2 ignored
+it; 0.29 selects FlashInfer explicitly and has a real --attention-backend flag).
+GPU requests now match limits (fleet convention). README/CLAUDE updated with the
+measured A/B table, boundary results, and the KV-choice tradeoff.
+
 ## 2026-09-14 — qwen38-27b: back to the standard six-file layout
 
 Merge the standalone near-256K boundary probe into test.py as the env-gated

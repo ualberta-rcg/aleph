@@ -1,10 +1,13 @@
 """qwen38-27b comprehensive gateway test.
 
-Qwen3.8-27B-FP8 (hybrid GDN VLM, TP2, vLLM 0.20.2 fleet digest). Effort mode: body-level
-reasoning_effort reaches the template, but on this build only low/medium are real efforts
-(protocol enum blocks xhigh, model rejects high — both alias down to medium); think-OFF =
-enable_thinking:false via chat_template_kwargs. Vision (image + video) + tools
-(qwen3_coder parser) + prefix caching + MTP spec decode.
+Qwen3.8-27B-FP8 (hybrid GDN VLM, TP2, vLLM 0.29.0 digest). Effort mode with REAL
+levels low/medium/xhigh (body-level reasoning_effort and chat_template_kwargs both
+reach the template on this build; the card aliases high/max up to xhigh). Think-OFF =
+enable_thinking:false via chat_template_kwargs or reasoning_effort none. Vision
+(image + video) + tools (qwen3_coder parser) + prefix caching + MTP spec decode.
+Context 512K (YaRN 2x over the 262144 native), output cap 131072, fp8 KV on the
+FlashInfer attention backend (capacity fallback: int4_per_token_head = 1.78x pool
+via TRITON_ATTN, slower giant prefills — see CLAUDE.md).
 
 Vision+tools variant: image must WORK, tools must WORK. Limits, long inputs, concurrent traffic and recovery run in the same battery.
 
@@ -15,8 +18,8 @@ Run externally via the public edge + Tyk auth (preferred):
 Video check is env-gated (needs a reachable VIDEO_URL or a base64 clip in VIDEO_B64):
   VIDEO_URL=https://.../clip.mp4 python3 models/qwen38-27b/test.py
 
-Near-256K boundary check is env-gated (needs the keyless internal gateway origin in
-CONTEXT_GATEWAY_URL and the running engine origin exposing /tokenize in
+Near-boundary context probe is env-gated (needs the keyless internal gateway origin
+in CONTEXT_GATEWAY_URL and the running engine origin exposing /tokenize in
 CONTEXT_ENGINE_URL — an allocated diagnostic environment, not the public edge):
   CONTEXT_GATEWAY_URL=http://<gw> CONTEXT_ENGINE_URL=http://<engine> \
       python3 models/qwen38-27b/test.py
@@ -171,6 +174,35 @@ def max_tokens():
                   "reasoning_effort": "none", "max_tokens": 8192})
     record("PASS" if r.status_code == 200 else "FAIL", r.status_code, "OAI max_tokens=8k", safe(m, 30))
 
+def max_tokens_cap():
+    # Card cap is 131072 now; the gateway hard-clamps max_tokens to it. A short
+    # prompt with a huge allowance must be accepted (model stops naturally).
+    r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Say hi"}],
+                  "reasoning_effort": "none", "max_tokens": 131072})
+    record("PASS" if r.status_code == 200 else "FAIL", r.status_code,
+           "OAI max_tokens=131072 accepted", safe(m, 30))
+
+def long_output():
+    # The old 32768 card cap blocked long generations; prove a real >32k completion.
+    # min_tokens suppresses EOS so the count crosses the old cap (~6 min at ~110 tok/s).
+    # NOTE: effort must NOT be none — the card's think-OFF path clamps output to
+    # off_max_tokens (2048) by design; big outputs require thinking on (any effort).
+    # ~5-6 min generation: needs a client timeout above the battery's 300s default.
+    r = req("POST", "/v1/chat/completions", {"model": MODEL, "messages": [{"role": "user", "content":
+            "Count upward from 1, one number per line, without commentary, "
+            "until the token limit."}],
+            "reasoning_effort": "low", "max_tokens": 40000, "min_tokens": 33500,
+            "temperature": 0}, timeout=900)
+    d = r.json()
+    m = d.get("choices", [{}])[0].get("message", {}) if r.status_code == 200 else {}
+    fin = d["choices"][0].get("finish_reason") if r.status_code == 200 else None
+    ct = (d.get("usage") or {}).get("completion_tokens", 0) if r.status_code == 200 else 0
+    # min_tokens is a floor, not a ceiling: once past it the model may stop cleanly
+    # (finish=stop) — the property under test is crossing the old 32768 cap.
+    ok = r.status_code == 200 and fin in ("stop", "length") and ct > 32768
+    record("PASS" if ok else "FAIL", r.status_code, "OAI long output >32k",
+           f"finish={fin} completion_tokens={ct} err={r.status_code != 200 and r.text[:80]}")
+
 def truncation():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Tell me a very long story."}],
                   "reasoning_effort": "none", "max_tokens": 5})
@@ -215,26 +247,28 @@ def think_on_medium():
            "OAI think ON medium", f"rc_len={len(rc)} content_len={len(m.get('content') or '')}")
 
 def think_on_high_alias():
-    # high/xhigh alias down to medium on this vLLM build (protocol enum blocks xhigh,
-    # model rejects high) — must still return 200 with reasoning, never 400.
+    # The model accepts only low/medium/xhigh; the card aliases high/max UP to xhigh.
+    # Must return 200 with reasoning, never 400 (0.20.2-era regression guard).
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": HARD}],
                   "reasoning_effort": "high", "max_tokens": 4096, "temperature": 1.0})
     rc = _rc(m)
     record("PASS" if r.status_code == 200 and rc else "FAIL", r.status_code,
-           "OAI think ON high (aliased medium)", f"rc_len={len(rc)}")
+           "OAI think ON high (aliased xhigh)", f"rc_len={len(rc)}")
 
 def think_effort_scales():
-    # Body-level reasoning_effort reaches the chat template: low vs medium must produce
-    # different outputs at temp=0 (verified rc_len 699 vs 655 on the sqrt(2) prompt).
+    # Real effort levels on vLLM 0.29.0: low vs medium vs xhigh must differ at temp=0
+    # (lab 2026-09-15: rc_len 148 / 150 / 289 on this prompt).
     body = {"model": MODEL, "messages": [{"role": "user", "content":
             "Prove that the square root of 2 is irrational, briefly."}],
             "max_tokens": 2048, "temperature": 0}
     _, dl, ml = oai({**body, "reasoning_effort": "low"})
     _, dm, mm = oai({**body, "reasoning_effort": "medium"})
-    rl, rm = len(_rc(ml)), len(_rc(mm))
-    differ = (ml.get("content") or "") != (mm.get("content") or "") or rl != rm
-    record("PASS" if differ else "FAIL", dm and 200, "OAI effort levels distinct (low vs medium)",
-           f"rc_len low={rl} medium={rm} content_differs={differ}")
+    _, dx, mx = oai({**body, "reasoning_effort": "xhigh"})
+    rl, rm, rx = len(_rc(ml)), len(_rc(mm)), len(_rc(mx))
+    lens = {rl, rm, rx}
+    record("PASS" if len(lens) == 3 else "FAIL", dm and 200,
+           "OAI effort levels distinct (low/medium/xhigh)",
+           f"rc_len low={rl} medium={rm} xhigh={rx}")
 
 def think_off():
     r, d, m = oai({"model": MODEL, "messages": [{"role": "user", "content": "Capital of France?"}],
@@ -469,7 +503,8 @@ def s7_health():
            f"models={r.status_code} chat={r2.status_code} in {dt:.1f}s")
 
 
-CONTEXT_TARGET = 261888
+CONTEXT_TARGET = 522240   # 524288 context - 2048 output allowance
+CONTEXT_MAXLEN = 524288
 CONTEXT_MARKERS = ["ALEPH_START_739241", "ALEPH_MIDDLE_582613", "ALEPH_END_946827"]
 
 
@@ -592,7 +627,8 @@ if __name__ == "__main__":
     print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (vision+video+tools)", flush=True)
     print("=" * 66, flush=True)
     for t in [wake, stream, temp0, temp_topk, top_p, presence_pen, stop_seq, system,
-              tools_oai, tools_think, vision, video, max_tokens, truncation,
+              tools_oai, tools_think, vision, video, max_tokens, max_tokens_cap,
+              long_output, truncation,
               usage, resources, prefix_cache, think_on_medium, think_on_high_alias,
               think_effort_scales, think_off, think_budget, think_stream,
               meta_title, meta_tags, meta_followups,

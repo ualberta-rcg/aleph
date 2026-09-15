@@ -5,18 +5,22 @@
 #
 # HAMi TP>=2 recipe: request whole GPUs via nvidia.com/gpu=2, DO NOT set gpumem,
 # and --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL fast).
-# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 on L40S (SM89; FlashAttention-3 unavailable).
+# Attention backend: vLLM picks FlashInfer (SM89; FA3 unavailable) + Triton/FLA for the
+# GDN prefill — logged at startup. The old VLLM_ATTENTION_BACKEND env is dropped: this
+# build ignores it (0.20.2 logged "Unknown vLLM environment variable").
 #
-# Image: the fleet-pinned vLLM 0.20.2 digest (same as every other vLLM model here).
-# Verified: Qwen3.8-27B-FP8 declares architectures ["Qwen3_5ForConditionalGeneration"]
-# (model_type qwen3_5) — present in 0.20.2 (registry also has Qwen3_5MTP for MTP), and
-# its transformers 5.8.0 meets the card's >=5.4 floor. qwen35-122b runs this family on
-# this exact image. Fallback ladder if engine init rejects the config: v0.28.0, then
-# nightly (both verified pullable on the nodes).
+# Image: vLLM v0.29.0 digest (upgraded 2026-09-15 from the fleet 0.20.2 pin — see
+# CHANGELOG): lifts the OpenAI effort-enum so real xhigh works (model accepts
+# low/medium/xhigh only; "high" stays a card alias to xhigh), accepts max_tokens up to
+# 131072, and accounts CUDA-graph memory inside the util budget (default since v0.21).
+# KV: nvfp4 has no attention backend on SM89 (tested, rejected 2026-09-15) but
+# int4_per_token_head works via TRITON_ATTN and gives 1.78x the fp8 pool; context is
+# YaRN-scaled 2x to 512K (probe-verified marker recall at 522,240 tokens).
 #
 # Always-on (popular model): minReplicas 1 = one warm TP2 replica (2 whole L40S);
-# maxReplicas 2 (4 L40S at peak). scaleTarget 16 < max-num-seqs 64 leaves per-pod burst
-# headroom (oss-120b lesson: max-num-seqs is the real per-pod cap).
+# maxReplicas 6 (12 L40S at peak, taken only under real concurrency). scaleTarget 16
+# < max-num-seqs 64 leaves per-pod burst headroom (oss-120b lesson: max-num-seqs is
+# the real per-pod cap).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -36,7 +40,7 @@ spec:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
     minReplicas: 1
-    maxReplicas: 2
+    maxReplicas: 6
     scaleTarget: 16
     scaleMetric: concurrency
     timeout: 600
@@ -96,7 +100,7 @@ spec:
             mountPath: /data
     containers:
       - name: kserve-container
-        image: index.docker.io/vllm/vllm-openai@sha256:70a098d90dbab428a001d9e852fc0fc8d67da5beb03e7851a22247653bf35923
+        image: index.docker.io/vllm/vllm-openai@sha256:c2914767605584b6d8f45686b82de173ecc99e781897aa3d0a66dacd72c51ae1
         command:
           - vllm
         args:
@@ -104,14 +108,23 @@ spec:
           - /data/model
           - --served-model-name=qwen38-27b
           - --tensor-parallel-size=2
-          - --max-model-len=262144
+          - --max-model-len=524288
+          # YaRN 2x rope scaling -> 512K context (native 262144). Preserves the
+          # checkpoint's mrope fields; factor 2.0 per HF card guidance for ~512K.
+          - --hf-overrides={"text_config":{"rope_parameters":{"mrope_interleaved":true,"mrope_section":[11,11,10],"partial_rotary_factor":0.25,"rope_theta":10000000,"rope_type":"yarn","factor":2.0,"original_max_position_embeddings":262144}}}
           - --dtype=auto
-          - --gpu-memory-utilization=0.88
+          - --gpu-memory-utilization=0.90
           - --max-num-seqs=64
           - --max-num-batched-tokens=16384
+          # fp8 KV: keeps the FlashInfer attention backend -> fastest giant prefills
+          # (~2 min at 262K vs 6-9 min on int4/Triton). Pool ~1.3-1.4M tokens/TP-group
+          # at util 0.90 (~2.6 concurrent 512K sessions; ~13 concurrent 100K sessions).
+          # Capacity fallback if queueing ever bites: --kv-cache-dtype=int4_per_token_head
+          # gives 1.78x the pool (2.44M tokens, TRITON_ATTN) at the cost of slower
+          # one-shot giant prefills. Quality-verified 2026-09-15 both ways.
           - --kv-cache-dtype=fp8
           - --enable-prefix-caching
-          - '--limit-mm-per-prompt={"image": 16, "video": 2}'
+          - '--limit-mm-per-prompt={"image": 64, "video": 4}'
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
@@ -122,19 +135,23 @@ spec:
           - --disable-custom-all-reduce
           - --port=8080
         env:
+          # Required for max-model-len above the checkpoint's native 262144.
+          - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+            value: "1"
           - name: HF_HUB_OFFLINE
             value: "1"
           - name: HF_HUB_CACHE
             value: /tmp/hf-cache
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: spawn
-          - name: VLLM_ATTENTION_BACKEND
-            value: TRITON_ATTN_VLLM_V1
           - name: OMP_NUM_THREADS
             value: "1"
-          # 2026-08-26: engine OOM-died at 0.92 under a 16k-token prefill batch
-          # (532MB GEMM output alloc, ~1.3GB free + 1.5GB fragmentation). 0.88 leaves
-          # ~3.4GB activation headroom; expandable_segments stops fragmentation drift.
+          # Memory hardening: 0.20.2 OOM-died at util 0.92 under a 16k-token prefill
+          # batch (532MB GEMM output alloc + fragmentation). Since v0.21 CUDA-graph
+          # memory is accounted INSIDE the util budget, so 0.90 on 0.29 ≈ 0.893
+          # effective — below the 0.92 crash point; pressure-verified 2026-09-15
+          # (24k chunked prefill + 8x8k burst + 20-mix clean). expandable_segments
+          # stops fragmentation drift.
           - name: PYTORCH_CUDA_ALLOC_CONF
             value: expandable_segments:True
         ports:
@@ -144,6 +161,7 @@ spec:
           requests:
             cpu: "8"
             memory: 48Gi
+            nvidia.com/gpu: "2"
           limits:
             cpu: "16"
             memory: 64Gi

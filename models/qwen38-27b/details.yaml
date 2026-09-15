@@ -22,8 +22,8 @@ data:
         "upstream_model_id": null
       },
       "limits": {
-        "context_window": 262144,
-        "max_completion_tokens": 32768
+        "context_window": 524288,
+        "max_completion_tokens": 131072
       },
       "scaling": {
         "scale_to_zero": false,
@@ -46,13 +46,13 @@ data:
             "none": "none", "minimal": "none", "disabled": "none",
             "low": "low",
             "medium": "medium", "med": "medium",
-            "high": "medium",
-            "xhigh": "medium", "max": "medium"
+            "high": "xhigh",
+            "xhigh": "xhigh", "max": "xhigh"
           },
           "on":  {"reasoning_effort": "medium"},
           "off": {"chat_template_kwargs": {"enable_thinking": false}},
           "off_max_tokens": 2048,
-          "note": "Managed thinking. Body-level reasoning_effort reaches the chat template (verified); chat_template_kwargs.reasoning_effort is IGNORED by vLLM 0.20.2. The protocol enum allows none/low/medium/high but the model only accepts low/medium (model default xhigh is too slow on L40S) -> high/xhigh/max alias down to medium on this build; true xhigh needs a newer vLLM. ON exposes `reasoning` (preserve_thinking on by default: reasoning retained across turns); OFF (none/minimal/disabled) -> enable_thinking false: no reasoning + max_tokens capped to off_max_tokens. Thinking sampling: temp=1.0 top_p=0.95 top_k=20. Non-thinking sampling: temp=0.7 top_p=0.8 top_k=20 presence_penalty=1.5."
+          "note": "Managed thinking on vLLM 0.29.0. Real effort levels are low/medium/xhigh (verified 2026-09-15: distinct reasoning lengths, xhigh > medium > low). The model accepts only low/medium/xhigh (its own default is xhigh, too slow on L40S for a fleet default -> card defaults medium), so high/max alias UP to xhigh. Both body-level reasoning_effort and chat_template_kwargs.reasoning_effort reach the template on this build. ON exposes `reasoning` (preserve_thinking on by default: reasoning retained across turns); OFF (none/minimal/disabled) -> enable_thinking false: no reasoning + max_tokens capped to off_max_tokens. Thinking sampling: temp=1.0 top_p=0.95 top_k=20. Non-thinking sampling: temp=0.7 top_p=0.8 top_k=20 presence_penalty=1.5."
         }
       },
       "defaults": {
@@ -60,7 +60,7 @@ data:
           "temperature": 1.0,
           "top_p": 0.95,
           "top_k": 20,
-          "max_tokens": 32768,
+          "max_tokens": 131072,
           "thinking": {"enabled": true, "effort": "medium"}
         },
         "meta_tasks": {
@@ -72,7 +72,7 @@ data:
       "schema_version": 2,
       "custom_params": {
         "schema": {
-          "reasoning_effort": {"type": "string", "enum": ["none","low","medium","high","xhigh"], "default": "medium", "description": "none = off; low/medium = real levels; high/xhigh alias to medium on this vLLM build"},
+          "reasoning_effort": {"type": "string", "enum": ["none","low","medium","high","xhigh"], "default": "medium", "description": "none = off; low/medium/xhigh = real levels; high/max alias up to xhigh"},
           "top_k": {"type": "integer", "default": 20},
           "presence_penalty": {"type": "float", "default": 0.0, "description": "Use 1.5 for non-thinking mode per model card"}
         },
@@ -80,16 +80,16 @@ data:
       },
       "input_map": {
         "messages": {"type": "array", "required": true, "description": "Chat messages [{role, content|content[]}] (content may include image_url and video_url blocks)"},
-        "max_tokens": {"type": "integer", "required": false, "default": 32768, "max": 32768},
+        "max_tokens": {"type": "integer", "required": false, "default": 131072, "max": 131072},
         "temperature": {"type": "float", "required": false, "default": 1.0, "min": 0.0, "max": 2.0, "description": "1.0 thinking / 0.7 non-thinking (model card)"},
         "top_p": {"type": "float", "required": false, "default": 0.95, "description": "0.95 thinking / 0.8 non-thinking (model card)"},
         "top_k": {"type": "integer", "required": false, "default": 20},
         "stream": {"type": "boolean", "required": false, "default": false},
-        "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high","xhigh"], "default": "medium", "description": "none/minimal/disabled = thinking off; low/medium = real effort levels (high/xhigh alias to medium on this build)"},
+        "reasoning_effort": {"type": "string", "required": false, "enum": ["none","low","medium","high","xhigh"], "default": "medium", "description": "none/minimal/disabled = thinking off; low/medium/xhigh = real effort levels (high/max alias up to xhigh)"},
         "tools": {"type": "array", "required": false, "description": "OpenAI tool definitions (qwen3_coder parser)"},
         "tool_choice": {"type": "string", "required": false},
-        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision); up to 16 per prompt"},
-        "video": {"type": "string", "required": false, "description": "Base64 video or URL (vision); up to 2 per prompt"},
+        "image": {"type": "string", "required": false, "description": "Base64 image or URL (vision); up to 64 per prompt"},
+        "video": {"type": "string", "required": false, "description": "Base64 video or URL (vision); up to 4 per prompt"},
         "frequency_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0},
         "presence_penalty": {"type": "float", "required": false, "default": 0.0, "min": -2.0, "max": 2.0, "description": "1.5 recommended in non-thinking mode"}
       },
@@ -100,7 +100,7 @@ data:
       },
       "catalog": {
         "description_short": "Qwen3.8-27B FP8: hybrid GDN VLM, effort-level thinking + tools + video (TP2)",
-        "description": "Qwen3.8-27B-FP8 dense model with hybrid attention (16x Gated DeltaNet + 1x Gated Attention, 64 layers). Native vision-language: images and video. Thinking mode with real effort levels (low/medium/xhigh) toggled via enable_thinking, with preserved thinking across conversation history. MTP-trained; served with MTP speculative decoding. 262K native context. Fine-grained FP8 quantization. Served on 2x L40S (TP2) per the official vLLM recipe.",
+        "description": "Qwen3.8-27B-FP8 dense model with hybrid attention (16x Gated DeltaNet + 1x Gated Attention, 64 layers). Native vision-language: images and video. Thinking mode with real effort levels (low/medium/xhigh) toggled via enable_thinking, with preserved thinking across conversation history. MTP-trained; served with MTP speculative decoding. 512K context (262K native, YaRN 2x; probe-verified marker recall at 522K). Fine-grained FP8 quantization. Served on 2x L40S (TP2) per the official vLLM recipe.",
         "owned_by": "Qwen",
         "source": "Qwen/Qwen3.8-27B-FP8",
         "source_url": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8",
