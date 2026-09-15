@@ -11,7 +11,7 @@ official recipe: `--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 262144
 --gpu-memory-utilization 0.88 --enable-prefix-caching`. Always-on (`minReplicas: 1`,
 max 2).
 
-Single-request 256K boundary validation passed on 2026-09-09: 261888 input tokens plus a 256-token output allowance, 33 generated tokens, all three markers recalled, 120.15 seconds, and no observed engine errors. See [measured scope and limitations](CONTEXT-256K-RESULT.md). Memory utilization stays at the OOM-hardened 0.88.
+Single-request 256K boundary validation passed on 2026-09-09: 261888 input tokens plus a 256-token output allowance, 33 generated tokens, all three markers recalled, 120.15 seconds, and no observed engine errors. Scope: one synthetic text request with thinking disabled — not a concurrency, arbitrary-document-recall or multimodal guarantee; the probe is re-runnable as the env-gated `256K boundary probe` check in `test.py` (needs `CONTEXT_GATEWAY_URL` + `CONTEXT_ENGINE_URL`). Memory utilization stays at the OOM-hardened 0.88.
 
 ## Files
 | File | Purpose |
@@ -19,7 +19,7 @@ Single-request 256K boundary validation passed on 2026-09-09: 261888 input token
 | `pvc.yaml` | PVC `qwen38-27b`, 60Gi RWX NFS (weights + helper venv) |
 | `inferenceservice.yaml` | KServe ISVC: initContainer staging + pinned vLLM 0.20.2 + TP2 |
 | `details.yaml` | v2 card ConfigMap (`qwen38-27b-details`) — catalog entry |
-| `test.py` | Gateway battery: features, output limits, long inputs, concurrency and recovery |
+| `test.py` | Gateway battery: features, output limits, long inputs, concurrency, recovery, env-gated 256K boundary probe |
 | `CLAUDE.md` | Model context + research findings + OOM postmortem |
 
 ## Deploy
@@ -42,7 +42,9 @@ GW_URL=https://inference.vulcan.alliancecan.ca TYK_KEY=<key> MODEL=qwen38-27b \
 Running `models/qwen38-27b/test.py` runs all API, output-limit and pressure checks.
 The pressure checks include long prefills, an eight-request concurrent burst,
 long text with images/video, twenty mixed requests and a final health check.
-Video checks report SKIP unless `VIDEO_URL` or `VIDEO_B64` supplies a fixture.
+Video checks report SKIP unless `VIDEO_URL` or `VIDEO_B64` supplies a fixture;
+the near-256K boundary probe reports SKIP unless `CONTEXT_GATEWAY_URL` and
+`CONTEXT_ENGINE_URL` supply the internal origins (allocated diagnostic
+environment — it sends exactly one full-boundary request).
 Inspect scoped runtime logs separately for OOM/engine errors; the API test does
-not perform SSH or claim to validate pod logs. The dated 256K boundary result
-above remains separate evidence; this battery does not retest that full boundary.
+not perform SSH or claim to validate pod logs.

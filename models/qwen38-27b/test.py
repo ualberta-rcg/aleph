@@ -1,8 +1,10 @@
 """qwen38-27b comprehensive gateway test.
 
-Qwen3.8-27B-FP8 (hybrid GDN VLM, TP2, vLLM v0.28.0). Effort mode with REAL effort levels
-(low/medium/xhigh via chat-template kwarg reasoning_effort) + binary enable_thinking off.
-Vision (image + video) + tools (qwen3_coder parser) + prefix caching + MTP spec decode.
+Qwen3.8-27B-FP8 (hybrid GDN VLM, TP2, vLLM 0.20.2 fleet digest). Effort mode: body-level
+reasoning_effort reaches the template, but on this build only low/medium are real efforts
+(protocol enum blocks xhigh, model rejects high — both alias down to medium); think-OFF =
+enable_thinking:false via chat_template_kwargs. Vision (image + video) + tools
+(qwen3_coder parser) + prefix caching + MTP spec decode.
 
 Vision+tools variant: image must WORK, tools must WORK. Limits, long inputs, concurrent traffic and recovery run in the same battery.
 
@@ -12,8 +14,14 @@ Run externally via the public edge + Tyk auth (preferred):
 
 Video check is env-gated (needs a reachable VIDEO_URL or a base64 clip in VIDEO_B64):
   VIDEO_URL=https://.../clip.mp4 python3 models/qwen38-27b/test.py
+
+Near-256K boundary check is env-gated (needs the keyless internal gateway origin in
+CONTEXT_GATEWAY_URL and the running engine origin exposing /tokenize in
+CONTEXT_ENGINE_URL — an allocated diagnostic environment, not the public edge):
+  CONTEXT_GATEWAY_URL=http://<gw> CONTEXT_ENGINE_URL=http://<engine> \
+      python3 models/qwen38-27b/test.py
 """
-import httpx, json, os, time
+import httpx, json, os, signal, time
 
 G = os.environ.get("GW_URL", "http://localhost:8080")
 _KEY = os.environ.get("TYK_KEY")
@@ -460,6 +468,126 @@ def s7_health():
     record("PASS" if ok else "FAIL", 0, "s7a engine alive after stress",
            f"models={r.status_code} chat={r2.status_code} in {dt:.1f}s")
 
+
+CONTEXT_TARGET = 261888
+CONTEXT_MARKERS = ["ALEPH_START_739241", "ALEPH_MIDDLE_582613", "ALEPH_END_946827"]
+
+
+def _ctx_messages(n):
+    half = n // 2
+    text = ("This is synthetic context-limit validation. Remember the three ALEPH markers.\n"
+            + CONTEXT_MARKERS[0] + "\n" + " filler" * half + "\n" + CONTEXT_MARKERS[1] + "\n"
+            + " filler" * (n - half) + "\n" + CONTEXT_MARKERS[2]
+            + "\nReturn the three ALEPH markers, in their original order, and nothing else.")
+    return [{"role": "user", "content": text}]
+
+
+def context_boundary():
+    """One synthetic near-256K request through the keyless internal gateway.
+
+    Env-gated: needs CONTEXT_GATEWAY_URL (internal gateway origin) and
+    CONTEXT_ENGINE_URL (engine origin exposing /tokenize). Tokenizes against the
+    live engine until the rendered input is exactly 261888 tokens, sends exactly
+    one long streamed request (no retries, 600s deadline), then a post-control.
+    Only counts/verdicts are reported. Last verified 2026-09-09 (see README).
+    """
+    gw = os.environ.get("CONTEXT_GATEWAY_URL", "").rstrip("/")
+    eng = os.environ.get("CONTEXT_ENGINE_URL", "").rstrip("/")
+    if not gw or not eng:
+        record("SKIP", 0, "256K boundary probe",
+               "set CONTEXT_GATEWAY_URL + CONTEXT_ENGINE_URL to enable")
+        return
+
+    def post(base, path, body, timeout=60, stream=False):
+        return (httpx.stream if stream else httpx.request)(
+            "POST", f"{base}{path}", json=body, timeout=timeout)
+
+    def control(stage):
+        with post(gw, "/v1/chat/completions", {"model": MODEL, "messages": [
+                {"role": "user", "content": "Reply only OK."}],
+                "reasoning_effort": "none", "max_tokens": 16}) as r:
+            ok = bool(r.json()["choices"][0]["message"].get("content"))
+        if not ok:
+            raise RuntimeError(f"{stage} control failed")
+
+    def count(n):
+        with post(eng, "/tokenize", {"model": MODEL, "messages": _ctx_messages(n),
+                "chat_template_kwargs": {"enable_thinking": False},
+                "add_generation_prompt": True}, timeout=90) as r:
+            d = r.json()
+        if d.get("max_model_len") != 262144:
+            raise RuntimeError("live model limit changed")
+        return d["count"]
+
+    def _deadline(*_):
+        raise TimeoutError("600-second inference deadline exceeded")
+
+    try:
+        control("baseline")
+        small, larger = count(64), count(128)
+        if larger - small != 64:
+            raise RuntimeError("filler is not one token per repeat; no long request sent")
+        n = CONTEXT_TARGET - (small - 64)
+        for _ in range(4):
+            actual = count(n)
+            if actual == CONTEXT_TARGET:
+                break
+            n += CONTEXT_TARGET - actual
+        else:
+            raise RuntimeError("exact token target not reached; no long request sent")
+
+        pieces, usage, finish, done, first, failure = [], {}, None, False, None, None
+        t0 = time.monotonic()
+        signal.signal(signal.SIGALRM, _deadline)
+        signal.alarm(600)
+        try:
+            with post(gw, "/v1/chat/completions", {"model": MODEL,
+                    "messages": _ctx_messages(n), "reasoning_effort": "none",
+                    "max_tokens": 256, "stream": True, "temperature": 0,
+                    "stream_options": {"include_usage": True}},
+                    timeout=600, stream=True) as r:
+                for raw in r.iter_lines():
+                    if not raw.startswith("data:"):
+                        continue
+                    data = raw[5:].strip()
+                    if data == "[DONE]":
+                        done = True
+                        break
+                    try:
+                        ev = json.loads(data)
+                    except Exception:
+                        continue
+                    if ev.get("error"):
+                        failure = "upstream_stream_error"
+                        break
+                    if ev.get("usage"):
+                        usage = ev["usage"]
+                    for ch in ev.get("choices", []):
+                        c = ch.get("delta", {}).get("content")
+                        if c:
+                            if first is None:
+                                first = time.monotonic() - t0
+                            pieces.append(c)
+                        if ch.get("finish_reason"):
+                            finish = ch["finish_reason"]
+        except Exception as e:
+            failure = type(e).__name__
+        finally:
+            signal.alarm(0)
+        out = "".join(pieces)
+        recall = [mk in out for mk in CONTEXT_MARKERS]
+        ok = (not failure and done and finish == "stop"
+              and usage.get("prompt_tokens") == CONTEXT_TARGET
+              and 0 < usage.get("completion_tokens", 0) <= 256 and all(recall))
+        ft = f"{first:.2f}s" if first is not None else "n/a"
+        record("PASS" if ok else "FAIL", 0, "256K boundary probe",
+               f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')} "
+               f"finish={finish} markers={sum(recall)}/3 first_token={ft} "
+               f"elapsed={time.monotonic()-t0:.2f}s failure={failure}")
+        control("post")
+    except Exception as e:
+        record("ERR", 0, "256K boundary probe", str(e)[:120])
+
 if __name__ == "__main__":
     print("=" * 66, flush=True); print(f"{MODEL} comprehensive gateway test (vision+video+tools)", flush=True)
     print("=" * 66, flush=True)
@@ -471,7 +599,7 @@ if __name__ == "__main__":
               ant_basic, ant_stream, ant_system, ant_temp0, ant_tools,
               ant_think_on, ant_think_off, guard_embed, guard_badmodel, catalog,
               s1_baseline, s2_long_prefill, s3_prefix_cache_hit, s4_concurrent_burst,
-              s5_long_plus_mm, s6_sustained_mix, s7_health]:
+              s5_long_plus_mm, s6_sustained_mix, s7_health, context_boundary]:
         try:
             t()
         except Exception as e:

@@ -1,6 +1,24 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-14 — qwen38-27b: back to the standard six-file layout
+
+Merge the standalone near-256K boundary probe into test.py as the env-gated
+"256K boundary probe" check (CONTEXT_GATEWAY_URL + CONTEXT_ENGINE_URL; sends
+exactly one full-boundary request with no retries; SKIP by default like the
+video checks) and delete test-context-boundary.py. Delete
+CONTEXT-256K-RESULT.md — the dated 2026-09-09 result (261888 rendered input
+tokens + 256-token output allowance, 33 generated, all three markers recalled,
+120.15 s, zero pod restarts) now lives in README.md's validation summary and
+CLAUDE.md's boundary section. Fix stale notes found in the audit: the test.py
+docstring claimed vLLM v0.28.0 and real xhigh effort (the image is the fleet
+0.20.2 digest; only low/medium are real efforts through the API on this
+build); the CLAUDE.md gateway-integration bullet claimed high/xhigh were real
+levels — they alias down to medium on the card, and the bullet now says so.
+The directory is back to the standard four implementation files plus README
+and CLAUDE notes. No manifest, card or cluster change; the live service is
+untouched.
+
 ## 2026-09-14 — LOGGING: ground in verified live behavior
 
 Replace synthetic examples with real production records (identities/fingerprints
