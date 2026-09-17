@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="./assets/aleph.png" alt="Aleph logo" width="160" />
-</p>
-
-<p align="center">
+<p align="left">
   <img src="./assets/ua_logo_green_rgb.png" alt="University of Alberta Logo" width="280" />
 </p>
 
