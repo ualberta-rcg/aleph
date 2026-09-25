@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tmqmg-painn-3d
+  namespace: models
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 5Gi

@@ -1,6 +1,50 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-25 — tmqmg-painn-3d deployed (new custom-server science model)
+
+**What:** first deployment of `models/tmqmg-painn-3d` — a five-member PaiNN
+ensemble (Elayan, Castro-Miyashiro, Blaskovits) predicting excited-state
+absorption properties of mononuclear transition-metal complexes from an XYZ
+geometry + formal charge. Delivered by the model authors as a complete package
+(`pyproject.toml`, FastAPI app, 5 checkpoints, tests, a draft `details.yaml`).
+
+- Standard 6-file layout (`pvc.yaml`, `inferenceservice.yaml`, `details.yaml`,
+  `test.py` + `example_request.json` fixture, `README.md`, `CLAUDE.md`).
+  `POST /v1/science/predict`, `type: spectroscopy`, `custom_params.passthrough:
+  true`; the app's own FastAPI runs unmodified, no gateway adapter needed.
+- **Deviation from the usual venv-on-PVC pattern (`mace-mp`/`caduceus`):** this
+  model has no reachable public host for its code or checkpoints (the draft
+  card's GitHub mirror 404s — verified with `git ls-remote`). Staged the app
+  onto the PVC once, out of band, via a temporary pod + `kubectl cp` + `tar`;
+  the initContainer only builds the venv (deps ARE on public PyPI/pytorch.org)
+  and fails fast if staging is missing, instead of trying to fetch anything.
+- Dropped `limits.max_input_tokens` and `param_translation.thinking` from the
+  draft card (LLM-template leftovers never read by the gateway for non-chat
+  models; see `models/details.md`).
+- Added `serving.knative.dev/progress-deadline-seconds: "1800"` (reviewer
+  catch) — the first-ever boot builds the venv inside the Knative revision's
+  startup window; the default 600s deadline risked killing it mid-build on a
+  slow PyPI pull. Matches the `caduceus` precedent for the same class of risk.
+- `test.py` uses `urllib` (stdlib), not `httpx` — the Vulcan login node used
+  for this deploy had no `httpx` on its default `python3`, and installing it
+  there directly isn't appropriate. Same PASS/EXP/FAIL accounting as the rest
+  of the fleet's batteries, same approach as the model's own
+  `scripts/smoke_test.py`.
+
+**Validation:** deployed on the aleph1 control plane, worker `rack09-06`. Full
+battery **6 PASS/4 EXP/0 FAIL** — regression check matches the model's own
+`example_prediction.json` oracle (S1 energies within `abs_tol=5e-4` eV, CT
+labels exact); invalid-input checks (bad charge, <7 atoms, zero transition
+metals, missing `xyz`) all return the expected `422`. Proved reproducible:
+ISVC deleted + recreated from these repo files (PVC/staged data preserved,
+venv cache reused) and the full battery re-run clean, including after adding
+the progress-deadline annotation. Measured: ~523–592MiB GPU memory of the
+requested 4096MiB HAMi slice; cold start ~15–30s (cached venv) vs. ~4 min
+(first-ever venv build). **Not yet run:** load/burst ("pressure") testing —
+low-traffic single-molecule screening tool, but genuinely unverified under
+concurrency.
+
 ## 2026-09-25 — qwen25-vl-72b-awq back to scale-to-zero (frees 2× L40S)
 
 **What:** `models/qwen25-vl-72b-awq/inferenceservice.yaml` `minReplicas: 1` → `0`

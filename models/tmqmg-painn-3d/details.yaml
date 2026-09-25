@@ -1,0 +1,98 @@
+# Adapted from the model author's draft (deployment/vulcan/details.yaml in the
+# model's own source tree) for the Aleph gateway: dropped limits.max_input_tokens
+# and param_translation.thinking (LLM-template leftovers -- this is not a chat
+# model, and limits.max_input_tokens is never read by the gateway; see
+# models/details.md). Deployed + verified live 2026-09-25 (see CLAUDE.md/README.md):
+# full battery 6 PASS/4 EXP/0 FAIL, reproduced after a clean isvc delete+recreate.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tmqmg-painn-3d-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "tmqmg-painn-3d",
+      "status": "production",
+      "type": "spectroscopy",
+      "endpoints": {
+        "primary": "/v1/science/predict",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "tmqmg-painn-3d",
+        "no_stream": true
+      },
+      "limits": {
+        "context_window": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "15-30 s"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "model": {
+          "type": "string",
+          "required": false,
+          "default": "tmqmg-painn-3d",
+          "description": "gateway routing id; when supplied it must be tmqmg-painn-3d"
+        },
+        "id": {
+          "type": "string",
+          "required": false,
+          "description": "optional caller-defined molecule identifier, at most 128 characters"
+        },
+        "charge": {
+          "type": "integer",
+          "required": true,
+          "description": "formal molecular charge: -1, 0, or +1"
+        },
+        "xyz": {
+          "type": "string",
+          "required": true,
+          "description": "one complete XYZ document in Angstrom; 7-85 atoms and exactly one transition metal"
+        }
+      },
+      "output_map": {
+        "model": {"type": "string", "description": "model routing id"},
+        "model_version": {"type": "string", "description": "checkpoint-ensemble release"},
+        "id": {"type": "string|null", "description": "caller molecule id"},
+        "input": {"type": "object", "description": "validated charge, atom count, metal atomic number, and coordinate unit"},
+        "solvents": {"type": "object", "description": "gasphase and acetone objects containing state energies [30] in eV, wavelengths [30] in nm, oscillator strengths [30], energy uncertainty [30] in eV, UV/visible/nIR band and peak outputs [3], CT probabilities [4], and occupied/virtual NTO metal fractions [2]; CT/NTO values are gated by predicted visible-band presence"},
+        "ensemble": {"type": "object", "description": "member count, aggregation, and energy uncertainty definition"},
+        "provenance": {"type": "object", "description": "training git commit"},
+        "warnings": {"type": "array", "description": "scientific interpretation warnings"}
+      },
+      "catalog": {
+        "description_short": "Five-member PaiNN ensemble for excited-state screening of mononuclear transition-metal complexes from XYZ and formal charge.",
+        "description": "Predicts 30 vertical singlet excitation energies and oscillator strengths in gas phase and acetone, regional UV/visible/nIR bands, and gated visible-transition CT and NTO character. Intended for rapid in-domain screening; oscillator strengths are qualitative and consequential candidates require quantum-chemical or experimental validation.",
+        "owned_by": "Elayan, Castro-Miyashiro, and Blaskovits",
+        "source": "tmqmg-painn-3d",
+        "license": "MIT",
+        "parameters": "2,922,446 per member; 14,612,230 total",
+        "precision": "float32",
+        "framework": "PaiNN + PyTorch + PyTorch Geometric",
+        "domain": "chemistry",
+        "subdomain": "transition-metal-complex spectroscopy",
+        "input_format": {
+          "charge": "integer, one of -1, 0, 1",
+          "xyz": "complete XYZ file text, 7-85 atoms, exactly one transition metal"
+        },
+        "tags": ["science", "chemistry", "spectroscopy", "excited-states", "transition-metals", "painn", "gpu"]
+      }
+    }

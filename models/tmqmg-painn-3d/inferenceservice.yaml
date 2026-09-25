@@ -1,0 +1,101 @@
+# tmqmg-painn-3d: five-member PaiNN ensemble for excited-state screening of
+# mononuclear transition-metal complexes (Elayan, Castro-Miyashiro, Blaskovits).
+# Custom FastAPI server (src/tmqmg_es/), PyTorch + PyTorch Geometric. ~14.6M
+# params total, ~59MB FP32 checkpoints. CPU-capable; GPU preferred.
+# API: POST /v1/science/predict {model?, id?, charge, xyz}
+#
+# No public host exists for this model's code or checkpoints (the draft card's
+# github.com/jdiego-miyashiro/tmqmg-painn-3d mirror returns 404 as of 2026-09-25
+# -- verified with `git ls-remote`). Unlike mace-mp (which downloads from a public
+# HF repo at init time), this model's app + checkpoints must be staged onto the
+# PVC once, out of band, before first deploy -- see README.md "First-time
+# staging". The initContainer only builds the venv (all deps ARE on public
+# PyPI/pytorch.org) and fails fast with an instructive message if staging is
+# missing; it never tries to fetch the app itself.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: tmqmg-painn-3d
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline-seconds: "1800"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    scaleTarget: 5
+    scaleMetric: concurrency
+    timeout: 120
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            if [ ! -f /data/app/.staged ]; then
+              echo "ERROR: /data/app/.staged is missing." >&2
+              echo "This model's source + checkpoints have no public host and must be" >&2
+              echo "staged onto the tmqmg-painn-3d PVC once before first deploy." >&2
+              echo "See models/tmqmg-painn-3d/README.md 'First-time staging'." >&2
+              exit 1
+            fi
+            SENTINEL=/data/venv/.tmqmg-painn-3d-ready
+            if [ ! -f "$SENTINEL" ]; then
+              echo "Installing venv..."
+              python3 -m venv /data/venv
+              /data/venv/bin/pip install -q -U pip
+              /data/venv/bin/pip install -q numpy==2.2.2
+              /data/venv/bin/pip install -q torch==2.12.1 --index-url https://download.pytorch.org/whl/cu126
+              /data/venv/bin/pip install -q torch_geometric==2.7.0
+              /data/venv/bin/pip install -q fastapi==0.116.1 pydantic==2.13.5 uvicorn==0.35.0
+              /data/venv/bin/pip install -q -e /data/app --no-deps
+              touch "$SENTINEL"
+              echo "Venv ready."
+            else
+              echo "Venv exists."
+            fi
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { cpu: "4", memory: 8Gi }
+        volumeMounts:
+          - { name: tmqmg-painn-3d, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11-slim
+        command: ["/data/venv/bin/python", "-m", "uvicorn", "tmqmg_es.api:app", "--host", "0.0.0.0", "--port", "8080"]
+        env:
+          # Match the app's own defaults (REPO_ROOT-relative); set explicitly for clarity.
+          - { name: TMQMG_ARTIFACT_ROOT, value: "/data/app/artifacts" }
+          - { name: TMQMG_ENSEMBLE_MANIFEST, value: "/data/app/src/manifests/final_ensemble_manifest.json" }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests: { cpu: "1", memory: 3Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "4096" }
+          limits: { cpu: "2", memory: 6Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "4096" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 12
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 24
+        volumeMounts:
+          - { name: tmqmg-painn-3d, mountPath: /data, readOnly: true }
+    volumes:
+      - name: tmqmg-painn-3d
+        persistentVolumeClaim: { claimName: tmqmg-painn-3d }
