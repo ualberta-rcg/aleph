@@ -113,6 +113,18 @@ six deployment files were then copied in from the ops-dir staging path
 (`tmqmg-painn-3d/deployment/vulcan/models/tmqmg-painn-3d/`, kept in sync as a
 historical draft) to `models/tmqmg-painn-3d/` in the real checkout.
 
+## Scaling change: always-on (2026-09-25)
+
+User requested at least 1 pod always up (not scale-to-zero). Changed
+`inferenceservice.yaml` (`minReplicas: 1`, added `maxReplicas: 2`) and
+`details.yaml` (`scale_to_zero: false`, `min_replicas: 1`,
+`idle_retention: "always-on"`, `cold_start_estimate: "Always on"`) — matches
+the fleet convention for small always-on services (e.g. `bge-m3`,
+`esm2-650m`). Applied via delete+recreate, not patch. Verified stable (3+ min
+`3/3 Running`, 0 restarts) and functionally unchanged (`test.py` still
+6 PASS/4 EXP/0 FAIL, now with `attempts=1` — no cold start at all). Cost:
+one persistent ~600MiB GPU slice held continuously instead of only on demand.
+
 ## Deploy / update steps
 
 See `README.md` "First-time staging" and "Deploy / update / test".

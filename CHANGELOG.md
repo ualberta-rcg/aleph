@@ -1,6 +1,20 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-25 — tmqmg-painn-3d switched to always-on (minReplicas 1/2)
+
+**What:** `models/tmqmg-painn-3d/inferenceservice.yaml` `minReplicas: 0` → `1`,
+added `maxReplicas: 2`; `models/tmqmg-painn-3d/details.yaml` `scale_to_zero`
+true→false, `min_replicas` 0→1, `idle_retention` "15m"→"always-on",
+`cold_start_estimate` "15-30 s"→"Always on". Delete+recreate (never patch).
+
+**Why:** requested by the operator — no acceptable cold start for this
+model's use case.
+
+**Validation:** pod `3/3 Running` continuously for 3+ min, 0 restarts; full
+battery re-run **6 PASS/4 EXP/0 FAIL** with `WAKE + predict: attempts=1`
+(immediate, no cold start). One ~600MiB GPU slice now held continuously.
+
 ## 2026-09-25 — tmqmg-painn-3d deployed (new custom-server science model)
 
 **What:** first deployment of `models/tmqmg-painn-3d` — a five-member PaiNN

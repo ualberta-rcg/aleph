@@ -60,8 +60,9 @@ here) → the frozen reference values baked into `test.py` (from
   L40S HAMi slice, `nvidia.com/gpumem: "4096"` — measured live usage is
   ~523–592MiB (`nvidia-smi` inside the pod), so this slice has comfortable
   headroom without being oversized.
-- **Scaling:** `minReplicas: 0` (scale-to-zero); this is a screening tool, not
-  a latency-critical service.
+- **Scaling:** `minReplicas: 1` / `maxReplicas: 2`, always-on (changed
+  2026-09-25 from the initial scale-to-zero deploy, on request — no cold start
+  for any request now; costs one persistent ~600MiB GPU slice at all times).
 - **`serving.knative.dev/progress-deadline-seconds: "1800"`** — the first-ever
   boot builds the venv (torch/torch_geometric download+install) inside the
   Knative revision's startup window; Knative's default progress deadline
@@ -139,6 +140,18 @@ data preserved) and the full battery re-run clean.
   slice (`nvidia-smi` inside the running pod).
 - `torch==2.12.1 --index-url https://download.pytorch.org/whl/cu126` resolved
   and installed cleanly; `cuda available: True`, device `NVIDIA L40S`.
+
+## Scaling change (2026-09-25, after initial deploy)
+
+Switched from scale-to-zero to always-on at the user's request:
+`inferenceservice.yaml` `minReplicas: 0` → `1`, added `maxReplicas: 2`;
+`details.yaml` `scale_to_zero` true→false, `min_replicas` 0→1,
+`idle_retention` "15m"→"always-on", `cold_start_estimate` "15-30 s"→"Always
+on". Applied via the standard update procedure (delete isvc → wait for old
+pod/revision to clear → re-apply — never patch). Verified: pod `3/3 Running`
+continuously for 3+ minutes with 0 restarts, then a full battery run showed
+`WAKE + predict: attempts=1` (immediate response, no cold start) — 6 PASS/4
+EXP/0 FAIL, unchanged from the scale-to-zero results.
 
 ## Known issues / gotchas
 
