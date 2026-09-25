@@ -1,6 +1,38 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-25 — qwen25-vl-72b-awq back to scale-to-zero (frees 2× L40S)
+
+**What:** `models/qwen25-vl-72b-awq/inferenceservice.yaml` `minReplicas: 1` → `0`
+(maxReplicas 2, scaleTarget 4, all other settings unchanged); ISVC delete +
+re-apply on aleph (never patch). PVC untouched. Two details cards updated to match:
+`qwen25-vl-72b-awq` `scale_to_zero` false→true, `min_replicas` 1→0,
+`cold_start_estimate` "Always on"→"3-6 min"; the alias card `qwen25-vl-72b`
+(routes to the awq ISVC via `routing.k8s_name`) "Always on (served by
+qwen25-vl-72b-awq)"→"3-6 min (served by qwen25-vl-72b-awq)". Without the card fix
+the gateway would not arm the cold-start guard (clients would hang on Knative's
+activator instead of the fast 503) and the Anthropic-surface always-on list would
+keep it.
+
+**Why:** the 2026-06-28 "always-on agentic/model tier" promotion made this the warm
+vision model for agentic/UI workflows, pinning 2 whole L40S (TP2, whole-device,
+rack09-07) 24/7. That rationale is stale: the verified Sep 18–25 usage ledger
+(460k requests, 7.48B tokens) shows zero requests to any qwen25-vl model. The
+BF16 sibling `qwen25-vl-72b` and the small `qwen25-vl-3b`/`-7b` are already
+`minReplicas: 0` — this was the only always-on qwen25-vl. Cost of the change:
+first vision request after idle pays a ~3-4 min cold start (503 + ETA + Retry-After,
+same wake path as the rest of the fleet); the model drops off the Anthropic-surface
+default list (always-on chat only) but stays in `/v1/models` and the web catalog.
+
+**Validation:** ISVC Ready at min 0; 32-day-old pod terminated; rack09-07 went
+4/4→2/4 cards (qwen38-27b keeps the other 2) — 2 whole L40S freed. Both catalog
+entries hot-reloaded (`availability: sleeping`, correct estimates) and the model
+dropped off the always-on-only Anthropic surface (7 chat models remain). Wake test:
+first request → immediate `503 model_scaled_to_zero`, ETA "~3-6 min",
+`Retry-After: 360`; wake fired async; follow-up request served `200` (correct
+answer, `finish_reason: stop`, 143.7 s through the tail of the cold start, pod
+scheduled onto the freed cards on rack09-07) — inside the card's estimate.
+
 ## 2026-09-15 — qwen38-27b: vLLM 0.29.0, 512K context, 128K outputs, real xhigh, maxReplicas 6
 
 Settings overhaul proven on a parallel lab ISVC (qwen38-27b-lab, other compute, live

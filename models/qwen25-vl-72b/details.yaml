@@ -23,7 +23,7 @@ data:
         "scale_to_zero": true,
         "min_replicas": 0,
         "idle_retention": "15m",
-        "cold_start_estimate": "Always on (served by qwen25-vl-72b-awq)"
+        "cold_start_estimate": "3-6 min (served by qwen25-vl-72b-awq)"
       },
       "behavior": {
         "supports_vision": true,
