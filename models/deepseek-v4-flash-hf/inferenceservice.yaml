@@ -1,0 +1,174 @@
+# DeepSeek-V4-Flash-0731 (HF checkpoint, MIT) — 284B total / 13B active MoE, MXFP4 experts +
+# FP8 attention, ~155.5 GiB weights (48 shards). Served by stock vLLM v0.30.0 on 4x L40S
+# whole devices (TP4). Public model id is `deepseek-v4-flash` (card) while the k8s objects
+# carry the `-hf` suffix (operator decision: keep the removed NIM dir as history); the card
+# routes via routing.k8s_name.
+#
+# Standard fleet pattern (qwen38-27b skeleton, TP2->TP4): image-native vLLM serving,
+# persisted helper venv + weights on the RWX PVC (gemma-4 init), scale-to-zero.
+# HAMi TP>=2 recipe: whole devices via nvidia.com/gpu=4, DO NOT set gpumem, and
+# --disable-custom-all-reduce (L40S NODE topology: custom all-reduce stalls; NCCL fast).
+# VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1 (SM89 fleet rule from qwen35/qwen38).
+# max-num-seqs 4: weights leave ~25-30 GiB for KV at util 0.95 — low concurrency by design.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: deepseek-v4-flash-hf
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    # One-time first boot downloads 155.5 GiB inside the initContainer; later wakes are
+    # engine-init only (~5-10 min, like the other big TP4 models).
+    serving.knative.dev/progress-deadline: "3600s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    # Scale-to-zero. maxReplicas 1: only one node can currently offer 4 tenant-free whole
+    # cards; a second replica would just sit Pending.
+    minReplicas: 0
+    maxReplicas: 1
+    scaleTarget: 4   # = --max-num-seqs (the real per-pod cap)
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.12-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "DeepSeek-V4-Flash-0731 weights already on PVC, skipping download."
+            else
+                echo "Downloading deepseek-ai/DeepSeek-V4-Flash-0731 (~167 GB / 155.5 GiB) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="deepseek-ai/DeepSeek-V4-Flash-0731",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: deepseek-v4-flash-hf
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.30.0
+        command:
+          - vllm
+        args:
+          - serve
+          - /data/model
+          - --served-model-name=deepseek-v4-flash
+          - --tensor-parallel-size=4
+          - --max-model-len=131072
+          - --dtype=auto
+          - --gpu-memory-utilization=0.95
+          - --max-num-seqs=4
+          - --max-num-batched-tokens=2048
+          - --kv-cache-dtype=fp8
+          # SM89 (2026-09-28 first boot): auto routing sent linear/hyperconnection ops to
+          # DeepGEMM, which asserts 'Unsupported architecture' below SM90. Triton linear
+          # backend is the SM89-safe path (same combo validated by the fire3 L40S work).
+          - --linear-backend=triton
+          - --reasoning-parser=deepseek_v4
+          - --enable-auto-tool-choice
+          - --tool-call-parser=deepseek_v4
+          # TP>=2 on HAMi/L40S: custom all-reduce busy-waits on a stalled P2P path; NCCL native.
+          - --disable-custom-all-reduce
+          - --trust-remote-code
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "16"
+            memory: 96Gi
+            nvidia.com/gpu: "4"
+          limits:
+            cpu: "32"
+            memory: 128Gi
+            nvidia.com/gpu: "4"
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 60
+        # Fast self-heal: a dead engine must recycle in ~1-2 min, not wedge 4 whole cards.
+        livenessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 180
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 2
+        volumeMounts:
+          - name: deepseek-v4-flash-hf
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: deepseek-v4-flash-hf
+        persistentVolumeClaim:
+          claimName: deepseek-v4-flash-hf
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

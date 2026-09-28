@@ -1,6 +1,30 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-28 — deepseek-v4-flash-hf: HF-checkpoint attempt — DeepSeek-V4-Flash not L40S-compatible; removed
+
+**What:** first deployment attempt of `models/deepseek-v4-flash-hf/` — the
+DeepSeek-V4-Flash-0731 HuggingFace checkpoint (284B/13B MoE, 155.5 GiB) on 4× L40S
+(TP4 whole devices) with stock `vllm/vllm-openai:v0.30.0`, the standard fleet pattern
+(qwen38-style ISVC + helper-venv initContainer + full battery). After the attempt, at
+operator decision, the ISVC, catalog card and PVC were removed from the cluster; the
+model directory is kept as the record with the incompatibility documented.
+
+**Why removed:** stock vLLM v0.30.0 hard-wires the DeepSeek-V4 hyperconnection op to
+DeepGEMM (SM90+). Two full boots on rack09-01 died identically at engine init:
+`Assertion error (deepgemm-src/csrc/apis/hyperconnection.hpp:56): Unsupported
+architecture` — the second boot with `--linear-backend=triton`, which does not bypass
+that op. Everything else selects SM89-safe kernels (MARLIN MXFP4 MoE, fp8_ds_mla KV,
+FP8 indexer — all confirmed in the logs), so the gap is precisely the unmerged upstream
+SM8x portability work (vllm-project/vllm#55177 stack). Weight staging itself worked
+(155.5 GiB in ~6 min).
+
+**Validation:** no inference performed; the battery never ran (engine never reached
+ready). Deletions verified: no ISVC/pods/revisions/card/PVC remain. Files committed as
+the record, including operational footnotes (crashlooping TP4 pod can wedge in
+Terminating past its 600s grace while holding all 4 whole cards — force-delete releases
+them).
+
 ## 2026-09-27 — deepseek-v4-flash removed from the cluster
 
 **What:** live cluster: deleted the `deepseek-v4-flash` InferenceService and

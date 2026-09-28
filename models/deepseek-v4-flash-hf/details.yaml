@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepseek-v4-flash-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "deepseek-v4-flash",
+      "status": "production",
+      "type": "chat",
+      "endpoints": {
+        "primary": "/v1/chat/completions",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "deepseek-v4-flash-hf",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 131072,
+        "max_completion_tokens": 32768
+      },
+      "scaling": { "scale_to_zero": true, "min_replicas": 0, "idle_retention": "15m", "cold_start_estimate": "5-10 minutes (weights cached on PVC)" },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": true,
+        "supports_system_prompt": true,
+        "supports_streaming": true,
+        "reasoning_model": true,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {
+          "mode": "effort",
+          "default_effort": "high",
+          "effort_aliases": {
+            "none": "low", "minimal": "low", "disabled": "low",
+            "low": "low",
+            "medium": "high", "med": "high",
+            "high": "high",
+            "xhigh": "max", "max": "max"
+          },
+          "on":  { "reasoning_effort": "high" },
+          "off": { "reasoning_effort": "low" },
+          "off_max_tokens": 2048,
+          "note": "Managed thinking. Model enum is low/high/max (checkpoint reasoning_effort). ON: expose the reasoning field; effort controls depth. OFF: effort low + cap max_tokens to off_max_tokens. DeepSeek-V4 always reasons internally; there is no fully-off mode (same policy as gpt-oss-120b)."
+        },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 1.0,
+          "top_p": 0.95,
+          "max_tokens": 8192,
+          "thinking": { "enabled": true, "effort": "high" }
+        },
+        "meta_tasks": {
+          "title":     { "max_tokens": 384, "thinking": { "enabled": false } },
+          "tags":      { "max_tokens": 384, "thinking": { "enabled": false } },
+          "followups": { "max_tokens": 384, "thinking": { "enabled": false } }
+        }
+      },
+      "custom_params": {
+        "schema": {
+          "reasoning_effort": { "type": "string", "enum": ["low","high","max"], "default": "high" }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages in OpenAI format (deepseek_v4 tokenizer encoding)"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 8192,
+          "max": 32768,
+          "description": "Maximum tokens to generate"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "min": 0.0,
+          "max": 2.0,
+          "description": "Sampling temperature (DeepSeek recommend 1.0; 0.95 top_p for agentic)"
+        },
+        "top_p": {
+          "type": "float",
+          "required": false,
+          "default": 0.95,
+          "min": 0.0,
+          "max": 1.0,
+          "description": "Nucleus sampling threshold"
+        },
+        "stream": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Enable streaming responses"
+        },
+        "reasoning_effort": {
+          "type": "string",
+          "required": false,
+          "enum": ["low", "high", "max"],
+          "default": "high",
+          "description": "Reasoning depth. Always-on (no fully-off mode); max = deep thinking."
+        },
+        "tools": {
+          "type": "array",
+          "required": false,
+          "description": "OpenAI-format tool definitions (deepseek_v4 tool parser)"
+        },
+        "tool_choice": {
+          "type": "string",
+          "required": false,
+          "description": "Tool choice: auto, none, or required"
+        },
+        "frequency_penalty": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Frequency penalty (0-2)"
+        }
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "object": {"type": "string", "description": "\"chat.completion\""},
+        "model": {"type": "string", "description": "Model name"},
+        "choices": {"type": "array", "items": {"message": "object", "finish_reason": "string"}, "description": "Response choices (includes the reasoning field when thinking is ON)"},
+        "usage": {"type": "object", "description": "Token usage (prompt_tokens, completion_tokens, total_tokens)"}
+      },
+      "catalog": {
+        "description_short": "DeepSeek V4 Flash 0731 — 284B MoE reasoning/chat model, MIT weights (TP4, 4x L40S)",
+        "description": "DeepSeek-V4-Flash-0731: 284B total / 13B active MoE with MXFP4 routed experts and FP8 attention, served from the HuggingFace checkpoint (MIT) via the yhfgyyf SM89 vLLM fork with Marlin MXFP4 MoE kernels, sparse-MLA FlashInfer attention and DSpark speculative decoding. Always-on reasoning with low/high/max effort, native tool calling, up to 1M native context (deployed at 131K on 4x L40S). Replaces the unusable NGC NIM deployment (H100+ only).",
+        "owned_by": "deepseek-ai",
+        "source": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731",
+        "license": "MIT",
+        "parameters": "284B MoE (13B active)",
+        "precision": "mxfp4 experts + fp8 attention",
+        "framework": "vllm",
+        "domain": "nlp",
+        "subdomain": "reasoning",
+        "tags": ["chat", "llm", "reasoning", "agentic", "moe", "deepseek", "tool-calling", "text-only", "long-context"]
+      }
+    }

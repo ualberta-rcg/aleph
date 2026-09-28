@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepseek-v4-flash-hf
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-models
+  resources:
+    requests:
+      # Weights: 48 safetensors shards, 166.9 GB (155.5 GiB) + helper venv + margin.
+      storage: 200Gi
