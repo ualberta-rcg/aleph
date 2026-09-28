@@ -1,6 +1,24 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-27 — deepseek-v4-flash removed from the cluster
+
+**What:** live cluster: deleted the `deepseek-v4-flash` InferenceService and
+its PVC (`deepseek-v4-flash`, 200Gi) plus the released static PV
+(`pv-deepseek-v4-flash`). The catalog card was already absent (parked
+2026-09-25). Repo: the deployment files under `models/deepseek-v4-flash/`
+are kept unchanged as the record; the README gained removal notes.
+
+**Why:** the NIM cannot run on this fleet. NGC's support matrix is
+B200/H100/H200/H20 only — no Ada/L40S profile — so the container crashloops
+at startup with `NIMProfileIDNotFound`. Its pod sat crashlooping (623
+restarts) while holding 4 whole L40S on rack09-01; those cards are reclaimed
+for TP4 work. Also infeasible on capacity alone: 284B FP8 ≈ 284 GB > 4×48 GB.
+
+**Validation:** ISVC, PVC and PV deletions verified (all NotFound); no pods
+or revisions remain under the `deepseek-v4-flash` label; rack09-01 shows no
+GPU allocations. Do not re-apply these files on the current fleet.
+
 ## 2026-09-25 — tmqmg-painn-3d switched to always-on (minReplicas 1/2)
 
 **What:** `models/tmqmg-painn-3d/inferenceservice.yaml` `minReplicas: 0` → `1`,
