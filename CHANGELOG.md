@@ -1,6 +1,33 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-09-28 — qwen-image-2-1 deployed (new image model: t2i + edits + RGBA)
+
+**What:** first deployment of `models/qwen-image-2-1/` — Qwen-Image-2.1
+(`Qwen/Qwen-Image-2.1`, 7.1B single-stream DiT + Qwen3-VL-8B text encoder + 16× RGBA
+VAE, ~33.1 GB) as a diffusers custom server on one whole L40S (flux-1-dev pattern:
+venv-on-PVC, FastAPI server ConfigMap, scale-to-zero). OpenAI-style
+`/v1/images/generations` (to 2048² across the native ratios, n≤2, true_cfg, seed) plus
+JSON-b64 `/v1/images/edits` (reference-image conditioning through the same pipeline,
+≤4 references). License recorded as Qwen Research License (non-commercial research).
+
+**Engine decision:** mainline vLLM cannot load QwenImage21 (no tagged release);
+vLLM-Omni serves it only via unmerged PR #7759 nightly wheels (rejected as non-stock);
+SGLang has no image-gen path for it. Diffusers pinned at git main
+`51a454be9a43854939d2ef2d231565f46a41e366` + `transformers==5.17.0` +
+`torch==2.12.1`/`torchvision==0.27.1` (cu126). Swap to a stock vLLM image when
+QwenImage21 merges upstream.
+
+**Validation (all through the public edge, 2026-09-28):** battery green three times —
+11/2/0, 12/2/0 with the 2048²/40-step peak probe, and 12/2/0 again after the clean
+proof redeploy (ISVC + ConfigMaps deleted, verified cleared, recreated from repo files,
+PVC kept). Seed determinism = identical PNG bytes; edits round-trip on a synthetic
+fixture; RGBA output (color_type 6) confirmed. Measured: staging ~6 min first boot;
+cached cold wake 79 s; 512²/8-step 3.2 s; 4-burst serialized 11.5 s wall; peak working
+set 32.7 GiB / 48 Gi limit; 0 restarts. Two first-deploy venv misses (server deps
+fastapi/uvicorn and the Qwen3-VL processor's torchvision requirement) fixed in the
+init script with an every-boot import-check heal step.
+
 ## 2026-09-28 — deepseek-v4-flash-hf: HF-checkpoint attempt — DeepSeek-V4-Flash not L40S-compatible; removed
 
 **What:** first deployment attempt of `models/deepseek-v4-flash-hf/` — the

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen-image-2-1
+  namespace: models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-models
+  resources:
+    requests:
+      # Repo ~47.4 GB (33.1 GB safetensors + configs/tokenizer) + ~12 GB venv + margin.
+      storage: 100Gi

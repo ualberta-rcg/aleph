@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen-image-2-1-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "qwen-image-2-1",
+      "status": "production",
+      "type": "image",
+      "endpoints": {
+        "primary": "/v1/images/generations",
+        "health": "/health"
+      },
+      "routing": {
+        "k8s_name": "qwen-image-2-1",
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 0,
+        "max_input_tokens": 512
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "max_replicas": 1,
+        "idle_retention": "15m",
+        "cold_start_estimate": "5-10 minutes (weights cached on PVC)"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {},
+      "custom_params": {
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "description": "Text prompt. For transparent output start with: This is an RGBA image with transparency."
+        },
+        "image": {
+          "type": "string or array of strings",
+          "required": false,
+          "description": "Edits endpoint only: base64 PNG/JPEG reference image(s), up to 4; the model edits/recomposes them following the prompt"
+        },
+        "n": {
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "description": "Number of images to return; server caps requests at 2"
+        },
+        "size": {
+          "type": "string",
+          "required": false,
+          "default": "1024x1024",
+          "description": "Output size WIDTHxHEIGHT; sides 256-2048, rounded down to multiples of 32. Native ratios: 1:1 2048x2048, 4:3 2400x1792(-capped), 3:2, 16:9 etc."
+        },
+        "num_inference_steps": {
+          "type": "integer",
+          "required": false,
+          "default": 40,
+          "description": "Denoising steps (4-50); the model was tuned around 40"
+        },
+        "true_cfg": {
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "description": "True classifier-free guidance scale; the model samples without guidance by design (1.0). guidance_scale is accepted as an alias."
+        },
+        "negative_prompt": {
+          "type": "string",
+          "required": false,
+          "default": "",
+          "description": "Negative prompt (used when true_cfg > 1.0)"
+        },
+        "seed": {
+          "type": "integer",
+          "required": false,
+          "description": "Deterministic seed applied before generation"
+        }
+      },
+      "output_map": {
+        "created": {"type": "integer", "description": "Unix timestamp"},
+        "data": {"type": "array", "description": "List of image objects"},
+        "data[].b64_json": {"type": "string", "description": "Base64-encoded PNG (RGBA when the prompt requests transparency)"}
+      },
+      "catalog": {
+        "description_short": "Qwen-Image-2.1 — 7.1B text-to-image + image editing model with RGBA support (whole L40S)",
+        "description": "Qwen-Image-2.1 is Qwen's 7.1B single-stream DiT text-to-image and image-editing model (Qwen3-VL-8B text encoder, 16x RGBA VAE). Generates up to 2048x2048 across seven aspect ratios, edits reference images from prompt instructions (up to 4 references via /v1/images/edits), and produces RGBA transparent images. Served via diffusers (QwenImage21Pipeline) on one whole L40S with VAE tiling; generations are serialized. Guidance-free sampling by design (true_cfg 1.0).",
+        "owned_by": "qwen",
+        "source": "Qwen/Qwen-Image-2.1",
+        "source_url": "https://huggingface.co/Qwen/Qwen-Image-2.1",
+        "license": "Qwen Research License (non-commercial research use)",
+        "parameters": "7.1B DiT + Qwen3-VL-8B text encoder",
+        "precision": "bfloat16 (fp32 VAE)",
+        "framework": "diffusers (custom FastAPI server)",
+        "domain": "image-generation",
+        "subdomain": "text-to-image",
+        "tags": ["image-generation", "text-to-image", "image-editing", "rgba", "diffusion", "qwen", "qwen-image"]
+      }
+    }

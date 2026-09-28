@@ -1,0 +1,305 @@
+# Qwen-Image-2.1 — 7.1B single-stream DiT + Qwen3-VL-8B text encoder (bf16) + 16x RGBA VAE,
+# ~33.1 GB safetensors. Text-to-image (to 2048^2, 7 aspect ratios) AND image-conditioned
+# editing (reference images via the same pipeline's `image=` input) + RGBA transparency.
+# Served by a diffusers custom server on ONE whole L40S (nvidia.com/gpu: 1, no gpumem) —
+# flux-1-dev pattern: venv-on-PVC, FastAPI server in an embedded ConfigMap, OpenAI-style
+# /v1/images/generations + JSON-b64 /v1/images/edits, serialized generations.
+#
+# Why not vLLM: mainline vLLM (any tagged release incl. v0.30.0) cannot load
+# QwenImage21Pipeline; only vLLM-Omni nightly wheels on unmerged PR #7759 serve it — a
+# non-stock build, rejected per fleet norms. Swap to the stock vLLM image when QwenImage21
+# merges upstream. Deps pinned: torch 2.12.1 (cu126 index), transformers==5.17.0,
+# diffusers @ git main 51a454be9a43854939d2ef2d231565f46a41e366 (QwenImage21 is not in a
+# diffusers release yet; the pin makes the venv reproducible).
+# License: Qwen Research License (non-commercial research use).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen-image-2-1
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    # One-time first boot: venv build + ~47 GB staging; later wakes are load-only.
+    serving.knative.dev/progress-deadline: "3600s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 1
+    scaleTarget: 1
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+        command: ["bash", "-c"]
+        args:
+          - |
+            set -e
+            export VENV=/data/venv
+            export SENTINEL=/data/.qwen-image-2-1-ready
+            # Server/processor deps: checked on EVERY boot (cheap import test) so a
+            # staged venv missing them heals in place instead of crashlooping the server.
+            if [ -x "$VENV/bin/python" ]; then
+              "$VENV/bin/python" -c "import fastapi, uvicorn" 2>/dev/null || \
+                "$VENV/bin/pip" install fastapi "uvicorn[standard]"
+              "$VENV/bin/python" -c "import torchvision" 2>/dev/null || \
+                "$VENV/bin/pip" install torchvision==0.27.1 --index-url https://download.pytorch.org/whl/cu126
+            fi
+            if [ -f "$SENTINEL" ] && [ -x "$VENV/bin/python" ] && [ -f /data/model/model_index.json ]; then
+              echo "qwen-image-2-1 runtime already staged"
+              exit 0
+            fi
+            echo "Building venv..."
+            python -m venv "$VENV"
+            "$VENV/bin/pip" install --upgrade pip wheel
+            "$VENV/bin/pip" install torch==2.12.1 torchvision==0.27.1 --index-url https://download.pytorch.org/whl/cu126
+            "$VENV/bin/pip" install transformers==5.17.0 accelerate pillow safetensors sentencepiece protobuf "huggingface_hub[aio]"
+            "$VENV/bin/pip" install fastapi "uvicorn[standard]"
+            "$VENV/bin/pip" install "diffusers @ git+https://github.com/huggingface/diffusers.git@51a454be9a43854939d2ef2d231565f46a41e366"
+            echo "venv ready."
+            echo "Downloading Qwen/Qwen-Image-2.1 (~47 GB) ..."
+            "$VENV/bin/python" - <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="Qwen/Qwen-Image-2.1",
+                local_dir="/data/model",
+                token=os.environ.get("HF_TOKEN"),
+            )
+            print("Download finished.", flush=True)
+            PY
+            touch "$SENTINEL"
+            echo "Setup complete."
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits: { cpu: "8", memory: 16Gi }
+        volumeMounts:
+          - { name: qwen-image-2-1, mountPath: /data }
+    containers:
+      - name: kserve-container
+        image: python:3.11
+        command: ["/data/venv/bin/python", "/app/server.py"]
+        env:
+          - { name: MODEL_DIR, value: /data/model }
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        # Whole L40S (no gpumem) -> tenant-free physical card, full 48 GB. Reference peak
+        # ~34 GB at 1024^2/40 steps; VAE tiling enabled in the server for larger sizes.
+        resources:
+          requests: { cpu: "4", memory: 24Gi, nvidia.com/gpu: "1" }
+          limits: { cpu: "8", memory: 48Gi, nvidia.com/gpu: "1" }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 60
+        startupProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          failureThreshold: 80
+        volumeMounts:
+          - { name: qwen-image-2-1, mountPath: /data }
+          - { name: app, mountPath: /app }
+    volumes:
+      - name: qwen-image-2-1
+        persistentVolumeClaim: { claimName: qwen-image-2-1 }
+      - name: app
+        configMap: { name: qwen-image-2-1-server }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qwen-image-2-1-server
+  namespace: models
+data:
+  server.py: |
+    """Qwen-Image-2.1 server (diffusers QwenImage21Pipeline) — OpenAI-style image API.
+
+    POST /v1/images/generations  {prompt, n<=2, size "WxH" (multiple of 32, cap 2048,
+                                  default output_resolution 1024), num_inference_steps
+                                  (default 40, cap 50), true_cfg / guidance_scale,
+                                  negative_prompt, seed}
+    POST /v1/images/edits        {prompt, image: b64 PNG (single or list, <=4),
+                                  + generation params} — image-conditioned editing via
+                                  the same pipeline's `image` input.
+    GET  /health (503 until loaded), GET /v1/models
+
+    The model samples without guidance by design (true_cfg_scale default 1.0). Serialized
+    generations (single asyncio.Lock), like the kandinsky/flux deployments.
+    """
+    import asyncio
+    import base64
+    import binascii
+    import io
+    import os
+    import time
+    from typing import Any, Dict, List, Optional, Tuple
+
+    import torch
+    import uvicorn
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.responses import JSONResponse
+
+    MODEL_DIR = os.environ.get("MODEL_DIR", "/data/model")
+    app = FastAPI(title="Qwen-Image-2.1 Server")
+    _pipe = None
+    _load_error: Optional[str] = None
+    _gen_lock = asyncio.Lock()
+    _DIM = 32          # vae_scale_factor * 2 — width/height must be multiples of 32
+    _MAX_SIDE = 2048
+    _MAX_REF = 4
+
+
+    def _parse_size(value) -> Optional[Tuple[int, int]]:
+        if value is None:
+            return None
+        try:
+            w_s, h_s = str(value).lower().split("x", 1)
+            w, h = int(w_s), int(h_s)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="size must be WIDTHxHEIGHT") from exc
+        if not (256 <= w <= _MAX_SIDE and 256 <= h <= _MAX_SIDE):
+            raise HTTPException(status_code=400,
+                                detail=f"each side must be within 256-{_MAX_SIDE}")
+        return (w // _DIM) * _DIM, (h // _DIM) * _DIM
+
+
+    def _b64_png(image) -> str:
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+    def _decode_image(field) -> List:
+        from PIL import Image
+        raw = field if isinstance(field, list) else [field]
+        if len(raw) > _MAX_REF:
+            raise HTTPException(status_code=400, detail=f"at most {_MAX_REF} reference images")
+        out = []
+        for item in raw:
+            s = str(item)
+            if s.startswith("data:"):
+                s = s.split(",", 1)[1]
+            try:
+                img = Image.open(io.BytesIO(base64.b64decode(s))).convert("RGB")
+            except (binascii.Error, Exception) as exc:
+                raise HTTPException(status_code=400, detail="image must be base64 PNG/JPEG") from exc
+            out.append(img)
+        return out
+
+
+    def _load():
+        global _pipe, _load_error
+        if _pipe is not None:
+            return _pipe
+        from diffusers import QwenImage21Pipeline
+        _pipe = QwenImage21Pipeline.from_pretrained(MODEL_DIR, dtype=torch.bfloat16).to("cuda")
+        try:
+            _pipe.vae.enable_tiling()   # keep 2048^2 peak VRAM in budget
+        except Exception as exc:  # tiling is an optimization, not a requirement
+            print(f"VAE tiling unavailable: {exc}", flush=True)
+        _load_error = None
+        return _pipe
+
+
+    @app.on_event("startup")
+    async def _startup() -> None:
+        torch.set_grad_enabled(False)
+        await asyncio.get_event_loop().run_in_executor(None, _load)
+
+
+    @app.get("/health")
+    def health() -> Any:
+        if _pipe is not None:
+            return {"status": "ok", "model": "qwen-image-2-1"}
+        return JSONResponse(status_code=503, content={"status": "loading", "error": _load_error})
+
+
+    @app.get("/v1/models")
+    def models() -> Dict[str, Any]:
+        return {"object": "list", "data": [
+            {"id": "qwen-image-2-1", "object": "model", "owned_by": "qwen"}]}
+
+
+    def _run(pipe, prompt, negative_prompt, images, size, steps, true_cfg, n, seed):
+        if seed is not None:
+            generator = torch.Generator("cuda").manual_seed(int(seed))
+        else:
+            generator = None
+        kwargs: Dict[str, Any] = {
+            "prompt": prompt,
+            "num_inference_steps": steps,
+            "true_cfg_scale": true_cfg,
+            "num_images_per_prompt": n,
+            "generator": generator,
+        }
+        if negative_prompt:
+            kwargs["negative_prompt"] = negative_prompt
+        if images:
+            kwargs["image"] = images
+        if size is not None:
+            kwargs["width"], kwargs["height"] = size
+        return pipe(**kwargs).images
+
+
+    async def _generate(body: Dict[str, Any], want_image: bool):
+        prompt = body.get("prompt")
+        if isinstance(prompt, list):
+            prompt = " ".join(str(x) for x in prompt)
+        if not prompt or not str(prompt).strip():
+            raise HTTPException(status_code=400, detail="prompt is required")
+
+        images = _decode_image(body.get("image")) if (want_image and body.get("image")) else None
+        if want_image and not images:
+            raise HTTPException(status_code=400, detail="image (base64) is required for edits")
+
+        n = max(1, min(int(body.get("n", 1)), 2))
+        steps = max(4, min(int(body.get("num_inference_steps", 40)), 50))
+        true_cfg = float(body.get("true_cfg", body.get("guidance_scale", 1.0)) or 1.0)
+        size = _parse_size(body.get("size"))
+        seed = body.get("seed")
+        negative_prompt = body.get("negative_prompt")
+
+        if _pipe is None:
+            return JSONResponse(status_code=503, content={"error": "model loading"})
+
+        async with _gen_lock:
+            pipe = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: _run(_pipe, str(prompt), negative_prompt, images, size,
+                                   steps, true_cfg, n, seed))
+        return {
+            "created": int(time.time()),
+            "data": [{"b64_json": _b64_png(img)} for img in pipe],
+        }
+
+
+    @app.post("/v1/images/generations")
+    async def generations(request: Request) -> Dict[str, Any]:
+        return await _generate(await request.json(), want_image=False)
+
+
+    @app.post("/v1/images/edits")
+    async def edits(request: Request) -> Dict[str, Any]:
+        return await _generate(await request.json(), want_image=True)
+
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
