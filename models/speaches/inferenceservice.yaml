@@ -3,7 +3,10 @@
 # Two gateway cards route here via routing.k8s_name: speaches:
 #   kokoro-82m        -> POST /v1/audio/speech        (TTS)
 #   whisper-large-v3  -> POST /v1/audio/transcriptions (STT)
-# GPU: 1x L40S HAMi slice (8 GiB — whisper-large-v3 fp16 ~3.2G + kokoro ~0.2G + ctx).
+# GPU: 1x L40S HAMi slice (16 GiB — whisper-large-v3 fp16 ~3.2G + kokoro ~0.2G + ctx;
+# was 8 GiB until 2026-10-23, when long-audio encoder batches OOM'd in detect_language
+# and wedged the worker — every STT call 500'd until pod restart. 16 GiB leaves headroom
+# for multi-minute files; GPU 0-class cards have the room).
 # Always-on (minReplicas: 1); STT/TTS_MODEL_TTL=-1 keeps models resident (needs >=0.9.0-rc.1;
 # 0.8.1 silently ignored the vars and unloaded after 300s — see speaches issue #578).
 # Init prefetches both HF caches once (gated marker) + opens cache perms for the non-root server.
@@ -89,8 +92,8 @@ spec:
           - { name: OMP_NUM_THREADS, value: "4" }
           - { name: MKL_NUM_THREADS, value: "4" }
         resources:
-          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
-          limits: { cpu: "8", memory: 24Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "8192" }
+          requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
+          limits: { cpu: "8", memory: 24Gi, nvidia.com/gpu: "1", nvidia.com/gpumem: "16384" }
         readinessProbe:
           httpGet: { path: /health, port: 8000 }
           initialDelaySeconds: 120

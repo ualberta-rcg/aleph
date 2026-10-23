@@ -1,6 +1,31 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-10-23 — speaches gpumem 8→16 GiB (whisper long-audio CUDA OOM fix + wedge)
+
+**What:** raised the speaches InferenceService HAMi slice from 8192 to 16384 MiB
+(`nvidia.com/gpumem`, requests + limits) and redeployed via the standard loop
+(`kubectl delete isvc speaches` + re-apply from `models/speaches/inferenceservice.yaml`;
+PVC kept, cards untouched). Pod replaced; model reload ~2.5 min.
+
+**Why (live incident 2026-10-23):** a user's multi-minute mp3 (3.4–20 MB) hit
+`RuntimeError: CUDA failed with error out of memory` in faster-whisper
+`detect_language`; after the first OOM the worker stayed wedged — *every*
+`/v1/audio/transcriptions` call returned 500 (verified: a 20 s synthetic file also
+failed), for all users, from ≥17:31Z until the redeploy. Last known-good was
+2026-10-20 (short files only). Not node-related: pod sits on rack09-03 GPU 0 with
+~33 GiB physically free — the constraint was the pod's 8 GiB slice.
+
+**Validation (public edge, post-redeploy):** 20 s wav → 200; ~3.5 min real-speech
+mp3 (kokoro-generated) → 200 with correct transcript in 1.25 s; ~80 s mp3 → 200.
+Longest verified duration 3.5 min; 16 GiB gives 2× the headroom of the state that
+OOM'd. Pure-tone (no-speech) long audio raises a separate upstream
+`No clip timestamps found` faster-whisper error — content artifact, not capacity.
+
+**Also noted, no action:** `secrets/test-curls.sh` ops key returns 403 (stale,
+pre-existing); speaches details card voice list is slightly stale (`af` vs
+`af_heart` naming) — cosmetic.
+
 ## 2026-09-28 — qwen-image-2-1 deployed (new image model: t2i + edits + RGBA)
 
 **What:** first deployment of `models/qwen-image-2-1/` — Qwen-Image-2.1
