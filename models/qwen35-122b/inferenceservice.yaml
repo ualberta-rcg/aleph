@@ -21,8 +21,11 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
+    # Operator order 2026-10-27: hard cap at 1 replica — never scale up. The
+    # second TP4 replica could never schedule anyway (fleet card shortage) and
+    # its HAMi reservation landmine blocked other models' wakes; cap removed it.
     minReplicas: 1
-    maxReplicas: 2
+    maxReplicas: 1
     scaleTarget: 16
     scaleMetric: concurrency
     timeout: 600

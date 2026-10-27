@@ -1,6 +1,30 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-10-27 — qwen35-122b capped to maxReplicas 1 (pending TP4 replica was HAMi-reserving 4 cards and blocking fleet wakes)
+
+**What:** `models/qwen35-122b/inferenceservice.yaml` `maxReplicas` 2 → 1 (minReplicas
+stays 1, always-on). Applied via the standard loop: `kubectl delete isvc qwen35-122b`
++ re-apply from the repo file. PVC untouched, weights cached.
+
+**Why (live incident 2026-10-27):** the concurrency autoscaler wanted a 2nd replica
+but a TP4 whole-card pod fits nowhere in the current fleet — the extra pod sat
+Pending/unschedulable while **HAMi held all 4 rack09-07 cards as reservations**.
+Side effect: every other model's scale-from-zero wake failed with
+`503 insufficient_capacity` (verified live: molmo2-8b first-deploy wake refused; the
+gateway capacity sim reads HAMi reservations, and reserved-but-unused ≠ free).
+Operator order: exactly 1 replica, never scale up.
+
+**Notes:** deleting the Pending pod does NOT stick (Knative KPA recreates it —
+verified twice); the only durable fix is the spec cap. KPA `spec.maxScale` patch is
+a no-op (unknown field). Standing rule added to the ops dir CLAUDE.md: scaling
+changes need an explicit order; TP4 models = 1 replica ceiling.
+
+**Validation:** spec live at 1/1; redeploy completed in ~5 min (init skipped —
+venv + weights cached on PVC; single pod on rack09-05); ISVC Ready=True; public-edge
+chat completion 200 with correct answer and `resources: gpus=4 node=rack09-05`.
+No second replica; rack09-07 reservations released.
+
 ## 2026-10-23 — speaches gpumem 8→16 GiB (whisper long-audio CUDA OOM fix + wedge)
 
 **What:** raised the speaches InferenceService HAMi slice from 8192 to 16384 MiB
