@@ -1,0 +1,181 @@
+# google/gemma-4-31B-it — dense 30.7B multimodal (text+image+video frames), native
+# system role, configurable thinking, native tools. FULL native 256K context —
+# the model's differentiator vs the fleet's 26B MoE (131K).
+#
+# Card math (2x whole L40S, fp8 weights + fp8 KV, util 0.93):
+#   bf16 checkpoint ~62 GB -> on-the-fly fp8 ~31 GB (~16 GB/card); per-card budget
+#   42.8 GiB -> ~50 GiB KV pool across the TP group (fp8) — several concurrent
+#   long-context sessions; full 262144-token requests fit easily.
+#
+# Image: vllm/vllm-openai:v0.32.0 (operator order 2026-10-27; CUDA 13.0 default —
+# node drivers verified 595.71.05 / CUDA 13.2). NOTE: v0.30.x had a Gemma-4 KV
+# layout bug (pool shrunk ~1/6) — verify the "GPU KV cache size" startup line.
+#
+# HAMi TP>=2 recipe: whole devices (nvidia.com/gpu=2, NO gpumem) +
+# --disable-custom-all-reduce (L40S PCIe/NODE topology; NCCL fallback is correct).
+# Parsers: gemma4 tool + reasoning (fleet-proven on gemma-4-26b-a4b). Thinking-off
+# still emits an EMPTY thought block on non-E2B/E4B models — reasoning parser must
+# strip it (battery verifies).
+#
+# maxReplicas 1 (operator scaling rule 2026-10-27: a pending TP2+ replica HAMi-
+# reserves whole cards and blockades fleet wakes — qwen35-122b incident). Burst
+# queues on one replica; raise only on explicit order.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gemma-4-31b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "2400s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 1
+    scaleTarget: 8
+    scaleMetric: concurrency
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            if [ -f /data/model/config.json ]; then
+                echo "gemma-4-31B-it weights already on PVC, skipping download."
+            else
+                echo "Downloading google/gemma-4-31B-it (~62 GB bf16, gated repo) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="google/gemma-4-31B-it",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+                ignore_patterns=["*.pt", "*.pth", "original/*", "*.gguf"],
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: gemma-4-31b
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.32.0
+        command:
+          - vllm
+        args:
+          - serve
+          - /data/model
+          - --served-model-name=gemma-4-31b
+          - --tensor-parallel-size=2
+          # FULL native context — the reason this deployment exists
+          - --max-model-len=262144
+          # on-the-fly fp8 (fleet-proven on gemma-4-26b-a4b) + fp8 KV (qwen38 pattern)
+          - --quantization=fp8
+          - --kv-cache-dtype=fp8
+          - --gpu-memory-utilization=0.93
+          - --max-num-seqs=8
+          - --max-num-batched-tokens=8192
+          - --enable-prefix-caching
+          # media limits matched to molmo2-8b (operator request); Gemma4 images are
+          # cheap (~70-1120 tokens each) so 32 images is no KV threat
+          - '--limit-mm-per-prompt={"image": 32, "video": 8}'
+          - --reasoning-parser=gemma4
+          - --enable-auto-tool-choice
+          - --tool-call-parser=gemma4
+          # TP>=2 on HAMi/L40S: NCCL native (custom all-reduce busy-waits, no P2P)
+          - --disable-custom-all-reduce
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "8"
+            memory: 48Gi
+            nvidia.com/gpu: "2"
+          limits:
+            cpu: "16"
+            memory: 64Gi
+            nvidia.com/gpu: "2"
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 60
+        livenessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 180
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 2
+        volumeMounts:
+          - name: gemma-4-31b
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: gemma-4-31b
+        persistentVolumeClaim:
+          claimName: gemma-4-31b
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

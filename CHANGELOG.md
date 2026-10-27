@@ -1,6 +1,33 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-10-27 — gemma-4-31b deployed (dense 31B at FULL 256K context; first model on vLLM v0.32.0)
+
+**What:** `google/gemma-4-31B-it` live as scale-to-zero chat model — **TP2 whole
+cards, on-the-fly fp8 + fp8 KV, util 0.93, native 262144 context** (the fleet's
+gemma-4-26b MoE caps at 131K; the 31B's differentiator). Image 32 / video 8
+(matched to molmo2-8b per operator request). `gemma4` tool + reasoning parsers.
+First fleet model on `vllm/vllm-openai:v0.32.0` (CUDA 13 image; node drivers
+verified 595.71.05 = CUDA 13.2). maxReplicas 1 per the operator scaling rule.
+
+**Measured:** fp8 weights 16.45 GiB/rank; KV 23.75 GiB/rank → **747,909-token
+pool = 2.85× concurrency at full 262K** (the v0.30.x Gemma-4 KV-layout bug is NOT
+present on v0.32.0 — startup line verified). Engine init 137.8 s; cold start 21 min
+first (62 GB download), ~5-8 min warm. Thinking-off's empty thought block is
+correctly stripped by the gemma4 parser; meta-task caps truncate cleanly (the 31B
+is verbose — the card's max_tokens caps matter).
+
+**Bonus:** this deploy landed on rack09-01 and became the live proof that the
+2026-10-27 WW reprovision (operator-ordered reboot) fixed the node's istio
+exit-126 init bug — the pod initialized and serves there.
+
+**Validation:** battery 36+ PASS / 3 EXP / 0 FAIL incl. workload block (32-image
+accept + 33-image clean 400, 9k prefill + 4 images, ~60k-token context probe,
+8-way burst, sustained 20-mix, zero OOM/EngineDead); clean delete + repo-file
+redeploy + battery re-run passed (proof step). Note: counting identical 1px
+images is not asserted (model counts 25 of 32 — limit enforcement verified via
+the 33-image rejection instead).
+
 ## 2026-10-27 — molmo2-8b deployed (new VLM: image/video/pointing; first model on vLLM v0.28.0)
 
 **What:** `allenai/Molmo2-8B` (Qwen3-8B backbone + SigLIP 2) live as scale-to-zero
