@@ -1,6 +1,27 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-10-27 — molmo2-8b deployed (new VLM: image/video/pointing; first model on vLLM v0.28.0)
+
+**What:** `allenai/Molmo2-8B` (Qwen3-8B backbone + SigLIP 2) live as scale-to-zero
+chat+vision model, whole-card TP1, bf16-forced (fp32 checkpoint ~36 GB → 16.1 GiB
+weights). First fleet model on `vllm/vllm-openai:v0.28.0` (operator order; native
+Molmo2 support exists since v0.15.0). `--limit-mm-per-prompt {"image":32,"video":8}`.
+
+**Settings that were NOT optional (settings-iteration lessons):**
+`--max-num-batched-tokens` must be ≥ 31872 (Molmo2's max_tokens_per_mm_item — vLLM
+0.28 MM budget check rejects smaller at startup); image limit 64 starved KV via the
+encoder reservation (3.77 GiB left < 5.06 needed → 32 images); a 40–44 GiB gpumem
+slice starved KV too — whole card at util 0.93 fits (KV 3.77 GiB = 54,928 tokens,
+1.49× full-context concurrency). No system role (strict user/assistant alternation →
+card `supports_system_prompt: false`, clean 400). No tools, no thinking.
+
+**Validation:** battery 24 PASS / 5 EXP / 0 FAIL (1 SKIP = fleet embed-guard
+artifact) including the in-battery workload section (32-image limit probe, 33-image
+rejection, 9k-token prefill + 4 images, 8-way burst, sustained 20-mix — all 200,
+zero OOM/EngineDead); clean delete + repo-file redeploy + battery re-run passed
+(proof step). Cold start ~3 min from PVC cache.
+
 ## 2026-10-27 — qwen35-122b capped to maxReplicas 1 (pending TP4 replica was HAMi-reserving 4 cards and blocking fleet wakes)
 
 **What:** `models/qwen35-122b/inferenceservice.yaml` `maxReplicas` 2 → 1 (minReplicas

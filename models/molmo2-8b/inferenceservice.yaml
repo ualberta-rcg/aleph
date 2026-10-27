@@ -1,0 +1,176 @@
+# allenai/Molmo2-8B — 9B VLM (Qwen3-8B backbone + SigLIP 2 vision encoder), bf16
+# (~19 GB) on a single L40S HAMi slice. Native vLLM support since v0.15.0
+# (Molmo2ForConditionalGeneration); fleet pin 0.20.2 would suffice, but operator
+# order 2026-10-27 standardizes new 2026 deploys on v0.28.0.
+#
+# Checkpoint is FLOAT32 (~36 GB) — forced --dtype=bfloat16 halves it to ~19 GB.
+# Hardening copied from qwen38-27b: util 0.90 + expandable_segments + tight
+# liveness + HF_HUB_OFFLINE cold starts. KV stays bf16 (~147 KB/token → ~17 GB
+# pool ≈ 115K tokens ≈ 3 concurrent full-36K sessions) — no kv fp8 needed at
+# this context size. Prefix caching on (multimodal replays benefit most).
+#
+# Scale-to-zero: min 0 / max 2. scaleTarget 8 == max-num-seqs 8 (per-pod batch
+# cap). No tool/reasoning parsers — Molmo2 has neither tools nor thinking.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: molmo2-8b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "2400s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 2
+    scaleTarget: 8
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # Persisted helper venv on the PVC so cold starts skip the reinstall.
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # Download weights to /data/model (skips if already present).
+            # fp32 safetensors ~36 GB; keep the remote-code .py files (processor).
+            if [ -f /data/model/config.json ]; then
+                echo "Molmo2-8B weights already on PVC, skipping download."
+            else
+                echo "Downloading allenai/Molmo2-8B (~36 GB fp32) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="allenai/Molmo2-8B",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+                ignore_patterns=["*.pt", "*.pth", "original/*", "*.gguf"],
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: molmo2-8b
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.28.0
+        command:
+          - vllm
+        args:
+          - serve
+          - /data/model
+          - --served-model-name=molmo2-8b
+          # fp32 checkpoint -> force bf16 (~19 GB weights on a 40 GB slice)
+          - --dtype=bfloat16
+          # config.json carries auto_map (custom processor code)
+          - --trust-remote-code
+          - --max-model-len=36864
+          - --gpu-memory-utilization=0.93
+          - --max-num-seqs=8
+          # MUST be >= Molmo2's max_tokens_per_mm_item (31872) — vLLM 0.28 MM
+          # encoder-budget check rejects smaller values at startup (verified:
+          # 8192 crashed with ValueError). 36864 = guide value.
+          - --max-num-batched-tokens=36864
+          # fp8 KV: whole-card budget leaves only 3.77 GiB KV vs 5.06 needed for one
+          # max-len seq at bf16 (encoder+prefill buffers at 36864 batched tokens are
+          # huge); fp8 halves it (qwen38 prod pattern). Keeps native ctx + image 64.
+          - --kv-cache-dtype=fp8
+          - --enable-prefix-caching
+          - '--limit-mm-per-prompt={"image": 32, "video": 8}'
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: OMP_NUM_THREADS
+            value: "1"
+          # qwen38 hardening: fragmentation drift stopper
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          # Whole device (operator 2026-10-27: at this size ask for a card, no gpumem) —
+          # HAMi binds a tenant-free L40S (46068 MiB); util 0.93 ≈ 42.8 GiB budget
+          requests:
+            cpu: "4"
+            memory: 24Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 60
+        # Fast self-heal (qwen38 lesson): dead engine recycles in ~1-2 min
+        livenessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 180
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 2
+        volumeMounts:
+          - name: molmo2-8b
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: molmo2-8b
+        persistentVolumeClaim:
+          claimName: molmo2-8b
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi

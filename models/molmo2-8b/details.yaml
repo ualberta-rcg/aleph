@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: molmo2-8b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "molmo2-8b",
+      "status": "production",
+      "type": "chat",
+      "endpoints": { "primary": "/v1/chat/completions", "health": "/v1/models" },
+      "routing": {
+        "k8s_name": "molmo2-8b",
+        "serialize": false,
+        "no_stream": false,
+        "upstream_model_id": null
+      },
+      "limits": { "max_completion_tokens": 8192, "context_window": 36864 },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "2-5 minutes"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": "max_tokens" },
+        "stop": { "field": "stop" }
+      },
+      "defaults": {
+        "chat": { "temperature": 0.7, "max_tokens": 4096 },
+        "meta_tasks": {
+          "title":     { "max_tokens": 80 },
+          "tags":      { "max_tokens": 60 },
+          "followups": { "max_tokens": 220 }
+        }
+      },
+      "custom_params": {
+        "schema": {
+          "top_p": { "type": "float", "default": 0.9, "min": 0.0, "max": 1.0 },
+          "top_k": { "type": "integer", "default": 0, "min": 0, "max": 100 },
+          "repetition_penalty": { "type": "float", "default": 1.0, "min": 0.9, "max": 2.0 }
+        },
+        "passthrough": true
+      },
+      "schema_version": 2,
+      "input_map": {
+        "messages": {
+          "type": "array",
+          "required": true,
+          "description": "Chat messages in OpenAI format. User content may mix text and image_url objects (base64 data URIs — the cluster cannot fetch external URLs). Multi-image supported (up to 16/prompt)."
+        },
+        "max_tokens": {"type": "integer", "default": 4096, "max": 8192, "description": "Maximum tokens to generate"},
+        "temperature": {"type": "float", "default": 0.7, "min": 0.0, "max": 2.0, "description": "Sampling temperature"},
+        "stream": {"type": "boolean", "default": false, "description": "Stream responses via SSE"},
+        "stop": {"type": "string|array", "description": "Stop sequences"}
+      },
+      "output_map": {
+        "id": {"type": "string", "description": "Chat completion ID"},
+        "model": {"type": "string", "description": "Model identifier"},
+        "choices": {"type": "array", "items": {"message": {"role": "string", "content": "string"}, "finish_reason": "string"}, "description": "Generated chat completions"},
+        "usage": {"prompt_tokens": "int", "completion_tokens": "int", "total_tokens": "int"}
+      },
+      "catalog": {
+        "description_short": "Ai2 Molmo2 8B — image/video VLM with pointing + tracking (largest Molmo2)",
+        "owned_by": "allenai",
+        "source": "allenai/Molmo2-8B",
+        "source_url": "https://huggingface.co/allenai/Molmo2-8B",
+        "license": "Apache-2.0 (training data includes third-party datasets restricted to academic/non-commercial use)",
+        "parameters": "9B",
+        "precision": "bfloat16",
+        "framework": "vllm",
+        "domain": "multimodal",
+        "subdomain": "vision-language",
+        "tags": ["chat", "vlm", "vision", "video", "pointing"]
+      }
+    }
