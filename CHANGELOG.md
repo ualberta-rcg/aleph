@@ -1,6 +1,19 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+## 2026-10-27 — molmo2-8b bumped to vLLM v0.32.0 (align new deploys on latest)
+
+**What:** image pin `vllm/vllm-openai:v0.28.0` → `v0.32.0` in
+`models/molmo2-8b/inferenceservice.yaml`; delete + re-apply (weights cached).
+Same flags — the 36864 batched-tokens MM rule and image-32 limit held on 0.32.
+
+**Why:** operator order — keep new deploys on the latest vLLM (gemma-4-31b went
+straight to 0.32.0; molmo aligned).
+
+**Validation:** battery re-run 24 PASS / 5 EXP / 0 FAIL (1 SKIP = fleet
+embed-guard artifact) — identical to the 0.28.0 result. (Wake had to wait out a
+qwen38 6-replica burst that held all whole cards — expected fleet behavior.)
+
 ## 2026-10-27 — gemma-4-31b deployed (dense 31B at FULL 256K context; first model on vLLM v0.32.0)
 
 **What:** `google/gemma-4-31B-it` live as scale-to-zero chat model — **TP2 whole

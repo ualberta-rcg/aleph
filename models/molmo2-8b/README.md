@@ -9,7 +9,7 @@ third-party datasets restricted to academic/non-commercial use.
 
 ## Serving config
 
-- **Engine**: vLLM, image `vllm/vllm-openai:v0.28.0` (operator order 2026-10-27 —
+- **Engine**: vLLM, image `vllm/vllm-openai:v0.32.0` (bumped from 0.28.0 same day per operator order —
   first model on 0.28.0; fleet pin remains 0.20.2 for older models). Native support
   since v0.15.0 (`Molmo2ForConditionalGeneration`).
 - **GPU layout**: TP1 **whole device** — `nvidia.com/gpu: "1"`, NO gpumem (operator
