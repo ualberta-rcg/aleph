@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kev-9b-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "kev-9b",
+      "status": "production",
+      "type": "decision",
+      "endpoints": {
+        "primary": "/v1/systemone",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "kev-9b",
+        "serialize": false,
+        "no_stream": true,
+        "upstream_model_id": null
+      },
+      "limits": {
+        "context_window": 65536,
+        "max_completion_tokens": 0
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "3-6 minutes"
+      },
+      "behavior": {
+        "supports_vision": false,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": { "mode": "none" },
+        "max_tokens": { "field": null },
+        "stop": { "field": null }
+      },
+      "defaults": {},
+      "custom_params": { "schema": {}, "passthrough": true },
+      "schema_version": 2,
+      "input_map": {
+        "state": {
+          "type": "string|object|array",
+          "required": true,
+          "description": "The document to decide over. Objects/arrays are rendered as labelled text. States over 65,536 tokens get a 422 (or set KEV_TRUNCATE_STATES server-side)."
+        },
+        "questions": {
+          "type": "object",
+          "required": true,
+          "description": "Named questions, each {type: choice|score|noul, instructions, criteria}. choice: criteria = map of option->description (1-255 options). score: criteria = ordered array of levels. noul: yes/no question. Each question is scored independently against the shared cached state."
+        },
+        "model": {
+          "type": "string",
+          "required": true,
+          "description": "Must be 'kev-9b' (gateway routing field; the server accepts any string)."
+        }
+      },
+      "output_map": {
+        "answers": {
+          "type": "object",
+          "description": "Per question: choice → {choice, confidence, probabilities}; score → {score (expected level index), confidence, legend, probabilities}; noul → {noul: P(yes)}"
+        },
+        "usage": { "input_tokens": "int", "output_tokens": "int (serialized answers, not generated)" },
+        "latency_ms": "int"
+      },
+      "catalog": {
+        "description_short": "Kev 9B — calibrated decision model: choice/score/yes-no probabilities over a document in one prefill pass (System One API)",
+        "owned_by": "jaredpalmer",
+        "source": "jaredpalmer/kev-9b",
+        "source_url": "https://huggingface.co/jaredpalmer/kev-9b",
+        "license": "Apache-2.0",
+        "parameters": "9B (Qwen3.5-9B-Base + LoRA + pointer head)",
+        "precision": "bfloat16",
+        "framework": "kev-server",
+        "domain": "nlp",
+        "subdomain": "decision",
+        "tags": ["classification", "routing", "triage", "decision", "systemone", "typesafe"]
+      }
+    }

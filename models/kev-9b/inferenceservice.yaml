@@ -1,0 +1,156 @@
+# jaredpalmer/kev-9b — "decision model": prefill-only calibrated classification
+# (choice / score / noul) over a document+questions, via the TypeSafe System One
+# API. NOT a chat model, NOT vLLM — served by Kev's own FastAPI server
+# (`python -m kev.serve`, github.com/jaredpalmer/kev) = the caduceus custom-server
+# pattern: full venv + weights persisted on the PVC.
+#
+# Stack: Qwen3.5-9B-Base (frozen, ~18 GB bf16, separate HF download) + LoRA
+# (173 MB, merged at load) + pointer head (head.pt, T=2.19). ~21.9 GB resident
+# on CUDA (author-validated ON L40S: 66 ms/decision, ~33 req/s @64 clients).
+# flash-linear-attention installs the fused Gated-DeltaNet kernels (explicit —
+# it is NOT a kev dependency; the author's deploy scripts add it too).
+#
+# Gateway: the /v1/{path} catch-all (forward_custom) routes POST /v1/systemone
+# (+ /permute, /separate) to body.model — cold-start guarded like any model.
+# Probes use the server's own GET /v1/models.
+#
+# Scale-to-zero; maxReplicas 2 (TP1 slice — cheap, no HAMi landmine risk class).
+# kev-27b does NOT fit (51.3 GB bf16, >80 GB peaks; custom server has no TP).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: kev-9b
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    serving.knative.dev/progress-deadline: "2400s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 2
+    scaleTarget: 8
+    scaleMetric: concurrency
+    timeout: 300
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.12
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HOME
+            value: /data/hf
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            # ── Step 1: full serving venv on the PVC (one-time; torch<2.9 per kev deps) ──
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv + installing kev[serve] (heavy: torch, transformers) ..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install "kev[serve] @ https://github.com/jaredpalmer/kev/archive/refs/heads/main.tar.gz"
+                # fused DeltaNet kernels — required on CUDA for Qwen3.5 backbones
+                /data/venv/bin/pip install flash-linear-attention
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            # ── Step 2: stage weights into the HF cache on the PVC ──
+            # kev-9b repo = adapter+head (~202 MB); base Qwen3.5-9B-Base ~18 GB.
+            /data/venv/bin/python -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            for repo in ("jaredpalmer/kev-9b", "Qwen/Qwen3.5-9B-Base"):
+                print(f"ensuring {repo} in cache ...", flush=True)
+                snapshot_download(repo_id=repo, token=os.environ.get("HF_TOKEN"))
+            print("weights staged.", flush=True)
+            PY
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+        volumeMounts:
+          - name: kev-9b
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: python:3.12
+        command:
+          - /data/venv/bin/python
+        args:
+          - -m
+          - kev.serve
+          - --run
+          - jaredpalmer/kev-9b
+          - --host
+          - 0.0.0.0
+          - --port
+          - "8080"
+          # explicit cuda: skips the child-process device probe (odd inside k8s)
+          - --device
+          - cuda
+        env:
+          - name: HF_HOME
+            value: /data/hf
+          - name: KEV_DTYPE
+            value: bf16
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          # ~21.9 GB resident + FLA/CUDA-graph workspace → 26 GB slice of one L40S
+          requests:
+            cpu: "4"
+            memory: 24Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "26624"
+          limits:
+            cpu: "8"
+            memory: 32Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "26624"
+        readinessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 60
+        livenessProbe:
+          httpGet: { path: /v1/models, port: 8080 }
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 2
+        volumeMounts:
+          - name: kev-9b
+            mountPath: /data
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: kev-9b
+        persistentVolumeClaim:
+          claimName: kev-9b
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 4Gi

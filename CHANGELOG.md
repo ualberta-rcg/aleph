@@ -14,6 +14,31 @@ straight to 0.32.0; molmo aligned).
 embed-guard artifact) — identical to the 0.28.0 result. (Wake had to wait out a
 qwen38 6-replica burst that held all whole cards — expected fleet behavior.)
 
+## 2026-10-28 — kev-9b deployed (first decision-type model: System One API /v1/systemone)
+
+**What:** `jaredpalmer/kev-9b` live as the fleet's first `decision`-type model —
+prefill-only calibrated classification (choice/score/noul) via the TypeSafe
+System One API. Custom Kev server (NOT vLLM): caduceus-style venv-on-PVC
+(torch/transformers/kev/flash-linear-attention), Qwen3.5-9B-Base + LoRA + pointer
+head, bf16, single slice gpumem 26624, scale-to-zero. Endpoints /v1/systemone
+(+/permute, /separate) ride the gateway /v1/{path} catch-all. Operator-authorized
+7th file: `example.py` (human-facing demo — roles: test.py proves, example.py shows).
+
+**Lessons:** main container must be full `python:3.12` not -slim (Triton JIT of
+FLA kernels needs a C compiler — crashlooped twice before the fix landed on the
+right container); permute expects `{request: {...}, question, n_perm}` plus a
+top-level `model` key purely for gateway routing; kev-27b is infeasible here
+(51.3 GB bf16, >80 GB peaks, no TP in the custom server — fp8-quantize or
+accelerate device_map pipeline-split fork paths documented for the future).
+
+**Validation:** solid battery **24 PASS / 3 EXP / 0 FAIL of 27** (patterns
+ported from the Jev ecosystem): author-fixture parity (returns 0.46 vs their
+0.47), ground-truth comprehension 3/3 exact, moderation hostile 0.88 vs benign
+0.08, determinism (byte-identical), 100% permutation agreement, phrasing
+stability, boundaries (1/50 options, 10-level score), multi-axis batch, 422
+over-length, 8-way burst, sustained 20-mix @135 ms median. Clean delete +
+repo-file redeploy + battery re-run passed.
+
 ## 2026-10-27 — gemma-4-31b deployed (dense 31B at FULL 256K context; first model on vLLM v0.32.0)
 
 **What:** `google/gemma-4-31B-it` live as scale-to-zero chat model — **TP2 whole
