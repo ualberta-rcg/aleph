@@ -14,7 +14,8 @@
 # (+ /permute, /separate) to body.model — cold-start guarded like any model.
 # Probes use the server's own GET /v1/models.
 #
-# Scale-to-zero; maxReplicas 2 (TP1 slice — cheap, no HAMi landmine risk class).
+# Always-on (operator order 2026-10-28): min 1 (slice fits shared-card partial
+# room — e.g. rack09-02), max 5 (slices materialize only under real concurrency).
 # kev-27b does NOT fit (51.3 GB bf16, >80 GB peaks; custom server has no TP).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -34,8 +35,8 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    maxReplicas: 2
+    minReplicas: 1
+    maxReplicas: 5
     scaleTarget: 8
     scaleMetric: concurrency
     timeout: 300

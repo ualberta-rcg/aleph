@@ -17,9 +17,10 @@
 # still emits an EMPTY thought block on non-E2B/E4B models — reasoning parser must
 # strip it (battery verifies).
 #
-# maxReplicas 1 (operator scaling rule 2026-10-27: a pending TP2+ replica HAMi-
-# reserves whole cards and blockades fleet wakes — qwen35-122b incident). Burst
-# queues on one replica; raise only on explicit order.
+# Always-on (operator order 2026-10-28): min 1 / max 3 TP2 replicas (2-6 whole
+# cards). Supersedes the 2026-10-27 max-1 default — the operator accepts that a
+# scaling TP2 replica HAMi-reserves whole cards while staging (qwen35 lesson);
+# the gateway capacity sim still guards other models' wakes.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -38,8 +39,8 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    maxReplicas: 1
+    minReplicas: 1
+    maxReplicas: 3
     scaleTarget: 8
     scaleMetric: concurrency
     timeout: 600

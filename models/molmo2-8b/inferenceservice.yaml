@@ -9,8 +9,9 @@
 # pool ≈ 115K tokens ≈ 3 concurrent full-36K sessions) — no kv fp8 needed at
 # this context size. Prefix caching on (multimodal replays benefit most).
 #
-# Scale-to-zero: min 0 / max 2. scaleTarget 8 == max-num-seqs 8 (per-pod batch
-# cap). No tool/reasoning parsers — Molmo2 has neither tools nor thinking.
+# Always-on (operator order 2026-10-28): min 1 (one whole card) / max 3.
+# scaleTarget 8 == max-num-seqs 8 (per-pod batch cap). No tool/reasoning
+# parsers — Molmo2 has neither tools nor thinking.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -29,8 +30,8 @@ spec:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: DoesNotExist
-    minReplicas: 0
-    maxReplicas: 2
+    minReplicas: 1
+    maxReplicas: 3
     scaleTarget: 8
     scaleMetric: concurrency
     timeout: 300

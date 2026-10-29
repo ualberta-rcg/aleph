@@ -14,6 +14,25 @@ straight to 0.32.0; molmo aligned).
 embed-guard artifact) — identical to the 0.28.0 result. (Wake had to wait out a
 qwen38 6-replica burst that held all whole cards — expected fleet behavior.)
 
+## 2026-10-29 — kev-9b / gemma-4-31b / molmo2-8b promoted to always-on (operator scaling orders)
+
+**What:** three of this week's new models promoted from scale-to-zero —
+`kev-9b` min 1 / max 5 (slice), `gemma-4-31b` min 1 / max 3 (TP2, 2-6 whole
+cards), `molmo2-8b` min 1 / max 3 (whole card). ISVC + card scaling blocks
+updated; deployed via delete + re-apply (never patch). All three verified warm
+and 200 through the public edge post-change (kev 00:45Z, molmo 00:49Z,
+gemma 00:51Z).
+
+**Why:** operator orders 2026-10-28 (compute validated first: 15+ free whole
+cards at commit time; kev's slice fits existing partial-card room on rack09-02).
+The gemma max-3 supersedes the 2026-10-27 max-1 default — operator accepts that
+a scaling TP2 replica HAMi-reserves whole cards while staging (qwen35 lesson);
+the gateway capacity sim still guards other models' wakes.
+
+**Context:** 7-day usage report same day: 7.80 B tokens, 762 K requests, 40
+active identities, demand trending up (Oct 27 = record 1.45 B-token day).
+Always-on roster now 22 models.
+
 ## 2026-10-28 — kev-9b deployed (first decision-type model: System One API /v1/systemone)
 
 **What:** `jaredpalmer/kev-9b` live as the fleet's first `decision`-type model —
