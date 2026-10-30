@@ -67,7 +67,7 @@ Use these as the starting point, then verify compatibility with the model:
 
 | Area | Starting convention |
 |---|---|
-| Runtime versions | The documented vLLM baseline reviewed on 2026-09-13 is `vllm/vllm-openai:v0.20.2`. Check architecture support before using it; other runtimes and models may need different versions. Pin the tested image version or digest rather than copying a floating `latest` tag. |
+| Runtime versions | For new vLLM deployments, use `vllm/vllm-openai:v0.32.0` as the default starting baseline (existing deployed models on `vllm/vllm-openai:v0.20.2` remain on `v0.20.2` unless reworked). Check architecture support before using it; other runtimes and models may need different versions. Pin the tested image version or digest rather than copying a floating `latest` tag. |
 | Dependencies | Use the compatible environment supplied by the runtime where possible. For custom environments, record and pin the tested Python, PyTorch/CUDA and model-library combination; there is no single version combination for every model. |
 | Layout | Four implementation files plus README and CLAUDE notes, described below. Keep setup and small server/configuration definitions in the service YAML. |
 | Storage | A model-specific PVC using `ReadWriteMany` and the `nfs-models` storage class, with persistent weights, caches and any required venv. Adapt storage settings through [Site values](SITE-VALUES.md). |

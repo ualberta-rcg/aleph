@@ -77,8 +77,7 @@ spec:
           claimName: example-model-data
 ```
 
-The vLLM image is the documented baseline reviewed on 2026-09-14, not a universal
-architecture requirement. Prefer an explicit tested image version or digest.
+The default vLLM image for new deployments is `vllm/vllm-openai:v0.32.0` (while existing deployed models on `vllm/vllm-openai:v0.20.2` stay on `v0.20.2` unless reworked). Prefer an explicit tested image version or digest.
 Verify support before copying runtime arguments or updating a dependency.
 
 Two live container forms:

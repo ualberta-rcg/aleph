@@ -1,0 +1,115 @@
+# Aleph Task Worker — reference copy of the deployed spec.
+# The deployed source of truth is
+#   ww-overlays/overlays/control-plane/etc/rancher/manifests/64-task-worker.yaml
+# which carries the real immutable image pin (rkhoja/aleph:gateway-<sha>@sha256:...).
+# Existing Warewulf files (such as 63-model-gateway.yaml) are never modified.
+apiVersion: v1
+kind: Service
+metadata:
+  name: aleph-task-worker
+  namespace: models
+  labels:
+    app: aleph-task-worker
+spec:
+  selector:
+    app: aleph-task-worker
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aleph-task-worker
+  namespace: models
+  labels:
+    app: aleph-task-worker
+spec:
+  replicas: 2
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aleph-task-worker
+  template:
+    metadata:
+      labels:
+        app: aleph-task-worker
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: model-gateway
+      terminationGracePeriodSeconds: 660
+      nodeSelector:
+        node-role.kubernetes.io/worker: "true"
+      containers:
+        - name: task-worker
+          image: rkhoja/aleph:gateway-<sha>
+          imagePullPolicy: IfNotPresent
+          command: ["uvicorn", "task_worker:app", "--host", "0.0.0.0", "--port", "8080"]
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: aleph-task-config
+                optional: true
+          env:
+            - name: MODELS_NAMESPACE
+              value: models
+            - name: SITE_NAME
+              value: aleph
+            - name: TASKS_DIR
+              value: /tasks
+            - name: TASK_STORAGE_MODE
+              value: local
+            - name: TASK_WORKER_LOCAL
+              value: "1"
+            - name: REDIS_URL
+              value: redis://tyk-redis.tyk.svc.cluster.local:6379
+            - name: UPSTREAM_TIMEOUT
+              value: "600"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: tasks-storage
+              mountPath: /tasks
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 18
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 5
+      volumes:
+        - name: tasks-storage
+          persistentVolumeClaim:
+            claimName: aleph-tasks

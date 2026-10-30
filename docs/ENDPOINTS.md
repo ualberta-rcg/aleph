@@ -60,8 +60,12 @@ HTTP validation below does not establish that every Claude Code feature works.
 | Method and path | Behavior |
 |---|---|
 | `GET /` | Keyless HTML catalog with model details and examples. |
-| `GET /v1/models` | Chat model list in OpenAI-style shape. Listing does not prove readiness. |
-| `GET /v1/models?all=true` | Full catalog, including non-chat models, inputs, endpoints and deployment information. |
+| `GET /v1/models` | Chat model list in OpenAI-style shape (`type == "chat"` and `mode in ("api", "both")`). Listing does not prove readiness. |
+| `GET /v1/models?all=true` | Full catalog, including non-chat and task-only (`mode: "task"`) models, top-level `"mode": "api" \| "task" \| "both"`, inputs, endpoints, task properties and deployment information. |
+| `GET /v1/models?tasks=true` | Task-capable model catalog (`mode in ("task", "both")`). |
+| `GET /v1/models/{model_id}` | Single-model catalog entry including `mode`, `input_map`, `custom_params`, `output_map`, `defaults`, and `tasks` metadata. |
+| `GET /v1/tasks/models` & `GET /v1/tasks/models/{model_id}` | Self-describing task catalog and per-model task schema (`properties`, `envelope_properties`, `default_params`, `limits`, `examples`). See [Tasks](TASKS.md). |
+| `POST /v1/tasks`, `GET /v1/tasks`, `GET /v1/tasks/{task_id}`, `GET /v1/tasks/{task_id}/error.log`, `GET /v1/tasks/{task_id}/result`, `GET /v1/tasks/{task_id}/files/out/{filename}`, `DELETE /v1/tasks/{task_id}` | Asynchronous multi-file / batch / rollout task submission, polling, live error log inspection, incremental file pickup, and `.zip` bundle download. See [Tasks](TASKS.md). |
 | `GET /anthropic/v1/models` | Tyk strips `/anthropic` and marks the request as Anthropic. Returns always-on chat models in Anthropic list shape; `all=true` does not expand this list. Other chat models remain callable by ID. |
 | `GET /metrics` | Aggregate gateway metrics; `?local=true` selects the receiving replica. See [Logging and metrics](LOGGING.md). |
 

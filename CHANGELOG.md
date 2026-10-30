@@ -1,6 +1,22 @@
 # Changelog — model gateway + models
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
+
+## 2026-10-30 — Asynchronous Task System (`/v1/tasks`), model `mode` (`api`/`task`/`both`), and `glm-ocr` (`zai-org/GLM-OCR`)
+
+**What:**
+- **Asynchronous Task System (`/v1/tasks`)** added to the gateway (`gateway/app/tasks.py`, `gateway/app/task_worker.py`, `gateway/app/gateway.py`) and deployed as a standalone worker manifest (`ww-overlays/overlays/control-plane/etc/rancher/manifests/64-task-worker.yaml`, `gateway/k8s/tasks-pvc.yaml`, `gateway/k8s/task-worker-deployment.yaml`) so existing Warewulf manifests (`63-model-gateway.yaml`) remain untouched:
+  - One submission = one task (`POST /v1/tasks` via `multipart/form-data` or `application/json`): wakes the target predictor pod once (`0 -> 1` consulting `_can_schedule` / `capacity.fits()`) and processes items (`1 -> 2 -> ... -> N`) sequentially against the warm pod (`loop_mode: "pdf_pages" | "items" | "rollout_steps"`).
+  - Reuses the existing `details.yaml` card machinery (`input_map`, `custom_params.schema`, `custom_params.passthrough`, `output_map`, `defaults.chat`, `endpoints`, `routing`, `prepare_chat`) while passing custom and unlisted model parameters straight through to the predictor.
+  - Per-item error resilience (`continue_on_item_error: true` default) with live plain-text error log (`GET /v1/tasks/{task_id}/error.log`), incremental output file download (`GET /v1/tasks/{task_id}/files/out/{filename}`), `.zip` result bundle (`GET /v1/tasks/{task_id}/result`), 24-hour post-completion retention reaper, and strictly opt-in completion email (`notify_email` via optional `ConfigMap/aleph-task-config`).
+- **Catalog `mode` field & task introspection**:
+  - Every model entry now exposes `"mode": "api" | "task" | "both"` and `"tasks": {...}` (synthesizing `properties`, `default_params`, `envelope_properties`, `limits`, and `examples` from the card).
+  - `GET /v1/models` remains chat-only (`type == "chat"` and `mode in ("api", "both")`); `GET /v1/models?all=true` returns all models including task-only models; `GET /v1/models?tasks=true`, `GET /v1/models/{model_id}`, `GET /v1/tasks/models`, and `GET /v1/tasks/models/{model_id}` provide self-describing task schemas for AI agents and humans.
+  - Web catalog (`GET /`) displays task models with a distinct card style (`.card.task-card`), `async task` / `api + task` badges, and ready-to-copy `/v1/tasks` curl examples.
+- **`glm-ocr` (`zai-org/GLM-OCR`) deployed (`models/glm-ocr/`)**:
+  - 0.9B multimodal document OCR, table recognition, and formula recognition model on `vllm/vllm-openai:v0.32.0` (`--dtype=bfloat16 --max-model-len=16384`), 1× L40S HAMi slice (`gpumem: 12288`), scale-to-zero (`minReplicas: 0`, `maxReplicas: 2`), `mode: "task"`.
+- **Documentation**: added `docs/TASKS.md` and updated `docs/ENDPOINTS.md`, `docs/ADD-A-MODEL.md`, `models/inferenceservice.md`, and `models/details.md`.
+
 ## 2026-10-27 — molmo2-8b bumped to vLLM v0.32.0 (align new deploys on latest)
 
 **What:** image pin `vllm/vllm-openai:v0.28.0` → `v0.32.0` in

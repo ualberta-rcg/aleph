@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import copy
 import json
 import time
@@ -261,6 +262,242 @@ class PageTests(unittest.TestCase):
         self.assertIn('property="og:title"', page)
         self.assertIn('@media(max-width:480px)', page)
         self.assertIn('.titleblock{flex-wrap:nowrap;gap:12px}', page)
+
+
+class TaskSystemTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import tempfile
+        import tasks as t
+        self.tasks_mod = t
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.store = t.TaskStore(base_dir=self.tmpdir.name, redis_url="")
+        self.prev_store = g.TASK_STORE
+        self.prev_inline = g.TASK_INLINE_EXECUTION
+        self.prev_client = g.TASK_HTTP_CLIENT
+        self.prev_cards = copy.deepcopy(g.CARDS)
+        self.prev_isvc = copy.deepcopy(g.ISVC_STATE)
+        g.TASK_STORE = self.store
+        g.TASK_INLINE_EXECUTION = True
+
+        self.ocr_card = {
+            "id": "glm-ocr",
+            "type": "ocr",
+            "mode": "task",
+            "endpoints": {"primary": "/v1/tasks"},
+            "routing": {"k8s_name": "glm-ocr", "upstream_path": "/v1/chat/completions", "no_stream": True},
+            "limits": {"context_window": 16384, "max_completion_tokens": 4096},
+            "defaults": {"chat": {"temperature": 0.0, "max_tokens": 4096}},
+            "input_map": {
+                "files": {"type": "file[]", "required": True, "description": "PDFs or images"},
+                "prompt": {"type": "string", "default": "Text Recognition:"},
+                "dpi": {"type": "integer", "default": 200},
+            },
+            "custom_params": {
+                "passthrough": False,
+                "schema": {
+                    "repetition_penalty": {"type": "float", "default": 1.05},
+                },
+            },
+            "tasks": {"enabled": True, "mode": "task", "loop_mode": "pdf_pages", "unit": "pages"},
+        }
+        self.img_card = {
+            "id": "kandinsky-3",
+            "type": "image",
+            "mode": "both",
+            "endpoints": {"primary": "/v1/images/generations", "edit": "/v1/images/edits"},
+            "routing": {"k8s_name": "kandinsky-3", "upstream_path": "/v1/images/generations"},
+            "input_map": {
+                "prompt": {"type": "string", "required": True},
+                "num_inference_steps": {"type": "integer", "default": 25},
+                "n": {"type": "integer", "default": 1, "max": 1},
+            },
+            "custom_params": {"passthrough": True},
+            "tasks": {"enabled": True, "mode": "both", "loop_mode": "items", "unit": "images"},
+        }
+        self.chat_card = {
+            "id": "command-r-7b",
+            "type": "chat",
+            "mode": "api",
+            "endpoints": {"primary": "/v1/chat/completions"},
+            "routing": {"k8s_name": "command-r-7b"},
+        }
+        g.CARDS.clear()
+        g.CARDS.update({
+            "glm-ocr": self.ocr_card,
+            "kandinsky-3": self.img_card,
+            "command-r-7b": self.chat_card,
+        })
+        g.ISVC_STATE.clear()
+        g.ISVC_STATE.update({
+            "glm-ocr": {"ready": True, "resources": {"gpus": 1, "vram_mib": 12288}},
+            "kandinsky-3": {"ready": True, "resources": {"gpus": 1, "vram_mib": 24576}},
+            "command-r-7b": {"ready": True, "resources": {"gpus": 1, "vram_mib": 32768}},
+        })
+
+    def tearDown(self):
+        g.TASK_STORE = self.prev_store
+        g.TASK_INLINE_EXECUTION = self.prev_inline
+        g.TASK_HTTP_CLIENT = self.prev_client
+        g.CARDS.clear()
+        g.CARDS.update(self.prev_cards)
+        g.ISVC_STATE.clear()
+        g.ISVC_STATE.update(self.prev_isvc)
+        self.tmpdir.cleanup()
+
+    async def test_models_catalog_mode_filtering_and_web_page(self):
+        # Default GET /v1/models -> chat-only (command-r-7b)
+        req_default = NS(headers={}, query_params={})
+        res_default = await g.list_models(req_default)
+        self.assertEqual([m["id"] for m in res_default["data"]], ["command-r-7b"])
+        self.assertEqual(res_default["data"][0]["mode"], "api")
+
+        # GET /v1/models?all=true -> all 3 models with mode field and tasks info
+        req_all = NS(headers={}, query_params={"all": "true"})
+        res_all = await g.list_models(req_all)
+        by_id = {m["id"]: m for m in res_all["data"]}
+        self.assertEqual(set(by_id.keys()), {"command-r-7b", "glm-ocr", "kandinsky-3"})
+        self.assertEqual(by_id["glm-ocr"]["mode"], "task")
+        self.assertEqual(by_id["kandinsky-3"]["mode"], "both")
+        self.assertTrue(by_id["glm-ocr"]["tasks"]["enabled"])
+        self.assertIn("dpi", by_id["glm-ocr"]["tasks"]["properties"])
+        self.assertIn("repetition_penalty", by_id["glm-ocr"]["tasks"]["properties"])
+
+        # GET /v1/models?tasks=true -> glm-ocr and kandinsky-3
+        req_tasks = NS(headers={}, query_params={"tasks": "true"})
+        res_tasks = await g.list_models(req_tasks)
+        self.assertEqual([m["id"] for m in res_tasks["data"]], ["glm-ocr", "kandinsky-3"])
+
+        # Web catalog GET / includes task-card class and mode badges
+        html_page = g._catalog_html()
+        self.assertIn("task-card", html_page)
+        self.assertIn("async task", html_page)
+        self.assertIn("api + task", html_page)
+        self.assertIn("/v1/tasks", html_page)
+
+    async def test_sync_chat_rejects_task_only_model(self):
+        req = NS(
+            headers={"content-type": "application/json"},
+            body=AsyncMock(return_value=b'{"model":"glm-ocr","messages":[{"role":"user","content":"hi"}]}'),
+        )
+        resp = await g.chat(req)
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.body)
+        self.assertEqual(body["error"]["code"], "task_only_model")
+
+    async def test_sequential_ocr_task_and_unlisted_params(self):
+        recorded_Upstream: list[dict] = []
+
+        def _mock_handler(request: httpx.Request) -> httpx.Response:
+            payload = json.loads(request.content.decode("utf-8"))
+            recorded_Upstream.append(payload)
+            return httpx.Response(
+                200,
+                json={
+                    "id": f"cmpl-{len(recorded_Upstream)}",
+                    "choices": [{"index": 0, "message": {"role": "assistant", "content": f"# Page {len(recorded_Upstream)} Markdown"}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+                },
+            )
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(_mock_handler))
+        self.addAsyncCleanup(client.aclose)
+        g.TASK_HTTP_CLIENT = client
+
+        with patch.object(g, "_ensure_predictor_ready_for_task", new=AsyncMock(return_value=("http://mock-vllm", "glm-ocr-predictor.models.svc.cluster.local"))):
+            t_Mod = self.tasks_mod
+            png_b64 = base64.b64encode(t_Mod._FALLBACK_1X1_PNG).decode("ascii")
+            req = NS(
+                headers={"content-type": "application/json", "authorization": "Bearer key-alpha"},
+                query_params={},
+                json=AsyncMock(
+                    return_value={
+                        "model": "glm-ocr",
+                        "params": {
+                            "prompt": "Table Recognition:",
+                            "custom_vllm_flag": "keep_me",
+                        },
+                        "inputs": [
+                            {"name": "page1.png", "image_base64": png_b64},
+                            {"name": "page2.png", "image_base64": png_b64, "temperature": 0.2},
+                        ],
+                    }
+                ),
+            )
+            kh, manifest = await t_Mod.stage_task_submission(req, self.store, g.CARDS)
+            self.assertEqual(manifest["total_units"], 2)
+            final = await t_Mod.execute_task(self.store, kh, manifest["task_id"], g._task_runtime_hooks())
+            self.assertIsNotNone(final)
+            self.assertEqual(final["status"], "completed")
+            self.assertEqual(final["completed_units"], 2)
+            self.assertEqual(final["failed_units"], 0)
+            self.assertEqual(len(recorded_Upstream), 2)
+
+            # Verify image_url block precedes text prompt block (GLM-OCR best practice)
+            msg_content = recorded_Upstream[0]["messages"][0]["content"]
+            self.assertEqual(msg_content[0]["type"], "image_url")
+            self.assertEqual(msg_content[1]["type"], "text")
+            self.assertEqual(msg_content[1]["text"], "Table Recognition:")
+            # Card default temperature=0.0 on item 1, overridden to 0.2 on item 2, plus unlisted custom_vllm_flag preserved
+            self.assertEqual(recorded_Upstream[0]["temperature"], 0.0)
+            self.assertEqual(recorded_Upstream[1]["temperature"], 0.2)
+            self.assertEqual(recorded_Upstream[0]["custom_vllm_flag"], "keep_me")
+
+            # Verify result.zip contains manifest.json and out/page1.md, out/page2.md
+            zpath = self.store.result_zip_path(kh, manifest["task_id"])
+            self.assertTrue(zpath.is_file())
+
+    async def test_partial_failure_error_log_and_retention_reaper(self):
+        from datetime import datetime, timedelta, timezone
+        t_Mod = self.tasks_mod
+        png_b64 = base64.b64encode(t_Mod._FALLBACK_1X1_PNG).decode("ascii")
+
+        def _mock_img_handler(request: httpx.Request) -> httpx.Response:
+            payload = json.loads(request.content.decode("utf-8"))
+            if payload.get("prompt") == "TRIGGER_OOM":
+                return httpx.Response(500, text='{"error":"CUDA out of memory on item 2"}')
+            # Verify passthrough stripped `model` and kept unlisted `width`
+            assert "model" not in payload
+            assert payload.get("width") == 768
+            return httpx.Response(200, json={"created": 1700000000, "data": [{"b64_json": png_b64}]})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(_mock_img_handler))
+        self.addAsyncCleanup(client.aclose)
+        g.TASK_HTTP_CLIENT = client
+
+        with patch.object(g, "_ensure_predictor_ready_for_task", new=AsyncMock(return_value=("http://mock-img", "kandinsky-3-predictor.models.svc.cluster.local"))):
+            req = NS(
+                headers={"content-type": "application/json", "authorization": "Bearer key-beta"},
+                query_params={},
+                json=AsyncMock(
+                    return_value={
+                        "model": "kandinsky-3",
+                        "params": {"width": 768, "height": 768},
+                        "inputs": [
+                            {"name": "ok1", "prompt": "A mountain sunrise"},
+                            {"name": "bad2", "prompt": "TRIGGER_OOM"},
+                            {"name": "ok3", "prompt": "A calm ocean"},
+                        ],
+                    }
+                ),
+            )
+            kh, manifest = await t_Mod.stage_task_submission(req, self.store, g.CARDS)
+            tid = manifest["task_id"]
+            final = await t_Mod.execute_task(self.store, kh, tid, g._task_runtime_hooks())
+            self.assertEqual(final["status"], "completed")
+            self.assertEqual(final["completed_units"], 2)
+            self.assertEqual(final["failed_units"], 1)
+            self.assertEqual(final["error_count"], 1)
+
+            err_log = self.store.read_error_log(kh, tid)
+            self.assertIn("bad2", err_log)
+            self.assertIn("CUDA out of memory on item 2", err_log)
+
+            # Verify 24h post-completion reaper does not reap at +2h, but reaps at +25h
+            now_dt = datetime.now(timezone.utc)
+            self.assertEqual(self.store.reap_expired(now=now_dt + timedelta(hours=2)), [])
+            reaped = self.store.reap_expired(now=now_dt + timedelta(hours=25))
+            self.assertEqual(reaped, [tid])
+            self.assertIsNone(self.store.load_manifest(kh, tid))
 
 
 if __name__ == "__main__":

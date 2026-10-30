@@ -1,0 +1,171 @@
+# zai-org/GLM-OCR — 0.9B multimodal OCR & document layout recognition model
+# (CogViT vision encoder + GLM-0.5B language decoder, MIT license).
+#
+# Served via vLLM (vllm/vllm-openai:v0.32.0) on a 12 GiB HAMi L40S slice
+# (nvidia.com/gpu: "1", nvidia.com/gpumem: "12288") with scale-to-zero
+# (minReplicas: 0, maxReplicas: 2).
+#
+# Public surface: mode="task" (/v1/tasks). The Aleph Task Worker wakes the
+# predictor once when a multi-PDF or multi-image OCR job arrives, renders PDF
+# pages at the requested DPI, and streams page_1 -> page_2 -> ... -> page_N
+# sequentially against the warm predictor pod's internal /v1/chat/completions.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: glm-ocr
+  namespace: models
+  annotations:
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "15m"
+    autoscaling.knative.dev/initial-scale: "0"
+    serving.knative.dev/progress-deadline: "1200s"
+spec:
+  predictor:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+    minReplicas: 0
+    maxReplicas: 2
+    scaleMetric: concurrency
+    scaleTarget: 8
+    timeout: 600
+    nodeSelector:
+      gpu: "on"
+    initContainers:
+      - name: setup
+        image: python:3.11-slim
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: HF_HUB_ENABLE_HF_TRANSFER
+            value: "1"
+        command:
+          - bash
+          - -c
+        args:
+          - |
+            set -e
+            if [ ! -d /data/venv/bin ]; then
+                echo "Creating venv..."
+                python3 -m venv /data/venv
+                /data/venv/bin/pip install -U pip
+                /data/venv/bin/pip install huggingface_hub hf_transfer
+                echo "venv ready."
+            else
+                echo "venv exists, skipping."
+            fi
+            if [ -f /data/model/config.json ]; then
+                echo "GLM-OCR weights already on PVC, skipping download."
+            else
+                echo "Downloading zai-org/GLM-OCR (~2.3 GB bf16) ..."
+                /data/venv/bin/python3 -u <<'PY'
+            import os
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="zai-org/GLM-OCR",
+                local_dir="/data/model",
+                local_dir_use_symlinks=False,
+                token=os.environ.get("HF_TOKEN"),
+                ignore_patterns=["*.pt", "*.pth", "original/*", "*.gguf"],
+            )
+            print("Download finished.", flush=True)
+            PY
+            fi
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: glm-ocr
+            mountPath: /data
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.32.0
+        command:
+          - vllm
+        args:
+          - serve
+          - /data/model
+          - --served-model-name=glm-ocr
+          - --tensor-parallel-size=1
+          - --dtype=bfloat16
+          - --trust-remote-code
+          - --max-model-len=16384
+          - --gpu-memory-utilization=0.85
+          - --max-num-seqs=8
+          - --max-num-batched-tokens=16384
+          - --enable-prefix-caching
+          - '--limit-mm-per-prompt={"image": 8}'
+          - --port=8080
+        env:
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: HF_HUB_CACHE
+            value: /tmp/hf-cache
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: spawn
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "12288"
+          limits:
+            cpu: "8"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "12288"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 40
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+          - name: glm-ocr
+            mountPath: /data
+            readOnly: true
+          - name: shm
+            mountPath: /dev/shm
+    volumes:
+      - name: glm-ocr
+        persistentVolumeClaim:
+          claimName: glm-ocr
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 4Gi

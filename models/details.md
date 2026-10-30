@@ -93,6 +93,8 @@ what is known and tested.
 | `output_map` | Object | Documents the response contract; does not transform or validate responses |
 | `custom_params.schema` | Object of parameter descriptions | Parameter table/example generation; not a general runtime schema validator |
 | `custom_params.passthrough` | Boolean, default false | Removes `model` and `stream` in custom forwarding; affects the `no_stream` fallback. Does not select a new runtime adapter. |
+| `mode` | String (`"api"`, `"task"`, `"both"`), default `"api"` | Declares whether the model is exposed as a synchronous REST API (`"api"`), an asynchronous `/v1/tasks` job (`"task"`), or both (`"both"`). Surfaced at top level in `/v1/models*` and `/v1/tasks/models*`. |
+| `tasks` | Object, optional | Configures asynchronous `/v1/tasks` execution (`loop_mode: "pdf_pages" \| "items" \| "rollout_steps"`, `file_grouping: "per_file" \| "bundle"`, `unit`, `default_unit_seconds`, `yield_to_sync_seconds`) while reusing the card's `input_map`, `custom_params`, `output_map`, `defaults`, `endpoints`, and `routing`. See [Tasks](../docs/TASKS.md). |
 | `catalog` | Object, default empty | Public catalog metadata, input descriptions and generated documentation |
 
 Keep the conventional `schema_version` field in copied cards. The current parser

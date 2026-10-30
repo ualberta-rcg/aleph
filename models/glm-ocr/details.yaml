@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: glm-ocr-details
+  namespace: models
+  labels:
+    model-details: "true"
+data:
+  details.json: |
+    {
+      "id": "glm-ocr",
+      "status": "production",
+      "type": "ocr",
+      "mode": "task",
+      "endpoints": {
+        "primary": "/v1/tasks",
+        "health": "/v1/models"
+      },
+      "routing": {
+        "k8s_name": "glm-ocr",
+        "upstream_path": "/v1/chat/completions",
+        "no_stream": true,
+        "upstream_model_id": "glm-ocr"
+      },
+      "limits": {
+        "context_window": 16384,
+        "max_input_tokens": 12288,
+        "max_completion_tokens": 4096
+      },
+      "scaling": {
+        "scale_to_zero": true,
+        "min_replicas": 0,
+        "idle_retention": "15m",
+        "cold_start_estimate": "30-60s"
+      },
+      "behavior": {
+        "supports_vision": true,
+        "supports_tools": false,
+        "supports_system_prompt": false,
+        "reasoning_model": false,
+        "strips_thinking": false
+      },
+      "param_translation": {
+        "thinking": {"mode": "none"}
+      },
+      "defaults": {
+        "chat": {
+          "temperature": 0.0,
+          "max_tokens": 4096
+        }
+      },
+      "custom_params": {
+        "passthrough": false,
+        "schema": {
+          "output_format": {
+            "type": "string",
+            "default": "markdown",
+            "enum": ["markdown", "json", "both"],
+            "description": "Output format written per document and page in /v1/tasks/{id}/result"
+          },
+          "repetition_penalty": {
+            "type": "float",
+            "default": 1.05,
+            "description": "Optional vLLM repetition penalty for dense table/formula OCR"
+          }
+        }
+      },
+      "schema_version": 2,
+      "input_map": {
+        "files": {
+          "type": "file[]",
+          "required": true,
+          "description": "1..N PDF documents or images (.pdf, .png, .jpg, .webp, .tiff, .zip, .tar.gz) processed sequentially page-by-page on the warm pod"
+        },
+        "prompt": {
+          "type": "string",
+          "required": false,
+          "default": "Text Recognition:",
+          "enum": ["Text Recognition:", "Table Recognition:", "Formula Recognition:"],
+          "description": "GLM-OCR task prompt ('Text Recognition:', 'Table Recognition:', 'Formula Recognition:', or custom JSON schema prompt)"
+        },
+        "dpi": {
+          "type": "integer",
+          "required": false,
+          "default": 200,
+          "description": "PDF page rendering resolution in DPI (72-600)"
+        },
+        "pages": {
+          "type": "string",
+          "required": false,
+          "default": "all",
+          "description": "1-based page range to process per PDF (e.g. '1-5,8,10-' or 'all')"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 4096,
+          "description": "Maximum tokens generated per page"
+        },
+        "temperature": {
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "description": "Sampling temperature (0.0 recommended for deterministic OCR)"
+        }
+      },
+      "output_map": {
+        "document_markdown": {"type": "file", "description": "out/<stem>.md — concatenated Markdown across all processed pages"},
+        "document_json": {"type": "file", "description": "out/<stem>.json — structured per-page OCR output and token usage"},
+        "page_markdown": {"type": "file", "description": "out/<stem>_page_<NNN>.md — incremental per-page Markdown output"},
+        "result_zip": {"type": "file", "description": "GET /v1/tasks/{task_id}/result — .zip archive containing manifest.json, out/*, and error.log"}
+      },
+      "tasks": {
+        "enabled": true,
+        "mode": "task",
+        "loop_mode": "pdf_pages",
+        "file_grouping": "per_file",
+        "unit": "pages",
+        "default_unit_seconds": 2.5,
+        "retention_hours": 24,
+        "accepted_inputs": [".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp", ".zip", ".tar.gz"],
+        "output_formats": [".md", ".json", ".zip"],
+        "limits": {
+          "max_files_per_task": 200,
+          "max_upload_mb": 512,
+          "max_pages_per_pdf": 500,
+          "max_active_tasks_per_user": 10,
+          "timeout_seconds": 3600
+        }
+      },
+      "catalog": {
+        "description_short": "GLM-OCR 0.9B document OCR, table & formula recognition via /v1/tasks (Z.ai, GPU)",
+        "description": "GLM-OCR (zai-org/GLM-OCR) is a 0.9B multimodal document understanding model (CogViT vision encoder + GLM-0.5B language decoder, 94.62 on OmniDocBench V1.5) for document text recognition, complex HTML table reconstruction, LaTeX formula extraction, and structured JSON information extraction. Served via vLLM (v0.32.0) on a 12 GiB HAMi L40S vGPU slice with Knative scale-to-zero (0->2 on demand). Exposed as an asynchronous task model (mode='task') at POST /v1/tasks: upload 1..N PDFs or images in one task, wake the pod once, and stream page-by-page OCR results with live progress, ETA, error.log, and .zip download. MIT license.",
+        "owned_by": "zai-org",
+        "source": "zai-org/GLM-OCR",
+        "source_url": "https://huggingface.co/zai-org/GLM-OCR",
+        "license": "MIT",
+        "parameters": "0.9B (CogViT vision encoder + GLM-0.5B decoder)",
+        "precision": "bf16",
+        "framework": "vllm",
+        "domain": "computer-vision",
+        "subdomain": "document-ocr",
+        "tags": ["ocr", "document-understanding", "pdf", "table-recognition", "formula-recognition", "vision", "task", "gpu", "vllm"]
+      }
+    }

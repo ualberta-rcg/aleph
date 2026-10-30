@@ -32,6 +32,10 @@ from kubernetes import client, config, watch
 import usage
 from capacity import parse_metrics, fits as gpu_fits
 from conversation import anthropic_history, normalize_reasoning
+try:
+    import tasks
+except ImportError:  # pragma: no cover
+    from . import tasks  # type: ignore
 
 # ── Anthropic Messages API <-> OpenAI Chat Completions translation ──────────────
 # Converts an Anthropic /v1/messages request into an OpenAI chat-completions body,
@@ -349,6 +353,12 @@ POD_NODE: dict[str, dict[str, str]] = {}
 POD_PHASE: dict[str, dict[str, str]] = {}
 POD_READY: dict[str, dict[str, bool]] = {}
 _STATE_LOCK = threading.RLock()
+
+# Active synchronous requests per model_id (so mode="both" task workers can yield).
+ACTIVE_SYNC_REQUESTS: dict[str, int] = {}
+TASK_STORE = tasks.TaskStore()
+TASK_INLINE_EXECUTION = False
+TASK_HTTP_CLIENT: httpx.AsyncClient | None = None
 
 _DISCOVERY = {"cards_seeded": False, "isvc_seeded": False, "last_event": 0.0}
 
@@ -975,6 +985,10 @@ def watch_pods():
     _watch_inventory("pods")
 
 
+TASK_WAKE_TIMEOUT = float(os.environ.get("TASK_WAKE_TIMEOUT", "360"))
+TASK_WAKE_POLL_INTERVAL = float(os.environ.get("TASK_WAKE_POLL_INTERVAL", "3.0"))
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     _load_kube()
@@ -983,7 +997,12 @@ async def _startup() -> None:
         await asyncio.to_thread(_seed, kind)
         threading.Thread(target=_watch_inventory, args=(kind,), daemon=True).start()
     threading.Thread(target=_poll_gpu_capacity, daemon=True).start()
-    print("[STARTUP] discovery running", flush=True)
+    if not tasks.should_proxy_to_worker(TASK_STORE):
+        asyncio.create_task(tasks.task_worker_loop(TASK_STORE, _task_runtime_hooks))
+        asyncio.create_task(tasks.task_reaper_loop(TASK_STORE))
+        print(f"[STARTUP] discovery + local task worker running (dir={TASK_STORE.base_dir})", flush=True)
+    else:
+        print("[STARTUP] discovery running (tasks proxied to aleph-task-worker)", flush=True)
 
 
 # ── Routing helpers ────────────────────────────────────────────────────────────
@@ -1521,11 +1540,14 @@ def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict
     st = isvc_state.get(k8s_name, {}) or {}
     res = st.get("resources", {}) or {}
     pod_count = (pods or {}).get(k8s_name, 0)
+    mode = tasks.card_mode(card)
+    task_info = tasks.build_task_info(card, isvc_state, pods, host_url=_MAIN_HOST)
 
     source = catalog.get("source", "")
     source_url = catalog.get("source_url") or (
         f"https://huggingface.co/{source}" if "/" in str(source) else ""
     )
+    primary_ep = endpoints.get("primary") or ("/v1/tasks" if mode == "task" else "")
     return {
         # ── 232-compatible fields ───────────────────────────────────────────
         "id": card["id"],
@@ -1533,11 +1555,12 @@ def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict
         "created": 1700000000,
         "owned_by": catalog.get("owned_by", "alliance-canada"),
         "type": card.get("type", "chat"),
+        "mode": mode,
         "context_window": limits.get("context_window", 0),
         "max_completion_tokens": limits.get("max_completion_tokens", 0),
         "description": catalog.get("description")
         or catalog.get("description_short", ""),
-        "endpoint": endpoints.get("primary", ""),
+        "endpoint": primary_ep,
         "input_format": _derive_input_format(card),
         "source": source,
         "source_url": source_url,
@@ -1569,10 +1592,13 @@ def _model_entry(card: dict, isvc_state: dict, pods: dict | None = None) -> dict
             "min_replicas": scaling.get("min_replicas"),
             "cold_start_estimate": scaling.get("cold_start_estimate", ""),
         },
-        # parameter map — drives the per-model curl example on the web page
+        # parameter map — drives the per-model curl example on the web page + tasks
         "input_map": card.get("input_map", {}) or {},
         "custom_params": card.get("custom_params", {}) or {},
+        "output_map": card.get("output_map", {}) or {},
+        "defaults": card.get("defaults", {}) or {},
         "endpoints": endpoints,
+        "tasks": task_info,
         # allocated compute footprint (live from the ISVC predictor spec)
         "resources": res,
     }
@@ -1594,8 +1620,13 @@ async def list_models(request: Request):
     # Anthropic surface (Tyk /anthropic/ or a client sending anthropic-version):
     # always-on chat models only, Anthropic list shape. OpenAI path is unchanged.
     anthropic = _is_anthropic_surface(request)
-    # ?all=true → every model (full catalogue); default → chat-UI-suitable only.
+    # ?all=true → every model (full catalogue including task-only);
+    # ?tasks=true → models supporting /v1/tasks (mode in ("task", "both"));
+    # ?mode=api|task|both → filter by mode;
+    # default → chat-UI-suitable only (type == "chat" and mode in ("api", "both")).
     show_all = request.query_params.get("all", "").lower() in ("1", "true", "yes")
+    show_tasks = request.query_params.get("tasks", "").lower() in ("1", "true", "yes")
+    mode_filter = request.query_params.get("mode", "").strip().lower()
     with _STATE_LOCK:
         cards = list(CARDS.values())
         isvc_state = dict(ISVC_STATE)
@@ -1603,7 +1634,7 @@ async def list_models(request: Request):
     if anthropic:
         data = []
         for c in cards:
-            if not _always_on_chat(c):
+            if not _always_on_chat(c) or tasks.card_mode(c) == "task":
                 continue
             catalog = c.get("catalog") or {}
             display = (catalog.get("display_name")
@@ -1622,13 +1653,35 @@ async def list_models(request: Request):
             "first_id": data[0]["id"] if data else None,
             "last_id": data[-1]["id"] if data else None,
         }
+
+    def _keep_card(c: dict) -> bool:
+        m = tasks.card_mode(c)
+        if mode_filter in ("api", "task", "both"):
+            return m == mode_filter
+        if show_tasks:
+            return m in ("task", "both")
+        if show_all:
+            return True
+        return c.get("type", "chat") == "chat" and m in ("api", "both")
+
     data = [
         _model_entry(c, isvc_state, pods)
         for c in cards
-        if show_all or c.get("type", "chat") == "chat"
+        if _keep_card(c)
     ]
     data.sort(key=lambda x: x["id"])
     return {"object": "list", "data": data}
+
+
+@app.get("/v1/models/{model_id}")
+async def get_model_detail(model_id: str):
+    with _STATE_LOCK:
+        card = CARDS.get(model_id)
+        isvc_state = dict(ISVC_STATE)
+        pods = {k: sum(p == "Running" for p in phases.values()) for k, phases in POD_PHASE.items()}
+    if not card:
+        return JSONResponse({"error": {"message": f"model '{model_id}' not found", "type": "model_not_found"}}, 404)
+    return _model_entry(card, isvc_state, pods)
 
 
 # ── "How to use it" web page at GET / ──────────────────────────────────────────
@@ -1860,14 +1913,40 @@ def _catalog_html() -> str:
             status = f'<span class="status zero">{esc(state_label)}</span>'
             wake_html = ""
 
-        # per-model curl example, built from the card's parameter map
+        # per-model curl example, built from the card's parameter map (or /v1/tasks for task models)
+        mode = e.get("mode") or "api"
+        tinfo = e.get("tasks") or {}
+        tex = tinfo.get("examples") or {}
+        task_curl_block = ""
+        if tex:
+            task_curl_block = (
+                f"# 1. submit async task (1..N files processed sequentially on warm pod)\n"
+                f"{tex.get('curl_submit_multipart', '')}\n"
+                f"# 2. poll task progress & ETA\n"
+                f"{tex.get('curl_poll', '')}\n"
+                f"# 3. inspect live error log or download result .zip\n"
+                f"{tex.get('curl_error_log', '')}\n"
+                f"{tex.get('curl_result', '')}"
+            ).strip()
+
         body, mp = _example_body(e)
-        if body is None:
+        if mode == "task" and task_curl_block:
+            curl = task_curl_block
+            ep_url = f"{_MAIN_HOST}/v1/tasks"
+        elif body is None:
             curl = (f'curl {ep_url} -H "Authorization: Bearer $KEY" {mp}'
                     + ('\n# streaming: add  -F stream=true' if 'transcriptions' in ep_url else ''))
         else:
             curl = (f'curl {ep_url} -H "Authorization: Bearer $KEY" '
                     f'-H "Content-Type: application/json" -d \'{json.dumps(body)}\'')
+
+        task_details_html = ""
+        if mode == "both" and task_curl_block:
+            task_details_html = (
+                '<details><summary>async task (/v1/tasks)</summary>'
+                f'<pre>{esc(task_curl_block)}</pre></details>'
+            )
+
         # parameter map table
         rows = _param_rows(e)
         if rows:
@@ -1902,14 +1981,22 @@ def _catalog_html() -> str:
             clone_html = ('<details><summary>voice cloning</summary>'
                           f'<pre>{esc(clone_curl)}</pre></details>')
 
+        mode_badge = ""
+        if mode == "task":
+            mode_badge = badge("async task", "mode-task")
+        elif mode == "both":
+            mode_badge = badge("api + task", "mode-both")
+
+        card_cls = f"card {'task-card ' if mode == 'task' else ''}{'up' if up else 'zero'}"
         search = " ".join(str(x) for x in (
-            e["id"], e.get("type"), e.get("description"), e.get("domain"),
+            e["id"], e.get("type"), mode, "async task" if mode in ("task", "both") else "",
+            e.get("description"), e.get("domain"),
             e.get("subdomain"), "scaled up" if up else "scaled to zero",
             *(e.get("tags") or []))).lower()
         cards_html.append(f"""
-        <article class="card {'up' if up else 'zero'}" data-search="{esc(search)}">
+        <article class="{card_cls}" data-search="{esc(search)}">
           <header>
-            <div><h3>{esc(e["id"])}</h3>{badge(e.get('type','chat'),'type')}</div>
+            <div><h3>{esc(e["id"])}</h3>{badge(e.get('type','chat'),'type')}{mode_badge}</div>
             <span class="dot" title="{'scaled up' if up else 'scaled to zero'}"></span>
           </header>
           <div class="badges">{badge('gpu' if e.get('gpu') else 'cpu','gpu' if e.get('gpu') else 'cpu')}{caps_html}{tags}</div>
@@ -1918,6 +2005,7 @@ def _catalog_html() -> str:
           <div class="facts">{facts_html}</div>
           <div class="ep"><span class="k">endpoint</span> <a href="{esc(ep_url)}">{esc(ep_url)}</a></div>
           <details><summary>curl example</summary><pre>{esc(curl)}</pre></details>
+          {task_details_html}
           {params_html}
           {clone_html}
           {wake_html}
@@ -1961,8 +2049,14 @@ curl {_MAIN_HOST}/v1/audio/speech -H "Authorization: Bearer $KEY" -H "Content-Ty
 # List TTS voices (built-in presets + saved clones)
 curl {_MAIN_HOST}/v1/audio/voices -H "Authorization: Bearer $KEY"
 
+# Async batch/document tasks (/v1/tasks) — 1..N files processed sequentially on warm pod
+curl -sS -X POST {_MAIN_HOST}/v1/tasks -H "Authorization: Bearer $KEY" \\
+  -F model=glm-ocr -F "files=@paper1.pdf" -F "files=@paper2.pdf" -F "dpi=200"
+curl -sS {_MAIN_HOST}/v1/tasks/$TASK_ID -H "Authorization: Bearer $KEY"
+curl -sS -L {_MAIN_HOST}/v1/tasks/$TASK_ID/result -H "Authorization: Bearer $KEY" -o $TASK_ID.zip
+
 # List model ids (JSON)         # The key works in any of these forms:
-curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].id'
+curl -s "{_MAIN_HOST}/v1/models?all=true" -H "Authorization: Bearer $KEY" | jq -r '.data[] | "\\(.id)\\t\\(.mode)"'
 #   Authorization: Bearer $KEY | x-api-key: $KEY | api-key: $KEY | x-goog-api-key: $KEY | ?api_key=$KEY
 
 # Per-model parameters + a ready-made example: open any card below.</pre>"""
@@ -2031,6 +2125,8 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  .card{{background:var(--card);border:1px solid var(--bd);border-left:4px solid var(--zero);border-radius:12px;
    padding:16px;display:flex;flex-direction:column;gap:9px;box-shadow:0 1px 2px rgba(0,0,0,.03)}}
  .card.up{{border-left-color:var(--green)}}
+ .card.task-card{{background:#faf6fc;border-color:#d9c8e8;border-left-color:#7a3f9e}}
+ .card.task-card.up{{border-left-color:var(--green)}}
  .card header{{display:flex;justify-content:space-between;align-items:center;gap:8px}}
  .card header>div{{display:flex;align-items:center;gap:9px;min-width:0}}
  .card h3{{margin:0;font-size:17px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ua-d);word-break:break-all}}
@@ -2038,6 +2134,8 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
  .card.up .dot{{background:var(--green);box-shadow:0 0 0 3px rgba(31,138,61,.18)}}
  .badges{{display:flex;gap:6px;flex-wrap:wrap}} .badge{{font-size:11px;padding:2px 8px;border-radius:11px;border:1px solid var(--bd);background:var(--alt);color:var(--mut)}}
  .badge.type{{color:var(--ua);border-color:#cdd9cb;background:#eef3ec}} .badge.gpu{{color:var(--green);border-color:#9ccfa6;background:#eef6ef}} .badge.cpu{{color:var(--mut)}}
+ .badge.mode-task{{color:#6a2c91;border-color:#cfaee3;background:#efe4f7;font-weight:700}}
+ .badge.mode-both{{color:#1c5d99;border-color:#b8d4ee;background:#e8f2fc;font-weight:600}}
  .badge.cap{{color:#7a3f9e;border-color:#d8c2e3;background:#f3ecf8}} .badge.tag{{color:var(--mut)}}
  .desc{{margin:0;color:#41524a;font-size:13.5px}} .src{{margin-left:6px;font-size:11px}}
  .status{{font-size:12.5px;font-weight:600}} .status.up{{color:var(--green)}} .status.zero{{color:var(--zero)}}
@@ -2109,6 +2207,7 @@ curl -s {_MAIN_HOST}/v1/models -H "Authorization: Bearer $KEY" | jq -r '.data[].
     <p>Endpoints: <code>/v1/chat/completions</code>, <code>/v1/messages</code>, <code>/v1/embeddings</code>,
        <code>/v1/rerank</code>, <code>/v1/audio/transcriptions</code> (STT), <code>/v1/audio/speech</code> (TTS),
        <code>/v1/audio/clone</code> (voice cloning), <code>/v1/audio/voices</code> (voice listing),
+       <code>/v1/tasks</code> (async batch &amp; document jobs),
        plus per-model science paths. Open any card for its full parameter map and example.</p>
   </div>
 </div>
@@ -2276,6 +2375,23 @@ async def _post_cancellable(request: Request | None, client: httpx.AsyncClient,
     except asyncio.CancelledError:
         post_task.cancel()
         raise
+
+
+def _task_only_error(model_id: str) -> JSONResponse:
+    return JSONResponse(
+        {
+            "error": {
+                "message": (
+                    f"model '{model_id}' is an asynchronous task model (mode='task'). "
+                    f"Submit jobs via POST /v1/tasks (-F model={model_id} -F files=@...) "
+                    f"and poll GET /v1/tasks/{{task_id}}."
+                ),
+                "type": "invalid_request_error",
+                "code": "task_only_model",
+            }
+        },
+        400,
+    )
 
 
 def _gone_response() -> Response:
@@ -2550,6 +2666,9 @@ async def chat(request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    if tasks.card_mode(info["card"]) == "task":
+        _METRICS["requests_error"] += 1
+        return _task_only_error(model_id)
     if not info["ready"]:
         return JSONResponse(
             {
@@ -2634,6 +2753,9 @@ async def anthropic_messages(request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    if tasks.card_mode(info["card"]) == "task":
+        _METRICS["requests_error"] += 1
+        return _task_only_error(model_id)
     if info["type"] not in ("chat",):
         _METRICS["requests_error"] += 1
         return _anth_unsupported(model_id, info)
@@ -3214,6 +3336,9 @@ async def anthropic_count_tokens(request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    if tasks.card_mode(info["card"]) == "task":
+        _METRICS["requests_error"] += 1
+        return _task_only_error(model_id)
     if info["type"] not in ("chat",):
         _METRICS["requests_error"] += 1
         return _anth_unsupported(model_id, info)
@@ -3247,6 +3372,89 @@ async def anthropic_count_tokens(request: Request):
                     media_type=r.headers.get("content-type", "application/json"))
 
 
+async def _ensure_predictor_ready_for_task(model_id: str, card: dict) -> tuple[str, str]:
+    """Ensure the model predictor pod is warm (or wake it 0->1 when GPU capacity
+    fits) before starting sequential 1-by-1 task execution.
+    Returns (predictor_base_url, host_header).
+    """
+    info = resolve(model_id)
+    if not info:
+        raise RuntimeError(f"Model '{model_id}' not found")
+    if info.get("warm") or _watch_is_warm(info["k8s_name"]):
+        return KNATIVE_GW, info["host"]
+    rr = await asyncio.to_thread(_ready_replicas, info["k8s_name"])
+    if rr != 0:
+        return KNATIVE_GW, info["host"]
+
+    deadline = time.monotonic() + TASK_WAKE_TIMEOUT
+    woken = False
+    while time.monotonic() < deadline:
+        info = resolve(model_id) or info
+        if info.get("warm") or _watch_is_warm(info["k8s_name"]):
+            return KNATIVE_GW, info["host"]
+        rr = await asyncio.to_thread(_ready_replicas, info["k8s_name"])
+        if rr > 0:
+            return KNATIVE_GW, info["host"]
+        ok, why = _can_schedule(info["k8s_name"], info.get("resources"))
+        if ok and not woken:
+            await _wake_up(info)
+            woken = True
+        await asyncio.sleep(TASK_WAKE_POLL_INTERVAL)
+    raise RuntimeError(f"Timed out waiting for model '{model_id}' predictor to become ready")
+
+
+def _task_runtime_hooks() -> dict[str, Any]:
+    with _STATE_LOCK:
+        cards_snapshot = dict(CARDS)
+        isvc_snapshot = dict(ISVC_STATE)
+        pods_snapshot = {k: sum(p == "Running" for p in phases.values()) for k, phases in POD_PHASE.items()}
+
+    def _get_card(mid: str) -> dict | None:
+        with _STATE_LOCK:
+            return CARDS.get(mid)
+
+    def _entry_for_card(c: dict) -> dict:
+        return _model_entry(c, isvc_snapshot, pods_snapshot)
+
+    def _active_sync(mid: str) -> int:
+        return int(ACTIVE_SYNC_REQUESTS.get(mid, 0))
+
+    def _record_task_usage(mid: str, card: dict, status: int, latency_ms: int, usage_obj: dict | None = None) -> None:
+        info = resolve(mid) or {"id": mid, "card": card, "k8s_name": mid, "resources": {}}
+        cw, mct = _limits(info)
+        usage.record(
+            identity="task-worker",
+            identity_type="service",
+            account=None,
+            endpoint="/v1/tasks",
+            api="tasks",
+            model=mid,
+            status=status,
+            latency_ms=latency_ms,
+            usage=usage_obj,
+            resources=resource_block(info, latency_ms),
+            context_window=cw,
+            max_completion_tokens=mct,
+            cold_start=False,
+            stream=False,
+        )
+
+    return {
+        "model_cards": lambda: cards_snapshot,
+        "get_card": _get_card,
+        "model_entry": _entry_for_card,
+        "ensure_predictor_ready": _ensure_predictor_ready_for_task,
+        "active_sync_requests": _active_sync,
+        "prepare_chat": prepare_chat,
+        "http_client": TASK_HTTP_CLIENT,
+        "inline_execution": TASK_INLINE_EXECUTION,
+        "record_usage": _record_task_usage,
+    }
+
+
+app.include_router(tasks.create_tasks_router(TASK_STORE, _task_runtime_hooks))
+
+
 @app.api_route("/v1/{path:path}", methods=["POST", "GET"])
 async def forward_custom(path: str, request: Request):
     """Catch-all forward for science / custom server.py models. Registered last."""
@@ -3265,6 +3473,9 @@ async def forward_custom(path: str, request: Request):
     if not info:
         _METRICS["requests_error"] += 1
         return JSONResponse({"error": f"model '{model_id}' not found"}, 404)
+    if tasks.card_mode(info["card"]) == "task":
+        _METRICS["requests_error"] += 1
+        return _task_only_error(model_id)
     cold = await _guard_cold(request, info, f"/v1/{path}", "custom")
     if cold is not None:
         return cold
