@@ -14,8 +14,13 @@ Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
   - `GET /v1/models` remains chat-only (`type == "chat"` and `mode in ("api", "both")`); `GET /v1/models?all=true` returns all models including task-only models; `GET /v1/models?tasks=true`, `GET /v1/models/{model_id}`, `GET /v1/tasks/models`, and `GET /v1/tasks/models/{model_id}` provide self-describing task schemas for AI agents and humans.
   - Web catalog (`GET /`) displays task models with a distinct card style (`.card.task-card`), `async task` / `api + task` badges, and ready-to-copy `/v1/tasks` curl examples.
 - **`glm-ocr` (`zai-org/GLM-OCR`) deployed (`models/glm-ocr/`)**:
-  - 0.9B multimodal document OCR, table recognition, and formula recognition model on `vllm/vllm-openai:v0.32.0` (`--dtype=bfloat16 --max-model-len=16384`), 1× L40S HAMi slice (`gpumem: 12288`), scale-to-zero (`minReplicas: 0`, `maxReplicas: 2`), `mode: "task"`.
+  - 0.9B multimodal document OCR, table recognition, and formula recognition model on `vllm/vllm-openai:v0.32.0` (`--dtype=bfloat16 --max-model-len=32768`), 1× L40S HAMi slice (`gpumem: 12288`, `gpucores: 30`), scale-to-zero (`minReplicas: 0`, `maxReplicas: 2`), `mode: "task"`.
 - **Documentation**: added `docs/TASKS.md` and updated `docs/ENDPOINTS.md`, `docs/ADD-A-MODEL.md`, `models/inferenceservice.md`, and `models/details.md`.
+- **Validation (`rkhoja/aleph:gateway-5b1c20b@sha256:40b3f2df7d1be5ad3cdecefba4ba3d95c67c3e5f78dfeaeccc3e9bd2a0d811ef`)**:
+  - Gateway unit test suite (`gateway/tests/test_candidate.py`): **25/25 PASS**.
+  - Isolated canary test in `namespace: aleph-tasks-test` (`0 GPUs`): **8/8 PASS** (catalog `mode`, task introspection, web UI badges/curl examples, sync guardrail, sequential OCR loop + unlisted param passthrough + `.zip` bundle, partial failure `error.log`, key isolation, and `DELETE /v1/tasks/{id}`).
+  - Live cluster rollout on `aleph1`/`aleph2`/`aleph3` (`64-task-worker.yaml` `2/2 Ready` on `rack09-01` & `rack01-11`, `pvc/aleph-tasks` `200Gi RWX Bound`, `deploy/model-gateway` `3/3 Ready`).
+  - Live `models/glm-ocr/test.py` battery: **11/11 PASS** (Text/Table/Formula OCR, 2-PDF 3-page sequential loop + `.zip` download, partial-failure `error.log`, `DELETE` cleanup) + clean delete & redeploy cache proof.
 
 ## 2026-10-27 — molmo2-8b bumped to vLLM v0.32.0 (align new deploys on latest)
 

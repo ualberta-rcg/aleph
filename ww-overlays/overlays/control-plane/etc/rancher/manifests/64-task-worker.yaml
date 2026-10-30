@@ -65,11 +65,24 @@ spec:
     spec:
       serviceAccountName: model-gateway
       terminationGracePeriodSeconds: 660
-      nodeSelector:
-        node-role.kubernetes.io/worker: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: aleph-task-worker
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: task-worker
-          image: rkhoja/aleph:gateway-5583535@sha256:e1f5e81585c431232d78043a4a550dab615993c87a6a69abbfebcbd1a0ebbb2f
+          image: rkhoja/aleph:gateway-5b1c20b@sha256:40b3f2df7d1be5ad3cdecefba4ba3d95c67c3e5f78dfeaeccc3e9bd2a0d811ef
           imagePullPolicy: IfNotPresent
           command: ["uvicorn", "task_worker:app", "--host", "0.0.0.0", "--port", "8080"]
           ports:

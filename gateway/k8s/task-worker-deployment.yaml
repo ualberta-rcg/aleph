@@ -45,8 +45,21 @@ spec:
     spec:
       serviceAccountName: model-gateway
       terminationGracePeriodSeconds: 660
-      nodeSelector:
-        node-role.kubernetes.io/worker: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: aleph-task-worker
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: task-worker
           image: rkhoja/aleph:gateway-<sha>
