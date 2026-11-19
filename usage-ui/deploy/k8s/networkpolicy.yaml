@@ -1,0 +1,40 @@
+# Admit only the SAML proxy to the usage UI, and allow the pod no outbound
+# traffic. The usage UI trusts the identity header, so any other pod that could
+# reach it could choose whose usage to read; that includes model servers in
+# this namespace.
+#
+# The <...> values are placeholders and are not valid labels, so this file
+# cannot be applied until the deployer replaces them with the proxy's actual
+# namespace and pod labels. This repo does not supply the proxy.
+#
+# The ledger is an NFS volume mounted by the kubelet on the node, not by the
+# pod, so blocking egress does not affect it. RKE2's default CNI (Canal, which
+# uses Calico for policy) lets a node reach its own pods, so kubelet probes keep
+# working; confirm that on other CNIs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: usage-ui
+  namespace: models
+  labels:
+    app: usage-ui
+spec:
+  podSelector:
+    matchLabels:
+      app: usage-ui
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        # Both selectors in one entry: pods with this label in this namespace.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: <proxy-namespace>
+          podSelector:
+            matchLabels:
+              <proxy-label-key>: <proxy-label-value>
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress: []

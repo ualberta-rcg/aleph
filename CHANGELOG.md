@@ -2,6 +2,40 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 
+## 2026-11-18 — Usage UI (`usage-ui/`): self-service usage pages with a year of daily history
+
+**What:** a new Go service (standard library only) where a signed-in researcher
+sees their own usage, and nobody else's, read from the gateway's usage ledger.
+- Pages: Overview (totals and charts, by week for ranges over 62 days), Models,
+  Errors, and Report (a sentence to copy into grant reports), plus a CSV
+  download.
+- Daily history: each finished day's per-user totals are saved to a small
+  gzipped file and kept 366 days, so usage stays visible after the ledger
+  rotates. Plain files, no database.
+- Days with incomplete records (rotated away and never saved) are marked on
+  every page and in the CSV, and left out of the report sentence.
+- Sign-in uses the username header from a trusted SSO proxy, which this
+  repository does not supply. `deploy/proxycheck` checks the proxy after
+  deployment.
+- Reference manifests in `usage-ui/deploy/k8s/` (not applied), a CI workflow
+  (`.github/workflows/usage-ui.yml`), and pointers in `CLAUDE.md`, `AGENTS.md`,
+  and `docs/LOGGING.md`. Details are in `usage-ui/README.md`.
+
+**Why:** researchers currently ask an operator for their usage figures.
+
+**Operational impact:** none; nothing is built or deployed. Once deployed, the
+service mounts the ledger read-only and keeps a year of per-user daily totals on
+its own claim, `usage-ui-history`.
+
+**Validation (synthetic data only):** gofmt, `go vet`, and 120 tests pass on
+Windows and on Linux with `-race`. The pages were checked by hand in Chromium,
+light and dark, at desktop and phone widths. A live check with the author's key
+on 2026-11-17 confirmed which models report thinking tokens.
+
+**Unverified:** not run against the real ledger or SSO proxy.
+`USAGE_LOG_BACKUPS` stays unset until the deployed gateway's rotation count is
+confirmed (README "Deploy", step 3). Known limits are listed in the README.
+
 ## 2026-10-30 — Asynchronous Task System (`/v1/tasks`), model `mode` (`api`/`task`/`both`), and `glm-ocr` (`zai-org/GLM-OCR`)
 
 **What:**

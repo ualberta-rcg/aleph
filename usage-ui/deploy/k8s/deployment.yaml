@@ -1,0 +1,160 @@
+# Usage UI Deployment: a reference spec, not yet deployed anywhere.
+# Like gateway/k8s/deployment.yaml, the image below is a placeholder; pin the
+# real build by tag and digest before applying, never :latest.
+#
+# The pod mounts the gateway usage-ledger claim READ-ONLY at the claim root, so
+# it sees every gateway pod's directory (<root>/<pod-name>/usage.log*). It never
+# writes to the claim. It writes only its daily history, to its own claim
+# usage-ui-history (pvc.yaml), mounted at /var/lib/usage-ui.
+#
+# Identity comes from the X-Remote-User header set by a SAML service provider in
+# front of this Service. This repo does not supply or configure that proxy.
+# Before exposing the Service, the deployer must make sure that:
+#   1. The proxy requires sign-in on every path, removes any X-Remote-User the
+#      client sent, and then sets it from the authenticated SAML attribute.
+#   2. Only the proxy can reach this pod: fill in and apply networkpolicy.yaml.
+#   3. One of AUTH_TRUSTED_PROXIES or AUTH_ALLOW_ANY_PEER below is set. The pod
+#      refuses to start until it is.
+#   4. The proxy check passes against the public URL:
+#      go test -tags proxycheck ./deploy/proxycheck/   (see usage-ui/README.md)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: usage-ui
+  namespace: models
+  labels:
+    app: usage-ui
+spec:
+  # One replica, replaced rather than rolled: the daily history must have a
+  # single writer, so the old pod stops before the new one starts.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: usage-ui
+  template:
+    metadata:
+      labels:
+        app: usage-ui
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        # Lets the pod write its history claim. Some NFS provisioners ignore
+        # fsGroup; if the pod logs a permission error at startup, have the
+        # claim's directory owned by 65532.
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      # Same placement as the gateway: control-plane, never GPU nodes.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: gpu
+                    operator: NotIn
+                    values: ["on"]
+      containers:
+        - name: usage-ui
+          image: rkhoja/aleph:usage-ui-<sha>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: USAGE_LOG_ROOT
+              value: /var/log/aleph-usage
+            - name: AUTH_MODE
+              value: header
+            - name: AUTH_HEADER
+              value: X-Remote-User
+            # AUTH_REALM: empty accepts only a bare username; a value containing
+            # "@" is refused. If the IdP releases user@realm, set this to that
+            # one realm (for example ualberta.ca): "user@ualberta.ca" becomes
+            # "user", and any other realm is refused.
+            - name: AUTH_REALM
+              value: ""
+            # Set exactly one of the next two, or the pod will not start.
+            # AUTH_TRUSTED_PROXIES: comma-separated CIDRs or addresses of the
+            # SAML proxy, when it has stable addresses. Catch-all ranges such as
+            # 0.0.0.0/0 are refused.
+            - name: AUTH_TRUSTED_PROXIES
+              value: ""
+            # AUTH_ALLOW_ANY_PEER: when the proxy runs as pods with changing IPs,
+            # set this to yes-networkpolicy-admits-only-the-proxy, and only after
+            # networkpolicy.yaml is applied with the proxy's real selectors.
+            - name: AUTH_ALLOW_ANY_PEER
+              value: ""
+            - name: REFRESH_INTERVAL
+              value: 60s
+            # USAGE_LOG_BACKUPS: the gateway's GATEWAY_USAGE_LOG_BACKUPS.
+            # Deliberately unset until the deployed gateway's rotation count is
+            # verified; see README "Deploy" step 3. Unset is safe (coverage can
+            # be understated); a value above the real count is not.
+            # - name: USAGE_LOG_BACKUPS
+            #   value: "<verified count>"
+            # Daily history: one year of per-user daily totals, so usage stays
+            # visible after the ledger rotates it away. It is a folder inside
+            # the claim, which the service creates with mode 0700; the claim's
+            # own root keeps whatever mode the provisioner gave it.
+            - name: USAGE_HISTORY_DIR
+              value: /var/lib/usage-ui/history
+            - name: USAGE_HISTORY_DAYS
+              value: "366"
+            # A year of history for 200 active users is about 100 MB in
+            # memory. A soft limit below the container limit makes Go collect
+            # garbage harder before the pod would be killed for memory.
+            - name: GOMEMLIMIT
+              value: 460MiB
+          volumeMounts:
+            - name: usage-log
+              mountPath: /var/log/aleph-usage
+              readOnly: true
+            - name: history
+              mountPath: /var/lib/usage-ui
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          # /readyz stays 503 until the first full read of the ledger finishes.
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 15
+            timeoutSeconds: 3
+      volumes:
+        # The gateway's usage ledger on shared NFS (RWX), mounted read-only.
+        - name: usage-log
+          persistentVolumeClaim:
+            claimName: model-gateway-usage-logs
+            readOnly: true
+        # The daily history, written only by this pod.
+        - name: history
+          persistentVolumeClaim:
+            claimName: usage-ui-history

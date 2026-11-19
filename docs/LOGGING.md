@@ -201,6 +201,13 @@ identities and are not exposed as a public per-user download API. Operators can
 arrange an appropriately scoped report; a shared service key may require usage
 information from the application itself to separate individual users.
 
+A self-service page that shows each signed-in user their own usage is in
+[usage-ui/](../usage-ui/README.md). It is not deployed, so the contact route
+above is the current way to get usage information. Once deployed, it also
+keeps a year of per-user daily totals (counts only, no content) on its own
+claim, `usage-ui-history`, separate from this ledger and its retention; see
+[Daily history](../usage-ui/README.md#daily-history).
+
 For your own deployment, access to the ledger is an administrative storage
 operation. Restrict raw-log access and filter exports to the intended recipient.
 Implementation references: [usage logger](../gateway/app/usage.py),

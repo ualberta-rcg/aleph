@@ -1,0 +1,16 @@
+# ClusterIP only. Expose it through the SAML service provider, not directly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: usage-ui
+  namespace: models
+  labels:
+    app: usage-ui
+spec:
+  type: ClusterIP
+  selector:
+    app: usage-ui
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

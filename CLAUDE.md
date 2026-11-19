@@ -18,6 +18,7 @@ inventories, and rollout history belong in the operator's private working direct
 | API behavior | [Endpoints](docs/ENDPOINTS.md) |
 | Authentication and key administration | [Tyk](docs/TYK-USERS.md) |
 | Usage records, retention, and metrics | [Logging and metrics](docs/LOGGING.md) |
+| Self-service usage page (not deployed) | [Usage UI](usage-ui/README.md) |
 | Overlays, site tokens, and storage bindings/recovery | [Warewulf](docs/WW-OVERLAYS.md) |
 | Serving components, networking, scheduling, and lifecycle | [Kubernetes](docs/KUBERNETES.md) |
 | Images, boot, systemd, GPU drivers, and RDMA | [System](docs/SYSTEM.md) |

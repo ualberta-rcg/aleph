@@ -1,0 +1,615 @@
+/*
+  Aleph usage UI.
+
+  Quiet, minimal: a white page with light grey cards (light) and a neutral
+  charcoal (dark), hairline rules, soft rounded corners, regular weights
+  only. Backgrounds are neutral greys with no tint; colour comes only from
+  the brand. Text is Georgia, with italic headings, by default. A reader
+  can pick the system sans-serif for all text, which site.js marks with
+  <html data-font="sans">. System fonts only, so nothing is downloaded
+  and the page's strict CSP needs no font source.
+
+  University of Alberta green fills bars and the primary button and carries
+  links. Gold is a highlight only: the line under the header's green rule,
+  the hovered chart bar, and the edge of notices. It is never text, and the
+  notice background is only a pale wash of it.
+  Brand values: green #275D38, gold #F2CD00, as used by Aleph's public
+  catalog page.
+
+  Light is the default whatever the system setting; dark applies only when
+  the reader picks it, which site.js marks with <html data-theme="dark">.
+
+  Contrast (WCAG 2): text 4.5:1 or more; control borders 3:1 or more against
+  the page.
+    light  accent #275d38 on bg 7.75, surface 7.17, sunk 6.56, gold-soft 6.76
+           muted on bg 6.69, surface 6.19, sunk 5.66, gold-soft 5.83
+           brand-ink on brand 7.17; control-line on bg 3.23
+           gold-line on bg 4.87, gold-soft 4.24
+    dark   accent #76c68f on bg 8.66, surface 7.76, sunk 9.06
+           muted on bg 6.31, surface 5.65, gold-soft 4.63; ink on gold-soft 9.51
+           brand #3f975b on bg 4.89, surface 4.39; brand-ink on brand 5.25
+           control-line on bg 3.33; gold-line on gold-soft 4.68
+  Light gold (#f2cd00) is 1.44:1 on surface: it marks a hovered bar, which
+  also shows its value in a tooltip, so it is never the only cue.
+*/
+
+:root {
+  --bg: #ffffff;
+  --surface: #f6f6f6;      /* cards */
+  --sunk: #ececec;
+  --ink: #222222;
+  --muted: #5c5c5c;
+  --line: #e0e0e0;
+  --rule: #a6a6a6;
+  --control-line: #8f8f8f; /* borders of inputs and buttons */
+  --shadow-hover: 0 6px 18px -6px rgb(0 0 0 / .14);
+
+  --brand: #275d38;        /* UAlberta green */
+  --brand-ink: #f6f6f6;    /* text on brand fills */
+  --accent: #275d38;       /* links and small green text */
+  --accent-soft: #c7d1c6;  /* text selection */
+  --gold: #f2cd00;         /* UAlberta gold, highlights only */
+  --gold-soft: #fbf0bd;    /* a pale wash behind notices */
+  --gold-line: #857000;
+  /* Coverage bar: the two parts differ in lightness (4.99:1), not only hue. */
+  --coverage-missing: #f2cd00;
+  --coverage-complete: #275d38;
+
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-serif);
+  --font-display: var(--font-serif);
+  --display-style: italic;   /* headings, brand, current tab */
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #181818;
+  --surface: #222222;
+  --sunk: #131313;
+  --ink: #dcdcdc;
+  --muted: #9a9a9a;
+  --line: #323232;
+  --rule: #4a4a4a;
+  --control-line: #6b6b6b;
+  --shadow-hover: 0 0 0 1px rgb(255 255 255 / .05), 0 6px 20px -6px rgb(255 255 255 / .07);
+
+  --brand: #3f975b;        /* lifted green for fills on charcoal */
+  --brand-ink: #101010;
+  --accent: #76c68f;
+  --accent-soft: #24392b;
+  --gold: #d6b500;
+  --gold-soft: #36311a;
+  --gold-line: #b39a00;
+  --coverage-missing: #f2cd00;  /* 3.65:1 against the darker green below */
+  --coverage-complete: #2f7445;
+  color-scheme: dark;
+}
+
+/* The reader's choice of sans-serif. All text switches; headings drop the
+   italic, which suits Georgia but not a system sans at display sizes. */
+:root[data-font="sans"] {
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --display-style: normal;
+}
+
+/* ---------- Base ---------- */
+* { box-sizing: border-box; }
+html {
+  font-size: 17px;
+  -webkit-text-size-adjust: 100%;
+}
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 3px;
+}
+::selection { background: var(--accent-soft); color: var(--ink); }
+code {
+  font-family: inherit;
+  background: var(--sunk);
+  padding: .1em .4em;
+  border-radius: 6px;
+  font-size: .92em;
+}
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 768px) { .wrap { padding: 0 24px; } }
+
+/* ---------- Header ---------- */
+.top {
+  border-top: 3px solid var(--brand);
+  border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--gold); /* a gold line under the green rule */
+}
+.top-inner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: .25rem 1rem; min-height: 4rem; padding-top: .5rem; padding-bottom: .5rem;
+}
+.brand {
+  font-family: var(--font-display);
+  font-style: var(--display-style);
+  font-size: 1.35rem;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.brand span { color: var(--brand); }
+.top-side {
+  display: flex; align-items: center;
+  gap: .9rem;
+}
+.who { color: var(--muted); font-size: .88rem; }
+/* The toggles need site.js, which marks <html class="js">; without it they
+   would do nothing, so they stay hidden. */
+.toggles { display: none; gap: .5rem; }
+.js .toggles { display: flex; }
+/* Round buttons that switch a display preference. The theme button shows a
+   moon in light mode and a sun in dark mode; the font button shows "Aa" in
+   the typeface it switches to. */
+.toggle {
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none;
+  width: 2.25rem; height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--control-line);
+  background: var(--surface);
+  color: var(--muted);
+  text-decoration: none;
+  transition: color .15s ease, box-shadow .2s ease, transform .2s ease;
+}
+.toggle:hover {
+  color: var(--ink);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+.toggle svg {
+  width: 1.05rem; height: 1.05rem;
+  fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.font-toggle { font-size: .9rem; line-height: 1; }
+.font-toggle .sans { font-family: var(--font-sans); }
+.font-toggle .serif { font-family: var(--font-serif); display: none; }
+:root[data-font="sans"] .font-toggle .sans { display: none; }
+:root[data-font="sans"] .font-toggle .serif { display: inline; }
+.theme-toggle .sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .sun { display: inline; }
+.who strong { color: var(--ink); font-weight: 400; }
+
+/* ---------- Page navigation ---------- */
+.tabs { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.tabs-inner {
+  display: flex; gap: 1.5rem;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs-inner::-webkit-scrollbar { display: none; }
+/* The scrolling row clips anything outside it, so the focus ring is drawn
+   inside the link instead of around it. */
+.tabs a:focus-visible { outline-offset: -2px; }
+.tabs a {
+  flex: none;
+  padding: .7rem 0 .6rem;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: .94rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color .15s ease, border-color .15s ease;
+}
+.tabs a:hover { color: var(--ink); border-bottom-color: var(--line); }
+.tabs a[aria-current="page"] {
+  color: var(--ink);
+  font-style: var(--display-style);
+  border-bottom-color: var(--brand);
+}
+@media (max-width: 600px) { .tabs-inner { gap: 1.15rem; } }
+
+/* ---------- Page head ---------- */
+.intro {
+  margin: 2rem 0 1.5rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--line);
+}
+.intro h1 {
+  font-family: var(--font-display);
+  font-style: var(--display-style);
+  font-weight: 400;
+  font-size: 2.2rem;
+  line-height: 1.1;
+  letter-spacing: -0.005em;
+  margin: 0 0 .5rem;
+}
+@media (min-width: 768px) { .intro h1 { font-size: 2.8rem; } }
+.intro p { margin: 0; color: var(--muted); max-width: 62ch; }
+
+/* ---------- Range form ---------- */
+.range {
+  display: flex; flex-wrap: wrap; align-items: end; gap: .75rem 1rem;
+  margin: 1.25rem 0;
+}
+.range label {
+  display: grid; gap: .25rem;
+  font-size: .82rem; letter-spacing: .01em; color: var(--muted);
+}
+.range input {
+  min-height: 3rem;
+  padding: .5rem 1rem;
+  border: 1px solid var(--control-line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+.range button,
+.range .csv {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 3rem;
+  padding: .5rem 1.4rem;
+  border-radius: 12px;     /* the same corners as the date inputs */
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: box-shadow .2s ease, transform .2s ease;
+}
+.range button {
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+.range .csv {
+  margin-left: auto;
+  border: 1px solid var(--control-line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.range button:hover,
+.range .csv:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+@media (max-width: 600px) {
+  .range label { flex: 1 1 9rem; }
+  .range input { width: 100%; }
+  .range button, .range .csv { flex: 1 1 auto; margin-left: 0; }
+}
+
+/* ---------- Notices ---------- */
+.notice {
+  background: var(--gold-soft);
+  border-left: 3px solid var(--gold-line);
+  border-radius: 14px;
+  padding: .9rem 1.1rem;
+  margin: .75rem 0;
+}
+.notice > p { margin: 0; }
+
+/* Coverage: which days of the range have incomplete records, drawn as a bar
+   (gold incomplete, green complete) with a key. Yellow and green differ in
+   lightness as well as hue, so the split reads without colour vision too. */
+.coverage-bar {
+  display: block;
+  width: 100%; height: .7rem;
+  margin: .7rem 0 .45rem;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.coverage-missing { fill: var(--coverage-missing); }
+.coverage-complete { fill: var(--coverage-complete); }
+.coverage-key {
+  display: flex; flex-wrap: wrap; justify-content: space-between;
+  gap: .25rem 1rem;
+  font-size: .82rem;
+}
+.swatch {
+  display: inline-block;
+  width: .8rem; height: .8rem;
+  margin-right: .4rem;
+  vertical-align: -.1rem;
+  border-radius: 3px;
+}
+.swatch-missing { background: var(--coverage-missing); border: 1px solid var(--gold-line); }
+.swatch-complete { background: var(--coverage-complete); }
+/* Matches the hatched bars of incomplete days in the charts. */
+.swatch-hatch {
+  border: 1px solid var(--brand);
+  background: repeating-linear-gradient(45deg, var(--brand) 0 1.5px, transparent 1.5px 4px);
+  opacity: .7;
+}
+
+/* Badge on a total card whose total includes incomplete days. */
+.flag {
+  display: inline-block;
+  margin-top: .45rem;
+  padding: .1rem .55rem;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  background: var(--gold-soft);
+  color: var(--ink);
+  font-size: .78rem;
+}
+
+/* Short marker on a table row, such as an incomplete day. */
+.tag {
+  display: inline-block;
+  margin-left: .35rem;
+  padding: 0 .45rem;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  font-size: .75rem;
+  color: var(--ink);
+}
+.notice > ul { margin: .4rem 0; padding-left: 1.2rem; }
+.notice > ul li + li { margin-top: .2rem; }
+
+/* ---------- Total cards ---------- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: .75rem;
+  margin: 1.25rem 0;
+}
+.card,
+.panel {
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  border-radius: 16px;
+}
+.card { padding: 1rem 1.15rem; }
+.card .k { font-size: .82rem; letter-spacing: .01em; color: var(--muted); }
+.card .v {
+  font-size: 2rem;
+  line-height: 1.15;
+  margin: .2rem 0 .15rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.card .s { font-size: .82rem; color: var(--muted); }
+/* Change against the previous period: neutral, since more use is neither
+   good nor bad. */
+.card .delta {
+  margin-top: .45rem;
+  padding-top: .4rem;
+  border-top: 1px dashed var(--line);
+  font-size: .82rem;
+  font-style: italic;
+  color: var(--accent);
+}
+@media (max-width: 600px) { .card .v { font-size: 1.7rem; } }
+
+/* ---------- Panels ---------- */
+.panel { padding: 1.1rem 1.25rem 1.25rem; margin: .9rem 0; }
+.panel h2,
+.notes h2 {
+  font-family: var(--font-display);
+  font-style: var(--display-style);
+  font-weight: 400;
+  font-size: 1.4rem;
+  line-height: 1.2;
+  margin: 0 0 .75rem;
+}
+.panel-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .25rem 1rem; margin-bottom: .75rem;
+}
+.panel-head h2 { margin: 0; }
+.panel-head a { font-size: .88rem; }
+.panel > p { max-width: 68ch; }
+.muted { color: var(--muted); font-style: italic; }
+
+/* ---------- Report statement ---------- */
+.statement {
+  margin: 0 0 .9rem;
+  padding: 1rem 1.2rem;
+  background: var(--sunk);
+  border-left: 3px solid var(--brand);
+  border-radius: 12px;
+  font-size: 1.12rem;
+  line-height: 1.55;
+  user-select: all;        /* one click selects the whole sentence */
+  -webkit-user-select: all;
+  cursor: text;
+}
+/* The hover note for a chart bar, placed by site.js beside the pointer. */
+.chart-tip {
+  position: fixed;
+  z-index: 10;
+  padding: .3rem .6rem;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: .82rem;
+  line-height: 1.35;
+  max-width: min(18rem, calc(100vw - 16px));
+  pointer-events: none;
+}
+.chart-tip[hidden] { display: none; }
+
+/* The copy button sits in the statement's top-right corner; like the
+   toggles, it needs site.js and is hidden without it. Its note fades in
+   beside it after a copy. */
+.statement-box { position: relative; max-width: 68ch; }
+.statement-box .statement { padding-right: 3.4rem; }
+.copy-button {
+  display: none;
+  position: absolute; top: .6rem; right: .6rem;
+  align-items: center; justify-content: center;
+  width: 2.1rem; height: 2.1rem;
+  border-radius: 8px;
+  border: 1px solid var(--control-line);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .15s ease, box-shadow .2s ease;
+}
+.js .copy-button { display: inline-flex; }
+.copy-button:hover { color: var(--ink); box-shadow: var(--shadow-hover); }
+.copy-button svg {
+  width: 1.05rem; height: 1.05rem;
+  fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.copy-note {
+  position: absolute; top: -1.9rem; right: 0;
+  padding: .2rem .6rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: .8rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+.copy-note.shown { opacity: 1; }
+.hint { margin: .5rem 0 0; color: var(--muted); font-size: .88rem; }
+.print-only { display: none; }
+
+/* ---------- Charts (inline SVG; colours come from these classes) ---------- */
+.chart { width: 100%; height: auto; display: block; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+.chart .bar { fill: var(--brand); transition: fill .15s ease; }
+.chart .bar:hover { fill: var(--gold); }
+.chart .bar.empty { fill: var(--sunk); }
+/* Incomplete days: each bar is faded and hatched, with a thin outline, so
+   it reads as "at least this much" wherever it falls. The fill is the
+   chart's hatch pattern, set on the bar itself. */
+.chart .hatch-bg { fill: var(--brand); fill-opacity: .16; }
+.chart .hatch-line { stroke: var(--brand); stroke-width: 2; stroke-opacity: .75; }
+.chart .hatch-bg-hover { fill: var(--gold); fill-opacity: .18; }
+.chart .hatch-line-hover { stroke: var(--gold); stroke-width: 2; }
+.chart .bar-incomplete { stroke: var(--brand); stroke-width: 1; stroke-opacity: .7; transition: stroke .15s ease; }
+.chart .bar-incomplete:hover { stroke: var(--gold); stroke-width: 2; stroke-opacity: 1; }
+.chart-key { margin: .5rem 0 0; color: var(--muted); font-size: .82rem; }
+/* On phones the 760-unit chart would shrink its labels to about 5px. Keep a
+   minimum width, scroll sideways like the table, and enlarge the axis text. */
+.chart-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 600px) {
+  .chart { min-width: 560px; }
+  .chart .axis { font-size: 14px; }
+}
+
+/* The daily figures behind the charts, for screen readers and anyone who
+   wants exact numbers. Closed by default. */
+.day-table > summary { cursor: pointer; color: var(--muted); }
+.day-table[open] > summary { margin-bottom: .75rem; }
+.day-table caption { caption-side: top; text-align: left; padding: 0 0 .5rem; color: var(--muted); font-size: .88rem; }
+
+/* ---------- Table ---------- */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .94rem;
+  font-variant-numeric: tabular-nums;
+}
+th, td {
+  padding: .65em .85em;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+tr > * + * { border-left: 1px dashed var(--line); }
+tbody tr:last-child > * { border-bottom: 0; }
+thead th { font-weight: 400; font-size: .82rem; color: var(--muted); }
+tbody th { font-weight: 400; }
+tbody th code { background: transparent; padding: 0; }
+.n { text-align: right; }
+/* Share bars in brand green on a sunk track, not the browser's own green. */
+meter {
+  width: 5.5rem; height: .5rem; vertical-align: middle;
+  appearance: none; -webkit-appearance: none;
+  background: var(--sunk); border: 0; border-radius: 999px;
+}
+meter::-webkit-meter-bar { background: var(--sunk); border: 0; border-radius: 999px; height: .5rem; }
+meter::-webkit-meter-optimum-value { background: var(--brand); border-radius: 999px; }
+meter::-moz-meter-bar { background: var(--brand); border-radius: 999px; }
+tfoot th, tfoot td { border-top: 1px solid var(--rule); border-bottom: 0; }
+/* Rows whose largest prompt came close to the context window. */
+tr.warn > * { background: var(--gold-soft); }
+tr.warn > th { box-shadow: inset 3px 0 0 var(--gold-line); }
+tr.incomplete > * { background: var(--gold-soft); }
+/* Tables with sentences in them wrap instead of scrolling forever. */
+table.wrap-cells td { white-space: normal; min-width: 14rem; }
+table.wrap-cells td.n { min-width: 0; }
+
+/* ---------- Empty state, notes, footer ---------- */
+.empty-state p { color: var(--muted); margin: 0; max-width: 62ch; }
+
+.notes { margin: 2rem 0; color: var(--muted); font-size: .94rem; }
+.notes h2 { color: var(--ink); }
+.notes ul { list-style: none; margin: 0; padding: 0; max-width: 72ch; }
+.notes li { position: relative; padding-left: 1.2em; }
+.notes li + li { margin-top: .45em; }
+.notes li::before {
+  content: ""; position: absolute; left: .15em; top: .8em;
+  width: .5em; height: 1px; background: var(--muted);
+}
+
+.foot {
+  color: var(--muted);
+  font-size: .82rem;
+  padding-bottom: 2rem;
+}
+/* Rule inside the padding so it lines up with the content above. */
+.foot::before {
+  content: "";
+  display: block;
+  border-top: 1px solid var(--line);
+  margin-bottom: 1rem;
+}
+
+/* ---------- Page-load reveal (CSS only; the CSP forbids inline styles) ---------- */
+.intro, .range, .cards > *, main > .panel {
+  animation: rise .6s cubic-bezier(.2, .7, .2, 1) both;
+}
+.cards > :nth-child(1) { animation-delay: 60ms; }
+.cards > :nth-child(2) { animation-delay: 110ms; }
+.cards > :nth-child(3) { animation-delay: 160ms; }
+.cards > :nth-child(4) { animation-delay: 210ms; }
+main > .panel { animation-delay: 250ms; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro, .range, .cards > *, main > .panel { animation: none; }
+  .range button, .range .csv, .chart .bar, .toggle { transition: none; }
+}
+
+@media print {
+  .range, .foot, .tabs, .hint, .toggles, .copy-button, .copy-note { display: none !important; }
+  .card, .panel { background: none; }
+  body { background: #fff; color: #000; }
+  .card, .panel, .table-wrap { border-color: #bbb; }
+  .intro, .range, .cards > *, main > .panel { animation: none; }
+  /* The report page prints as a plain statement. */
+  .page-report .print-only { display: inline; }
+  .page-report .statement { background: none; border-left-color: #000; padding-left: .9rem; }
+  .page-report .panel { border: 0; padding-left: 0; padding-right: 0; }
+}

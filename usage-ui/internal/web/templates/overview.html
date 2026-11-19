@@ -1,0 +1,111 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Your inference usage</h1>
+    <p>Requests made with your own {{.Site}} API key, grouped by day (UTC) and model.</p>
+  </section>
+
+  {{template "range" .}}
+
+  <section class="cards" aria-label="Totals for the selected range">
+    <div class="card"><div class="k">Total tokens</div><div class="v">{{num .Totals.TotalTokens}}</div>
+      <div class="s">{{num .Totals.PromptTokens}} in · {{num .Totals.CompletionTokens}} out{{if .Totals.ReasoningReported}}, of which {{num .Totals.ReasoningTokens}} thinking{{end}}</div>
+      {{template "incomplete-flag" .Coverage}}
+      {{with .Change.Tokens}}<div class="delta">{{.}}</div>{{end}}</div>
+    <div class="card"><div class="k">Requests</div><div class="v">{{num .Totals.Requests}}</div>
+      <div class="s">{{count .Totals.Errors "error" "errors"}}{{if .Totals.Errors}} · <a href="{{.ErrorsHref}}">see why</a>{{end}}</div>
+      {{template "incomplete-flag" .Coverage}}
+      {{with .Change.Requests}}<div class="delta">{{.}}</div>{{end}}</div>
+    <div class="card"><div class="k">GPU-hours</div><div class="v">{{gpuh .Totals.GPUSeconds}}</div>
+      <div class="s">estimate, see note below</div>
+      {{template "incomplete-flag" .Coverage}}
+      {{with .Change.GPU}}<div class="delta">{{.}}</div>{{end}}</div>
+    <div class="card"><div class="k">Model wake-ups</div><div class="v">{{num .Totals.ColdStarts}}</div>
+      <div class="s">attempts that found the model not running</div>
+      {{template "incomplete-flag" .Coverage}}</div>
+  </section>
+
+  {{if .Models}}
+  <section class="panel">
+    <h2>Tokens per {{.PeriodUnit}}</h2>
+    <div class="chart-wrap" tabindex="0" role="region" aria-label="Chart, scrolls sideways on narrow screens">{{.TokenChart}}</div>
+    {{template "chart-key" .Coverage}}
+  </section>
+  <section class="panel">
+    <h2>GPU-hours per {{.PeriodUnit}}</h2>
+    <div class="chart-wrap" tabindex="0" role="region" aria-label="Chart, scrolls sideways on narrow screens">{{.GPUChart}}</div>
+    {{template "chart-key" .Coverage}}
+  </section>
+  {{/* The charts as text, for screen readers and anyone who wants exact figures. */}}
+  <section class="panel">
+    <details class="day-table">
+      <summary>Show the {{if eq .PeriodUnit "week"}}weekly{{else}}daily{{end}} figures as a table</summary>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+      <table>
+        <caption>Tokens, GPU-hours, and requests per {{.PeriodUnit}} (UTC), {{.From}} to {{.To}}</caption>
+        <thead><tr>
+          <th scope="col">{{if eq .PeriodUnit "week"}}Week{{else}}Day{{end}} (UTC)</th><th scope="col" class="n">Tokens</th>
+          <th scope="col" class="n">GPU-hours</th><th scope="col" class="n">Requests</th>
+        </tr></thead>
+        <tbody>
+        {{range .Periods}}
+        <tr{{if .Incomplete}} class="incomplete"{{end}}>
+          <th scope="row">{{.Label}}{{if .Incomplete}} <span class="tag">{{if eq .Days 1}}incomplete{{else}}{{count .IncompleteDays "incomplete day" "incomplete days"}}{{end}}</span>{{end}}</th>
+          <td class="n">{{num .Tokens}}</td>
+          <td class="n">{{gpuh .GPUSeconds}}</td>
+          <td class="n">{{num .Requests}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>By model</h2>
+      <a href="{{.ModelsHref}}">Speed, context, and endpoints</a>
+    </div>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table>
+      <thead><tr>
+        <th scope="col">Model</th><th scope="col" class="n">Requests</th>
+        <th scope="col" class="n">Total tokens</th><th scope="col">Share</th>
+        <th scope="col" class="n">GPU-hours</th>
+      </tr></thead>
+      <tbody>
+      {{range .Models}}
+      <tr>
+        <th scope="row"><code>{{.Model}}</code></th>
+        <td class="n">{{num .Requests}}</td>
+        <td class="n">{{num .TotalTokens}}</td>
+        <td><meter min="0" max="100" value="{{share .TotalTokens $.Totals.TotalTokens}}">{{share .TotalTokens $.Totals.TotalTokens}}%</meter></td>
+        <td class="n">{{gpuh .GPUSeconds}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {{else}}
+  <section class="panel empty-state">
+    <h2>No usage in this range</h2>
+    <p>Nothing was recorded for <strong>{{.User}}</strong> between {{.From}} and {{.To}}. If you expected usage, try a wider range, or check that you used your own key rather than a shared application.</p>
+  </section>
+  {{end}}
+
+  <section class="notes">
+    <h2>Reading these numbers</h2>
+    <ul>
+      <li>Records on hand span {{longdate .Oldest}} to {{longdate .Newest}}, and this page refreshed at {{ts .RefreshedAt}}. {{if .Coverage.Partial}}{{count .Coverage.IncompleteDays "day" "days"}} in this range {{if eq .Coverage.IncompleteDays 1}}has{{else}}have{{end}} incomplete records, marked on this page.{{else}}Every day in this range has complete records.{{end}}</li>
+      {{with .SavedDays}}<li>{{count . "day" "days"}} in this range {{if eq . 1}}comes{{else}}come{{end}} from saved daily totals, because the gateway's logs no longer hold {{if eq . 1}}it{{else}}them{{end}} in full. Saved days keep the same figures the pages showed at the time.</li>{{end}}
+      {{template "gpu-note"}}
+      <li>Thinking tokens are the part of the output a reasoning model spent thinking. Not every model reports them, so the thinking count covers only models that do; the Models page shows which.</li>
+      <li>Comparisons with the previous period appear only when records cover that whole period.</li>
+      <li>Token counts can be zero when a model does not report usage or a stream ends early. Zero does not prove no work was done.</li>
+      <li>Model wake-ups are attempts that found the model not running. The gateway may have started it, or refused because no capacity was free. They are counted separately and are not included in requests.</li>
+      <li>Usage through the browser chat or other shared applications is recorded under that application's key, so it does not appear here.</li>
+      {{template "tasks-note"}}
+    </ul>
+  </section>
+{{template "foot" .}}

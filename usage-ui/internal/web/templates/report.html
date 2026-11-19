@@ -1,0 +1,61 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Usage statement</h1>
+    <p>For grant applications, allocation renewals, and progress reports. <span class="print-only">Prepared for {{.User}}, covering {{.ReportSpan}} (UTC){{with .RequestedLong}}; requested {{.}}{{end}}.</span></p>
+  </section>
+
+  {{template "range" .}}
+
+  <section class="panel">
+    <h2>Ready to copy</h2>
+    <div class="statement-box">
+      <p class="statement" id="statement">{{.Statement}}</p>
+      <button type="button" class="copy-button" data-copy="statement" aria-label="Copy the sentence" title="Copy the sentence">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>
+      </button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+    {{if .TodayLeftOut}}<p class="hint">Today is left out until it is over.</p>{{end}}
+    <p class="hint">To save this page as a PDF, use your browser's print and choose "Save as PDF".</p>
+  </section>
+
+  {{if .Models}}
+  <section class="panel">
+    <h2>Summary, {{.ReportSpan}}</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table>
+      <thead><tr>
+        <th scope="col">Model</th><th scope="col" class="n">Requests</th>
+        <th scope="col" class="n">Tokens</th><th scope="col" class="n">GPU-hours</th>
+      </tr></thead>
+      <tbody>
+      {{range .Models}}
+      <tr>
+        <th scope="row"><code>{{.Model}}</code></th>
+        <td class="n">{{num .Requests}}</td>
+        <td class="n">{{num .TotalTokens}}</td>
+        <td class="n">{{gpuh .GPUSeconds}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+      <tfoot><tr>
+        <th scope="row">Total</th>
+        <td class="n">{{num .Totals.Requests}}</td>
+        <td class="n">{{num .Totals.TotalTokens}}</td>
+        <td class="n">{{gpuh .Totals.GPUSeconds}}</td>
+      </tr></tfoot>
+    </table>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="notes">
+    <h2>About these figures</h2>
+    <ul>
+      {{template "gpu-note"}}
+      <li>The figures cover requests made with your own API key on the days in the statement (UTC). Use through shared applications, such as the browser chat, is not included.</li>
+      {{template "tasks-note"}}
+      <li>Records on hand span {{longdate .Oldest}} to {{longdate .Newest}}. Days with incomplete records are left out of the statement and the summary.</li>
+    </ul>
+  </section>
+{{template "foot" .}}

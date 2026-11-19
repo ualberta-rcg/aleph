@@ -1,0 +1,53 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Errors</h1>
+    <p>Requests that failed, grouped by the status the gateway returned, with what each one usually means.</p>
+  </section>
+
+  {{template "range" .}}
+
+  {{if .Statuses}}
+  <section class="cards" aria-label="Error totals for the selected range">
+    <div class="card"><div class="k">Failed requests</div><div class="v">{{num .Totals.Errors}}</div>
+      <div class="s">of {{num .Totals.Requests}} requests</div></div>
+    <div class="card"><div class="k">Error rate</div><div class="v">{{.ErrorRate}}</div>
+      <div class="s">failed ÷ all requests</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>By status</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table class="wrap-cells">
+      <thead><tr>
+        <th scope="col">Status</th><th scope="col">What it means</th>
+        <th scope="col" class="n">Count</th><th scope="col">Models</th>
+      </tr></thead>
+      <tbody>
+      {{range .Statuses}}
+      <tr>
+        <th scope="row">{{.Status}}</th>
+        <td>{{.Meaning}}</td>
+        <td class="n">{{num .Count}}</td>
+        <td>{{.Models}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {{else}}
+  <section class="panel empty-state">
+    <h2>No errors in this range</h2>
+    <p>{{if .Totals.Requests}}All {{num .Totals.Requests}} of your requests between {{.From}} and {{.To}} succeeded.{{else}}Nothing was recorded for <strong>{{.User}}</strong> between {{.From}} and {{.To}}.{{end}}</p>
+  </section>
+  {{end}}
+
+  <section class="notes">
+    <h2>Reading these numbers</h2>
+    <ul>
+      <li>Model wake-ups ({{num .Totals.ColdStarts}} in this range) are not counted as errors. They are attempts that found the model not running: the gateway may have started it, or refused because no capacity was free. Retrying after a short wait often succeeds; repeated wake-ups can mean the platform is busy.</li>
+      <li>The meanings are the usual causes. The response your client received has the exact reason.</li>
+      <li>If an error keeps happening and the meaning does not explain it, contact support@tech.alliancecan.ca with the model, the time (UTC), and the status.</li>
+    </ul>
+  </section>
+{{template "foot" .}}

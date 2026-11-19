@@ -1,0 +1,57 @@
+name: Usage UI checks
+
+# Formatting, vet, and race-enabled tests for the usage UI (usage-ui/).
+# Builds nothing and publishes nothing.
+
+on:
+  # Pushes to main only: a pull request branch is tested by the pull_request
+  # event, so also running on every branch push would test it twice.
+  push:
+    branches:
+      - main
+    paths:
+      - 'usage-ui/**'
+      - '.github/workflows/usage-ui.yml'
+  pull_request:
+    paths:
+      - 'usage-ui/**'
+      - '.github/workflows/usage-ui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test usage UI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: usage-ui
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: usage-ui/go.mod
+          cache-dependency-path: usage-ui/go.mod
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Vet proxy check
+        run: go vet -tags proxycheck ./...
+
+      - name: Test with race detector
+        run: go test -race -count=1 ./...

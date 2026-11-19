@@ -1,0 +1,23 @@
+# Usage UI daily history: a reference spec, not yet applied anywhere.
+#
+# Holds one small gzipped file of daily usage totals per day for a year (see
+# usage-ui/README.md, "Daily history"). A year is under 20 MB even for 200
+# active users; 1Gi leaves ample room. Only the usage-ui pod writes here. The Deployment uses the
+# Recreate strategy, so two pods never write at once.
+#
+# Like every claim on this platform: never delete it. Losing it loses the
+# saved days, which the ledger can no longer supply.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: usage-ui-history
+  namespace: models
+  labels:
+    app: usage-ui
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-models
+  resources:
+    requests:
+      storage: 1Gi
