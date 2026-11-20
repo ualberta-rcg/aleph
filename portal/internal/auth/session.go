@@ -278,28 +278,28 @@ func (m *Manager) EnsureCSRF(w http.ResponseWriter, r *http.Request) (string, er
 func (m *Manager) VerifyCSRF(r *http.Request, formToken string) error {
 	if sfs := strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))); sfs != "" {
 		if sfs != "same-origin" && sfs != "none" {
-			return ErrInvalidCSRF
+			return fmt.Errorf("%w: sec-fetch-site=%s", ErrInvalidCSRF, sfs)
 		}
 	}
 	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
 		origin = strings.TrimRight(origin, "/")
 		if m.secureCookies {
 			if !strings.EqualFold(origin, m.publicOrigin) {
-				return ErrInvalidCSRF
+				return fmt.Errorf("%w: origin-mismatch", ErrInvalidCSRF)
 			}
 		} else {
 			parsed, err := url.Parse(origin)
 			if err != nil || parsed.Scheme != "http" || !strings.EqualFold(parsed.Host, r.Host) {
-				return ErrInvalidCSRF
+				return fmt.Errorf("%w: origin-mismatch", ErrInvalidCSRF)
 			}
 		}
 	}
 	cookie, err := r.Cookie(m.CSRFCookieName())
 	if err != nil || !isHexToken(cookie.Value, 32) || !isHexToken(formToken, 32) {
-		return ErrInvalidCSRF
+		return fmt.Errorf("%w: missing-or-malformed-csrf-token", ErrInvalidCSRF)
 	}
 	if subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(formToken)) != 1 {
-		return ErrInvalidCSRF
+		return fmt.Errorf("%w: token-mismatch", ErrInvalidCSRF)
 	}
 	return nil
 }

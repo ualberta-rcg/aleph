@@ -13,7 +13,7 @@
   <div class="login-grid">
     <section class="panel">
       <h2>Sign in with your API key</h2>
-      <p>Paste your personal <code>TYK_KEY</code> (or the full <code>export TYK_KEY=...</code> line from <code>~/.aleph_tyk.env</code> on Vulcan). Your key is verified against Tyk in memory, converted to a short fingerprint, and discarded immediately.</p>
+      <p>Paste your personal <code>TYK_KEY</code> (or paste the full output of <code>cat ~/.aleph_tyk.env</code> on Vulcan). Your key is verified against Tyk in memory, converted to a short fingerprint, and discarded immediately.</p>
       <form class="auth-form" method="post" action="/login">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <input type="hidden" name="next" value="{{.Next}}">

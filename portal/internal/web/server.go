@@ -202,12 +202,30 @@ func isPrivateOrLoopbackAddr(remoteAddr string) bool {
 	return addr.IsLoopback() || addr.IsPrivate()
 }
 
+func sanitizeLogToken(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) > 80 {
+		raw = raw[:80]
+	}
+	var b strings.Builder
+	b.Grow(len(raw))
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if c >= 0x21 && c <= 0x7e {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
 func secureHeaders(hsts bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		headers := w.Header()
 		headers.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		headers.Set("X-Content-Type-Options", "nosniff")
-		headers.Set("Referrer-Policy", "no-referrer")
+		headers.Set("Referrer-Policy", "same-origin")
 		headers.Set("X-Frame-Options", "DENY")
 		if hsts {
 			headers.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -295,6 +313,7 @@ func (s *Server) loginAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	nextPath := safeNextPath(r.PostFormValue("next"))
 	if err := s.auth.VerifyCSRF(r, r.PostFormValue("csrf_token")); err != nil {
+		log.Printf("auth csrf rejected: path=%s host=%s origin=%s sfs=%s err=%v", sanitizeLogToken(r.URL.Path), sanitizeLogToken(r.Host), sanitizeLogToken(r.Header.Get("Origin")), sanitizeLogToken(r.Header.Get("Sec-Fetch-Site")), err)
 		s.renderLogin(w, r, http.StatusForbidden, nextPath, "Your login form expired or failed origin verification. Please submit again.")
 		return
 	}
@@ -305,18 +324,27 @@ func (s *Server) loginAPIKey(w http.ResponseWriter, r *http.Request) {
 	subj, err := s.tyk.Authenticate(r.Context(), r.RemoteAddr, r.PostFormValue("api_key"), s.src, s.auth)
 	if err != nil {
 		status := http.StatusUnauthorized
+		reason := "key_rejected"
 		msg := "That API key was not accepted. Paste your personal TYK_KEY from ~/.aleph_tyk.env and try again."
 		switch {
+		case errors.Is(err, auth.ErrInvalidKeyFormat):
+			status = http.StatusBadRequest
+			reason = "invalid_key_format"
+			msg = "Could not find a valid API key in that input. Paste your TYK_KEY value or the output of cat ~/.aleph_tyk.env."
 		case errors.Is(err, auth.ErrKeyRateLimited):
 			status = http.StatusTooManyRequests
+			reason = "rate_limited"
 			msg = "Too many failed sign-in attempts from your address. Wait a minute and try again."
 		case errors.Is(err, auth.ErrDeniedIdentity):
 			status = http.StatusForbidden
+			reason = "denied_identity"
 			msg = "Shared platform or service keys cannot sign in to the personal usage portal."
 		case errors.Is(err, auth.ErrTykUnavailable):
 			status = http.StatusBadGateway
+			reason = "tyk_unavailable"
 			msg = "Could not reach the Tyk gateway to verify your key right now. Try again shortly."
 		}
+		log.Printf("auth api-key login failed: status=%d reason=%s", status, reason)
 		s.renderLogin(w, r, status, nextPath, msg)
 		return
 	}
@@ -340,6 +368,7 @@ func (s *Server) loginMockOIDC(w http.ResponseWriter, r *http.Request) {
 	}
 	nextPath := safeNextPath(r.PostFormValue("next"))
 	if err := s.auth.VerifyCSRF(r, r.PostFormValue("csrf_token")); err != nil {
+		log.Printf("auth csrf rejected: path=%s host=%s origin=%s sfs=%s err=%v", sanitizeLogToken(r.URL.Path), sanitizeLogToken(r.Host), sanitizeLogToken(r.Header.Get("Origin")), sanitizeLogToken(r.Header.Get("Sec-Fetch-Site")), err)
 		s.renderLogin(w, r, http.StatusForbidden, nextPath, "Your login form expired or failed origin verification. Please submit again.")
 		return
 	}
@@ -366,6 +395,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBody)
 	_ = r.ParseForm()
 	if err := s.auth.VerifyCSRF(r, r.PostFormValue("csrf_token")); err != nil {
+		log.Printf("auth csrf rejected: path=%s host=%s origin=%s sfs=%s err=%v", sanitizeLogToken(r.URL.Path), sanitizeLogToken(r.Host), sanitizeLogToken(r.Header.Get("Origin")), sanitizeLogToken(r.Header.Get("Sec-Fetch-Site")), err)
 		http.Error(w, "Invalid logout request.", http.StatusForbidden)
 		return
 	}

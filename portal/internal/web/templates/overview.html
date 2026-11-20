@@ -90,6 +90,7 @@
   <section class="panel empty-state">
     <h2>No usage in this range</h2>
     <p>Nothing was recorded for <strong>{{.User}}</strong> between {{.From}} and {{.To}}. If you expected usage, try a wider range, or check that you used your personal API key rather than a shared application.</p>
+    {{if .ScopedToSingleKey}}<p class="hint">This API key fingerprint has no recorded inference requests in the retained log window yet. Freshly rotated PAM keys link to your historical account usage automatically after your first API call.</p>{{end}}
   </section>
   {{end}}
 

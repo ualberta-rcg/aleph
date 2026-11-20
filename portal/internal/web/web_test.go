@@ -267,11 +267,12 @@ func TestAPIKeyLoginAndBearerCSVFormulaProtection(t *testing.T) {
 		t.Fatalf("CSV did not escape formula-prefixed model name:\n%s", csvBody)
 	}
 
-	// Browser form login with pasted `export TYK_KEY='...'` succeeds.
+	// Browser form login with flattened `cat ~/.aleph_tyk.env` paste (<input type="password"> strips \n).
 	csrfCookie, token := extractCSRF(t, h)
+	flattenedEnvPaste := "Aleph Tyk API key for alice. Managed by aleph-tyk-key (PAM) — do not edit. # Rotated automatically if invalid. TYK_KEY=" + aliceKey
 	form := url.Values{
 		"csrf_token": {token},
-		"api_key":    {"export TYK_KEY='" + aliceKey + "'"},
+		"api_key":    {flattenedEnvPaste},
 		"next":       {"/keys"},
 	}
 	post := httptest.NewRequest(http.MethodPost, "http://localhost:30080/login", strings.NewReader(form.Encode()))
@@ -283,6 +284,9 @@ func TestAPIKeyLoginAndBearerCSVFormulaProtection(t *testing.T) {
 	h.ServeHTTP(postRec, post)
 	if postRec.Code != http.StatusSeeOther || postRec.Header().Get("Location") != "/keys" {
 		t.Fatalf("POST /login = %d loc=%q, want 303 /keys", postRec.Code, postRec.Header().Get("Location"))
+	}
+	if rp := postRec.Header().Get("Referrer-Policy"); rp != "same-origin" {
+		t.Fatalf("Referrer-Policy = %q, want same-origin", rp)
 	}
 }
 

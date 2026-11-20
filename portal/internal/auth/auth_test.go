@@ -148,16 +148,28 @@ func TestSessionTamperExpiryAndCSRF(t *testing.T) {
 }
 
 func TestCleanAPIKeyInputAndTykAuth(t *testing.T) {
+	pamBlock := "# Aleph Tyk API key for demo_user. Managed by aleph-tyk-key (PAM) — do not edit.\n# Rotated automatically if it is ever invalid; ask your Aleph admin to revoke.\nTYK_KEY=eyJvcmciOiIiLCJpZCI6ImRlbW8ta2V5LTEyMzQiLCJoIjoibXVybXVyMTI4In0="
+	pamBlockNoHash := strings.TrimPrefix(pamBlock, "# ")
+	pamFlattened := strings.ReplaceAll(pamBlockNoHash, "\n", " ")
+
 	cases := map[string]string{
 		"raw-token-1234":                              "raw-token-1234",
 		"Bearer raw-token-1234":                       "raw-token-1234",
 		"Authorization: Bearer raw-token-1234":        "raw-token-1234",
 		"# comment\nexport TYK_KEY=\"env-key-5678\"\n": "env-key-5678",
+		pamBlock:       "eyJvcmciOiIiLCJpZCI6ImRlbW8ta2V5LTEyMzQiLCJoIjoibXVybXVyMTI4In0=",
+		pamBlockNoHash: "eyJvcmciOiIiLCJpZCI6ImRlbW8ta2V5LTEyMzQiLCJoIjoibXVybXVyMTI4In0=",
+		pamFlattened:   "eyJvcmciOiIiLCJpZCI6ImRlbW8ta2V5LTEyMzQiLCJoIjoibXVybXVyMTI4In0=",
 	}
 	for input, want := range cases {
 		got, err := CleanAPIKeyInput(input)
 		if err != nil || string(got) != want {
 			t.Fatalf("CleanAPIKeyInput(%q) = %q, %v; want %q", input, string(got), err, want)
+		}
+	}
+	for _, bad := range []string{"", "   ", "# comment only\n", "Aleph Tyk API key prose without assignment", "TYK_KEY=\"\""} {
+		if _, err := CleanAPIKeyInput(bad); !errors.Is(err, ErrInvalidKeyFormat) {
+			t.Fatalf("CleanAPIKeyInput(%q) expected ErrInvalidKeyFormat, got %v", bad, err)
 		}
 	}
 

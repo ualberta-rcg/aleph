@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -16,9 +17,12 @@ import (
 
 var (
 	ErrInvalidKeyFormat = errors.New("enter a valid Aleph API key")
-	ErrKeyRejected      = errors.New(" that API key was not accepted by the gateway")
+	ErrKeyRejected      = errors.New("that API key was not accepted by the gateway")
 	ErrKeyRateLimited   = errors.New("too many failed sign-in attempts or gateway rate limit reached; wait a minute and try again")
 	ErrTykUnavailable   = errors.New("could not reach the authentication gateway right now; try again shortly")
+
+	envKeyAssignPattern = regexp.MustCompile(`(?:^|[\s;#])(?:export\s+)?(?:TYK_KEY|ALEPH_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY)\s*=\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s;#"'\r\n]*))`)
+	bearerTokenPattern  = regexp.MustCompile(`(?i)(?:^|[\s"'])(?:authorization\s*:\s*)?bearer\s+([^\s"';#\r\n]+)`)
 )
 
 const (
@@ -29,60 +33,73 @@ const (
 )
 
 // CleanAPIKeyInput extracts the raw API key from pasted user input, accepting
-// bare keys, "Bearer <key>", "Authorization: Bearer <key>", or lines copied
-// from ~/.aleph_tyk.env (such as `export TYK_KEY="..."`).
+// bare keys, "Bearer <key>", "Authorization: Bearer <key>", or multi-line /
+// browser-flattened pastes of ~/.aleph_tyk.env (with or without `#` comments).
 func CleanAPIKeyInput(input string) ([]byte, error) {
-	candidate := strings.TrimSpace(input)
-	if candidate == "" {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
 		return nil, ErrInvalidKeyFormat
 	}
-	if strings.ContainsAny(candidate, "\r\n") {
+
+	// 1. Prefer explicit KEY=... assignments (taking the last match so trailing
+	// TYK_KEY=... lines win even when browser <input type="password"> strips \n).
+	if matches := envKeyAssignPattern.FindAllStringSubmatch(trimmed, -1); len(matches) > 0 {
+		last := matches[len(matches)-1]
+		val := firstNonEmpty(last[1], last[2], last[3])
+		return validateKeyToken(val)
+	}
+
+	// 2. Next check for "Authorization: Bearer <token>" or "Bearer <token>".
+	if matches := bearerTokenPattern.FindAllStringSubmatch(trimmed, -1); len(matches) > 0 {
+		val := strings.TrimSpace(matches[len(matches)-1][1])
+		return validateKeyToken(val)
+	}
+
+	// 3. Multi-line fallback: skip blank/comment/prose lines and take the last
+	// clean printable-ASCII key token.
+	if strings.ContainsAny(trimmed, "\r\n") {
 		var picked string
-		for _, line := range strings.Split(candidate, "\n") {
-			line = strings.TrimSpace(line)
+		for _, line := range strings.Split(trimmed, "\n") {
+			line = stripMatchingQuotes(strings.TrimSpace(line))
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue
 			}
-			if strings.HasPrefix(line, "export TYK_KEY=") || strings.HasPrefix(line, "TYK_KEY=") {
-				picked = line
-				break
-			}
-			if picked == "" {
+			if _, err := validateKeyToken(line); err == nil {
 				picked = line
 			}
 		}
-		candidate = picked
+		return validateKeyToken(picked)
 	}
+
+	return validateKeyToken(stripMatchingQuotes(trimmed))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func stripMatchingQuotes(s string) string {
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
+			return strings.TrimSpace(s[1 : len(s)-1])
+		}
+	}
+	return s
+}
+
+func validateKeyToken(candidate string) ([]byte, error) {
 	candidate = strings.TrimSpace(candidate)
-	if after, ok := strings.CutPrefix(candidate, "export "); ok {
-		candidate = strings.TrimSpace(after)
-	}
-	for _, envPrefix := range []string{"TYK_KEY=", "OPENAI_API_KEY=", "ANTHROPIC_API_KEY="} {
-		if after, ok := strings.CutPrefix(candidate, envPrefix); ok {
-			candidate = strings.TrimSpace(after)
-			break
-		}
-	}
-	if len(candidate) >= 2 {
-		if (candidate[0] == '"' && candidate[len(candidate)-1] == '"') ||
-			(candidate[0] == '\'' && candidate[len(candidate)-1] == '\'') {
-			candidate = strings.TrimSpace(candidate[1 : len(candidate)-1])
-		}
-	}
-	lower := strings.ToLower(candidate)
-	if strings.HasPrefix(lower, "authorization:") {
-		candidate = strings.TrimSpace(candidate[len("authorization:"):])
-		lower = strings.ToLower(candidate)
-	}
-	if strings.HasPrefix(lower, "bearer ") {
-		candidate = strings.TrimSpace(candidate[len("bearer "):])
-	}
 	if len(candidate) == 0 || len(candidate) > maxRawKeyLength {
 		return nil, ErrInvalidKeyFormat
 	}
 	for i := 0; i < len(candidate); i++ {
 		c := candidate[i]
-		if c <= 0x20 || c >= 0x7f {
+		if c <= 0x20 || c >= 0x7f || c == '"' || c == '\'' {
 			return nil, ErrInvalidKeyFormat
 		}
 	}
@@ -145,14 +162,12 @@ func (v *TykValidator) Authenticate(
 
 	keyBytes, err := CleanAPIKeyInput(rawInput)
 	if err != nil {
-		v.recordFailure(clientIP)
 		return source.Subject{}, ErrInvalidKeyFormat
 	}
 	defer ZeroBytes(keyBytes)
 
 	fp := source.ComputeKeyFP(string(keyBytes))
 	if !fp.Valid() {
-		v.recordFailure(clientIP)
 		return source.Subject{}, ErrInvalidKeyFormat
 	}
 
@@ -183,7 +198,7 @@ func (v *TykValidator) Authenticate(
 		return source.Subject{}, ErrKeyRateLimited
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		v.recordFailure(clientIP)
-		return source.Subject{}, errors.New(strings.TrimSpace(ErrKeyRejected.Error()))
+		return source.Subject{}, ErrKeyRejected
 	default:
 		return source.Subject{}, ErrTykUnavailable
 	}
