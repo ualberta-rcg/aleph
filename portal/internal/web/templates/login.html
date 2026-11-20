@@ -1,0 +1,55 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Sign in to {{.Site}}</h1>
+    <p>View your personal inference usage, model speed and context usage, recorded gateway errors, grant statements, and live connection snippets.</p>
+  </section>
+
+  {{if .LoginError}}
+  <div class="notice" role="alert">
+    <p>{{.LoginError}}</p>
+  </div>
+  {{end}}
+
+  <div class="login-grid">
+    <section class="panel">
+      <h2>Sign in with your API key</h2>
+      <p>Paste your personal <code>TYK_KEY</code> (or the full <code>export TYK_KEY=...</code> line from <code>~/.aleph_tyk.env</code> on Vulcan). Your key is verified against Tyk in memory, converted to a short fingerprint, and discarded immediately.</p>
+      <form class="auth-form" method="post" action="/login">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="next" value="{{.Next}}">
+        <label>Personal {{.Site}} API key
+          <input type="password" name="api_key" autocomplete="off" spellcheck="false" placeholder="Paste TYK_KEY or export TYK_KEY=..." required>
+        </label>
+        <button type="submit">Sign in with API key</button>
+      </form>
+      <p class="hint">On a Vulcan login node, run <code>cat ~/.aleph_tyk.env</code> to view your personal key.</p>
+    </section>
+
+    {{if .MockOIDCEnabled}}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Mock OIDC login</h2>
+        <span class="mock-badge">LOCAL TEST ONLY</span>
+      </div>
+      <p>Operator-only testing mode bound to private management IP. Enter a ledger identity (such as your Vulcan username) to inspect <code>ScopeIdentity</code> usage before Alliance OIDC is connected.</p>
+      <form class="auth-form" method="post" action="/login/mock-oidc">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="next" value="{{.Next}}">
+        <label>Ledger identity / username
+          <input type="text" name="username" autocomplete="off" spellcheck="false" placeholder="e.g. researcher username" required>
+        </label>
+        <button type="submit">Sign in (Mock OIDC)</button>
+      </form>
+      <p class="hint">Blocked automatically on any <code>https://</code> public origin; shared service identities (such as <code>openwebui</code> and <code>task-worker</code>) are always denied.</p>
+    </section>
+    {{end}}
+  </div>
+
+  <section class="notes">
+    <h2>Privacy and session security</h2>
+    <ul>
+      <li>Raw API keys are never written to logs, cookies, or disk. Sessions are stateless HMAC-signed cookies scoped to your identity or key fingerprint.</li>
+      <li>Shared platform keys (such as Open WebUI and internal workers) cannot sign in here.</li>
+    </ul>
+  </section>
+{{template "foot" .}}

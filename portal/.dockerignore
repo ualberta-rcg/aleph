@@ -1,0 +1,5 @@
+devdata/
+devhistory/
+*.test
+aleph-portal
+fakelogs

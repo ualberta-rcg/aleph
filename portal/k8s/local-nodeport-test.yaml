@@ -1,0 +1,279 @@
+# Aleph User Portal — isolated in-house NodePort test manifest.
+#
+# Safety & isolation properties:
+#   - Lives strictly in `namespace: aleph-portal` (zero changes to `models`, `tyk`,
+#     `istio-system`, `knative-serving`, `kubeflow`, or RKE2 boot manifests).
+#   - Mounts the existing usage-log NFS export strictly read-only (`Retain`,
+#     `ReadOnlyMany`, `nfs.readOnly: true`, NFS `ro` mount option, and container
+#     `volumeMounts[].readOnly: true`).
+#   - Exposes a standard Kubernetes `Service` of `type: NodePort` (`nodePort: 30080`,
+#     `externalTrafficPolicy: Local`) with NO IP addresses, NO VIP, and NO host/NAT edits.
+#   - Schedules onto `aleph1` (`kubernetes.io/hostname: aleph1`) and restricts access
+#     to private RFC-1918 networks + canonical internal `Host` at both L3/L4
+#     (`NetworkPolicy`) and L7 (`PORTAL_PRIVATE_NET_ONLY=true`).
+#
+# Required site tokens (render to a temporary file before `kubectl apply`; never
+# commit real site values):
+#   __NFS_SERVER__          NFS server hostname/IP
+#   __NFS_USAGE_LOGS_PATH__ Full NFS export path to the `model-gateway-usage-logs` directory
+#   __PORTAL_ORIGIN__       Internal HTTP origin, e.g. http://<control-plane-ip>:30080
+#
+# Pre-create the session secret in `aleph-portal` before applying the Deployment:
+#   kubectl create namespace aleph-portal
+#   kubectl -n aleph-portal create secret generic aleph-portal-auth \
+#     --from-literal=SESSION_SECRET="$(openssl rand -hex 32)"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aleph-portal
+  labels:
+    app.kubernetes.io/name: aleph-portal
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-aleph-portal-usage-logs-ro
+  labels:
+    app.kubernetes.io/name: aleph-portal
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadOnlyMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - ro
+    - nfsvers=4.2
+    - rsize=131072
+    - wsize=131072
+    - hard
+    - timeo=600
+    - retrans=2
+  nfs:
+    server: __NFS_SERVER__
+    path: __NFS_USAGE_LOGS_PATH__
+    readOnly: true
+  claimRef:
+    namespace: aleph-portal
+    name: usage-logs-ro
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: usage-logs-ro
+  namespace: aleph-portal
+  labels:
+    app.kubernetes.io/name: aleph-portal
+spec:
+  accessModes:
+    - ReadOnlyMany
+  storageClassName: ""
+  volumeName: pv-aleph-portal-usage-logs-ro
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aleph-portal-netpol
+  namespace: aleph-portal
+spec:
+  podSelector:
+    matchLabels:
+      app: aleph-portal
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # CoreDNS resolution in kube-system.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Internal Tyk OSS gateway for personal API-key verification.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tyk
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Internal model-gateway for live /v1/models?all=true catalog (Service :80 -> Pod :8080).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: models
+          podSelector:
+            matchLabels:
+              app: model-gateway
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aleph-portal
+  namespace: aleph-portal
+  labels:
+    app: aleph-portal
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aleph-portal
+  template:
+    metadata:
+      labels:
+        app: aleph-portal
+        sidecar.istio.io/inject: "false"
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: aleph1
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: gpu
+                    operator: NotIn
+                    values: ["on"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: portal
+          # Pin to immutable CI tag + @sha256 digest before applying (never :latest).
+          image: rkhoja/aleph:portal-pending-pin
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORTAL_LISTEN_ADDR
+              value: ":8080"
+            - name: SITE_NAME
+              value: "Aleph"
+            - name: PUBLIC_ORIGIN
+              value: "__PORTAL_ORIGIN__"
+            - name: ALLOW_INSECURE_HTTP
+              value: "true"
+            - name: PORTAL_PRIVATE_NET_ONLY
+              value: "true"
+            - name: MOCK_OIDC_ENABLED
+              value: "true"
+            - name: ALLOW_MOCK_OIDC
+              value: "yes-local-testing-only"
+            - name: DATA_SOURCE
+              value: "ledger"
+            - name: LEDGER_DIR
+              value: "/var/log/aleph"
+            - name: LEDGER_BACKUPS
+              value: "5"
+            - name: LEDGER_REFRESH_INTERVAL
+              value: "30s"
+            - name: PORTAL_MAX_CONCURRENT_SCANS
+              value: "1"
+            - name: PORTAL_CACHE_TTL
+              value: "60s"
+            - name: PORTAL_CACHE_MAX_ENTRIES
+              value: "64"
+            - name: TYK_VALIDATE_URL
+              value: "http://gateway-svc-tyk-oss-tyk-gateway.tyk.svc.cluster.local:8080/v1/models"
+            - name: CATALOG_URL
+              value: "http://model-gateway.models.svc.cluster.local/v1/models?all=true"
+            - name: PUBLIC_API_BASE_URL
+              value: "https://inference.vulcan.alliancecan.ca"
+            - name: PUBLIC_WEBUI_URL
+              value: "https://llm.vulcan.alliancecan.ca"
+            - name: PORTAL_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: aleph-portal-auth
+                  key: SESSION_SECRET
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: usage-logs
+              mountPath: /var/log/aleph
+              readOnly: true
+      volumes:
+        - name: usage-logs
+          persistentVolumeClaim:
+            claimName: usage-logs-ro
+            readOnly: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aleph-portal
+  namespace: aleph-portal
+  labels:
+    app: aleph-portal
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app: aleph-portal
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30080
+      protocol: TCP

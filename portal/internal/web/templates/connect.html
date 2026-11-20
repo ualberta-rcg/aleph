@@ -1,0 +1,80 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Connect to {{.Site}}</h1>
+    <p>Live endpoint configuration and copy-ready snippets populated from the running model catalog at <code>{{.APIBaseURL}}</code>.</p>
+  </section>
+
+  {{if .Catalog.Available}}
+  <section class="cards" aria-label="Live catalog summary">
+    <div class="card"><div class="k">Total models</div><div class="v">{{num64 .Catalog.TotalModels}}</div>
+      <div class="s">via <code>/v1/models?all=true</code></div></div>
+    <div class="card"><div class="k">Always-on models</div><div class="v">{{num64 .Catalog.AlwaysOnModels}}</div>
+      <div class="s">zero cold-start wait</div></div>
+    <div class="card"><div class="k">Chat models</div><div class="v">{{num64 .Catalog.ChatModels}}</div>
+      <div class="s">default <code>/v1/models</code> list</div></div>
+    <div class="card"><div class="k">Batch task models</div><div class="v">{{num64 .Catalog.TaskModels}}</div>
+      <div class="s">supported on <code>/v1/tasks</code></div></div>
+  </section>
+  {{else}}
+  <p class="notice">The live model catalog could not be reached right now, so the examples below use placeholder model IDs. Query <code>{{.APIBaseURL}}/v1/models?all=true</code> with your key for the live list.</p>
+  {{end}}
+
+  <section class="panel">
+    <h2>1. Load your personal key on Vulcan</h2>
+    <p>Every SSH login to a Vulcan login node writes or refreshes your personal Tyk API key in <code>~/.aleph_tyk.env</code> (mode <code>0600</code>).</p>
+    <div class="code-box">
+      <pre class="snippet" id="snip-env">{{.SnippetEnv}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-env" aria-label="Copy shell commands" title="Copy shell commands">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2. OpenAI-compatible chat (<code>/v1/chat/completions</code>)</h2>
+    <p>Works with any OpenAI SDK or CLI tool pointed at <code>{{.APIBaseURL}}/v1</code>. Scale-to-zero models may return HTTP <code>503</code> with <code>Retry-After</code> while waking up.</p>
+    <div class="code-box">
+      <pre class="snippet" id="snip-curl">{{.SnippetChatCurl}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-curl" aria-label="Copy curl example" title="Copy curl example">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+    <div class="code-box">
+      <pre class="snippet" id="snip-py">{{.SnippetChatPython}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-py" aria-label="Copy Python example" title="Copy Python example">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>3. Claude Code &amp; Anthropic Messages API (<code>/anthropic</code>)</h2>
+    <p>The Anthropic-compatible surface exposes always-on chat models so interactive coding sessions do not stall on scale-from-zero wakeups.</p>
+    <div class="code-box">
+      <pre class="snippet" id="snip-anthropic">{{.SnippetAnthropic}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-anthropic" aria-label="Copy Anthropic example" title="Copy Anthropic example">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>4. Embeddings &amp; async batch tasks</h2>
+    <p>Use <code>/v1/embeddings</code> for dense retrieval vectors and <code>/v1/tasks</code> to queue non-interactive batch items.</p>
+    <div class="code-box">
+      <pre class="snippet" id="snip-embed">{{.SnippetEmbed}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-embed" aria-label="Copy embeddings example" title="Copy embeddings example">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+    <div class="code-box">
+      <pre class="snippet" id="snip-tasks">{{.SnippetTasks}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-tasks" aria-label="Copy batch tasks example" title="Copy batch tasks example">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="notes">
+    <h2>Connection notes</h2>
+    <ul>
+      <li>Browser chat is available at <a href="{{.WebUIURL}}">{{.WebUIURL}}</a>; requests sent through Open WebUI use its shared service key and do not appear in your personal portal totals.</li>
+      <li>Any standard key header works on <code>{{.APIBaseURL}}</code>: <code>Authorization: Bearer $TYK_KEY</code>, <code>x-api-key</code>, <code>api-key</code>, or <code>x-goog-api-key</code>.</li>
+      {{template "tasks-note"}}
+    </ul>
+  </section>
+{{template "foot" .}}

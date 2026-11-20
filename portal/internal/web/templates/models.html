@@ -1,0 +1,124 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Models</h1>
+    <p>What you used each model for, how fast it answered you, and how close your prompts came to its context window.</p>
+  </section>
+
+  {{template "range" .}}
+
+  {{if .NearLimit}}
+  <div class="notice">
+    <p>Some prompts came close to their model's context window:</p>
+    <ul>
+      {{range .NearLimit}}<li>Your largest prompt to <code>{{.Model}}</code> used {{.MaxPromptPercent}}% of its {{num .MaxPromptWindow}}-token window{{if gt .NearLimitPrompts 1}}, and {{num .NearLimitPrompts}} prompts reached {{nearLimit}}%{{end}}.</li>
+      {{end}}
+    </ul>
+    <p>Prompts this close to the limit can leave too little room for the answer, so output may be cut short or the request refused.</p>
+  </div>
+  {{end}}
+
+  {{if .Models}}
+  <section class="panel">
+    <h2>By model</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table>
+      <thead><tr>
+        <th scope="col">Model</th><th scope="col" class="n">Requests</th>
+        <th scope="col" class="n">Input</th><th scope="col" class="n">Output</th>
+        <th scope="col" class="n">Thinking</th><th scope="col" class="n">Total tokens</th>
+        <th scope="col" class="n">Est. GPU-hours</th>
+        <th scope="col" class="n">Avg latency</th><th scope="col" class="n">Errors</th>
+      </tr></thead>
+      <tbody>
+      {{range .Models}}
+      <tr>
+        <th scope="row"><code>{{.Model}}</code></th>
+        <td class="n">{{num .Requests}}</td>
+        <td class="n">{{num .PromptTokens}}</td>
+        <td class="n">{{num .CompletionTokens}}</td>
+        <td class="n">{{if .ReasoningReported}}{{num .ReasoningTokens}}{{else if .CompletionTokens}}<span class="muted">not reported</span>{{else}}—{{end}}</td>
+        <td class="n">{{num .TotalTokens}}</td>
+        <td class="n">{{gpuh .GPUSeconds}}</td>
+        <td class="n">{{num .AvgLatencyMs}} ms</td>
+        <td class="n">{{if .Errors}}<a href="{{$.ErrorsHref}}">{{num .Errors}}</a>{{else}}0{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Speed and context</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table>
+      <thead><tr>
+        <th scope="col">Model</th>
+        <th scope="col" class="n">Output speed</th>
+        <th scope="col" class="n">Largest prompt</th>
+        <th scope="col" class="n">Context window</th>
+        <th scope="col" class="n">Of window</th>
+        <th scope="col" class="n">Prompts at {{nearLimit}}%+</th>
+      </tr></thead>
+      <tbody>
+      {{range .Models}}
+      <tr{{if .NearLimit}} class="warn"{{end}}>
+        <th scope="row"><code>{{.Model}}</code></th>
+        <td class="n">{{with speed .OutputTokensPerSecond}}{{.}}{{if ne . "—"}} tokens/s{{end}}{{end}}</td>
+        {{if .MaxPromptWindow}}
+        <td class="n">{{num .MaxPromptTokens}}</td>
+        <td class="n">{{num .MaxPromptWindow}}</td>
+        <td class="n">{{.MaxPromptPercent}}%</td>
+        <td class="n">{{num .NearLimitPrompts}}</td>
+        {{else}}
+        <td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td>
+        {{end}}
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>By endpoint</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table>
+      <thead><tr>
+        <th scope="col">Endpoint</th><th scope="col" class="n">Requests</th>
+        <th scope="col" class="n">Total tokens</th><th scope="col" class="n">Est. GPU-hours</th>
+        <th scope="col" class="n">Errors</th>
+      </tr></thead>
+      <tbody>
+      {{range .Endpoints}}
+      <tr>
+        <th scope="row"><code>{{.Endpoint}}</code></th>
+        <td class="n">{{num .Requests}}</td>
+        <td class="n">{{if .TotalTokens}}{{num .TotalTokens}}{{else}}—{{end}}</td>
+        <td class="n">{{gpuh .GPUSeconds}}</td>
+        <td class="n">{{num .Errors}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {{else}}
+  <section class="panel empty-state">
+    <h2>No usage in this range</h2>
+    <p>Nothing was recorded for <strong>{{.User}}</strong> between {{.From}} and {{.To}}.</p>
+  </section>
+  {{end}}
+
+  <section class="notes">
+    <h2>Reading these numbers</h2>
+    <ul>
+      <li>Output speed is observed, not a benchmark: output tokens divided by the wall time your successful requests took, including queueing. Busy periods and long prompts make it lower.</li>
+      <li>The context window is the maximum combined prompt and completion budget configured on the model. Models with no token window (such as audio, vision detectors, or image generators) show a dash.</li>
+      <li>Audio endpoints record no tokens and image endpoints log request counts only; embeddings report input tokens only.</li>
+      <li>Thinking counts are included inside output tokens (never double-counted in total tokens). "Not reported" means the backend did not emit a separate reasoning token count.</li>
+      {{template "gpu-note"}}
+      {{template "tasks-note"}}
+    </ul>
+  </section>
+{{template "foot" .}}

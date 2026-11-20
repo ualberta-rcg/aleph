@@ -1,0 +1,83 @@
+{{define "head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · {{.Site}} portal{{if .Authenticated}} · {{.User}}{{end}}</title>
+<link rel="stylesheet" href="{{asset "style.css"}}">
+<script src="{{asset "site.js"}}"></script>
+</head>
+<body class="{{.PageClass}}">
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand"><a href="/">{{.Site}} <span>portal</span></a></div>
+    <div class="top-side">
+      {{if .IsMockOIDC}}<span class="mock-badge" title="Local operator testing session">MOCK OIDC · LOCAL TEST</span>{{end}}
+      {{if .Authenticated}}
+      <div class="who">Signed in as <strong>{{.User}}</strong></div>
+      <form class="signout-form" method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="signout-btn">Sign out</button>
+      </form>
+      {{end}}
+      <div class="toggles">
+      <button type="button" class="toggle font-toggle" data-toggle="font" aria-label="Switch between serif and sans-serif text" title="Switch between serif and sans-serif text">
+        <span class="sans" aria-hidden="true">Aa</span><span class="serif" aria-hidden="true">Aa</span>
+      </button>
+      <button type="button" class="toggle theme-toggle" data-toggle="theme" aria-label="Switch between light and dark" title="Switch between light and dark">
+        <svg class="moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.2 14.6A8.5 8.5 0 0 1 9.4 3.8a8.5 8.5 0 1 0 10.8 10.8z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.55 1.55M17.15 17.15l1.55 1.55M5.3 18.7l1.55-1.55M17.15 6.85l1.55-1.55"/></svg>
+      </button>
+      </div>
+    </div>
+  </div>
+  {{if .Authenticated}}
+  <nav class="tabs" aria-label="Portal pages">
+    <div class="wrap tabs-inner">
+      {{range .Nav}}<a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+    </div>
+  </nav>
+  {{end}}
+</header>
+
+<main class="wrap">
+{{end}}
+
+{{define "copy-icon"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>{{end}}
+
+{{define "range"}}
+  <form class="range" method="get" action="{{.Path}}">
+    <label>From <input type="date" name="from" value="{{.From}}" required></label>
+    <label>To <input type="date" name="to" value="{{.To}}" required></label>
+    <button type="submit">Update</button>
+    <a class="csv" href="{{.CSVHref}}">Download CSV</a>
+  </form>
+
+  {{if not .Ready}}<p class="notice">Usage records are still indexing. Refresh in a moment.</p>{{end}}
+  {{if .ReadErrors}}<p class="notice">Some usage records could not be read just now, so recent figures may be out of date. They will update when the records can be read again.</p>{{end}}
+  {{with .Coverage}}{{if .Partial}}
+  <div class="notice coverage">
+    <p>{{.Text}}</p>
+    {{.Bar}}
+    <div class="coverage-key">
+      <span><span class="swatch swatch-missing"></span>Incomplete: {{.List}}</span>
+      {{if not .AllIncomplete}}<span><span class="swatch swatch-complete"></span>Complete: every other day</span>{{end}}
+    </div>
+  </div>
+  {{end}}{{end}}
+{{end}}
+
+{{define "incomplete-flag"}}{{if .Partial}}<div class="flag">Includes {{count .IncompleteDays "incomplete day" "incomplete days"}}</div>{{end}}{{end}}
+
+{{define "chart-key"}}{{if .Partial}}<p class="chart-key"><span class="swatch swatch-hatch"></span>Hatched bars include days with incomplete records; they may show less than was used.</p>{{end}}{{end}}
+
+{{define "gpu-note"}}<li>Estimated GPU-hours equal allocated GPUs multiplied by request duration (<code>gpus × latency_s</code>), failed requests included. A model on a shared GPU slice still counts its allocated GPU count, and concurrent requests on the same replica are each counted in full, so the figure is an upper-bound estimate rather than measured utilization or a bill.</li>{{end}}
+{{define "tasks-note"}}<li>Async batch work submitted to <code>/v1/tasks</code> executes under the platform's <code>task-worker</code> service identity without caller key attribution, so personal totals and CSV exports exclude <code>/v1/tasks</code> worker execution.</li>{{end}}
+
+{{define "foot"}}
+</main>
+
+<footer class="wrap foot">{{.Site}} portal · University of Alberta Research Computing · Questions: support@tech.alliancecan.ca</footer>
+</body>
+</html>
+{{end}}

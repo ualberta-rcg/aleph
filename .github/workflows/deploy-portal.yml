@@ -1,0 +1,59 @@
+name: Build & Push Portal Image
+
+# Publishes the Go user portal image to Docker Hub (rkhoja/aleph).
+# Never touches :latest or gateway-* tags:
+#   - immutable tag: portal-<shortsha>
+#   - moving portal tag: portal-latest
+# Auth uses repository secrets:
+#   DOCKER_HUB_USER, DOCKER_HUB_TOKEN
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'portal/**'
+      - '!portal/k8s/**'
+      - '!portal/**/*.md'
+      - '.github/workflows/deploy-portal.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build & Push Portal
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build, test, and push portal image
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
+          DOCKER_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_REPO="rkhoja/aleph"
+          if [[ ! "${GIT_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: invalid GIT_SHA" >&2
+            exit 1
+          fi
+
+          SHORT_SHA="${GIT_SHA:0:7}"
+          IMAGE_TAG="portal-${SHORT_SHA}"
+          STABLE_TAG="portal-latest"
+
+          printf '%s\n' "${DOCKER_TOKEN}" | docker login -u "${DOCKER_USER}" --password-stdin
+
+          docker build --no-cache \
+            -t "${IMAGE_REPO}:${IMAGE_TAG}" \
+            -t "${IMAGE_REPO}:${STABLE_TAG}" \
+            portal
+
+          docker push "${IMAGE_REPO}:${IMAGE_TAG}"
+          docker push "${IMAGE_REPO}:${STABLE_TAG}"
+
+          echo "=== Published RepoDigests ==="
+          docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "${IMAGE_REPO}:${IMAGE_TAG}"

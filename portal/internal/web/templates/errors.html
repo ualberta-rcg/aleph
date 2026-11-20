@@ -1,0 +1,55 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Recorded gateway errors</h1>
+    <p>Requests recorded by <code>model-gateway</code> with an error status, grouped by HTTP status and affected models.</p>
+  </section>
+
+  {{template "range" .}}
+
+  {{if .Statuses}}
+  <section class="cards" aria-label="Error totals for the selected range">
+    <div class="card"><div class="k">Recorded failed requests</div><div class="v">{{num .Totals.Errors}}</div>
+      <div class="s">of {{num .Totals.Requests}} recorded requests</div></div>
+    <div class="card"><div class="k">Error rate</div><div class="v">{{.ErrorRate}}</div>
+      <div class="s">failed ÷ recorded requests</div></div>
+    <div class="card"><div class="k">Scale-from-zero 503s</div><div class="v">{{num .Totals.ColdStarts}}</div>
+      <div class="s">spin-up or capacity refusal (counted separately)</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>By HTTP status</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table class="wrap-cells">
+      <thead><tr>
+        <th scope="col">Status</th><th scope="col">What it usually means</th>
+        <th scope="col" class="n">Count</th><th scope="col">Models</th>
+      </tr></thead>
+      <tbody>
+      {{range .Statuses}}
+      <tr>
+        <th scope="row">{{.Status}}</th>
+        <td>{{.Meaning}}</td>
+        <td class="n">{{num .Count}}</td>
+        <td>{{.Models}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {{else}}
+  <section class="panel empty-state">
+    <h2>No recorded errors in this range</h2>
+    <p>{{if .Totals.Requests}}All {{num .Totals.Requests}} of your recorded requests between {{.From}} and {{.To}} succeeded{{if .Totals.ColdStarts}} ({{num .Totals.ColdStarts}} scale-from-zero 503 responses occurred while a model was waking or out of free GPU capacity){{end}}.{{else}}Nothing was recorded for <strong>{{.User}}</strong> between {{.From}} and {{.To}}.{{end}}</p>
+  </section>
+  {{end}}
+
+  <section class="notes">
+    <h2>Reading these numbers</h2>
+    <ul>
+      <li>Scale-from-zero 503 responses ({{num .Totals.ColdStarts}} in this range) are recorded with <code>cold_start=true</code> when a scale-to-zero model is either waking up (<code>model_scaled_to_zero</code>) or refused because no GPU capacity is currently free (<code>insufficient_capacity</code>). They are counted separately rather than as failed requests.</li>
+      <li>Requests rejected at the edge before model resolution (for example missing/invalid API keys at Tyk or pre-routing <code>404</code>s on unknown paths) return before <code>model-gateway</code> writes a ledger row and therefore do not appear here.</li>
+      <li>If an error persists and the summary above does not explain it, contact support@tech.alliancecan.ca with the model ID, timestamp (UTC), and HTTP status.</li>
+    </ul>
+  </section>
+{{template "foot" .}}

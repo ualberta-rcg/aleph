@@ -15,6 +15,7 @@ inventories, and rollout history belong in the operator's private working direct
 | Overview and installation | [README](README.md), [Quickstart](QUICKSTART.md) |
 | Add or update a model | [Model workflow](docs/ADD-A-MODEL.md), [card reference](models/details.md), and the model's own README/CLAUDE notes |
 | Gateway implementation and tests | [Gateway reference](gateway/README.md), [gateway instructions](gateway/CLAUDE.md) |
+| User metrics portal (`portal/`) | [Portal reference](portal/README.md), [portal instructions](portal/CLAUDE.md) |
 | API behavior | [Endpoints](docs/ENDPOINTS.md) |
 | Authentication and key administration | [Tyk](docs/TYK-USERS.md) |
 | Usage records, retention, and metrics | [Logging and metrics](docs/LOGGING.md) |

@@ -1,0 +1,61 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Usage statement</h1>
+    <p>For grant applications, allocation renewals, and progress reports. <span class="print-only">Prepared for {{.User}}, covering {{.ReportSpan}} (UTC){{with .RequestedLong}}; requested {{.}}{{end}}.</span></p>
+  </section>
+
+  {{template "range" .}}
+
+  <section class="panel">
+    <h2>Ready to copy</h2>
+    <div class="statement-box">
+      <p class="statement" id="statement">{{.Statement}}</p>
+      <button type="button" class="copy-button" data-copy="statement" aria-label="Copy the sentence" title="Copy the sentence">
+        {{template "copy-icon"}}
+      </button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+    {{if .TodayLeftOut}}<p class="hint">Today (UTC) is left out until the day is complete.</p>{{end}}
+    <p class="hint">To save this page as a PDF, use your browser's Print command and choose "Save as PDF".</p>
+  </section>
+
+  {{if .Models}}
+  <section class="panel">
+    <h2>Summary, {{.ReportSpan}}</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table>
+      <thead><tr>
+        <th scope="col">Model</th><th scope="col" class="n">Requests</th>
+        <th scope="col" class="n">Tokens</th><th scope="col" class="n">Est. GPU-hours</th>
+      </tr></thead>
+      <tbody>
+      {{range .Models}}
+      <tr>
+        <th scope="row"><code>{{.Model}}</code></th>
+        <td class="n">{{num .Requests}}</td>
+        <td class="n">{{num .TotalTokens}}</td>
+        <td class="n">{{gpuh .GPUSeconds}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+      <tfoot><tr>
+        <th scope="row">Total</th>
+        <td class="n">{{num .Totals.Requests}}</td>
+        <td class="n">{{num .Totals.TotalTokens}}</td>
+        <td class="n">{{gpuh .Totals.GPUSeconds}}</td>
+      </tr></tfoot>
+    </table>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="notes">
+    <h2>About these figures</h2>
+    <ul>
+      {{template "gpu-note"}}
+      <li>The figures cover direct API requests attributed to {{if .ScopedToSingleKey}}key fingerprint <code>{{.User}}</code>{{else}}your personal {{.Site}} API keys{{end}} on finished UTC days with complete records. Shared browser applications such as Open WebUI are excluded.</li>
+      {{template "tasks-note"}}
+      <li>{{if .Oldest.IsZero}}No usage records are currently indexed.{{else}}Records on hand span {{longdate .Oldest}} to {{longdate .Newest}}. Days with incomplete records are excluded from both the statement and the summary table.{{end}}</li>
+    </ul>
+  </section>
+{{template "foot" .}}

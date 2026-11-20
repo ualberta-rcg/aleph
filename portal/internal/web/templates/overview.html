@@ -1,0 +1,108 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Your inference usage</h1>
+    <p>Requests attributed to {{if .ScopedToSingleKey}}API key fingerprint <code>{{.User}}</code>{{else}}identity <strong>{{.User}}</strong> across your personal {{.Site}} keys{{end}}, grouped by day (UTC) and model.</p>
+  </section>
+
+  {{template "range" .}}
+
+  <section class="cards" aria-label="Totals for the selected range">
+    <div class="card"><div class="k">Total tokens</div><div class="v">{{num .Totals.TotalTokens}}</div>
+      <div class="s">{{num .Totals.PromptTokens}} in · {{num .Totals.CompletionTokens}} out{{if .Totals.ReasoningReported}}, of which {{num .Totals.ReasoningTokens}} thinking{{end}}</div>
+      {{template "incomplete-flag" .Coverage}}
+      {{with .Change.Tokens}}<div class="delta">{{.}}</div>{{end}}</div>
+    <div class="card"><div class="k">Requests</div><div class="v">{{num .Totals.Requests}}</div>
+      <div class="s">{{count .Totals.Errors "recorded error" "recorded errors"}}{{if .Totals.Errors}} · <a href="{{.ErrorsHref}}">see why</a>{{end}}</div>
+      {{template "incomplete-flag" .Coverage}}
+      {{with .Change.Requests}}<div class="delta">{{.}}</div>{{end}}</div>
+    <div class="card"><div class="k">Estimated GPU-hours</div><div class="v">{{gpuh .Totals.GPUSeconds}}</div>
+      <div class="s">allocated GPUs × duration</div>
+      {{template "incomplete-flag" .Coverage}}
+      {{with .Change.GPU}}<div class="delta">{{.}}</div>{{end}}</div>
+    <div class="card"><div class="k">Scale-from-zero 503s</div><div class="v">{{num .Totals.ColdStarts}}</div>
+      <div class="s">spin-up or capacity refusal</div>
+      {{template "incomplete-flag" .Coverage}}</div>
+  </section>
+
+  {{if .Models}}
+  <section class="panel">
+    <h2>Tokens per {{.PeriodUnit}}</h2>
+    <div class="chart-wrap" tabindex="0" role="region" aria-label="Chart, scrolls sideways on narrow screens">{{.TokenChart}}</div>
+    {{template "chart-key" .Coverage}}
+  </section>
+  <section class="panel">
+    <h2>Estimated GPU-hours per {{.PeriodUnit}}</h2>
+    <div class="chart-wrap" tabindex="0" role="region" aria-label="Chart, scrolls sideways on narrow screens">{{.GPUChart}}</div>
+    {{template "chart-key" .Coverage}}
+  </section>
+  <section class="panel">
+    <details class="day-table">
+      <summary>Show the {{if eq .PeriodUnit "week"}}weekly{{else}}daily{{end}} figures as a table</summary>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+      <table>
+        <caption>Tokens, estimated GPU-hours, and requests per {{.PeriodUnit}} (UTC), {{.From}} to {{.To}}</caption>
+        <thead><tr>
+          <th scope="col">{{if eq .PeriodUnit "week"}}Week{{else}}Day{{end}} (UTC)</th><th scope="col" class="n">Tokens</th>
+          <th scope="col" class="n">Est. GPU-hours</th><th scope="col" class="n">Requests</th>
+        </tr></thead>
+        <tbody>
+        {{range .Periods}}
+        <tr{{if .Incomplete}} class="incomplete"{{end}}>
+          <th scope="row">{{.Label}}{{if .Incomplete}} <span class="tag">{{if eq .Days 1}}incomplete{{else}}{{count .IncompleteDays "incomplete day" "incomplete days"}}{{end}}</span>{{end}}</th>
+          <td class="n">{{num .Tokens}}</td>
+          <td class="n">{{gpuh .GPUSeconds}}</td>
+          <td class="n">{{num .Requests}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>By model</h2>
+      <a href="{{.ModelsHref}}">Speed, context, and endpoints</a>
+    </div>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Table, scrolls sideways on narrow screens">
+    <table>
+      <thead><tr>
+        <th scope="col">Model</th><th scope="col" class="n">Requests</th>
+        <th scope="col" class="n">Total tokens</th><th scope="col">Share</th>
+        <th scope="col" class="n">Est. GPU-hours</th>
+      </tr></thead>
+      <tbody>
+      {{range .Models}}
+      <tr>
+        <th scope="row"><code>{{.Model}}</code></th>
+        <td class="n">{{num .Requests}}</td>
+        <td class="n">{{num .TotalTokens}}</td>
+        <td><meter min="0" max="100" value="{{share .TotalTokens $.Totals.TotalTokens}}">{{share .TotalTokens $.Totals.TotalTokens}}%</meter></td>
+        <td class="n">{{gpuh .GPUSeconds}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {{else}}
+  <section class="panel empty-state">
+    <h2>No usage in this range</h2>
+    <p>Nothing was recorded for <strong>{{.User}}</strong> between {{.From}} and {{.To}}. If you expected usage, try a wider range, or check that you used your personal API key rather than a shared application.</p>
+  </section>
+  {{end}}
+
+  <section class="notes">
+    <h2>Reading these numbers</h2>
+    <ul>
+      <li>{{if .Oldest.IsZero}}No usage records are currently indexed.{{else}}Records on hand span {{longdate .Oldest}} to {{longdate .Newest}}, and this index refreshed at {{ts .RefreshedAt}}. {{if .Coverage.Partial}}{{count .Coverage.IncompleteDays "day" "days"}} in this range {{if eq .Coverage.IncompleteDays 1}}has{{else}}have{{end}} incomplete records, marked on this page.{{else}}Every day in this range has complete records.{{end}}{{end}}</li>
+      {{template "gpu-note"}}
+      <li>Thinking tokens are a subset of output tokens reported by reasoning-capable models (never added a second time to total tokens). The Models page shows which models reported them.</li>
+      <li>Comparisons with the previous period appear only when complete records cover both periods in full.</li>
+      <li>Scale-from-zero 503 responses (<code>cold_start=true</code>) cover attempts where a scale-to-zero model was either waking up (<code>model_scaled_to_zero</code>) or refused because no GPU capacity was free (<code>insufficient_capacity</code>). They are counted separately from requests and errors.</li>
+      <li>Usage through Open WebUI or other shared applications is recorded under that application's service key, so it does not appear here.</li>
+      {{template "tasks-note"}}
+    </ul>
+  </section>
+{{template "foot" .}}

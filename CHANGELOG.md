@@ -2,6 +2,19 @@
 
 Verified on the HAMi test cluster (control-plane + GPU workers). Newest first.
 
+## 2026-11-20 — Aleph User Portal (`portal/`), Docker Hub CI (`deploy-portal.yml`), and isolated NodePort test manifest
+
+**What:**
+- **Aleph User Portal (`portal/`)**: Go self-service metrics and account portal adapting PR #2 (`ualberta-rcg/aleph#2`) academic serif/sans UI, light/dark toggle, inline hatched SVG charts, coverage bar, print grant statement, CSV formula-injection guard, and strict CSP to Aleph's live gateway schema and zero-persistence privacy requirements:
+  - **Stateless on-demand JSONL ledger reader (`portal/internal/source/`)**: reads live `model-gateway-*` `usage.log` + rotated backups directly from a read-only mount without writing per-user history to disk (`readOnlyRootFilesystem: true`) or holding cluster-wide per-user aggregates in RAM; indexes only file byte/timestamp bounds and a compact `key_fp -> {identity, account, identity_type}` map (~100 KiB), retries cleanly on `(dev, ino)` log rollover, throttles cold NFS scans via a 1-slot semaphore, and caches only active signed-in users for 60s (evicted on logout).
+  - **Dual-Scope attribution & honest live accounting**: attributes personal `user`/`poc` identities across rotations (`ScopeIdentity`) while isolating `service`/unindexed keys to a single `{"sha256_8","last4"}` fingerprint (`ScopeKeyFP`) and blocking shared service identities (`DENIED_IDENTITIES`); labels `503` + `cold_start=true` as spin-up or capacity refusals, estimated GPU-hours as allocated GPUs × request duration, and notes that async `/v1/tasks` worker units execute under `task-worker` outside personal totals. Includes a fail-closed `DATA_SOURCE=prometheus` seam (`503` until subject-labeled metrics exist).
+  - **Authentication & defense-in-depth (`portal/internal/auth/`, `portal/internal/web/`)**: supports local-only Mock OIDC (`POST /login/mock-oidc`, fail-closed on any `https://` origin or without `ALLOW_MOCK_OIDC=yes-local-testing-only`) alongside live Tyk API-key verification (`POST /login` and CLI Bearer `GET /usage.csv`), stateless HMAC-SHA256 cookies, double-submit CSRF + `Origin` validation, and L7 private-network + `Host` enforcement (`PORTAL_PRIVATE_NET_ONLY=true`) when serving internal HTTP.
+  - **Six extensible `TabSpec` sections**: `Overview` (`/`), `Models` (`/models`), `Errors` (`/errors`), `Report` (`/report` + `/usage.csv`), `Connect` (`/connect` pulling live catalog IDs from `model-gateway/v1/models?all=true`), and `Account` (`/keys`), plus `cmd/fakelogs` synthetic JSONL generator.
+- **CI & isolated NodePort manifest**:
+  - `.github/workflows/deploy-portal.yml`: builds, runs `go vet` + `go test -race`, and publishes `rkhoja/aleph:portal-<shortsha>` and `rkhoja/aleph:portal-latest` to Docker Hub without touching `:latest` or `gateway-*`.
+  - `portal/k8s/local-nodeport-test.yaml`: tokenized isolated `namespace: aleph-portal` deployment with read-only NFS `PersistentVolume`/`PersistentVolumeClaim` (`Retain`, `ReadOnlyMany`, `ro`), RFC-1918 ingress / DNS+Tyk+`model-gateway` egress `NetworkPolicy`, `aleph1` control-plane placement, and a standard `Service` of `type: NodePort` (`nodePort: 30080`, `externalTrafficPolicy: Local`, zero VIPs/IPs in `Service`, zero host/NAT changes).
+  - Documentation added in `portal/README.md` and `portal/CLAUDE.md` and linked from `CLAUDE.md` and `AGENTS.md`.
+
 ## 2026-10-30 — Asynchronous Task System (`/v1/tasks`), model `mode` (`api`/`task`/`both`), and `glm-ocr` (`zai-org/GLM-OCR`)
 
 **What:**

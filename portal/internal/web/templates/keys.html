@@ -1,0 +1,60 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>Account &amp; API key</h1>
+    <p>How your current portal session is scoped, where your Vulcan API key lives, and how to export your usage from the command line.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Current session</h2>
+    <dl class="kv-list">
+      <dt>Signed-in subject</dt>
+      <dd><strong>{{.User}}</strong></dd>
+      <dt>Authentication mode</dt>
+      <dd>{{.AccountAuthLabel}}</dd>
+      <dt>Attribution scope</dt>
+      <dd>{{.AccountScopeLabel}}</dd>
+      {{if .SubjectAccount}}
+      <dt>Ledger account</dt>
+      <dd><code>{{.SubjectAccount}}</code></dd>
+      {{end}}
+      {{if .SubjectKeyFP}}
+      <dt>Key fingerprint</dt>
+      <dd><code>{{.SubjectKeyFP}}</code> <span class="muted">(raw key never stored)</span></dd>
+      {{end}}
+      <dt>Data backend</dt>
+      <dd><code>{{.BackendMode}}</code></dd>
+      <dt>Self-service key rotation</dt>
+      <dd>{{if .CanRotateKey}}Enabled via institutional OIDC{{else}}Disabled until institutional OIDC login is active (prevents someone holding only a leaked API key from rotating and locking out the account){{end}}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Your Vulcan API key (<code>~/.aleph_tyk.env</code>)</h2>
+    <p>Personal {{.Site}} keys are provisioned automatically by PAM whenever you SSH into a Vulcan login node. Never commit <code>TYK_KEY</code> to Git or share it across multi-user services.</p>
+    <div class="code-box">
+      <pre class="snippet" id="snip-key-env">{{.SnippetKeyCheck}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-key-env" aria-label="Copy key inspection commands" title="Copy key inspection commands">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+    <p class="hint">Need a dedicated service key or manual key rotation right now? Contact support@tech.alliancecan.ca.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Download CSV from the command line</h2>
+    <p><code>GET /usage.csv</code> accepts your personal <code>Authorization: Bearer $TYK_KEY</code> header directly, so you can export daily model/endpoint rows without opening a browser session.</p>
+    <div class="code-box">
+      <pre class="snippet" id="snip-csv-curl">{{.SnippetCSVCurl}}</pre>
+      <button type="button" class="copy-button" data-copy="snip-csv-curl" aria-label="Copy CSV curl command" title="Copy CSV curl command">{{template "copy-icon"}}</button>
+      <span class="copy-note" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="notes">
+    <h2>Scope and export details</h2>
+    <ul>
+      <li><strong>Identity scope</strong> aggregates personal <code>user</code> and legacy <code>poc</code> records across key rotations while excluding <code>service</code> keys.</li>
+      <li><strong>Single-key fingerprint scope</strong> is used when signing in with a <code>service</code>-typed or newly minted key not yet linked to a personal user record, restricting figures strictly to that key's <code>{"sha256_8","last4"}</code> fingerprint.</li>
+      {{template "tasks-note"}}
+    </ul>
+  </section>
+{{template "foot" .}}

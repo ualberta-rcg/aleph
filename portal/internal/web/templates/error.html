@@ -1,0 +1,10 @@
+{{template "head" .}}
+  <section class="intro">
+    <h1>{{.ErrorHeading}}</h1>
+    <p>{{.ErrorMessage}}</p>
+  </section>
+
+  <section class="panel empty-state">
+    <p>{{if .Authenticated}}Return to <a href="/">Overview</a> or <a href="/keys">Account</a>, or try again shortly.{{else}}Return to <a href="/login">Sign in</a>.{{end}}</p>
+  </section>
+{{template "foot" .}}

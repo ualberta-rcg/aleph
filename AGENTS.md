@@ -11,6 +11,8 @@ credentials, inventories, and operating history belong in private working notes.
   and the affected model's README and implementation notes.
 - Gateway: [gateway/README.md](gateway/README.md) and
   [gateway/CLAUDE.md](gateway/CLAUDE.md).
+- Portal: [portal/README.md](portal/README.md) and
+  [portal/CLAUDE.md](portal/CLAUDE.md).
 - Infrastructure: [Warewulf](docs/WW-OVERLAYS.md),
   [Kubernetes](docs/KUBERNETES.md), and [System](docs/SYSTEM.md).
 
