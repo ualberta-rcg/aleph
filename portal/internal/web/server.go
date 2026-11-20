@@ -390,7 +390,7 @@ func (s *Server) dateRange(r *http.Request) (from, to time.Time) {
 	if !ok || to.After(today) {
 		to = today
 	}
-	from, ok := parse("from")
+	from, ok = parse("from")
 	if !ok || from.After(to) {
 		from = to.AddDate(0, 0, -(defaultDays - 1))
 	}
