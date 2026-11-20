@@ -47,7 +47,7 @@ func TestComputeKeyFPParity(t *testing.T) {
 }
 
 func TestIdentityValidators(t *testing.T) {
-	validLedger := []string{"alice", "Kevin", "holland-college-pei", "user.name@ualberta.ca", "a", "user_01"}
+	validLedger := []string{"alice", "MixedCaseUser", "partner-lab-01", "user.name@ualberta.ca", "a", "user_01"}
 	for _, id := range validLedger {
 		if !ValidLedgerIdentity(id) {
 			t.Errorf("ValidLedgerIdentity(%q) = false, want true", id)
@@ -59,7 +59,7 @@ func TestIdentityValidators(t *testing.T) {
 			t.Errorf("ValidLedgerIdentity(%q) = true, want false", id)
 		}
 	}
-	if !ValidPOSIXUsername("alice_01") || ValidPOSIXUsername("Kevin") || ValidPOSIXUsername("alice@ualberta.ca") {
+	if !ValidPOSIXUsername("alice_01") || ValidPOSIXUsername("MixedCaseUser") || ValidPOSIXUsername("alice@ualberta.ca") {
 		t.Errorf("ValidPOSIXUsername rules mismatch")
 	}
 }
@@ -145,7 +145,7 @@ func TestDualScopeAndDeniedIdentities(t *testing.T) {
 			"derived": map[string]any{"gpu_seconds": 2.0},
 		},
 		{
-			"ts": "2026-11-18T12:00:00Z", "identity": "Kevin", "identity_type": "service", "account": "poc",
+			"ts": "2026-11-18T12:00:00Z", "identity": "MixedCaseUser", "identity_type": "service", "account": "poc",
 			"key_fp": fpTrialB, "endpoint": "/v1/chat/completions", "model": "gemma-4-31b", "status": 200,
 			"latency_ms": 1500, "tokens": map[string]any{"prompt": 70, "completion": 30, "total": 100},
 			"derived": map[string]any{"gpu_seconds": 3.0},
@@ -177,9 +177,9 @@ func TestDualScopeAndDeniedIdentities(t *testing.T) {
 		t.Fatalf("ScopeIdentity alice mismatch: %+v", repAlice.Rows)
 	}
 
-	// 2. ScopeKeyFP for trial key B ("Kevin", type:service) sees strictly its 100 tokens.
+	// 2. ScopeKeyFP for trial key B ("MixedCaseUser", type:service) sees strictly its 100 tokens.
 	metaB, ok := src.LookupKeyFP(fpTrialB)
-	if !ok || metaB.Identity != "Kevin" || metaB.IdentityType != "service" {
+	if !ok || metaB.Identity != "MixedCaseUser" || metaB.IdentityType != "service" {
 		t.Fatalf("LookupKeyFP(fpTrialB) = %+v, %v", metaB, ok)
 	}
 	repTrialB, err := src.Usage(context.Background(), Subject{

@@ -308,7 +308,7 @@ func (a *Agg) Merge(other *Agg) {
 }
 
 // AvgLatencyMs is the mean latency of counted requests.
-func (a *Agg) AvgLatencyMs() int64 {
+func (a Agg) AvgLatencyMs() int64 {
 	if a.Requests == 0 {
 		return 0
 	}
@@ -316,10 +316,10 @@ func (a *Agg) AvgLatencyMs() int64 {
 }
 
 // GPUHours returns estimated GPU-hours (allocated GPUs × request duration).
-func (a *Agg) GPUHours() float64 { return a.GPUSeconds / 3600 }
+func (a Agg) GPUHours() float64 { return a.GPUSeconds / 3600 }
 
 // OutputTokensPerSecond returns observed output tokens/s for successful answers.
-func (a *Agg) OutputTokensPerSecond() float64 {
+func (a Agg) OutputTokensPerSecond() float64 {
 	if a.SpeedLatencyMs <= 0 {
 		return 0
 	}
@@ -327,7 +327,7 @@ func (a *Agg) OutputTokensPerSecond() float64 {
 }
 
 // MaxPromptPercent returns the largest prompt's context-window percentage.
-func (a *Agg) MaxPromptPercent() int64 {
+func (a Agg) MaxPromptPercent() int64 {
 	if a.MaxPromptWindow <= 0 {
 		return 0
 	}
@@ -335,6 +335,6 @@ func (a *Agg) MaxPromptPercent() int64 {
 }
 
 // NearLimit reports whether the largest prompt reached NearLimitFraction.
-func (a *Agg) NearLimit() bool {
+func (a Agg) NearLimit() bool {
 	return a.MaxPromptWindow > 0 && float64(a.MaxPromptTokens) >= NearLimitFraction*float64(a.MaxPromptWindow)
 }

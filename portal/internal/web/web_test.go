@@ -21,9 +21,9 @@ func setupTestPortal(t *testing.T) (*web.Server, *source.LedgerSource, string) {
 	t.Helper()
 	logDir := t.TempDir()
 	now := time.Date(2026, 11, 20, 14, 0, 0, 0, time.UTC)
-	if err := fake.Generate(fake.Options{
+	if _, err := fake.Generate(fake.Options{
 		Out:          logDir,
-		Users:        []string{"alice", "Kevin"},
+		Users:        []string{"alice", "MixedCaseUser"},
 		Days:         10,
 		End:          now,
 		PerDay:       12,

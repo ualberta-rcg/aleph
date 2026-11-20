@@ -14,7 +14,7 @@ import (
 
 func main() {
 	outDir := flag.String("out", "", "Output directory for synthetic usage.log files (required)")
-	usersCSV := flag.String("users", "alice,bob,Kevin", "Comma-separated synthetic ledger identities")
+	usersCSV := flag.String("users", "alice,bob,MixedCaseUser", "Comma-separated synthetic ledger identities")
 	days := flag.Int("days", 21, "Number of UTC days to synthesize")
 	seed := flag.Int64("seed", 42, "Deterministic RNG seed")
 	flag.Parse()
@@ -29,7 +29,7 @@ func main() {
 			users = append(users, trimmed)
 		}
 	}
-	if err := fake.Generate(fake.Options{
+	kept, err := fake.Generate(fake.Options{
 		Out:          *outDir,
 		Users:        users,
 		Days:         *days,
@@ -40,10 +40,11 @@ func main() {
 		Seed:         *seed,
 		MaxFileBytes: 512 << 10,
 		Backups:      5,
-	}); err != nil {
+	})
+	if err != nil {
 		log.Fatalf("fakelogs failed: %v", err)
 	}
-	fmt.Printf("wrote synthetic usage records to %s\n", *outDir)
+	fmt.Printf("wrote %d synthetic usage records to %s\n", kept, *outDir)
 	for _, u := range users {
 		raw := fake.SyntheticKey(u)
 		fp := source.ComputeKeyFP(raw)
