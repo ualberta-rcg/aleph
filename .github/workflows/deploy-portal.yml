@@ -27,30 +27,73 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build, test, and push portal image
+      - name: Vet and race-test portal packages
+        run: |
+          set -euo pipefail
+          run_target() {
+            local stage="$1"
+            echo "=== Stage: ${stage} ==="
+            if ! docker build --progress=plain --target "${stage}" portal > /tmp/build.log 2>&1; then
+              cat /tmp/build.log
+              { grep -E '^#[0-9]+ [0-9]+\.[0-9]+ |^ERROR:' /tmp/build.log || tail -n 9 /tmp/build.log; } | tail -n 9 | while IFS= read -r line; do
+                echo "::error title=${stage}::${line}"
+              done
+              exit 1
+            fi
+            cat /tmp/build.log
+          }
+          run_target vet
+          run_target test-source
+          run_target test-auth
+          run_target test-catalog
+          run_target test-web
+
+      - name: Build distroless portal image
         env:
-          DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
-          DOCKER_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
           GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-
-          IMAGE_REPO="rkhoja/aleph"
           if [[ ! "${GIT_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "ERROR: invalid GIT_SHA" >&2
+            echo "::error title=build::invalid GIT_SHA"
             exit 1
           fi
-
+          IMAGE_REPO="rkhoja/aleph"
           SHORT_SHA="${GIT_SHA:0:7}"
           IMAGE_TAG="portal-${SHORT_SHA}"
           STABLE_TAG="portal-latest"
-
-          printf '%s\n' "${DOCKER_TOKEN}" | docker login -u "${DOCKER_USER}" --password-stdin
-
-          docker build --no-cache \
+          if ! docker build --progress=plain \
             -t "${IMAGE_REPO}:${IMAGE_TAG}" \
             -t "${IMAGE_REPO}:${STABLE_TAG}" \
-            portal
+            portal > /tmp/build.log 2>&1; then
+            cat /tmp/build.log
+            { grep -E '^#[0-9]+ [0-9]+\.[0-9]+ |^ERROR:' /tmp/build.log || tail -n 9 /tmp/build.log; } | tail -n 9 | while IFS= read -r line; do
+              echo "::error title=image-build::${line}"
+            done
+            exit 1
+          fi
+          cat /tmp/build.log
+
+      - name: Login to DockerHub
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
+          DOCKER_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DOCKER_USER}" || -z "${DOCKER_TOKEN}" ]]; then
+            echo "::error title=docker-login::DOCKER_HUB_USER or DOCKER_HUB_TOKEN secret is empty"
+            exit 1
+          fi
+          printf '%s\n' "${DOCKER_TOKEN}" | docker login -u "${DOCKER_USER}" --password-stdin
+
+      - name: Push portal image to DockerHub
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          IMAGE_REPO="rkhoja/aleph"
+          SHORT_SHA="${GIT_SHA:0:7}"
+          IMAGE_TAG="portal-${SHORT_SHA}"
+          STABLE_TAG="portal-latest"
 
           docker push "${IMAGE_REPO}:${IMAGE_TAG}"
           docker push "${IMAGE_REPO}:${STABLE_TAG}"

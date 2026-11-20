@@ -1,5 +1,5 @@
-devdata/
-devhistory/
-*.test
-aleph-portal
-fakelogs
+/devdata/
+/devhistory/
+/*.test
+/aleph-portal
+/fakelogs
