@@ -174,7 +174,7 @@ spec:
       containers:
         - name: portal
           # Pin to immutable CI tag + @sha256 digest before applying (never :latest).
-          image: rkhoja/aleph:portal-2a1477d@sha256:d0d6d3be3852a58164f36156a66042a8538afc37a78e9b8114e9bcca228c21ab
+          image: rkhoja/aleph:portal-9dfe612@sha256:ff107ad5b974454ce3e2bffa0e2260f1303c8d439d36e4b65efd4482f33823d2
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
